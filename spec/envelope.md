@@ -591,7 +591,7 @@ In IR: `{ "op": "map", "bind": "x", "over": <expr>, "max": n, "par": k,
   that holds one of these, through any number of calls. Each item would
   wait on its own. A batch asks a person once, after the map, about the
   list (0.6 adds `human.review` for that: specified in
-  [`library.md`](library.md#humanreview), not implemented yet).
+  [`library.md`](library.md#humanreview) and implemented).
 - **No critical effect inside a map body.** Each item's critical effect
   would be its own action, authorized one by one. 0.4 refuses it, and a
   change set in a map body with it (E1708); a change set after the map or
@@ -1074,7 +1074,10 @@ would be None, and a program with an envelope needs both (INV-11).
 
 - `shapes` (the patterns a lead may apply), `human.review`, `waive by`,
   libraries, patterns and connectors: 0.6, specified in
-  [`library.md`](library.md) and not implemented yet.
+  [`library.md`](library.md) and implemented. An amendment of a 0.6
+  package whose program applies a pattern or whose lock pins a library is
+  refused by name (`unsupported_language`) to the lead that asks
+  ([`library.md`](library.md#shapes)).
 - `stage`, `report`, the attention view and `asks`: 0.7.
 - An egress proxy for sub-programs that need the network: 0.5
   ([`boundary.md`](boundary.md#the-egress-proxy)). On a host that does not
@@ -1082,6 +1085,6 @@ would be None, and a program with an envelope needs both (INV-11).
   needs it.
 - A critical effect inside a `map` body. 0.6 specifies one under narrow
   conditions, in a 0.6 program only
-  ([`library.md`](library.md#the-batch-commit-step)), and it is not
-  implemented yet; for a program of 0.4 and 0.5, E1708 stays as above.
+  ([`library.md`](library.md#the-batch-commit-step)), and it is
+  implemented; for a program of 0.4 and 0.5, E1708 stays as above.
 - `await` and a lead that runs several sub-programs at once.

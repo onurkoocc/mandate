@@ -1,17 +1,17 @@
-# Mandate runtime, 0.1 to 0.5
+# Mandate runtime, 0.1 to 0.6
 
 This is the reference runtime in `runtime/`. It runs a checked package
 against adapters and keeps every decision that must survive a crash in
 PostgreSQL. Section numbers refer to the design document (Doc 4).
 
-The page describes the runtime of releases 0.1 to 0.5. The parts that came
+The page describes the runtime of releases 0.1 to 0.6. The parts that came
 with 0.4 and 0.5 are specified in [`envelope.md`](envelope.md) and
 [`boundary.md`](boundary.md); here they are named where they touch the
 runtime's storage, load-time checks, control API, control CLI and
 configuration, and linked. Release 0.6 is specified in
-[`library.md`](library.md) and not implemented: the runtime refuses a 0.6
-package today (`unsupported_language`), and what 0.6 will change here is
-listed under [Release 0.6](#release-06-specified-not-implemented).
+[`library.md`](library.md) and implemented: the runtime runs a 0.6
+package on the Rust compiler, and what 0.6 changes here is listed under
+[Release 0.6](#release-06-implemented).
 
 ## Scope
 
@@ -941,19 +941,20 @@ commands are in the runtime (`@mandate/runtime/cli`) and are reached
 through the compiler's `mandate` command:
 
 ```sh
-mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD] [--module FILE]…
+mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD] [--module FILE]… [--libraries DIR]
 mandate status <run> [--json]
 mandate key new [--out FILE]
 mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W] [--lock FILE] [--module FILE]… [--json]
 mandate approve <run> --revision N --key FILE [--member NAME]
 mandate decline <run> --revision N --key FILE [--member NAME]
 mandate answer <run> --revision N --key FILE [--member NAME] <text>
+mandate review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]
 mandate cancel <run> [--key FILE]
 mandate reconcile <run> <operation> [--key FILE] [--member NAME]
 mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
 mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
 mandate decision <run> <digest>
-mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
+mandate verify-decision <record.json> --key <public key.pem> [--lock FILE] [--waive I,J --decline K]
 mandate journal export <run> [--out FILE]
 mandate journal key [--out FILE]
 mandate journal verify <export.json> --key <public key.pem> [--key FILE]… [--json]
@@ -968,7 +969,13 @@ mandate egress serve [--config FILE]
 mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
 mandate drift --module MODEL --component NAME=DIR… [--json]
 mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [--name PREFIX] [--harness-tokens N]
+mandate connector pin <program> [--lock FILE] [--config FILE] [--module FILE]… [--libraries DIR]
 ```
+
+`review` decides a 0.6 review wait and `connector pin` writes the schema
+digests of a 0.6 package's connectors into its lock
+([`library.md`](library.md#the-lock-binding-and-schema-digests)); `--libraries`
+names the directory the libraries a lock pins are read from.
 
 `reconcile` is signed when `--key` is given. A run of a signed package (a
 0.4 program, or a runtime configured for signed decisions) requires the key;
@@ -1037,7 +1044,8 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
   "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
   "github": { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },
   "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"], "process": { "key": ".mandate/verifier.key" } },
-  "egress": { "admin": "/run/mandate/egress.sock", "gateways": { "model": "anthropic", "github": "github" } }
+  "egress": { "admin": "/run/mandate/egress.sock", "gateways": { "model": "anthropic", "github": "github" } },
+  "libraries": { "dir": "libraries", "wait_days": 7, "revoked": ["sha256:…"] }
 }
 ```
 
@@ -1062,6 +1070,10 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
 - **Plan.** `plan.checkMs` is the longest the check of a lead's
   sub-program may take, in milliseconds, 2000 by default. See
   [`envelope.md`](envelope.md#limits).
+- **Libraries.** `libraries` (0.6) names the directory of libraries, the
+  waiting period and the revoked digests ([`library.md`](library.md#the-local-directory));
+  a package that carries a revoked digest is not loaded. `--libraries DIR`
+  takes the directory's place for one command.
 - **Violations.** `violations.limit` is how many violations stop a run, a
   whole number, at least 1. Without it a 0.5 package's run stops at 3 and
   an earlier package's run never; every run records its violations
@@ -1190,49 +1202,78 @@ The same mechanisms are tested under Temporal against a local dev server:
 - a caller whose host is unfit, and a worker whose host is unfit, for
   `drive` and for `expire`, with the run brought back by a fit worker.
 
-## Release 0.6 (specified, not implemented)
+## Release 0.6 (implemented)
 
-*None of this section is implemented yet; the rules are in
-[`library.md`](library.md). A package of 0.1 to 0.5 runs as above.*
+*The rules are in [`library.md`](library.md); this is what they change
+here. A package of 0.1 to 0.5 runs as above.*
 
+- **The compiler** is called through the bridge, as an in-process
+  WebAssembly module, for every language version
+  ([`library.md`](library.md#the-bridge)): `MANDATE_COMPILER=rust` (the
+  default), `ts` or `both`. A 0.6 package is refused under `ts`
+  (`unsupported_language`), at load and at a resume or a replay. A failure
+  of the module while a run is driven stops the run for a person
+  (`compiler_failed`); at load it refuses the package
+  (`load_verification_failed`).
 - **Load.** A 0.6 package carries the manifest and modules of every
   library its lock pins. `StartRun` refuses one whose library does not
-  hash to its pin (`library_digest_mismatch`) or is revoked
-  (`library_revoked`, read from `libraries.revoked` in
-  `mandate.runtime.json`), and runs the compiler's checks again, closed
-  imports and library pins among them (`load_verification_failed`).
-  Until each 0.6 construct is implemented, a package that uses it is
-  refused by its name (`unsupported_language`).
-- **The stored expansion.** A run of a program that applies a pattern
-  stores the expansion when it starts and names it in its manifest,
-  `expanded`. A resume and a replay run the stored expansion, never a new
-  one; one that is missing or does not hash to the manifest is
-  `expansion_mismatch`.
-- **Connectors.** A `read_only` or `live` start asks each connector's
+  hash to its pin, or that the lock does not pin
+  (`library_digest_mismatch`), or that is revoked (`library_revoked`,
+  read from `libraries.revoked` in `mandate.runtime.json`, whatever else
+  is wrong with it), and runs the compiler's checks again, closed imports
+  and library pins among them (`load_verification_failed`). A contract
+  whose criterion names the method `verify` or `waiver` is refused
+  (`reserved_method`). The runtime runs every construct of 0.6: nothing is
+  refused for not being run yet.
+- **The stored running program.** A run of a program that applies a
+  pattern, or whose lock pins a library, stores the running program (the
+  expansion, with every definition it sees linked in) when it starts and
+  names it in its manifest, `expanded`. A resume and a replay run the
+  stored program, never a new one; one that is missing or does not hash to
+  the manifest is `expansion_mismatch`. A sub-program that applies a
+  pattern stores its own at its admission (`program_admitted.running`).
+- **Connectors.** Every declared tool is bound at a start, in every mode
+  (`bad_connector`). A `read_only` or `live` start asks each connector's
   server for its tools and refuses a schema that differs from the lock's
   digest (`tool_schema_mismatch`); a resume asks again and stops the run as
   `attention_required` on a difference. A connector's calls go only
   through the egress proxy (`no_egress_for_connector`), from the control
-  plane: an agent's read tools run in the runtime, not in its sandbox. A
-  design run answers read tools from samples (`PolicyDenied(no_samples)`).
+  plane: an agent's read tools run in the runtime, not in its sandbox, and
+  a request takes at most 120 seconds. A design run answers read tools
+  from samples (`PolicyDenied(no_samples)`). `mandate connector pin
+  <program>` writes the schema digests into the lock.
 - **The review wait.** `human.review` opens one wait of kind `review` for a
   list; it is decided by a signed decision of kind `review` (`mandate
-  review <run> --revision N --key FILE --waive … --decline …`), refused
-  as `incomplete_review` when it does not decide every open item once. Past
-  its deadline the wait goes once to `escalate_to`; past the second, every
-  open item is declined. A waiver is an evidence record of method
-  `waiver` beside the failed one, accepted for a `Verified` value only
-  with a valid decision of a role the criterion names.
+  review <run> --revision N --key FILE [--member NAME] [--waive I,J]
+  [--decline K]`), refused as `incomplete_review` when it does not decide
+  every open item once, and as `past_deadline` after the deadline. Past
+  its deadline the wait goes once to `escalate_to`, with a deadline of its
+  own counted from the escalation; past that, every open item is
+  declined. A waiver is an evidence record of method `waiver` beside the
+  failed one, accepted for a `Verified` value only with a valid decision
+  of a role the criterion names, and a `Verified` value rests on exactly
+  one whole-verify record (method `verify`, criterion `*`). A person's
+  answer, and the input of a run, may not hold a member of the runtime's
+  own values (`$…`; `reserved_value`, `unkeepable_value`).
 - **The batch commit step.** An item's critical effect in a map is
   authorized by policy alone, under an operation key named by the map
   and the item's key; one that would need a person fails with
   `PolicyDenied(person_in_map)`, and `StartRun` refuses a run whose policy
   would ask one.
+- **Shapes.** Under an envelope with `shapes` a sub-program is admitted
+  only when its check named a listed shape. An amendment of a package that
+  applies a pattern or pins a library is refused by name.
 - **A resume** of a run whose package carries a revoked library stops the
   run as `attention_required` (`library_revoked`).
-- **The compiler** is called through the bridge, as an in-process
-  WebAssembly module, for every language version
-  ([`library.md`](library.md#the-bridge)).
+- **The command line.** `mandate review` and `mandate connector pin` are
+  the Node command's; `--libraries DIR` (and `--config`) tell a command
+  where the libraries a lock pins are. The native `mandate` of
+  `crates/mandate-cli` has the compiler's commands and the library
+  commands, and none that controls a run.
+- **Views.** `mandate status` and `mandate show` write the untrusted text
+  of a 0.6 run in quotes, with every code point a terminal does not print
+  as itself escaped, and `show` has a `reviews` section
+  ([`views.md`](views.md)).
 
 ## Not in this runtime yet
 

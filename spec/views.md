@@ -103,8 +103,9 @@ every number is given as a number and as the text the document shows.
 
 ### The card in 0.6
 
-*Specified in [`library.md`](library.md#views); not implemented yet. What
-is above holds for every program of 0.1 to 0.5, unchanged.*
+*Implemented ([`library.md`](library.md#views)): `mandate view --card`, in
+the Node and the native command, for a program of 0.6. What is above holds
+for every program of 0.1 to 0.5, unchanged.*
 
 - **A workflow without an envelope.** In a 0.6 program the card is made
   for a workflow with no envelope too: its `caps` and `budget` take the
@@ -117,8 +118,19 @@ is above holds for every program of 0.1 to 0.5, unchanged.*
   `waive by` and its roles; the connectors' tools, those that read apart
   from those that write; and each batch commit step as an action per item,
   authorized by policy and idempotent by its key.
-- The diff gains `waiver_added` and `waiver_removed`, both governance
-  changes, and shows a changed library pin as `mandate upgrade` shows it.
+- The diff gains `waiver_added`, `waiver_removed` and `application_changed`,
+  all governance changes, and shows a changed library pin as `mandate
+  upgrade` shows it. A connector's server or class changed, a tool added, a
+  read-only tool made a write, and a tool's parameters, result or write
+  attributes (class, retry class, `reconcile by`, `compensation`) changed
+  are governance changes too (`capability_added`); a tool removed, a write
+  made read-only and another `version` are behavior changes.
+- **A review's bound.** The card states the longest a review waits as its
+  deadline, doubled when there is an `escalate_to`, and says that nothing
+  passes on its own; the review's wait is counted against no budget's
+  `time`. The runtime's bound is the first deadline, then one more from the
+  moment it escalates, so the card's figure is exact only for an
+  escalation made at the first deadline ([`library.md`](library.md#humanreview)).
 
 ## What changed between two versions
 
@@ -158,6 +170,9 @@ its path, and as `detail` the text shown here:
 | `remote_agent_added` | A new remote agent |
 | `remote_binding_changed` | A remote agent rebound |
 | `kind_changed` | A definition replaced by one of another kind under the same name |
+| `waiver_added` | 0.6: a criterion that a role may now waive that it could not before (`waive by` added, or a role added to it) |
+| `waiver_removed` | 0.6: a role may no longer waive a criterion (`waive by` taken away, or a role taken from it) |
+| `application_changed` | 0.6: a workflow's application of a pattern came, went or changed (its pattern, type arguments or slot arguments), or a pattern a workflow applies changed ([`library.md`](library.md#patterns)) |
 
 The diff also compares the two versions' locks: a member added or removed,
 a key added to or removed from a member, a member added to or removed from
@@ -278,11 +293,16 @@ program hash.
 In JSON the 0.4 parts are `decisions`, `envelope` (null without one),
 `plans` and `maps`. A run that has none of a part has no section for it.
 
-A run of a 0.6 package will also show each `human.review` with its items
-by index (open, waived or declined, and who decided), each waived
-criterion's failed record beside its waiver, and each sub-program's
-shape. This is specified in [`library.md`](library.md#views) and not
-implemented yet.
+A run of a 0.6 package also shows each `human.review` in a `reviews`
+section, with its items by index (open, waived or declined, and who
+decided), each waived criterion's failed record beside its waiver, and,
+under an envelope with `shapes`, each sub-program's shape: a `Shape`
+column in the plan's table of submissions, and a line counting the
+admitted sub-programs by shape ([`library.md`](library.md#views)). A run
+without a review has no `reviews` section. `mandate status` and `mandate
+show` write the untrusted text of a 0.6 run (a model's output, a person's
+answer, a fault) in quotes, with every code point a terminal does not
+print as itself escaped.
 
 **By role, and for an audit** (0.5). `mandate show <run> --role R` shows the
 run as one role may see it, and `mandate show <run> --audit` shows

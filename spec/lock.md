@@ -37,14 +37,14 @@ All of these are reported as `MDT-E0140`.
 | `host` | The least versions of the runtime's host's tools, `node` and `bwrap`; see [below](#host-isolation-and-egress-05). Needs format `0.5` |
 | `isolation` | Isolation floors by data class and for an untrusted network, and the data classes whose sandboxes may not share their host. Needs format `0.5` |
 | `egress` | Per agent, the credential each host's requests carry, by name. Needs format `0.5` |
-| `libraries` | 0.6, specified and not implemented: each library's version, digest and modules; see [below](#libraries-and-connectors-06). Needs format `0.6` |
-| `connectors` | 0.6, specified and not implemented: each connector's credential and the digest of each tool's schema. Needs format `0.6` |
+| `libraries` | 0.6: each library's version, digest and modules; see [below](#libraries-and-connectors-06). Needs format `0.6` |
+| `connectors` | 0.6: each connector's credential, the URL it goes to and the digest of each tool's schema. Needs format `0.6` |
 
-The format is `mandate/lock/0.5`. A `0.4` lock, which has no host,
+The format is `mandate/lock/0.5` below 0.6, and `mandate/lock/0.6` for a program of 0.6. A `0.4` lock, which has no host,
 isolation or egress, a `0.3` lock, which has no members or roles either,
 and a `0.2` lock, which has no bindings either, are still read. Format
-`0.6` is specified in [`library.md`](library.md#lock-06) and not
-implemented yet: no compiler writes or reads it today.
+`0.6` is specified in [`library.md`](library.md#lock-06) and implemented: the
+Rust compiler writes and reads it, and the TypeScript compiler does not.
 
 ## Members and roles
 
@@ -106,11 +106,11 @@ they mean is in [`boundary.md`](boundary.md#lock-05).
 
 ## Libraries and connectors (0.6)
 
-*Specified in [`library.md`](library.md#lock-06); not implemented yet.*
+*Specified in [`library.md`](library.md#lock-06); implemented.*
 
 Format `mandate/lock/0.6` has every field of `0.5` and two more, closed by
-its own schema, `lock-0.6.schema.json`, written with its implementation.
-In a lock older than `0.6` each of them is `MDT-E0140`.
+its own schema, `lock-0.6.schema.json`. In a lock older than `0.6` each of
+them is `MDT-E0140`, reported at the lock's root.
 
 ```json
 {
@@ -121,7 +121,7 @@ In a lock older than `0.6` each of them is `MDT-E0140`.
                          "modules": { "acme.connectors": "sha256:…", "acme.connectors.types": "sha256:…" } }
   },
   "connectors": {
-    "acme.connectors.erp": { "credential": "acme_erp", "tools": { "list_open_orders": "sha256:…" } }
+    "acme.connectors.erp": { "credential": "acme_erp", "url": "https://erp.acme.example/mcp", "tools": { "list_open_orders": "sha256:…" } }
   }
 }
 ```
@@ -131,9 +131,11 @@ In a lock older than `0.6` each of them is `MDT-E0140`.
   program hash. A library module is pinned there, not under `modules`.
 - `connectors` binds each connector a 0.6 package can call, under
   `<module>.<connector>`: the name of the credential the egress proxy
-  puts into its requests, the header and template (`authorization` and
-  `Bearer {secret}` when absent), and the schema digest of every tool it
-  declares.
+  puts into its requests, the `url` it goes to (required, and the URL the
+  connector declares, `MDT-E1407`), the header and template (both or
+  neither; `authorization` and `Bearer {secret}` when absent), and the
+  schema digest of every tool it declares (the member is required, and may
+  be empty). `mandate connector pin` writes the digests.
 - With the lock, `mandate check` adds `MDT-E1605`, `MDT-E1606`,
   `MDT-E1608` (with the configuration), `MDT-E1407` and `MDT-E1408`. The
   runtime refuses a package whose carried library does not hash to its

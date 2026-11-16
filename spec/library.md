@@ -1,32 +1,37 @@
 # Libraries, patterns and connectors (0.6)
 
-**Status: specified, not implemented.** Nothing on this page is
-implemented yet. The page specifies release 0.6 so that the implementing
-changes, all in the Rust compiler and the runtime, are written against
-the same rules and cases. Each part lands with the slice named in the
-table, which refines its section here. Until then neither compiler reads
-`mandate @ 0.6` (E0103), and the runtime refuses a 0.6 package when it
-loads it (`unsupported_language`).
+**Status: implemented.** Release 0.6 is implemented in the Rust compiler
+(`crates/`), in the bridge that lets the Node runtime and command line
+call it (`bridge/`), in the runtime (`runtime/`) and in the native
+`mandate` command of `crates/mandate-cli`. This page is the specification
+the implementation was written against, and it says what the
+implementation does: where the first draft of a rule and the rule as built
+differed, the page was brought to the built one. Each part landed with the
+slice named in the table. Language 0.6 is read by the Rust compiler alone:
+the TypeScript compiler stays frozen at 0.5 and does not read `mandate @
+0.6` (E0103), and a 0.6 package is refused by name when the runtime is set
+to that compiler (`MANDATE_COMPILER=ts`, `unsupported_language`; [The
+bridge](#the-bridge)).
 
 | Part | Slice | State |
 |---|---|---|
-| The 0.6 surface: `pub` on every definition kind, `///` doc lines, closed imports; E1602, E1603, E1604 | RL4 | specified; not implemented |
-| Patterns: `pattern`, application, expansion, limits under expansion, `expanded`; E1301 to E1307 | RL7 | specified; not implemented |
-| The stored expansion at run time; `expansion_mismatch` | B7 | specified; not implemented |
-| Libraries: the manifest, the digest, lock format 0.6, the local directory, the authority signature, versions, the waiting period and revocation; E1601, E1605 to E1608 | RL3, RL8 | specified; not implemented |
-| `mandate add`, `upgrade`, `publish`; the `libraries` configuration; `library_digest_mismatch`, `library_revoked` | RL8, B7, B8, RP5 | specified; not implemented |
-| `std.patterns`: `BatchWithExceptions`, `FanOutMerge`, `MakerChecker` | RL8 | specified; not implemented |
-| Connectors in the language: `connector`, tool classes, `tool.call` and its coverage, the fix of `requires caps` (B12); E1401 to E1408 | RL5 | specified; not implemented |
-| What is sent to a connector: E0220 for a tool's arguments and for what an agent that holds tools receives; held at run time by the check at load | RL5 | specified; not implemented |
-| Connectors at run time: the MCP client, connector gateways, schema digests at start and resume, samples in design runs, `mandate connector pin` | B6, B9 | specified; not implemented |
-| `human.review` and `waive by` in the language; E1504 to E1508 | RL6 | specified; not implemented |
-| The review wait and decision, escalation and expiry, waiver evidence, what `Verified` accepts, the value binding (B25); `mandate review` | B10 | specified; not implemented |
-| The batch commit step: E1708 in a 0.6 program, the operation key of a map, `person_in_map` | RL6, B9 | specified; not implemented |
-| `shapes` in an envelope; E1709 for shapes, E1710, E1711; `shape` in a sub-program's events | RL9, B12 | specified; not implemented |
-| Views and the card of a 0.6 program | RP4 | specified; not implemented |
-| The bridge: the runtime and the CLI call the Rust compiler as an in-process WebAssembly module | B1 to B5, RP3 | specified; not implemented |
-| The Rust command line | RP5 | specified; not implemented |
-| The acceptance program and its three criteria | RL8, B11 | specified; not implemented |
+| The 0.6 surface: `pub` on every definition kind, `///` doc lines, closed imports; E1602, E1603, E1604 | RL4 | implemented |
+| Patterns: `pattern`, application, expansion, limits under expansion, `expanded`; E1301 to E1307 | RL7 | implemented |
+| The stored running program at run time; `expansion_mismatch` | B7, RL10 | implemented |
+| Libraries: the manifest, the digest, lock format 0.6, the local directory, the authority signature, versions, the waiting period and revocation; E1601, E1605 to E1608 | RL3, RL8 | implemented |
+| `mandate add`, `upgrade`, `publish`; the `libraries` configuration; `library_digest_mismatch`, `library_revoked` | RL8, B7, B8, RP5 | implemented, in the Node and in the native command |
+| `std.patterns`: `BatchWithExceptions`, `FanOutMerge`, `MakerChecker` | RL8 | implemented |
+| Connectors in the language: `connector`, tool classes, `tool.call` and its coverage, the fix of `requires caps` (B12); E1401 to E1408 | RL5 | implemented |
+| What is sent to a connector: E0220 for a tool's arguments and for what an agent that holds tools receives; held at run time by the check at load | RL5 | implemented |
+| Connectors at run time: the MCP client, connector gateways, schema digests at start and resume, samples in design runs, `mandate connector pin` | B6, B9 | implemented |
+| `human.review` and `waive by` in the language; E1504 to E1508 | RL6 | implemented |
+| The review wait and decision, escalation and expiry, waiver evidence, what `Verified` accepts, the value binding (B25); `mandate review` | B10 | implemented |
+| The batch commit step: E1708 in a 0.6 program, the operation key of a map, `person_in_map` | RL6, B9 | implemented |
+| `shapes` in an envelope; E1709 for shapes, E1710, E1711; `shape` in a sub-program's events | RL9, B12 | implemented |
+| Views and the card of a 0.6 program | RP4, B10, B12 | implemented |
+| The bridge: the runtime and the CLI call the Rust compiler as an in-process WebAssembly module | B1 to B5, RP3 | implemented |
+| The Rust command line | RP5 | implemented |
+| The acceptance program and its three criteria | RL8, B11 | implemented |
 
 0.6 gives a workflow a shape it can share, gives programs definitions they
 can share, and gives agents typed access to business systems. A
@@ -75,10 +80,14 @@ tool classes) are contextual; the list of reserved words does not change.
 The IR of a 0.6 program is closed by its own schema,
 `spec/ir-0.6.schema.json`, and a 0.6 lock by `spec/lock-0.6.schema.json`
 (both written with their implementation, RL3). The schemas of 0.1 to 0.5,
-and what they accept, do not change. When the Rust compiler reads 0.6,
-the list of known versions in E0103's message and facts grows by one; the
-stored results of earlier programs are compared without that one entry
-(`vectors/README.md`).
+and what they accept, do not change. A 0.6 member in the IR of an earlier
+program is E0104, because the earlier schema closes its objects (case
+E0104d), and the 0.6 reader refuses an IR in which a `oneOf` passes both
+branches, again as E0104. In a lock older than 0.6, `libraries` and
+`connectors` are E0140 for the same reason, reported at the lock's root.
+The Rust compiler's list of known versions in E0103's message and facts is
+one longer than the TypeScript's; the stored results of earlier programs
+are compared without that entry (`vectors/README.md`).
 
 ## The 0.6 surface
 
@@ -89,11 +98,22 @@ mandate @ 0.6
 
 module acme.connectors.types @ 2.3
 
-/// An invoice as the mailbox holds it.
+/// An invoice as the mailbox holds it. Its total is in cents.
 pub type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }
-pub type Order   = { order_no: Text, vendor_id: Text, total_cents: Int }
-pub type Match   = { invoice_no: Text, order: Order }
-pub type DraftId = Text
+
+/// An open order of a vendor, as the ERP lists it.
+pub type Order = { order_no: Text, vendor_id: Text, total_cents: Int }
+
+/// An invoice matched to an open order of its vendor.
+pub type Match = { invoice_no: Text, order: Order }
+
+/// A draft invoice in the ERP, which a person still finalizes there.
+pub type DraftId = { draft_id: Text }
+
+/// Whether `a` is within `pct` percent of `b`.
+pub fn near(a: Int, b: Int, pct: Int) -> Bool ! {} {
+  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)
+}
 ```
 
 - **Every kind.** In a 0.6 module `pub` may stand before every definition
@@ -102,9 +122,24 @@ pub type DraftId = Text
   `pattern` and `connector`. In IR it is `"pub": true` on the definition,
   absent otherwise, as on a `fn` today.
 - **Visibility (E1602).** Another module may name only the `pub`
-  definitions of a 0.6 module, in a `use` list or wherever it names an
-  imported definition. Naming any other is E1602, at the name. A module
-  names its own definitions freely.
+  definitions of a 0.6 module, in a `use` list. Naming any other is
+  E1602, at the name in the list. A `use` list is the one place a 0.6
+  program names a definition of a module that is not the standard
+  library's: there is no writing a name through its module's path
+  (`types.Order`, `acme.types.Order`), and such a path is the unknown name
+  of its place, E0120. A module names its own definitions freely, and a
+  lead's sub-program its parent's.
+- **What an imported definition reaches.** A `pub` definition brings what
+  it refers to with it, `pub` or not, so that the program runs as it was
+  checked; the names a program imports and the names its imports bring
+  share the one namespace, and two that collide are E0121. A connector
+  imported from a module is bound to the types its module means: a type
+  name in a tool's signature that the program does not have as that very
+  definition (not imported or reached through what it imports, or a
+  definition of the program's own of that name) is E0120 at each use of
+  the tool, in a call, an `effect`, a `tool.call` or an agent's
+  capability that holds it. The acceptance program has `Order` through
+  `Match`, which refers to it.
 - **Older modules.** In a module of 0.1 to 0.5, `pub` is read as before:
   on a `fn` only, with no effect on what may be named. Every definition of
   an older module may still be named from any program, a 0.6 one
@@ -124,7 +159,13 @@ with `\n`, in order, into the definition's `doc` field.
 
 - **Only before definitions.** A `///` line anywhere else (inside a body,
   before `use` or `module`, at the end of the file, or followed by a
-  blank line before the definition) is E0101.
+  blank line before the definition) is E0101. A `///` written after code
+  on a line of its own is a `//` comment, even on the line before a
+  definition (case E0101g).
+- **What counts as text.** Four slashes, `////x`, are a doc line whose
+  text is `/x`. A line that ends in CR LF reads as one that ends in LF. A
+  `doc` in JSON IR that ends in a carriage return is not written back by
+  `fmt` as it was, since `///` lines cannot hold one.
 - **In the hash.** `doc` is part of the definition, so it is part of the
   definition's hash and the program hash: a changed doc line is a new
   program. The semantic diff does not count it as a governance change.
@@ -180,30 +221,45 @@ pub pattern Name<T1, T2>(slot: kind, …) [(param: Type, …)] -> Type {
   expression.
 - Names in the body and the signature that are not slots, type parameters,
   run parameters or local bindings resolve in the pattern's own module, as
-  if the body were written there. Its other definitions need not be `pub`
-  for that; a type the applying program must name, such as the return
-  type, does.
+  if the body were written there. In a pattern that another module
+  imports, every definition the body names must be `pub` in the pattern's
+  module (E1602, at the application, `E1602e`): the expansion adds those
+  names to the applying program's `use` list, so that the program that
+  runs names what the pattern's body meant. A name the pattern's module
+  itself imports from a third module is refused the same way: a binding is
+  not carried from one module to another through a pattern.
 
 In IR a pattern is a definition of kind `pattern` with `slots`, and its
 type parameters, run parameters, return type and body. A workflow that
-applies one carries `apply`: `{ pattern, types, args, params? }`. The
-exact shapes are those of `spec/ir-0.6.schema.json`.
+applies one carries `apply`: `{ pattern, types?, args }`; there is no
+`params` member, and none is produced or accepted (the workflow's
+parameters are the pattern's run parameters, which the expansion writes).
+The exact shapes are those of `spec/ir-0.6.schema.json`.
 
 ### Slots
 
 | Kind | Takes | Used in the body as |
 |---|---|---|
-| `type` | A type | That type, by the slot's name |
+| `type` | A type, or a type name | That type, by the slot's name |
 | `skill(sig) [read_only]` | A skill `Agent.skill` whose signature fits `sig`; with `read_only`, of an agent that holds no write capability | `delegate slot(args)` |
 | `tool(sig)` | A read-only tool of a connector, `connector.tool` | A call, `slot(args)` |
 | `effect(sig)` | A user effect, a std effect, or a write tool of a connector | `effect slot(args) idempotent_by k` |
 | `contract(sig)` | A contract whose parameters fit `sig` | `verify x against slot(args)`; in a type, `Verified<T, slot>` |
 | `role` | A role definition | Wherever a role is named |
 | `capability` | A capability definition | Wherever a capability is named (`with caps`, `.narrow(…)`) |
-| `const T` | A constant expression of type `T` | Wherever a constant is needed (`max`, `par`, a deadline) |
+| `const T` | A constant expression of type `T` | Wherever a constant is needed (`max`, `par`, a deadline); a map's `max` and `par` take a constant that is a whole number of at least 1 |
 | `field(T)` | The name of a field of the record type `T` | `v.slot`, which reads that field of `v` |
 
-All of them are known at compile time. A write capability is one of
+All of them are known at compile time. A slot is used only as its kind
+allows (E1301): a skill slot only delegated to, a tool slot only called, an
+effect slot only run with `effect`, a contract slot only verified against
+or named in `Verified<T, C>`, a type slot only as a type, a const slot only
+as a value or as a map's `max` or `par`. In IR, `delegate slot(…)` is a
+delegation that names its slot, and `max <slot>` a bound that names a
+constant slot; both stand only in a pattern's body. A `const` slot of a
+list, set or record type takes a literal, or a named constant that is one,
+that holds nothing but constants, so that a value slot brings no
+authority. A write capability is one of
 `fs.write`, `git.pr`, `component.write`, `component.repo`, `env.deploy`,
 `env.migrate`, or a `tool.call` that names a tool that is not read-only.
 
@@ -246,7 +302,9 @@ type is the pattern's, with the type arguments put in.
 - A pattern is applied only as the definition of a workflow: an
   application in a body, as a slot's argument, in a pattern's body (a
   pattern does not apply another), or as the definition of anything but a
-  workflow is E1307. So is an application with an `envelope`.
+  workflow is E1307. So is an application whose workflow has an
+  `envelope`, parameters, a result, a body, `ensures` or handlers of its
+  own: it is the pattern's alone, with `caps` and `budget`.
 
 ### Expansion
 
@@ -264,29 +322,46 @@ of a `field` slot by that field.
   expanded body is reported at the slot argument whose value it is about,
   through an origin map the expansion keeps; one about the body itself is
   reported at the application, with the pattern's own path in its facts.
-  `at.path` always points into the program that was checked.
+  `at.path` always points into the program that was checked. The facts of
+  such a diagnostic say where it was found: `slot` and `expanded_path` for
+  a slot argument; `pattern`, `pattern_path` and `expanded_path` for the
+  application.
+- **Hygiene refuses, it does not rename.** A name the body binds (a `let`,
+  a `par` branch, a map's item, `on unmet`) that a slot, type parameter
+  or run parameter also names is E1306 (`local`); an argument that names
+  what the body binds around the slot's use is E1306 (`captured`); and a
+  definition of an imported pattern's module that the expansion names,
+  which the applying program defines or imports from elsewhere, is E1306
+  (`taken`).
 - **Limits.** The expanded body counts toward the 1000 expanded nodes of a
-  workflow (E0105). A map's body still counts once.
+  workflow (E0105). A map's body still counts once. An expansion that
+  nests an argument deeper than 64 levels, or copies more than 1 MiB of
+  arguments, is E0105 too, at the argument or the application.
 - **The result.** `check` returns the expanded program as `expanded`
-  beside the program, when the program applies a pattern: the program
-  with every application replaced by its expansion. It is a 0.6 program
-  with no `apply` in it.
+  beside the program, when the program applies a pattern and checks: the
+  program with every application replaced by its expansion, in the
+  program's own definitions. It is a 0.6 program with no `apply` in it.
+  With the option `linked` the check also returns `linked`, the program
+  as a run runs it ([Hashes, and what the runtime stores](#hashes-and-what-the-runtime-stores)).
 
-A pattern definition on its own is checked for E1301, E1302 and E1306.
-Its body is type-checked only through its applications, since a slot has
-no value until then.
+A pattern definition on its own is checked for E1301, E1302, E1306 and
+E1307, whether or not the rest of the program is clean. Its body is
+type-checked only through its applications, since a slot has no value
+until then, and the applications are expanded and checked only when the
+program has no error of its own. An imported pattern is checked again
+where it is applied, each diagnostic at the application.
 
 ### What a pattern may not do
 
 | Code | When |
 |---|---|
-| MDT-E1301 | Malformed pattern: a slot of an unknown kind or named twice, a type parameter named twice, a slot signature that is not a signature, a body that is not a block |
+| MDT-E1301 | Malformed pattern: a slot of an unknown kind or named twice, a type parameter named twice, a slot signature that is not a signature (or one its kind does not take), a body that is not a block, a slot used in a way its kind does not allow |
 | MDT-E1302 | The pattern brings authority: it declares `caps`, `budget` or an `envelope`, or its body or signature names a capability (a definition or a constructor), an agent, a connector or its tool, an effect it calls with `effect`, or a role, other than through a slot. What its body uses forms a requirement that the applying workflow's `caps` must cover (C1) |
-| MDT-E1303 | The name applied is not a pattern |
+| MDT-E1303 | The name applied is not a pattern: nothing the program defines or a `use` list brings defines it, or it is a definition of another kind |
 | MDT-E1304 | Slots and arguments do not match: a slot without an argument, an argument for no slot, an argument of another kind, or another number of type arguments |
 | MDT-E1305 | An argument does not fit its slot's signature |
-| MDT-E1306 | Name collision: a slot, type parameter or run parameter named like another of them, or like a definition the pattern's module defines or imports |
-| MDT-E1307 | Nested or misplaced application: anywhere but as the definition of a workflow, inside a pattern's body, as a slot argument, or with an envelope |
+| MDT-E1306 | Name collision, in three forms: a slot, type parameter or run parameter named like another of them, or like a definition the pattern's module defines or imports; a name the body binds that a slot or parameter also names (`local`); at an application, an argument that names what the body binds around the slot's use (`captured`) or a definition the expansion names that the applying program defines or imports from elsewhere (`taken`) |
+| MDT-E1307 | Nested or misplaced application: anywhere but as the definition of a workflow, inside a pattern's body, as a slot argument, in a body, a constant or a capability, or with an envelope, parameters, a result, a body, `ensures` or handlers; an application the static checks meet unexpanded |
 
 So a pattern cannot grant itself anything. The applying workflow's `caps`
 bound everything the expansion does, and the applying program names every
@@ -301,18 +376,48 @@ agent, tool, effect, role and capability the expansion reaches (INV-21).
   the digest of the library the pattern comes from (`std.patterns`
   included), and the lock is part of the package. A changed pattern is a
   changed library digest, so a new package (INV-02).
-- **The runtime stores the expansion.** When a run of a package whose
-  program applies a pattern starts, the runtime stores `expanded` in the
-  artifact store, and the run's manifest names it: `expanded: <hash>`, the
-  program hash of the expanded program. A resume and a replay load that
-  stored expansion and run it; they do not expand again. A command's id is
-  the IR path of its node in the expansion, so a compiler that expands the
-  same package otherwise, after an upgrade, cannot move the ids of a run
-  that is going on.
-- **`expansion_mismatch`.** A stored expansion that is missing, or does
-  not hash to what the manifest names, is not run. A resume stops the run
-  as `attention_required` with `expansion_mismatch`; a replay reports it
-  and runs nothing.
+- **The runtime stores the running program.** A 0.6 program is run as the
+  **running program** the check gives (`check` with `linked`, and `linked`
+  in its result): the program with every application replaced by its
+  expansion, when it applies a pattern, and with every definition it sees
+  linked in, through what each library reaches (`std.patterns` included).
+  When a run of a package starts, and the program applies a pattern or the
+  lock pins a library, the runtime stores that program in the artifact
+  store (media type `application/vnd.mandate.expanded+json`), and the
+  run's manifest names it: `expanded: <hash>`, the program hash of the
+  running program (so `expanded` is the hash of the linked program, not
+  only of the expansion). Any other 0.6 run runs its program as linking
+  gives it, and has no `expanded`. A resume and a replay load the stored
+  program and run it; they do not expand or link again. A command's id is
+  the IR path of its node in it, so a compiler that expands the same
+  package otherwise, after an upgrade, cannot move the ids of a run that
+  is going on.
+- **An imported application stays unexpanded.** A workflow a library
+  module defines as an application, which the program only imports, is
+  linked as it is written: nothing starts or calls it in 0.6, and the
+  interpreter refuses (`expansion_mismatch`) a workflow that still applies
+  a pattern, whatever led to it. A program of the package whose own
+  workflow applies a pattern, and is left unexpanded in the running
+  program, is refused at load (`load_verification_failed`).
+- **`expansion_mismatch`.** A stored running program that is missing, does
+  not hash to what the manifest names, or lacks a definition its program
+  imports by name (the form stored before the running program was linked)
+  is not run. A resume stops the run as `attention_required` with
+  `expansion_mismatch`; a replay reports it and runs nothing.
+- **A 0.6 run needs the Rust compiler.** Under `MANDATE_COMPILER=ts` a 0.6
+  package is refused at load, and a resume or a replay of a 0.6 run is
+  refused by name (`unsupported_language`): a run that was started on the
+  Rust compiler is never driven on the reference.
+- **A sub-program** that applies a pattern is run as its check gave it:
+  `check_subprogram` returns `running`, the running program of the
+  sub-program (its expansion, with all its parent sees linked in), with
+  `running_hash`, its program hash, and, under an envelope with `shapes`,
+  `shape`. The runtime checks that the program hashes to what the checker
+  named, stores it at the admission (media type
+  `application/vnd.mandate.program.running+json`), and names it in
+  `program_admitted` as `running: { hash, artifact }`. A sub-program that
+  applies no pattern gets no running program, and one that is given for
+  such a sub-program is refused.
 
 Two runs of one package started under two compilers may differ in their
 expansion; each records its own.
@@ -341,17 +446,19 @@ listed here is an error.
 | Field | Meaning |
 |---|---|
 | `library` | The format, `mandate/library/0.6` |
-| `name` | Dot-separated lower-case names, as a module's name |
-| `version` | `MAJOR.MINOR.PATCH`, decimal numbers without leading zeros, no pre-release or build part |
-| `modules` | The module files, relative to the manifest, `.mdt` text or JSON IR; at least one |
-| `requires` | For each library its modules import, a version range ([Versions](#versions)) |
+| `name` | Dot-separated lower-case names, as a module's name; `std` and `std.…` are reserved to the built-in `std.patterns` |
+| `version` | `MAJOR.MINOR.PATCH`, decimal numbers without leading zeros, no pre-release or build part, each component at most 999,999,999 |
+| `modules` | The module files, relative to the manifest, `.mdt` text or JSON IR; at least one, at most 1024; a name with a path segment that is a Windows device name is refused |
+| `requires` | For each library its modules import, a version range ([Versions](#versions)); `{}` when absent, at most 1024 entries |
 
 A library is malformed (E1601) when its manifest is, when a module is not
 written in 0.6, when a module's name is neither the library's name nor
-begins with it and a dot, when two modules have one name, and when a
-module defines an `extern`: a library is data, IR and a manifest, and runs
-no code, at install or after. Every module of a library checks without an
-error, its imports resolved as [above](#closed-imports).
+begins with it and a dot, when two modules have one name, when a file it
+lists is not handed in or one handed in is not listed, and when a module
+defines an `extern`: a library is data, IR and a manifest, and runs no
+code, at install or after. A module's name is the name its text declares;
+its file's name says nothing of it. Every module of a library checks
+without an error, its imports resolved as [above](#closed-imports).
 
 ### The digest
 
@@ -363,8 +470,10 @@ digest = SHA256("mandate/library/0.6\n" ‖ JCS({ name, version, requires, modul
 ```
 
 written `sha256:<hex>`. A module's program hash covers its `doc` lines,
-so a changed doc line is a new digest. Trust is in the digest, not in a
-name or a version: a version republished with other content has another
+so a changed doc line is a new digest. A range in `requires` is its text
+as written, so `^1.0` and `^1.0.0` are two spellings and two digests; an
+absent `requires` and an empty one are the same `{}`. Trust is in the
+digest, not in a name or a version: a version republished with other content has another
 digest, and the lock refuses it. Nobody signs a library in 0.6.
 
 ### Lock 0.6
@@ -380,10 +489,11 @@ digest, and the lock refuses it. Nobody signs a library in 0.6.
                          "modules": { "acme.connectors": "sha256:…", "acme.connectors.types": "sha256:…" } }
   },
   "connectors": {
-    "acme.connectors.erp":     { "credential": "acme_erp",
+    "acme.connectors.erp":     { "credential": "acme_erp", "url": "https://erp.acme.example/mcp",
                                  "tools": { "list_open_orders": "sha256:…", "find_draft_invoice": "sha256:…",
                                             "post_draft_invoice": "sha256:…", "delete_draft_invoice": "sha256:…" } },
-    "acme.connectors.mailbox": { "credential": "acme_mail", "header": "x-api-key", "template": "{secret}",
+    "acme.connectors.mailbox": { "credential": "acme_mail", "url": "https://mail.acme.example/mcp",
+                                 "header": "x-api-key", "template": "{secret}",
                                  "tools": { "list_invoices": "sha256:…" } }
   }
 }
@@ -391,16 +501,22 @@ digest, and the lock refuses it. Nobody signs a library in 0.6.
 
 The compiler writes format `mandate/lock/0.6` and reads 0.2 to 0.5 as
 before. A 0.6 lock has every field of a 0.5 lock, and two more, which
-exist only in format 0.6: in an older lock each is E0140.
+exist only in format 0.6: in an older lock each is E0140, reported at the
+lock's root, since the older schemas close their objects.
 
 | Field | Says |
 |---|---|
-| `libraries.<name>.version` | The version the lock resolved |
+| `libraries.<name>.version` | The version the lock resolved, each component at most nine digits |
 | `libraries.<name>.digest` | The library's digest |
-| `libraries.<name>.modules` | Each of its modules by name, with its program hash |
+| `libraries.<name>.modules` | Each of its modules by name, with its program hash; at least one |
 | `connectors.<module>.<connector>.credential` | The name of the credential the egress proxy puts into the connector's requests: a name, never a secret (`^[A-Za-z][A-Za-z0-9_-]{0,63}$`) |
-| `connectors.<…>.header`, `.template` | The header the credential goes in and its value with `{secret}` once, as the proxy's configuration has them; `authorization` and `Bearer {secret}` when absent |
-| `connectors.<…>.tools.<tool>` | For every tool the connector declares, the digest of its schema as the server lists it ([below](#the-lock-binding-and-schema-digests)) |
+| `connectors.<…>.url` | Required. The URL the credential goes to, which must be the one the connector declares (E1407): the credential is bound to the target, so a program that changes its connector's URL cannot send the same credential to another server |
+| `connectors.<…>.header`, `.template` | Both or neither. The header the credential goes in and its value with `{secret}` once, as the proxy's configuration has them; `authorization` and `Bearer {secret}` when absent |
+| `connectors.<…>.tools.<tool>` | The member is required and may be empty; for every tool the connector declares, the digest of its schema as the server lists it ([below](#the-lock-binding-and-schema-digests)) |
+
+The names of libraries and of the modules of a library are lower-case. The
+lock's schema and the text parser would let another spelling through; the
+library reader does not (E1601).
 
 - **Pins.** A module of a library is pinned by its library's entry; the
   top-level `modules` keeps pinning the modules a check is given as
@@ -425,9 +541,18 @@ exist only in format 0.6: in an older lock each is E0140.
   and a workflow with an envelope needs a new approval of it.
 - **The diff.** `mandate view --against` shows a library whose pin changed
   as `mandate upgrade` shows it ([below](#mandate-add-upgrade-and-publish)).
-  A credential bound to a connector, or another credential for it, and a
-  tool's schema digest changed, are governance changes; a binding taken
-  away is a behavior change.
+  A credential bound to a connector, or another credential, URL, header or
+  template for it, and a tool's schema digest added or changed, are
+  governance changes; a binding or a digest taken away is a behavior
+  change. In the program's diff, a connector's `class` changed in either
+  direction is a governance change (lowering it would let its results go
+  where they could not), as is another server or a tool added or
+  changed; a change of a library's `requires` is one for `mandate
+  upgrade`. A workflow's application that came, went or changed (its
+  pattern, type arguments or slot arguments, or the pattern it applies)
+  is the governance change `application_changed`, whatever it does: a
+  person sees every such change, since the expansion is not written
+  out in the program.
 
 ### The local directory
 
@@ -450,61 +575,124 @@ the revoked digests, and every command that resolves a library reads it
 
 | Field | Means |
 |---|---|
-| `libraries.dir` | The directory, relative to the configuration; `--libraries DIR` takes its place for one command |
-| `libraries.wait_days` | Days a published version waits before `add` or `upgrade` resolves it; 0 when absent |
-| `libraries.revoked` | Digests that are never resolved or loaded |
+| `libraries.dir` | The directory, relative to the configuration file; `--libraries DIR` takes its place for one command |
+| `libraries.wait_days` | Days a published version waits before `add` or `upgrade` resolves it, 0 to 36,500; 0 when absent |
+| `libraries.revoked` | Digests that are never resolved or loaded; a digest written twice counts once |
 
-`published_at` is written by `mandate publish`, an RFC 3339 time in UTC.
-It is not part of the digest: the directory is the operator's, and so is
-the date. The compiler's library crates read no clock: the time a
-resolution compares with is an input of the door that resolves.
+Only the `libraries` member of the configuration is read for libraries;
+a member of it that is not listed here is refused. Every command that
+reads a directory takes `--libraries DIR` and `--config FILE`; an option
+without its value is a usage error. With neither a directory nor a
+configuration that names one, a command that needs libraries stops with
+`mandate: no directory of libraries: name it with --libraries <dir>, or as
+libraries.dir of the configuration (--config <file>, or
+mandate.runtime.json)` and exit status 2.
+
+`published_at` is written by `mandate publish`, in one form only,
+`YYYY-MM-DDTHH:MM:SSZ` (UTC, no fraction, a year from 1970 to 9999). It is
+not part of the digest: the directory is the operator's, and so is the
+date. The compiler's library crates read no clock: the time a resolution
+compares with is an input of the door that resolves.
+
+A version directory with no `index.json` was never published (`publish`
+writes it last, after the files): it is no candidate for `add` or
+`upgrade`, which name it as unpublished. A directory whose manifest has
+another name or version than the directory's, or a malformed `index.json`,
+is E1601, and is no candidate either. Candidates are taken highest version first, and each one passed over is
+given one reason, in this order: outside the range, then revoked, then
+waiting (so a candidate both outside the range and revoked is outside it,
+and one both revoked and waiting is revoked). When none can be resolved,
+nothing in the range at all is E1606 (`no_version`); otherwise it is E1608,
+naming the reason of the candidates in the range.
 
 ### `mandate add`, `upgrade` and `publish`
 
 ```sh
-mandate add     <library>[@<range>] [--lock FILE] [--libraries DIR] [--config FILE]
-mandate upgrade <library>[@<range>] [--lock FILE] [--libraries DIR] [--config FILE] [--accept-governance]
-mandate publish <source dir> [--libraries DIR] [--config FILE]
+mandate add     <library>[@<range>] [--lock FILE] [--libraries DIR] [--config FILE] [--json]
+mandate upgrade <library>[@<range>] [--lock FILE] [--libraries DIR] [--config FILE] [--accept-governance] [--json]
+mandate publish <source dir> [--libraries DIR] [--config FILE] [--json]
 ```
+
+Both executables, the Node `mandate` and the native `mandate` of
+`crates/mandate-cli`, give the same bytes for these commands.
 
 - **`add`** resolves the highest version of the library in the directory
   that is within the range (any version when none is given), whose
   waiting period is over and whose digest is not revoked. It checks the
   library (E1601, E1605, E1606), prints its version, digest and
   [authority signature](#the-authority-signature), and writes its entry
-  into the lock. `mandate add std.patterns` pins the copy built into the
-  compiler. A version within its waiting period, or revoked, is never
-  resolved (E1608, naming the version and the day it may be).
+  into the lock; a lock file that does not exist starts as
+  `{"lock": "mandate/lock/0.6", "modules": {}}`. `mandate add std.patterns`
+  pins the copy built into the compiler. A version within its waiting
+  period, or revoked, is never resolved (E1608, naming the version and
+  the day it may be). Plainly it prints `<library> <version> <digest>`, the
+  line `authority signature:` and the signature as pretty JSON, then
+  `wrote <lock file>`, and exits 0 when the lock was written and 1
+  otherwise, with the diagnostics on standard error against the lock file.
 - **`upgrade`** resolves a new version as `add` does and compares it with
   the version the lock pins: the semantic diff of each module, as
-  `mandate view --against` gives it, and the change of the authority
-  signature. It prints both. It writes the new entry into the lock only
-  when the comparison holds no governance change, or with
-  `--accept-governance`. A widened authority signature is a governance
-  change, and so are the governance changes of the diff (a capability
-  added, a budget raised, a criterion removed or changed, a waiver added
-  or removed, an effect made irreversible, …). Patches and upgrades of 0.6
-  are classified by one rule set, the semantic diff's (B13).
+  `mandate view --against` gives it, a changed `requires`, and the change
+  of the authority signature. It prints both. It writes the new entry
+  into the lock only when the comparison holds no governance change, or
+  with `--accept-governance`. A widened authority signature is a
+  governance change, and so are the governance changes of the diff (a
+  capability added, a budget raised, a criterion removed or changed, a
+  waiver added or removed, an effect made irreversible, …). Patches and
+  upgrades of 0.6 are classified by one rule set, the semantic diff's
+  (B13). Plainly it prints `<library> <from> -> <version> <digest>`, then
+  a line `governance change: <kind> at <at>: <text>` for each governance
+  change and `behavior change: at <at>: <text>` for each behavior change,
+  the signature, and `wrote <lock file>`; or, when it holds governance
+  changes and `--accept-governance` was not given, `not written: N
+  governance change(s); <lock file> is written only with
+  --accept-governance`, exit status 1 and the lock untouched.
 - **`publish`** reads the manifest in the source directory, checks the
   library (E1601), computes its digest, and copies the manifest and its
-  modules into `<dir>/<name>/<version>/` with `index.json`. It refuses,
-  E1607, a version already published, and a version that is not a major
-  one above the highest published version below it when, against that
-  version, it widens the authority signature, removes a criterion, or
-  adds a waiver. A major version is one whose `MAJOR` is greater. The
-  first version of a library is any version.
+  modules into `<dir>/<name>/<version>/` with `index.json`, written last.
+  A library it requires is resolved to the highest published version
+  within its range. It refuses, E1607, a version already published, and a
+  version that is not a major one above the highest published version
+  below it when, against that version, it widens the authority signature,
+  removes a criterion, or adds a waiver; and a version below the lowest
+  published version above it within the same `MAJOR`, when that version
+  would do one of these against it. A major version is one whose `MAJOR`
+  is greater. The first version of a library is any version. Plainly it
+  prints `against <version>: governance change: <kind> at <at>: <text>`
+  for each governance change against its base, then `published <name>
+  <version> <digest> to <dir>/<name>/<version>`. A refusal is diagnostics
+  on standard error against `<source>/mandate.library.json`, exit status
+  1, with nothing written.
+- **`--json`** on all three prints exactly the output of the door that
+  answered, pretty, with a newline. A name that is not a library's is
+  `mandate: <x> is not the name of a library`, exit status 2.
+- **Checks with a lock.** `check`, `view`, `sandbox` and `target acs` (and
+  the Node commands that run a program) take `--libraries` and `--config`
+  too: when the lock pins libraries, each is read from the directory at
+  the version the lock pins and handed to the check, and its modules to
+  the views, and the configuration's `revoked` list is applied (E1608 on a
+  revoked pinned digest). For a 0.6 program the Node and the native
+  command agree on `view --format md|html` as well: both hand the document
+  the modules of the program and of the libraries the lock pins.
 
 ### The authority signature
 
-For each `pub` workflow, pattern and connector of a library's modules, the
-compiler computes an authority signature (`authority_signature`):
+For each `pub` workflow, pattern, connector and agent of a library's
+modules, the compiler computes an authority signature
+(`authority_signature`):
 
-- **a workflow or a pattern:** the effects it needs, with the capability
-  kinds and scopes that cover them; its static budget, as an upper bound
-  per dimension for a workflow and as a formula in its slots for a
-  pattern (`max_items ×` the budget of `work`, …); the roles it waits for;
-  the highest data class a model in it may receive; its critical effects,
-  and which are irreversible;
+- **a workflow** (its expansion, when it applies a pattern): the
+  capabilities its `caps` or its envelope's stand for; the effects its
+  body runs, each with how it is authorized (not critical, critical, or
+  irreversible; a connector's write tool is critical); its static budget,
+  as an upper bound per dimension; the roles it waits for (a review's
+  `role` and `escalate_to`, an escalation's, an approval's, an envelope's
+  owner and approvals); and the highest data class a model in it may
+  receive;
+- **an agent:** its capabilities, its budget and that class;
+- **a pattern:** its shape, the digest of its type parameters, slots,
+  run parameters, result and body: what it can do is a formula in its
+  slots (`max_items ×` the budget of `work`, …), and any other shape is
+  another formula;
 - **a connector:** its server's URL, its class, and each tool with its
   class: `read_only`, or its write class and retry class.
 
@@ -513,10 +701,12 @@ a kind or a scope the old one's did not cover; has a higher bound in a
 dimension, a dimension it no longer bounds, or another budget formula;
 waits for a role the old one did not; lets a model receive a higher
 class; has a critical effect the old one did not, or makes one
-irreversible. A connector's widens when it has another URL or a higher
-class, a write tool it did not have, or a tool that was read-only and
-writes. A `pub` workflow, pattern, connector or tool that the old version
-did not have widens the signature too.
+irreversible; or is another pattern shape or another kind of definition.
+A connector's widens when it has another URL or a higher class, a write
+tool it did not have, a tool that was read-only and writes, or a write
+tool with another retry class. A `pub` workflow, pattern, connector or
+agent that the old version did not have widens the signature too. A
+`doc` line is no part of any of these.
 
 ### Versions
 
@@ -524,14 +714,19 @@ A version range is `^MAJOR`, `^MAJOR.MINOR`, `^MAJOR.MINOR.PATCH`, or an
 exact `MAJOR.MINOR.PATCH`. A caret range holds the versions from the one
 it names up to, and not including, the next change of its first nonzero
 component: `^1.0` is `>= 1.0.0, < 2.0.0`, `^0.3` is `>= 0.3.0, < 0.4.0`,
-`^0.0.3` is `0.0.3` alone. Versions are compared by number, component by
-component.
+`^0.0.3` is `0.0.3` alone. The first nonzero component is looked for in the
+components written: `^0` is `>= 0.0.0, < 1.0.0`, `^0.0` is `>= 0.0.0, <
+0.1.0`, and `^0.0.0` is `0.0.0` alone. `^1.0` and `^1.0.0` are the same
+versions written two ways, and two spellings in a manifest's `requires`
+(two digests). Versions are compared by number, component by component.
 
 ### Waiting period and revocation
 
 - **Waiting.** A version is resolved by `add` or `upgrade` only once
   `wait_days` days have passed since its `published_at` (E1608). A version
-  the lock already pins is not held to the wait again.
+  the lock already pins is not held to the wait again. A version with no
+  `index.json` has no `published_at`, was never published, and is never
+  resolved.
 - **Revocation.** A digest in `libraries.revoked` is never resolved
   (E1608), and the runtime does not load a package that carries it: a
   start is refused with `library_revoked`, and a resume of a run whose
@@ -544,7 +739,10 @@ The package carries the manifest and the modules of every library its
 lock pins. At `StartRun` the runtime computes each library's digest from
 what the package carries, and refuses a package where one differs from
 the lock's (`library_digest_mismatch`), and one that carries a revoked
-digest (`library_revoked`). It then runs the compiler's checks again, so
+digest (`library_revoked`, whatever else is wrong with it). A library the
+lock pins must be carried (but `std.patterns`, the compiler's own), each
+once, and a library carried that the lock does not pin is refused too
+(`library_digest_mismatch`). It then runs the compiler's checks again, so
 E1603, E1604, E1605 and E1606 refuse a package at load too
 (`load_verification_failed`).
 
@@ -615,29 +813,68 @@ pub pattern BatchWithExceptions<Item, Out, R>(
 ### `FanOutMerge`
 
 Work on disjoint parts side by side, then merge the results. Type
-parameters `<Item, Out, M>`; slots `items`, `work`, `scope` and `merge`
-of the design's catalogue, with the bound and concurrency of its map.
+parameters `<Item, Out, M>`; slots as `lib/std.patterns/patterns.mdt` has
+them:
+
+```mandate
+pub pattern FanOutMerge<Item, Out, M>(
+  items:       const List<Item>,
+  work:        skill(Item) -> Inferred<Out>,
+  scope:       capability,
+  part:        field(Item),
+  merge:       skill(List<Outcome<Inferred<Out>>>) -> Inferred<M>,
+  max_items:   const Int,
+  concurrency: const Int
+) -> Inferred<M>
+{
+  let done = map it in items max max_items par concurrency with caps scope.narrow(it.part) {
+    delegate work(it)
+  }
+  delegate merge(done)
+}
+```
+
+`items` is a constant list the applying workflow writes, one part each;
+each item is handed `scope` narrowed to its own `part`, so no two items
+write the same place.
 
 - **The compiler proves:** the items' write scopes do not overlap (E0320,
-  and `Rejected(overlapping_scopes)` at run time, N03): `scope` is a
-  `capability` slot the map hands each item narrowed by it; the budget of
-  every item and of the merge fits the workflow's.
+  and `Rejected(overlapping_scopes)` at run time, N03); the budget of every
+  item and of the merge fits the workflow's.
 - **A person sees:** nothing, unless something fails.
 
 ### `MakerChecker`
 
 One agent makes, an isolated other looks for a counterexample. Type
-parameters `<In, Out>`; slots `make`, `check`, `accepted` and `owner` of
-the design's catalogue.
+parameters `<In, Out>`:
+
+```mandate
+pub pattern MakerChecker<In, Out>(
+  input:    const In,
+  make:     skill(In) -> Inferred<Out>,
+  check:    skill(In, Inferred<Out>) -> Inferred<Out> read_only,
+  accepted: contract(In, Out),
+  owner:    role
+) -> Verified<Out, accepted>
+{
+  let made    = delegate make(input)
+  let checked = delegate check(input, made) isolated
+  verify checked against accepted(input, checked)
+    on unmet(c) => escalate human("Open criteria: {c}", role: owner)
+}
+```
+
+`input` is a constant the applying workflow writes.
 
 - **The compiler proves:** `check` is a `skill(…) read_only` slot,
   delegated `isolated`, so the checker holds no write capability; a review
   alone never meets a criterion (E0603).
-- **A person sees:** only the criteria left open.
+- **A person sees:** only the criteria left open, which go to `owner`.
 
-The exact slot signatures and bodies of `FanOutMerge` and `MakerChecker`
-are fixed by `lib/std.patterns/patterns.mdt` when it is written (RL8), and
-this section is brought to them. They hold to everything above.
+The module of `std.patterns` imports `std.{human}`, which
+`BatchWithExceptions` and `MakerChecker` use. Every slot signature and
+body above is the library's own: `lib/std.patterns/patterns.mdt` is what
+the compiler embeds, and its digest is what a lock pins for `std.patterns`.
 
 ## Connectors
 
@@ -704,7 +941,11 @@ pub connector mailbox = mcp("https://mail.acme.example/mcp")
 
 A connector is malformed (E1402) when its URL is not as above, when
 `version` or `class` is missing or `class` is not a data class, when it
-declares no tool, and when it declares a tool twice.
+declares no tool, and when it declares a tool twice (a text that does not
+read: the parser stops at the second name). A `///` line before a tool is
+E0101: only a definition has a doc line, and a tool is not one. The URL
+is held to the proxy's rules for host names
+([`egress.md`](egress.md)).
 
 ### Tool classes
 
@@ -758,10 +999,14 @@ connector declares, by name. A name written twice counts once. Anything
 else is E1404.
 
 - **Coverage.** A read-only tool is the effect `Tool` with the scope
-  (connector, tool); a write tool is its own effect, whose requirement is
-  `tool.call(c, t)`. A `tool.call` capability covers a use of tool `t` of
-  connector `c` exactly when it names the same connector (the same
-  definition of the same module) and lists `t`.
+  `<module>.<connector>.<tool>`; a write tool is its own effect, whose
+  requirement is `tool.call(c, t)`. A `tool.call` capability covers a use
+  of tool `t` of connector `c` exactly when it names the same connector
+  (the same definition of the same module) and lists `t`. In 0.6 a use of
+  `Tool` or `Tool.Write` is covered by the `tool.call` part of its own
+  class alone, and a `tool.call` that lists both a read-only and a write
+  tool stands for two authorities, one of each class. A definition named
+  like a built-in effect (`Tool`, `Model`, `Fs.Read`, …) is E0121.
 - **Narrowing.** One `tool.call` lies inside another when it names the
   same connector and its tools are among the other's (C2, C3). It has no
   `.narrow(…)`: a narrower one is written with fewer tools.
@@ -769,20 +1014,31 @@ else is E1404.
   two `par` branches that may call one write tool overlap (E0320, C5).
 - **Agents (E1406).** An agent never holds a write tool: a `tool.call`
   naming a tool that is not read-only in an agent's `caps`, or in what a
-  delegation or a map's `with caps` hands an agent, is E1406. A write tool
-  is called only by a workflow's body, as a critical effect, through
-  prepare → authorize → commit.
+  delegation or a map's `with caps` hands an agent, is E1406; so is a
+  map whose `with caps` holds a write tool and whose body delegates,
+  directly or through functions however deep. The run-time `grant` door
+  never gives the write part of a `tool.call` either. A `with caps
+  tool.call(…)` replaces all the `tool.call` capabilities an agent holds
+  (it narrows by kind, as every `with caps`). A write tool is called
+  only by a workflow's body, as a critical effect, through prepare →
+  authorize → commit.
 - **Where a tool is called (E1405).** A read-only tool is called as an
   expression in a workflow's body, or by an agent's loop; a write tool
   only by `effect c.t(…) idempotent_by k` in a workflow's body. A
   read-only tool called through `effect`, a write tool called as an
-  expression, and a tool called in a `fn`, a contract or a skill's body
-  are E1405.
+  expression, and a tool called in a `fn`, a contract, a skill's body, a
+  constant, a handler or a workflow's `ensures` are E1405. The agent's
+  loop is covered on the static side by the effect `Tool` unscoped: which
+  read tool it may call is settled by the grant at run time, and a read
+  tool of a connector whose `class` is above the agent's model is E0220.
+- **Names.** A tool the connector does not declare, a connector used as a
+  value, and a tool named without a call are E0120.
 
 ### `requires caps` (B12)
 
 Before 0.6 the checker compares only the constructor of the first
-capability an effect's `requires caps` names: any `git.pr(…)` meets
+capability an effect's `requires caps` names (the first in the canonical,
+sorted order of the requirements, not in the order written): any `git.pr(…)` meets
 `requires caps git.pr(repo)`, and a second line is not looked at. For
 `tool.call` that would let `tool.call(erp, list_open_orders)` meet a
 requirement of `post_draft_invoice`. In a 0.6 program every capability of
@@ -827,8 +1083,11 @@ a result, the text of an error, and the server's resources and prompts. A
 result that is an error (`isError`) reaches the model as the call's
 failure, by its code, without the server's text. In a 0.6 package the
 runtime escapes `<` and `>` in the data a task hands a model, a tool's
-result included (B28); a package of 0.1 to 0.5 sends the bytes it sent
-before, so that a replay of a run that is going on does not change.
+result and what a verifier quotes included (B28): the input is written as
+JSON with those two characters in JSON's own escapes, so that no text in
+it closes the quoted region or opens another. A package of 0.1 to 0.5
+sends the bytes it sent before, so that a replay of a run that is going on
+does not change.
 
 ### What is sent to a connector
 
@@ -864,32 +1123,86 @@ makes and the commit sends to the ERP is of that class.
 ### The lock binding and schema digests
 
 Every connector a 0.6 package can call is bound in the lock under its
-module and name, with a credential and a digest for every tool it
-declares.
+module and name, with a credential, the URL it goes to and a digest for
+every tool it declares. A connector the package can call is one that a
+`tool.call` capability of a workflow's `caps` (or its envelope's) or of an
+agent names. A lock entry's `template` holds `{secret}` exactly once, or
+the lock is E0140.
 
 - **E1407** with the lock: a connector the package can call has no
-  `connectors` entry, or its entry has no digest for one of its tools.
-- **E1408** with the lock: an entry names a connector that no module of
-  the package defines, or a tool the connector does not declare.
+  `connectors` entry, or its entry has no digest for one of its tools, or
+  its entry's `url` is not the URL the connector declares.
+- **E1408** with the lock: an entry names a connector that neither the
+  program's module nor a module the program imports defines, or a tool
+  the connector does not declare.
 - **The digest** of a tool's schema is `sha256:<hex>` of the JCS bytes of
   `{ "name", "inputSchema", "outputSchema" }` as the server's `tools/list`
-  gives that tool. Its title, description and annotations are not in it:
-  they never reach a model.
-- **`mandate connector pin <program> [--lock FILE] [--config FILE]`** asks
-  each connector's server, through the egress proxy, for its tools, and
-  writes the digest of every declared tool into the lock entry the
-  connector already has. A connector without an entry is E1407; a
-  declared tool the server does not list is refused,
-  `tool_schema_mismatch`. It prints each digest that changed.
+  gives that tool, as the runtime's canonical JSON writes it; a tool that
+  lists no `outputSchema` is digested without that member, not with a null.
+  Its title, description and annotations are not in it:
+  they never reach a model. The runtime computes it (`schemaDigest`,
+  `runtime/src/mcp-client.ts`): there is no compiler door for it, and the
+  lock's digest is held to the server's listing by the runtime alone.
+- **`mandate connector pin <program> [--lock FILE] [--config FILE]
+  [--module FILE]… [--libraries DIR]`** (the Node command) asks each
+  connector's server, through the egress proxy the configuration names
+  (`mandate.runtime.json`, or `--config`; none is a usage error), for its
+  tools, and writes the digest of every declared tool into the lock entry
+  the connector already has (the lock is `--lock`, or `mandate.lock.json`
+  beside the program, and must exist). The entry's credential, `url`,
+  `header` and `template` are the operator's: the command reads and sends
+  no secret and leaves them as they are, so an entry is first written
+  with its credential and URL, and pinned after. A connector without an
+  entry is refused by name, `bad_connector` (its message names E1407);
+  a declared tool the server does not list, or whose listed
+  `inputSchema` lacks what the declaration sends (a property for each
+  declared parameter, and for a write the idempotency key among its
+  required ones), is `tool_schema_mismatch`, and then nothing is written.
+  The entry's `tools` is replaced by the declared tools' digests: a
+  pinned tool the connector no longer declares is dropped and printed as
+  removed. The lock as it would be written is checked once more, and E1407
+  and E1408 are codes of that re-check alone (it refuses with
+  `load_verification_failed` and writes nothing). It prints each digest
+  that changed, `<module>.<connector>.<tool>: <old> -> <new>` (`(not
+  pinned)` before a new one, `(removed: the connector does not declare
+  it)` after a dropped one), or says that nothing changed.
 - **At start and at resume.** Before a `read_only` or `live` run starts,
   `StartRun` asks each connector's server for its tools and compares each
   digest with the lock's: a tool whose schema differs, or that the server
-  does not list, refuses the start (`tool_schema_mismatch`, naming the
+  does not list, or whose digest matches but whose listed `inputSchema`
+  has no property for a declared parameter or, for a write tool, does not
+  require its idempotency key (a server that ignores the key would apply a
+  repeated write again), refuses the start (`tool_schema_mismatch`, naming the
   connector and the tool), and so does a server that does not answer as
   [below](#the-mcp-the-runtime-speaks) (`connector_protocol`). Every
   resume asks again before the run goes on, and a difference stops the
   run as `attention_required` with `tool_schema_mismatch`. A `design` run
-  reaches no server, and a replay reaches none.
+  reaches no server, asks for no proxy and starts without one, and a
+  replay reaches none.
+- **Every declared tool is bound at start, in every mode.** A run binds
+  each tool of each connector its running program holds before anything
+  is called, a `design` run included, so that a package that cannot call
+  a tool refuses the start and not the call in the middle of the run
+  (`bad_connector`): a connector without a lock entry (E1407), a tool
+  without a pinned digest, a tool the connector does not declare, a result
+  type nothing could hold a server's answer to, or a type name of a
+  tool's signature that the running program does not hold as the
+  connector's module means it (E0120). A `design` run needs the lock's
+  digests for this, though it asks no server. Which connectors need a lock
+  entry differs on the two sides: the runtime binds every connector in the
+  running program (its own, and those of the libraries it links), so each
+  needs an entry (`bad_connector` otherwise); the compiler's check with
+  the lock (E1407) asks for an entry for the connectors the package can
+  call, those a `tool.call` capability of a workflow or an agent names.
+- **A tool's name for a model.** A read tool is offered to an agent's loop
+  as `<connector>__<tool>`, and that is checked when it is offered, not at
+  a start: a name with a character other than a letter, a digit, `_` or
+  `-`, or of more than 64 characters, is `bad_connector` then, and so is
+  one name for two tools or a parameter of a type the program does not
+  define.
+- **A connector's URL.** A lock entry that names another URL than the
+  connector declares is `egress_denied`: a call leaves only to the URL
+  both name.
 
 ### Egress
 
@@ -902,9 +1215,10 @@ header and template. The proxy puts the secret in; the runtime and the
 adapter hold the placeholder only (INV-23). A session is opened at a
 connector's first request, as a gateway's is ([`boundary.md`](boundary.md#the-control-planes-gateways)).
 
-- **`no_egress_for_connector`.** A package that can call a connector does
-  not start on a runtime whose configuration names no egress proxy. The
-  one exception is a runtime built in code with a `fetch` of its own for
+- **`no_egress_for_connector`.** A `read_only` or `live` run of a package
+  that holds a connector does not start, and does not resume, on a runtime
+  whose configuration names no egress proxy. A `design` run reaches no
+  server and needs none. The one exception is a runtime built in code with a `fetch` of its own for
   connectors, as tests build one; the CLI never builds such a runtime.
 - **A refused call.** A request the proxy denied was not sent upstream.
   It is a violation, `egress_denied`, with the reason, counted as every
@@ -912,6 +1226,13 @@ connector's first request, as a gateway's is ([`boundary.md`](boundary.md#the-co
   gateway. A write tool's action is then left `unknown_outcome`, never
   `rejected`, since a request the same operation sent before may have
   reached the server.
+- **A call outside the grant.** A read tool that no capability of the
+  workflow gives, or a write tool the same, is refused by name,
+  `authority_denied`, at the call. When an agent's loop asks for a tool
+  its delegation's grant does not give, it is the violation
+  `authority_denied`, recorded before the model is told and counted as
+  every violation. Where a connector's request goes is decided by the
+  lock's URL and the proxy, and a redirect is never followed.
 
 ### The MCP the runtime speaks
 
@@ -925,7 +1246,9 @@ part of MCP over HTTP, and refuses the rest by name.
   `2026-07-28` has it ([`mcp.md`](mcp.md#protocol)), so no session is
   opened. Only `tools/list` and `tools/call` are sent. A `tools/list`
   answer with `nextCursor` is followed; a cursor seen twice is
-  `connector_protocol`.
+  `connector_protocol`. Three limits are held, each refused as
+  `connector_protocol`: at most 32 `tools/list` pages, at most 4 MiB in
+  one answer, and JSON nested no deeper than 128 levels.
 - **Answers.** One JSON-RPC response to the request's id: a `200` with
   `application/json`, or `text/event-stream` with exactly one event that
   carries it. Anything else (another status, more events, a notification
@@ -933,9 +1256,28 @@ part of MCP over HTTP, and refuses the rest by name.
   `connector_protocol`, naming what came.
 - **Results.** A `tools/call` result carries `structuredContent`, which
   the runtime checks against the tool's declared result type, with the
-  schema it makes from it. A result without it, one that does not fit,
-  and one with `isError: true` are `tool_result_mismatch`. The text
-  `content` of a result is never read.
+  schema it makes from it. `structuredContent` is always a JSON object,
+  so a declared result type that is a record is the `structuredContent`
+  itself, and any other (a list, an option, a text) is carried as
+  `{ "result": <value> }`; `Untrusted<T>` and `Receipt<T>` are how the
+  value is known, not part of its shape. A result without it, one that
+  does not fit, and one with `isError: true` are `tool_result_mismatch`.
+  The text `content` of a result is never read.
+- **What a result may not hold.** The schema admits nothing the type does
+  not say: a member the type does not declare refuses the result, and so
+  does `__proto__` and any key that begins with `$` where the type does
+  not declare it (the keys of the runtime's own values: `$verified`,
+  `$contract`, `$evidence`, `$capability`, `$prompt`, `$masked`, `$range`,
+  `$call`), at any depth. A result type with a refinement the runtime
+  cannot hold a server's answer to is refused when the connector is bound
+  (`bad_connector`): it holds a bound on an `Int`, or on the `len` of a
+  `List` or a `Text`, by whole numbers, and such bounds joined by `and`;
+  and a `Map` whose keys are `Text` or an enum's (a map's key of any other
+  type is refused).
+- **The limit.** One request, its answer read to the end, takes at most
+  120 seconds. A server that answers slower, or a byte at a time, is cut
+  off (`connector_protocol`, `aborted`); a write cut off is an unknown
+  outcome, as every write without a checked answer is.
 - **What a failure is.** A read that fails, for one of these reasons or
   because the server could not be reached, fails its command with
   `Rejected(connector_protocol)` or `Rejected(tool_result_mismatch)`. A
@@ -1010,29 +1352,43 @@ Review<T, C>  = { accepted: List<Verified<T, C>>, declined: List<Declined<T>>, f
 Declined<T>   = { index: Int, value: Inferred<T>, unmet: List<Text>, by: Option<Text> }
 ```
 
-- **The source (E1506).** `results` is a name bound by `let` to a `map`
-  whose body ends with `verify x against C(…)`, with no `on unmet`. So
-  `results` is a `List<Outcome<Verified<T, C>>>`, and the process that ran
-  the map knows which item was verified, which failed which criteria, and
-  which failed for another fault. The language gets no filter, no
-  concatenation and no lambda for it. Any other argument is E1506.
+- **The source (E1506).** `results` is a name that a `let` of the same
+  workflow body binds, as its innermost binding, to a `map` whose body ends
+  with `verify x against C(…)`, with no `on unmet`; a map that holds a
+  `return` does not count, and no `on error` handler after it gives a value
+  of its own. So `results` is a `List<Outcome<Verified<T, C>>>`, and the
+  process that ran the map knows which item was verified, which failed
+  which criteria, and which failed for another fault. The language gets no
+  filter, no concatenation and no lambda for it. Any other argument, and a
+  `human.review` outside a workflow's body, is E1506. `Declined.value` is
+  `Untrusted<T>` when what was verified is untrusted content.
 - **Roles and deadline (E1507).** `role` and `deadline` are required:
-  `role` names a role definition, `deadline` is a constant `Duration`
-  above zero. `escalate_to`, when given, names a role definition other
-  than `role`. Anything else is E1507.
+  `role` names a role definition (a variable is not a role; `role: "r"`
+  names the role `r`), `deadline` is a duration literal above zero, or a
+  constant whose value is one. `escalate_to`, when given, names a role
+  definition other than `role`. Anything else is E1507.
 - **Who may decide (E1508).** `role`, and `escalate_to` when given, are
   among the `waive by` roles of every criterion of `C` that has one, and
   `C` has at least one. A role that could waive nothing is E1508.
 - **Never in a map body.** `human.review` is a `human.*` step, so a map's
-  body holds none (E1708, INV-18). A batch asks once, after its map.
+  body holds none (E1708, INV-18). A batch asks once, after its map. In
+  a 0.6 program no definition takes the name of a standard module's root
+  (`human`, `tool`, …: E0121, case E0121e), so a connector named `human`
+  cannot make `human.review(…)` a tool call; every call so written is held
+  to the review rules.
 - **Not counted against `time`.** A review's wait is counted against no
   budget's `time`, as a `human.approve`'s `deadline` is not today: the
   static bound adds up the time of what delegations and functions reserve,
   and a wait for a person reserves nothing (`compiler/src/check/cost.ts`;
   the checker only requires a deadline to be a `Duration`). What bounds the
   wait is its own deadline, fixed when the wait opens, and with
-  `escalate_to` one more: at most twice `deadline` in all. The card shows
-  that bound beside the budget's `time`.
+  `escalate_to` one more, which counts from the moment the runtime
+  escalates and not from the first deadline: the first deadline, then one
+  more deadline from the escalation. The card states the longest a review
+  waits as the deadline, doubled when there is an `escalate_to`; the
+  runtime's bound is the first deadline, then one more from the moment it
+  escalates, so the card's figure is exact only for an escalation made at
+  the first deadline.
 - `Review` and `Declined` are built-in type names from 0.6; an earlier
   program that names one gets E0120, as before.
 
@@ -1042,6 +1398,32 @@ In a 0.6 run, a `verify` against a contract with a `waive by` criterion
 checks every criterion that does not ask a person, even after one is
 unmet, so that what an item failed is known whole. A criterion that asks
 a person is asked last, as before, and only when every other one passed.
+Such a verify journals what it found as a command of kind `verdict`, at
+`<the verify>/verdict` (an ordinary step, not a wait): the value it was
+given, by its digest too, which criteria it failed and the ids of the
+failed records of each.
+
+In a 0.6 run every `verify` also writes a record of itself as a whole,
+beside those of its criteria: evidence of method `verify` for the
+criterion `*` (a name no criterion can have), which holds the value and the
+contract's arguments by their digests, which `require` held, what the
+verify did not meet and the records of the criteria it passed. A
+`Verified` value rests on exactly one such record, and on records of that
+verify alone, so a value whose `require` failed is never accepted. The
+methods `verify` and `waiver` are the runtime's own: a contract whose
+criterion names either as its method would write a record read as a
+verify's own or as a waiver, so such a package is not loaded
+(`reserved_method`).
+
+A person's answer, and the input a run is started with, may not hold a
+member of the runtime's own values (`$verified`, `$contract`, `$evidence`,
+`$capability`, `$prompt`, `$masked`, `$range`, `$call`, or `__proto__`) at
+any depth, nor what the journal would keep as another value (a number it
+cannot keep exactly): a person's answer is refused as a decision is,
+`invalid_decision` with the reason `reserved_value` or `unkeepable_value`
+first in its message, and the start of a run is refused with the violation
+`reserved_value` or `unkeepable_value`, so that no answer is ever taken
+for a `Verified` value.
 
 The review splits the map's outcomes by input index:
 
@@ -1067,19 +1449,42 @@ recorded, its `role` the role the wait asks, and its `payload` the request
 digest of `{ "waive": [indices], "decline": [indices] }`. It decides
 every open item, each once, in one list or the other; one that leaves an
 open item out, names one twice or in both lists, or names an item that is
-not open, is refused, `incomplete_review`, and the wait stays open. It is
-held to every rule of a decision, in their order: who signed, what the
-record is for, the role (`invalid_decision` otherwise). A waive is whole:
-it waives every unmet criterion of that item, and 0.6 has no waiver of
-part of an item.
+not open, or whose lists are not lists of indices, is refused,
+`incomplete_review`, and the wait stays open. The code of a refused
+decision is `invalid_decision`, with the reason first in its message
+(`past_deadline`, `not_in_role`, `reserved_value`, …); only
+`stale_revision` and `incomplete_review` are codes of their own. A decision
+is held to these, in this order: who signed (`invalid_signature`,
+`unknown_key`); the revision it was made on (`stale_revision`) and that the
+wait is the review's (`subject_mismatch`); what the record is for, its
+member and its role, as for every decision (`invalid_decision`); that it
+carries lists (`incomplete_review`); that the wait still holds the question
+its subject names (`forged_evidence`, a violation); the wait's deadline (a
+decision that comes at or after it is refused, `past_deadline`: the wait is
+escalated or expires, and nothing is decided on its own); the two lists
+(`incomplete_review`); and its role being one that every failed criterion of
+each item it waives names in its `waive by` (`not_in_role`). A refused
+decision is recorded (`decision_refused`) and changes nothing. A
+waive is whole: it waives every unmet criterion of that item, and 0.6 has
+no waiver of part of an item. The decision names indices and nothing
+else: the value of a waived item is the one its verify journaled.
 
 ```sh
-mandate review <run> --revision N --key FILE [--member NAME] --waive 2,5 --decline 7
+mandate review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]
 ```
 
 The indices are the map's input indices, from 0, as `map_ended` and the
 views give them. `mandate status` shows the open items with their
-indices.
+indices, what each failed, who may waive it, and its value, which a
+model wrote; in a 0.6 run `status` and `show` write the text of such a
+value, and every untrusted text in their output, in quotes and with
+every code point a terminal does not print as itself (controls, format
+and bidirectional characters, separators, private-use and unassigned
+code points) escaped as `\uXXXX`, so that no text a model or a person
+wrote can move the cursor or hide a line a reviewer reads (Markdown and
+HTML documents keep their line feeds and tabs and escape the rest).
+`mandate verify-decision <record.json> --key FILE [--waive I,J --decline
+K]` checks a saved decision record of kind `review` as it does any other.
 
 After the decision, a waived item is in `accepted`, a `Verified<T, C>`
 whose evidence holds a waiver ([below](#waiver-evidence)); a declined one
@@ -1091,10 +1496,14 @@ Nothing passes on its own. When the deadline passes with no decision:
 
 - with `escalate_to`, the same question is asked once of that role: the
   wait asks `escalate_to`, with a new deadline of the same `deadline` from
-  when it was escalated (`review_escalated`). A decision for the first role
-  is then refused (`invalid_decision`, `not_in_role`);
+  when it was escalated, not from the first deadline, so that role has a
+  whole deadline of its own (`review_escalated`); a check that comes late
+  escalates and does nothing more. A decision for the first role is then
+  refused (`invalid_decision`, `not_in_role`);
 - when that deadline passes too, or with no `escalate_to` the first one,
-  every open item is declined, `by` absent (`review_expired`).
+  every open item is declined, `by` absent (`review_expired`, with
+  `wait_expired`), and the run goes on. So a review waits at most the
+  first deadline and one more.
 
 ### Waiver evidence
 
@@ -1108,8 +1517,8 @@ second record beside it, in the evidence format `mandate/evidence/0.1`:
   digest, as a `human.approve` record names its decision;
 - signed by the runtime like every record.
 
-One record is written for each waived criterion of each waived item, and
-`criterion_waived` names it. "Passed" and "waived" are two methods, so an
+One record is written, and one `criterion_waived` event, for each failed
+record of each waived criterion of each waived item, and the event names it. "Passed" and "waived" are two methods, so an
 audit sees them apart.
 
 **The value binding (B25).** In a 0.6 run every evidence record's
@@ -1133,11 +1542,17 @@ when all of these hold:
 3. `detail.waives` names a failed record of this run for the same
    contract, criterion and subject;
 4. every record the value rests on names in `subject.value` the digest of
-   the value the effect is given.
+   the value the effect is given;
+5. the value rests on exactly one whole-verify record (method `verify`,
+   criterion `*`), and on records of that verify alone.
 
 Otherwise the run stops with the violation `forged_evidence` before
 anything is prepared: a waiver from a role the criterion does not name, a
-changed or missing decision, or a value that is not the one verified. A
+changed or missing decision, or a value that is not the one verified.
+Beside it, an irreversible effect that is given a value verified against a
+contract with a criterion a person may waive stops the run with
+`waived_irreversible`, whether or not a waiver was used (E1505 at run
+time). A
 run of a package of 0.1 to 0.5 has no waivers, and a waiver record in it
 covers nothing.
 
@@ -1163,11 +1578,15 @@ facts:
   the same for every item is refused;
 - it is not a member of a change set;
 - the map runs its items one at a time: it writes no `par` above 1;
-- the map is not itself in the body of another map.
+- the map is not itself in the body of another map;
+- the effect stands in a workflow's body.
 
-The rest of E1708 is as in 0.4: nothing in a map body waits for a person.
-A program of 0.1 to 0.5 keeps E1708 exactly (cases E1708, E1708a); the
-0.6 cases are E1708b (a commit step that checks) and E1708c (each refused
+The `condition` in E1708's facts names which failed: `irreversible`,
+`envelope_approve`, `environment_authorize`, `key`, `par`, `nested_map`,
+`change_set` or `workflow`. The rest of E1708 is as in 0.4: nothing in a
+map body waits for a person, `human.review` included (E1708l). A program
+of 0.1 to 0.5 keeps E1708 exactly (cases E1708, E1708a); the 0.6 cases are
+E1708b (a commit step that checks) and E1708c to E1708o (each refused
 condition).
 
 - **The operation key.** An item's action is named by the map, not by the
@@ -1208,17 +1627,39 @@ it is the envelope's `"shapes"`, a sorted set of names.
 
 - **E1711.** Every name in `shapes` is a pattern, local or imported.
 - **E1710.** When the envelope has `shapes`, a sub-program's one workflow
-  is an application of a pattern the list names (`check_subprogram`). Its
-  containment in the envelope (E1706) is proven over the expansion, as
-  every other check. Returned to the lead, never to the run, as E1705.
-  Without `shapes`, a sub-program's workflow is any workflow, as in 0.4.
+  is an application of a pattern the list names (`check_subprogram`): a
+  workflow written out, a pattern the list does not name, and a name the
+  list holds that stands for another definition than the pattern the
+  parent lists (a sub-program's own) are each E1710. Its containment in
+  the envelope (E1706) is proven over the expansion, as every other check.
+  Returned to the lead, never to the run, as E1705. Without `shapes`, a
+  sub-program's workflow is any workflow, as in 0.4.
+- **The admission rule.** Under an envelope with `shapes` the runtime
+  admits a sub-program only when its check named a `shape`,
+  `{ pattern, module }`, that the envelope lists: a result that is `ok`
+  without a shape, or with another, admits nothing, whatever the compiler
+  said (`check_failed`, as for any check that fails). Under an envelope
+  without `shapes` a result has no shape, and one that has was not given
+  by a checker. The lead is told the list in its instructions.
 - **E1709, `dimension: "shapes"`.** An amendment keeps every shape the
   envelope has, and does not add `shapes` to an envelope that had none:
   either would narrow what the lead may submit. Adding a shape, or taking
   the list away, widens it.
 - **The journal and the views.** `program_submitted` and
-  `program_admitted` name the pattern a sub-program applies, as `shape`,
-  and the views show a plan's sub-programs by their shape.
+  `program_admitted` name the pattern a sub-program applies and the module
+  that defines it, as `shape: { pattern, module }`, only under an envelope
+  with `shapes`. A run's view of a plan then has a `Shape` column in its
+  table of submissions (`<pattern> (<module>)`, `—` for one that applies
+  none), and a line `Sub-programs by shape: <pattern> (<module>) <n>, …`
+  counting the admitted ones. A run of a program without `shapes` shows
+  what it showed before.
+- **Amendments in 0.6.** A run whose program applies a pattern, or whose
+  lock pins a library, is not amended in 0.6: the run goes on with the
+  running program it stored at its start, which the amended package would
+  leave behind, and the amended package would need its libraries carried
+  with it. A lead's request for an amendment of such a package is refused
+  by name (`unsupported_language`), as a diagnostic to the lead. This
+  holds for a package that pins a library with no pattern in it as well.
 
 A 0.6 version of the MigrateAll fixture names `FanOutMerge` and
 `MakerChecker` (RL9).
@@ -1239,7 +1680,9 @@ The compiler runs in the runtime's process as a WebAssembly module
 - **A door is a pure function from JSON to JSON.** A request names a door
   and its input, `{ "door": "<name>", "input": <JSON> }`; the answer is
   `{ "ok": true, "output": <JSON> }`, or `{ "ok": false, "error": { "kind":
-  "unknown_door" | "bad_input" | "too_large", "message": "…" } }`. For a
+  "unknown_door" | "bad_input" | "bad_request" | "too_large", "message": "…" } }`
+  (`bad_request`: the request is not UTF-8, not strict JSON, or not exactly
+  `{ door, input }`). For a
   door that stands for a function of 0.5, the output is the object that
   function returns today. A door's answer depends on its input alone: the
   same request gives the same answer, every time.
@@ -1249,10 +1692,15 @@ The compiler runs in the runtime's process as a WebAssembly module
   target; the code tables and their explanations; the run-time authority
   doors (`grant`, `narrow`, `map_scopes`, `in_flight_overlap`), which take
   the interpreter's authority decisions so that the new coverage rule of
-  `tool.call` has one implementation; and, from 0.6, the library and
-  connector doors (`library_verify`, `library_add`, `library_upgrade`,
-  `library_publish`, `authority_signature`, `tool_schema_digest`). A value
-  such as the current time is an input of the door that needs it.
+  `tool.call` has one implementation; and, from 0.6, the library doors
+  (`library_verify`, `library_add`, `library_upgrade`, `library_publish`,
+  `authority_signature`). A tool's schema digest is no door: the runtime
+  computes it ([The lock binding](#the-lock-binding-and-schema-digests)). A
+  value such as the current time is an input of the door that needs it.
+  The `check` door takes the option `linked` and then also returns
+  `linked`, the running program ([Hashes](#hashes-and-what-the-runtime-stores));
+  `check_subprogram` returns `shape` (under an envelope with `shapes`),
+  `running` and `running_hash` ([`shapes`](#shapes)).
 - **Nothing outside.** The module has no filesystem, no network, no clock,
   no environment and no arguments. The one thing it asks its host for is
   random bytes, which seed the hashing of its own tables and nothing
@@ -1262,14 +1710,28 @@ The compiler runs in the runtime's process as a WebAssembly module
 - **A fixed ceiling.** Its memory ceiling, 256 MiB, and its stack, 4 MiB,
   are fixed when it is linked; nothing at run time raises them. A request
   over 32 MiB is refused (`too_large`).
-- **A failure is never a pass.** A trap, the memory ceiling, an answer
-  that cannot be read and a missing module are each named, never taken as
-  an empty or passing result. At load they refuse the package
-  (`load_verification_failed`); in a lead's sub-program check they are
+- **A failure is never a pass.** A trap, the memory ceiling, the stack, an
+  answer that cannot be read and a missing module are each named, never
+  taken as an empty or passing result. At load they refuse the package
+  (`load_verification_failed`); while a run is driven they stop it for a
+  person (`compiler_failed`, naming the kind and the door; nothing was
+  granted or done by the call that failed); in a lead's sub-program check they are
   `check_failed`, or `check_limit` with `{ limit: "memory", max: 256 }`
   for the ceiling, returned to the lead as before; the CLI exits with
   status 2. A sub-program's check still runs in a worker of its own that
   is stopped after its time limit ([`envelope.md`](envelope.md#limits)).
+
+- **Where the module is.** In the bridge's own package, `bridge/wasm/`,
+  with a digest file beside it (its SHA-256 and length) that the bridge
+  reads before it compiles the module and holds the bytes to
+  (`npm run build:wasm` writes both; neither is committed). Nothing is
+  searched for: not the directories above, not the working directory. The
+  one other place is `MANDATE_WASM`, the operator's choice of a module, by
+  an absolute path only. The bridge can say which module answers: its
+  SHA-256, its length and where it came from.
+
+The modes are `MANDATE_COMPILER=ts|rust|both`; the default is `rust`, and
+`both` runs the TypeScript compiler as well and compares every call.
 
 Whether a module instance serves one call or many is not part of this
 contract: every rule above holds either way.
@@ -1280,38 +1742,56 @@ contract: every rule above holds either way.
 
 | Event | Data | Class |
 |---|---|---|
-| `review_requested` | the review's node, role, deadline, the open items by index, and the items declined without being asked | S0 |
-| `review_decided` | the waived and the declined indices; member, role, key, decision digest | S0 |
-| `review_escalated` | the role it was asked of, the role it is asked of now, the new deadline | S0 |
-| `review_expired` | the role, and the open items it declined | S0 |
-| `criterion_waived` | item index, contract, criterion, the waiver record's id, the failed record's id, the decision digest | S0 |
+| `review_requested` | the review's node, contract and map, role, `escalate_to`, deadline, the open items by index, and the items declined without being asked, failed and accepted | S0 |
+| `review_decided` | the review's command, the waived and the declined indices; the member, role, key and decision digest | S0 |
+| `review_escalated` | the review's command, the role it was asked of (`from`), the role it is asked of now (`to`), the new deadline | S0 |
+| `review_expired` | the review's command, the role, and the open items it declined | S0 |
+| `criterion_waived` | the review's command, the item index, contract, criterion, the waiver record's id, the failed record's id, the decision digest | S0 |
 
 The review's wait is a wait like any other: `wait_opened` and
 `wait_expired` are written for it as well. Its command is of kind
-`review`, S0, asked of the role its `wait_opened` names. `program_submitted`
-and `program_admitted` carry `shape`; the run's manifest carries
-`expanded`. The class table of [`boundary.md`](boundary.md#classes) gains
-these rows with their implementation.
+`review`, S0, asked of the role its `wait_opened` names (the role it is
+asked of now, after an escalation). A 0.6 `verify` against a contract with
+a `waive by` criterion journals its outcome as a command of kind `verdict`,
+an ordinary step (its row S2, its request and result S3). `program_submitted`
+and `program_admitted` carry `shape` under an envelope with `shapes`, and
+`program_admitted` carries `running: { hash, artifact }` for a sub-program
+that applies a pattern; the run's manifest carries `expanded`, the program
+hash of the running program. The class table of
+[`boundary.md`](boundary.md#classes) holds these rows, and `reviews`, the
+section of a run's view that shows each review.
 
 ### Refusals
 
-| Code | When |
+A refusal is named as the runtime writes it. A package is *refused at
+load* by `StartRun`; a run *stops for a person* as `attention_required`
+with the name; a *decision is refused* with `decision_refused` recorded and
+the wait left open.
+
+| Name | When |
 |---|---|
-| `unsupported_language` | At load, until each part lands: a 0.6 package that uses a construct the runtime does not run yet, naming it |
-| `library_digest_mismatch` | At load: a library the package carries does not hash to the lock's digest |
+| `unsupported_language` | At load, a 0.6 package under the TypeScript compiler (`MANDATE_COMPILER=ts`), which only the Rust compiler reads; at a resume or a replay of a 0.6 run under it; a lead's amendment of a package that applies a pattern or pins a library ([`shapes`](#shapes)). Nothing of 0.6 is refused for not being run yet: the runtime runs every construct of this page |
+| `library_digest_mismatch` | At load: a library the package carries does not hash to the lock's digest, or the lock does not pin it |
 | `library_revoked` | At load: the package carries a revoked library digest. At a resume: the run stops as `attention_required` |
-| `expansion_mismatch` | At a resume or a replay: the stored expansion is missing or does not hash to the manifest's `expanded` |
-| `tool_schema_mismatch` | At a start: a tool's schema differs from the lock's digest, or the server does not list it. At a resume: the run stops as `attention_required`. Also `mandate connector pin` for a declared tool the server does not list |
-| `no_egress_for_connector` | At a start: the package can call a connector and no egress proxy is configured |
-| `connector_protocol` | The server's answer is not what the narrow protocol allows; at a start it refuses the start |
-| `tool_result_mismatch` | A tool's result has no `structuredContent`, does not fit the declared type, or is an error |
-| `egress_denied` | The proxy denied a connector's request: a violation; the run stops for a person |
+| `expansion_mismatch` | At a resume or a replay: the stored running program is missing or does not hash to the manifest's `expanded`; at the admission of a sub-program: its running program does not hash to the one its admission names |
+| `compiler_failed` | While a run is driven: the compiler behind the bridge failed (module missing or refused, a trap, the memory ceiling, an answer that is not one); the run stops for a person |
+| `tool_schema_mismatch` | At a start: a tool's schema differs from the lock's digest, the server does not list it, or the listed schema lacks a property for a declared parameter or the required idempotency key. At a resume: the run stops as `attention_required`. Also `mandate connector pin` for such a tool |
+| `no_egress_for_connector` | At a `read_only` or `live` start or resume: the package holds a connector and no egress proxy is configured (a `design` run needs none) |
+| `bad_connector` | At a start, a resume or `connector pin`: a connector or tool that cannot be bound (no lock entry or digest, a tool it does not declare, an unheldable result type, a type the program does not hold as the connector's module means it). When a read tool is offered to an agent: a name `<connector>__<tool>` that is too long or has other characters. At a call: a read tool called as an effect |
+| `connector_protocol` | The server's answer is not what the narrow protocol allows, or takes more than 120 seconds; at a start it refuses the start |
+| `tool_result_mismatch` | A tool's result has no `structuredContent`, does not fit the declared type, holds a member no result may hold, or is an error |
+| `egress_denied` | The proxy denied a connector's request, or the lock binds another URL than the connector declares: a violation; the run stops for a person |
+| `authority_denied` | A tool called that no capability of the workflow, or the delegation's grant, gives; in an agent's loop a violation |
 | `PolicyDenied(no_samples)` | A design run's read tool has no sample |
 | `PolicyDenied(person_in_map)` | An item's action in a batch commit step would need a person; at `StartRun`, `person_in_map` refuses the run |
 | `Rejected(idempotency_conflict)` | Two items of a commit step with one key and other parameters |
-| `incomplete_review` | A review decision that does not decide every open item exactly once |
-| `invalid_decision` | A review decision that fails the rules of every decision |
-| `forged_evidence` | A `Verified` value whose waiver does not hold ([above](#what-verified-accepts)) |
+| `incomplete_review` | A review decision that does not decide every open item exactly once, or whose lists are not lists of indices (the decision is refused, with this code) |
+| `invalid_decision` | A refused decision, with its reason first in the message: the rules of every decision, `past_deadline` (at or after the wait's deadline), `not_in_role` (a role that is not among those the failed criteria of what it waives name), `reserved_value` or `unkeepable_value` (an answer that holds a member of the runtime's own values, or what the journal would keep as another value) |
+| `reserved_value`, `unkeepable_value` | The violation that refuses the input a run is started with when it holds such a member or value |
+| `reserved_method` | At load: a contract whose criterion names the method `verify` or `waiver` |
+| `bad_review` | A `human.review` that does not meet E1506 to E1508 when it runs: not in a workflow's body, not given the outcomes of a verifying map, malformed arguments, a role that cannot waive (the run stops) |
+| `forged_evidence` | A `Verified` value whose waiver or verify record does not hold ([above](#what-verified-accepts)) |
+| `waived_irreversible` | An irreversible effect given a value that rests on a waiver, or that a person may waive part of |
 | `load_verification_failed` | At load: every check of the compiler, run again, E1603 to E1606 among them; a failure of the compiler itself ([The bridge](#the-bridge)) |
 
 ## Views
@@ -1336,10 +1816,13 @@ these rows with their implementation.
   pattern and its library's version, and draws the expansion. The
   authority view shows each `tool.call` as its connector's tools, read and
   write apart.
-- **Run views.** A review shows its items by index, open, waived or
-  declined, with who decided and whether the signature holds; a waived
-  criterion shows its failed record and its waiver apart. A sub-program
-  shows its shape.
+- **Run views.** The `reviews` section of a run's view (JSON, Markdown and
+  HTML) shows each review by its items by index, open, waived or declined,
+  with who decided and whether the signature holds, the escalation and
+  the expiry; a waived criterion shows its failed record and its waiver
+  apart. A sub-program shows its shape ([`shapes`](#shapes)). A run
+  without a review has no `reviews` section. A role's view shows a review
+  to the role it was asked of, as any decision (S0).
 
 ## Invariants
 
@@ -1416,7 +1899,8 @@ checks how many it skipped:
 | H06 | A review over a verifying map checks; one wait | — |
 | H07 | A review role outside the `waive by` roles | E1508 |
 | E1504 to E1507 | One mutation each | each code |
-| E1708b, E1708c | A batch commit step checks; each refused condition | —, E1708 |
+| E1708b, E1708c to E1708o | A batch commit step checks; each refused condition | —, E1708 |
+| H08 | A `verify` whose `on unmet` handler is an escalation, and one whose handler is a pause, each keeping the verified value's type | — |
 | L01 | A library whose digest differs from the lock's | E1605 |
 | L02 | An upgrade that widens a workflow's and a connector's authority signature is a governance change | — (`upgrade` writes no lock) |
 | L03 | A minor version that widens the signature | E1607 |
@@ -1424,18 +1908,18 @@ checks how many it skipped:
 | E1601, E1606 | One mutation each | each code |
 | N11 | A sub-program that is not an application of a listed shape; a shape that is not a pattern; an amendment that drops a shape | E1710, E1711, E1709 |
 
-Runtime cases:
+Runtime tests (in `runtime/test`, with no case ids of their own):
 
-| Case | Rule | Code or event |
+| Test file | Rule | Code or event |
 |---|---|---|
-| T03 | A tool's schema changed on the server: the start is refused, and a resume stops | `tool_schema_mismatch` |
-| T04 | A connector's call leaves only through the proxy; one the proxy refuses is a violation | `no_egress_for_connector`, `egress_denied` |
-| T05 | The model sees only the declared name and schema; after a lost response, each draft is posted once | INV-22, INV-06 |
-| H08 | Past the deadline the review goes once to `escalate_to`; past the second, every open item is declined | `review_escalated`, `review_expired` |
-| H09 | A decision that leaves an open item out; a waiver from a role the criterion does not name, or with a changed decision | `incomplete_review`, `invalid_decision`, `forged_evidence` |
-| — | An item's action that needs a person | `person_in_map` |
-| — | A stored expansion that does not hash to the manifest | `expansion_mismatch` |
-| — | A revoked library, at a start and at a resume | `library_revoked` |
+| `connectors.test.ts` | A tool's schema changed on the server: the start is refused, and a resume stops; each draft is posted once after a lost response; the model sees only the declared name and schema | `tool_schema_mismatch`, INV-22, INV-06 |
+| `egress-connector.test.ts` | A connector's call leaves only through the proxy; one the proxy refuses is a violation | `no_egress_for_connector`, `egress_denied` |
+| `review.test.ts` | Past the deadline the review goes once to `escalate_to`; past the second, every open item is declined; a decision that leaves an open item out; a waiver from a role the criterion does not name, or with a changed decision | `review_escalated`, `review_expired`, `incomplete_review`, `invalid_decision`, `forged_evidence` |
+| `cli-review.test.ts` | `mandate review` from the command line | the decision's codes |
+| `library-acceptance.test.ts` | The acceptance program in `design`, `read_only` and `live`, with a replay | — |
+| `library-upgrade.test.ts` | An upgrade's diff catches widened authority | — |
+| `shapes.test.ts` | A sub-program's shape under an envelope with `shapes` | `shape` |
+| the same files | An item's action that needs a person; a stored expansion that does not hash to the manifest; a revoked library, at a start and at a resume | `person_in_map`, `expansion_mismatch`, `library_revoked` |
 
 ## The acceptance program
 
@@ -1495,20 +1979,23 @@ workflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(
 
 What its card can say: at most 60 items; 60 × 0.30 USD = 18 USD ≤
 20 USD; 2 hours for the work, while the review waits apart from that, at
-most one day and one more after the escalation (a review is counted
-against no `time`, [above](#humanreview)); at most one decision for the
+most one day, and one more day from the moment the runtime escalates (a
+review is counted against no `time`, [above](#humanreview)); at most one
+decision for the
 accountant, about the invoices whose total is off by more than 2%, and
 after a day the same decision for the finance lead; an invoice whose vendor is not the order's is declined
 without asking; every accepted invoice posted as a draft, as its own
 action, authorized by policy and idempotent by `invoice_no`; nobody asked
 about one invoice.
 
-The text is the plan's. The slice that implements patterns (RL7) checks
-four things it assumes, and corrects the text here and in the fixture
-where one does not hold: that a block's value is its last expression;
-that a record literal of a generic type (`Batch { … }`) checks; that a
-static criterion may call a `pub fn`; and that `Verified<T>` with one
-argument is accepted in a tool's parameter.
+The text is the fixture's, which checks clean. Four things it assumes
+hold: a block's value is its last expression; a record literal of a
+generic type (`Batch { … }`) checks; a static criterion may call a `pub
+fn`; and `Verified<T>` with one argument is accepted in a tool's
+parameter. The program imports `Invoice`, `Match`, `DraftId` and `near`
+from the types module; `Order`, which `Match` refers to, comes with
+`Match`, and every tool the program uses has its types as the connector's
+module means them.
 
 The three acceptance criteria of 0.6:
 
@@ -1554,5 +2041,22 @@ The three acceptance criteria of 0.6:
   irreversible effect; waiving part of an item.
 - `human.review` over any list but the result of a map that verifies.
 - A language server, a native `mandate mcp`, and a formatter that keeps
-  `//` comments.
-- 0.6 in the TypeScript compiler.
+  `//` comments. The native `mandate` of `crates/mandate-cli` has the
+  compiler's commands and `add`, `upgrade` and `publish`; the commands
+  that control a run (`run`, `status`, `review`, `connector pin`, `mcp`, …)
+  are the Node command's alone, and it says so and exits with 2.
+- 0.6 in the TypeScript compiler: it stays frozen at 0.5.
+- What 0.6 does not change from 0.5: the model and GitHub gateways follow
+  redirects; a model's output that holds U+0000 is journaled as it is; a
+  sandboxed agent's tool output reaches the model without the escaping of
+  `<` and `>`; and the older verifier process ignores the `escape` member.
+- Amending a package whose program applies a pattern or whose lock pins a
+  library: the request is refused by name (`unsupported_language`), since
+  an approved amendment would keep no new running program and carry no
+  libraries. A run keeps the running program it stored; a new one for an
+  amended package is left for a later release.
+- A binding that crosses modules: a name a pattern's module imports from a
+  third module is refused (E1602); a connector's tool types are bound as
+  its own module means them.
+- Library names and the names of a library's modules in upper case; a
+  version range other than the four forms above.

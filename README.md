@@ -4,8 +4,9 @@ Mandate is an agent-native coordination and contract language. Agents write
 and edit programs; people review them through generated views; the compiler
 checks capabilities, effects, budgets, contracts and delegation before
 anything runs. This repository holds the reference implementation of
-versions 0.1 to 0.5, with a Rust port of the compiler beside the TypeScript
-one (see [Rust](#rust)).
+versions 0.1 to 0.6: the TypeScript compiler (frozen at 0.5) and the Rust
+compiler, which reads every version, and the runtime, which calls the Rust
+one (see [Rust](#rust) and [Using the compiler](#using-the-compiler)).
 
 ## Why
 
@@ -216,6 +217,43 @@ pull request was opened, for 0.23 USD.
     and container-engine traffic through the proxy, and masking by data class
     in views.
 
+13. **0.6, Library (done):** workflows and definitions that can be shared,
+    and typed access to business systems, specified in
+    [`spec/library.md`](spec/library.md). Everything the release includes is
+    implemented, in the Rust compiler, the runtime and both commands.
+
+    - **Language.** `pub` on every definition and `///` doc lines; closed
+      imports; `pattern`, a workflow with compile-time slots that a workflow
+      applies and the compiler expands and checks whole (E1301 to E1307);
+      `connector`, an MCP server's tools with the class of each (`read_only`
+      or a write with its retry class) and `tool.call(…)` (E1401 to E1408);
+      `human.review`, one wait for a person about a whole list, and
+      `waive by`, the roles that may waive a criterion (E1504 to E1508);
+      `shapes` in an envelope (E1710, E1711).
+    - **Libraries.** A library is 0.6 modules and a manifest, pinned in the
+      lock (format 0.6) by a digest, kept in a directory the operator
+      controls. `mandate add`, `upgrade` and `publish` resolve, compare and
+      publish them; an upgrade that widens a library's authority is a
+      governance change, and a version waits and can be revoked. The
+      built-in `std.patterns` has `BatchWithExceptions`, `FanOutMerge` and
+      `MakerChecker`.
+    - **Runtime.** A run runs the running program its check gave and stored
+      (a pattern's expansion, linked). A connector's calls go through the
+      egress proxy with the schema the lock pins (`mandate connector pin`);
+      a review is one signed decision (`mandate review`), waivers are
+      evidence of their own, and a batch's commits are actions of their own.
+    - **The Rust compiler is the compiler.** The runtime, the Node `mandate`
+      and the MCP server call it as a WebAssembly module through
+      `bridge/`; the TypeScript compiler stays frozen at 0.5 as the
+      reference (`mandate-ts`). The native `mandate` of `crates/mandate-cli`
+      has the compiler's commands and the library commands.
+
+    Left out by decision: fetching a library from git or a registry, signed
+    publication, an effect in a batch that a person authorizes, the other
+    seven patterns of the catalogue, and amending a package that applies a
+    pattern or pins a library (the list is under "Not in 0.6" in the
+    specification).
+
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
 
@@ -224,14 +262,19 @@ enough for an agent's context.
 ```text
 spec/        core spec, IR schema and rules, static checks, diagnostic codes, the lock, runtime,
              sandboxes, executors, views, the compiler's MCP server, the system model (0.3),
-             the envelope (0.4), and the boundary, egress and journal (0.5)
-compiler/    reference compiler (TypeScript)
+             the envelope (0.4), the boundary, egress and journal (0.5), and
+             libraries, patterns and connectors (0.6)
+compiler/    reference compiler (TypeScript, frozen at 0.5)
+bridge/      the one place the runtime and the Node `mandate` reach a compiler:
+             the Rust compiler as a WebAssembly module (`@mandate/bridge`)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
-crates/      the Rust compiler as a library, and verify-journal (below)
+crates/      the Rust compiler, its native command line, and verify-journal (below)
+lib/         std.patterns, the library built into the compiler (0.6)
 fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
              fixbug-target/ the same workflow bound to a seeded test project,
              system/ a fictional system's model (Acme) and programs over it,
-             envelope/ the 0.4 migration, boundary/ a 0.5 agent that may only GET
+             envelope/ the 0.4 migration, boundary/ a 0.5 agent that may only GET,
+             library/ the 0.6 acceptance program (invoices) and its libraries
 conformance/ language-independent compile and journal cases
 vectors/     what the TypeScript reader, canonical text and hashes give, for
              other implementations to match
@@ -239,9 +282,20 @@ vectors/     what the TypeScript reader, canonical text and hashes give, for
 
 ## Rust
 
-The repository is also a Cargo workspace (`Cargo.toml`, `crates/`): a Rust
-port of the compiler, and an independent journal verifier. The compiler is
-a library; it has no command line.
+The repository is also a Cargo workspace (`Cargo.toml`, `crates/`): the Rust
+compiler, which reads every version and is the only one that reads 0.6; its
+native command line; and an independent journal verifier.
+
+There are two executables called `mandate`. The one the runtime ships, from
+`bridge/` (`@mandate/bridge`, `bridge/dist/cli.js`), runs on Node and has
+every command, those that control a run included; it calls the Rust compiler
+as a WebAssembly module (`MANDATE_COMPILER=rust`, the default; `ts` calls the
+TypeScript compiler and `both` compares them). The native one, built from
+`crates/mandate-cli` (`cargo build -p mandate-cli`), has the compiler's
+commands (`check`, `view`, `fmt`, `hash`, …) and `add`, `upgrade` and `publish`,
+with the same output byte for byte; the commands that control a run and
+`mcp` are the Node one's. The TypeScript compiler keeps its own command,
+`mandate-ts`.
 
 - [`crates/mandate-ir`](crates/mandate-ir/README.md): the IR as a value in
   JavaScript's member order, the strict JSON reader, canonical JSON (RFC
@@ -260,17 +314,17 @@ a library; it has no command line.
   signature, and `add`, `upgrade` and `publish` as pure functions with
   their doors.
 - `crates/mandate-views`: the document model with Markdown and HTML, the
-  views of a program (architecture, authority, cost, system) and the diff
-  view.
+  views of a program (architecture, authority, cost, system), the diff view,
+  the envelope card (and, from 0.6, the card of a workflow without an
+  envelope) and the ACS/Rego target.
 - `crates/mandate-lib`: the model of a library, with no file read and no
   program checked: versions and ranges, the manifest, the digest, the lock's
   pins, publication time and the waiting period, resolution, and publish's
   version rule (against the version below and the one above).
-- `crates/mandate-doors`, `crates/mandate-wasm` and `crates/mandate-cli`:
-  empty for now, the places release 0.6 fills: the JSON doors (one
-  dispatcher over the compiler's functions), the compiler as a
-  `wasm32-wasip1` command module for the Node runtime to call, and the
-  native command line.
+- `crates/mandate-doors`, `crates/mandate-wasm` and `crates/mandate-cli`: the
+  JSON doors (one dispatcher over the compiler's functions, each a pure
+  function from JSON to JSON), the compiler as a `wasm32-wasip1` command
+  module for the Node runtime to call, and the native command line.
 - `crates/mandate-testkit`: tests only, the gates that hold the crates
   above to the TypeScript compiler.
 
@@ -278,14 +332,15 @@ The Rust compiler is held to the TypeScript one byte for byte, by tests
 that run in CI natively and as WebAssembly (`wasm32-wasip1`, under Node's
 WASI):
 
-- all 231 pinned outputs of `compiler/test/golden/outputs.json` (21
-  programs, ten to twelve outputs each), by `sha256`;
-- all 125 `compile` cases of `conformance/`;
+- all 234 pinned outputs of `compiler/test/golden/outputs.json` (21
+  programs, ten to fourteen outputs each), by `sha256`;
+- all 125 `compile` cases of `conformance/` for 0.1 to 0.5 (the 265 cases of
+  0.6 and the 135 outputs of `vectors/golden/0.6.json` are the Rust
+  compiler's own, since it alone reads 0.6);
 - the stored results in [`vectors/`](vectors/README.md): the syntax and
   span vectors, the schema vectors, 193 diagnostic vectors, 183 diff
   vectors, and the compiled corpus (1,226 calls the TypeScript tests make
-  to the compiler's front doors; 1,224 are replayed, the 2 of the ACS/Rego
-  target are not);
+  to the compiler's front doors, all replayed);
 - written inputs for branches no stored result reaches, answered by the
   built TypeScript compiler in CI on every run (`scripts/*-vectors.mjs`).
 
@@ -295,10 +350,9 @@ the order. A few written inputs are known to differ; the tests list them by
 name, and [`vectors/README.md`](vectors/README.md) lists them too ("Where
 the Rust compiler is not held to the TypeScript").
 
-What stays in TypeScript, and starts the plan for 0.6: the runtime and the
-`mandate` CLI use the TypeScript compiler, and the envelope card
-(`mandate view --card`), the ACS/Rego target and the MCP server are not
-ported.
+What stays in TypeScript: the runtime, the Node `mandate` command and the
+MCP server, which call the Rust compiler through `bridge/`; and the
+reference compiler itself, frozen at 0.5.
 
 `crates/verify-journal` verifies an exported run journal from the file and
 public keys alone, written from [`spec/journal.md`](spec/journal.md) rather
@@ -319,6 +373,10 @@ cargo run -p verify-journal -- run.json --key cp.pub.pem
 The stored results in `vectors/` and the cases in `conformance/` hold the
 crates to the TypeScript. `compiler/test/vectors.test.ts` writes the
 vectors and fails when the committed ones differ; the Rust tests read them and need no Node.
+The 0.6 pins (`vectors/golden/0.6.json`, `vectors/diagnostics-0.6/`) are the
+Rust compiler's own, since the TypeScript compiler does not read 0.6: the
+gates that read them write them again under `MANDATE_UPDATE_0_6=1`, never by
+hand ([`vectors/README.md`](vectors/README.md)).
 
 ```sh
 cargo test --locked                       # where native executables may run
@@ -343,13 +401,21 @@ difference.
 ```sh
 npm install
 npm run build
-node compiler/dist/cli.js check fixtures/fixbug/fixbug.mdt
-node compiler/dist/cli.js check fixtures/fixbug/fixbug.ir.json --json
-node compiler/dist/cli.js fmt fixtures/fixbug/fixbug.ir.json
-node compiler/dist/cli.js sandbox fixtures/fixbug/fixbug.mdt --agent Implementer
-node compiler/dist/cli.js explain E0320
+npm run build:wasm   # builds the Rust compiler's module that bridge/ calls
+node bridge/dist/cli.js check fixtures/fixbug/fixbug.mdt
+node bridge/dist/cli.js check fixtures/fixbug/fixbug.ir.json --json
+node bridge/dist/cli.js fmt fixtures/fixbug/fixbug.ir.json
+node bridge/dist/cli.js sandbox fixtures/fixbug/fixbug.mdt --agent Implementer
+node bridge/dist/cli.js explain E0320
+node bridge/dist/cli.js check fixtures/library/minimal.mdt
 npm test
 ```
+
+`bridge/dist/cli.js` is the `mandate` command (`mandate` in a workspace
+install). It checks every version, 0.6 included, with the Rust compiler; the
+same commands are in the native `mandate` (`cargo run -p mandate-cli -- check …`).
+The TypeScript compiler's own command, for 0.1 to 0.5 only, is
+`node compiler/dist/cli.js` (`mandate-ts`).
 
 | Command | Does |
 |---|---|
@@ -363,7 +429,9 @@ npm test
 | `test <file> [--json]` | Run the program's tests against their effect handlers (§6.4) |
 | `mcp` | Serve `check`, `explain`, `apply_patch`, authority and views to agents over MCP on stdio ([`spec/mcp.md`](spec/mcp.md)) |
 | `target acs <file> [--out <dir>]` | Each agent's ACS manifest, Rego policy and sandbox requirement, for an AGT host ([`spec/executors.md`](spec/executors.md)) |
-| `view <file> [--against <old>] [--format md\|html\|json]` | The program's views: architecture, authority, cost; with `--against`, what changed ([`spec/views.md`](spec/views.md)) |
+| `view <file> [--against <old>] [--format md\|html\|json]` | The program's views: architecture, authority, cost; with `--against`, what changed ([`spec/views.md`](spec/views.md)); with `--card`, the card a person reads before approving a workflow |
+| `add`, `upgrade <library>[@<range>]`, `publish <dir>` | 0.6: pin a library of the operator's directory in the lock, pin a newer version (a widened authority signature is shown and needs `--accept-governance`), copy a library into the directory ([`spec/library.md`](spec/library.md#mandate-add-upgrade-and-publish)); with `--libraries DIR`, `--config FILE`, `--json` |
+| `connector pin <program>`, `review <run> …` | 0.6, in the Node command: write a connector's tool schema digests into the lock; decide a review's wait with a signed decision |
 
 Exit status is 1 when an error diagnostic is reported and 2 on usage errors.
 Warnings do not change the exit status. FixBug checks with two W0601
