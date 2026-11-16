@@ -344,7 +344,7 @@ function main(argv: string[]): void {
       } else if (format === "json") {
         // 0.6: a workflow that applies a pattern of a module is shown as its expansion.
         const m = viewModules(modules, program);
-        const views = { architecture: architecture(program, m), authority: authority(program, m), cost: cost(program, lock, m) };
+        const views = { architecture: architecture(program, m, m ? lock : undefined), authority: authority(program, m), cost: cost(program, lock, m) };
         process.stdout.write(JSON.stringify(views, null, 2) + "\n");
       } else {
         process.stdout.write(format === "html" ? toHtml(programDoc(program, lock)) : toMarkdown(programDoc(program, lock)));

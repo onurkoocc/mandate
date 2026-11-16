@@ -32,22 +32,24 @@ impl<'a> CardOpts<'a> {
 }
 
 /// The parameters of [`architecture`].
-pub(super) const ARCHITECTURE: &[&str] = &["program", "modules"];
+pub(super) const ARCHITECTURE: &[&str] = &["program", "modules", "lock"];
 
 /// `architecture(program)`, `compiler/src/views/views.ts`: each workflow as a
 /// graph of its steps.
 ///
-/// Input: `{ program, modules?: { <name>: program } }`. `modules` is the
-/// Rust's alone (0.6): the modules a workflow's pattern comes from, so that
-/// it is shown as its expansion (`crate::architecture_with`); the TypeScript
-/// takes the program alone, and a program that applies no pattern is shown
-/// the same with or without them.
+/// Input: `{ program, modules?: { <name>: program }, lock?: the lock as read
+/// }`. `modules` is the Rust's alone (0.6): the modules a workflow's pattern
+/// comes from, so that it is shown as its expansion
+/// (`crate::architecture_with_lock`); `lock` is the Rust's alone too: with it
+/// a workflow that applies a pattern names the library and the version the
+/// lock pins. The TypeScript takes the program alone, and a program that
+/// applies no pattern is shown the same with or without them.
 /// Output: `ArchitectureView`, `{ format, kind: "architecture", program,
-/// workflows: [{ workflow, budget, nodes, edges, mermaid }] }`.
+/// workflows: [{ workflow, budget, pattern?, nodes, edges, mermaid }] }`.
 pub(super) fn architecture(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, ARCHITECTURE)?;
     let modules = a.opt_modules("modules")?;
-    Ok(crate::architecture_with(a.program("program")?, modules).to_js())
+    Ok(crate::architecture_with_lock(a.program("program")?, a.opt_lock("lock"), modules).to_js())
 }
 
 /// The parameters of [`authority`].

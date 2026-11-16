@@ -69,6 +69,10 @@ pub fn door(name: &str) -> Option<&'static Door> {
     DOORS.iter().find(|d| d.name == name)
 }
 
+/// The note of the door `architecture`: the modules as [`MODULES_NOTE`] says,
+/// and the lock besides.
+const ARCHITECTURE_NOTE: &str = "modules (optional) is the Rust's alone: the modules a workflow's pattern comes from (language 0.6), so that a workflow that applies one is read as its expansion. lock (optional) is the Rust's alone too: with it a workflow that applies a pattern names its library and the version the lock pins. The TypeScript function is given neither; a program that applies no pattern gives the same with or without them.";
+
 /// Every door, in the order of `doors.json`: the views of a program and
 /// their blocks, the documents, the card, the ACS target, then the two
 /// renderings of a document.
@@ -77,7 +81,7 @@ pub static DOORS: &[Door] = &[
         "architecture",
         "architecture",
         programs::ARCHITECTURE,
-        MODULES_NOTE,
+        ARCHITECTURE_NOTE,
         programs::architecture,
     ),
     Door::new(

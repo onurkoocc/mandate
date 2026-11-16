@@ -21,7 +21,7 @@ import { CODES as TS_CODES } from "@mandate/compiler";
 import { facade, onCompilerMode, rustCodes } from "./mode.js";
 import * as ts from "./ts.js";
 import type { Modules } from "@mandate/compiler";
-import type { Check06 } from "./library.js";
+import type { Check06, Lock } from "./library.js";
 
 // The names below are exported here and so are not taken from the reference compiler's `export *`.
 export * from "@mandate/compiler";
@@ -37,6 +37,9 @@ export type { Apply, Check06, CheckOptions06, CheckResult06, ConnectorBinding, C
  * them; for a program of 0.1 to 0.5 a caller passes none (util.ts, viewModules).
  */
 export type WithModules<F> = F extends (...args: infer A) => infer R ? (...args: [...A, modules?: Modules]) => R : never;
+
+/** `WithModules`, and the lock after the modules: the Rust's alone too (the architecture view names a pattern's library version from it). */
+export type WithModulesAndLock<F> = F extends (...args: infer A) => infer R ? (...args: [...A, modules?: Modules, lock?: Lock]) => R : never;
 
 export let load = ts.load;
 /** `check`: with the libraries and the configuration of a program of 0.6, and its expanded program, the Rust's alone. */
@@ -81,7 +84,7 @@ export let grant = ts.grant;
 export let narrow = ts.narrow;
 export let mapScopes = ts.mapScopes;
 export let inFlightOverlap = ts.inFlightOverlap;
-export let architecture: WithModules<typeof ts.architecture> = ts.architecture;
+export let architecture: WithModulesAndLock<typeof ts.architecture> = ts.architecture;
 export let architectureBlocks = ts.architectureBlocks;
 export let authority: WithModules<typeof ts.authority> = ts.authority;
 export let authorityBlocks = ts.authorityBlocks;
