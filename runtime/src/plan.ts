@@ -64,6 +64,7 @@ import {
   type Program,
   type Room,
   type SubprogramCheck,
+  type Shape06,
   type SubprogramCheck06,
   type SubprogramInput,
 } from "@mandate/bridge";
@@ -130,6 +131,28 @@ export function baseOf(parent: string, n: number, language?: Program["language"]
   return hashProgram(skeleton(parent, n, language) as unknown as Json).program;
 }
 
+/** The patterns an envelope lists as the shapes of its lead's sub-programs (0.6), or undefined when it lists none. */
+export function shapesOf(envelope: Envelope | undefined): string[] | undefined {
+  const shapes = (envelope as { shapes?: unknown } | undefined)?.shapes;
+  return Array.isArray(shapes) ? shapes.filter((s): s is string => typeof s === "string") : undefined;
+}
+
+/**
+ * Whether a check that passed names the shape the parent's envelope asks for, and if not why not. Held by the runtime
+ * itself (spec/library.md "`shapes`"): under an envelope with `shapes` a sub-program is admitted only when its check
+ * named a shape the envelope lists, so a result that is `ok` without one, or with another, admits nothing, whatever
+ * the compiler said. Under an envelope without `shapes` a result has no shape: one that has was not given by a
+ * compiler that read the envelope.
+ */
+export function shapeProblem(shapes: string[] | undefined, shape: Shape06 | undefined): string | undefined {
+  if (shapes === undefined) return shape === undefined ? undefined : "the checker named a shape for a sub-program of an envelope that lists none";
+  if (shape === undefined) return `the checker admitted the sub-program under an envelope whose shapes are ${shapes.join(", ")}, and named no shape`;
+  const named = typeof shape === "object" && shape !== null && typeof shape.pattern === "string" && shape.pattern !== "" && typeof shape.module === "string" && shape.module !== "";
+  if (!named) return "the checker named a shape that is not a pattern and its module";
+  if (!shapes.includes(shape.pattern)) return `the checker named the shape ${shape.pattern}, which the envelope does not list (${shapes.join(", ")})`;
+  return undefined;
+}
+
 /**
  * What a lead is told about sub-programs, after its inputs. It says the same on every run of the loop, since a
  * resumed loop is replayed from its first message: what changes while the run goes on, the next base and what is
@@ -149,6 +172,7 @@ export function planBrief(parent: Program, envelope: Envelope): string {
     `- It may use every definition of ${parent.module}${names.length ? ":" : "."}`,
     ...names,
     `- ${CHECK_PROGRAM} checks and runs nothing. ${SUBMIT_PROGRAM} checks, and a sub-program that fits runs to its end; you get its result. One sub-program runs at a time; put parallel work inside it, in par and map.`,
+    ...(shapesOf(envelope) ? [`- The envelope lists shapes: ${shapesOf(envelope)!.join(", ")}. The workflow of a sub-program is an application of one of them, \`workflow Name = Pattern<...>(...)\` with its caps and budget; a workflow written out is refused.`] : []),
     `- The envelope as you start, as JSON IR: ${canonical(envelope as unknown as Value)}`,
     `- ${REQUEST_AMENDMENT} asks the envelope's owner for a wider one, when a sub-program needs more than it allows. Send the whole new envelope. It keeps everything this one holds and may raise a budget or add a capability. A person decides, and the run waits for them.`,
   ].join("\n");
@@ -530,6 +554,10 @@ export class Planner {
       // sub-program that applies none would run in place of what the lead wrote.
       const unasked = running !== undefined && !!result?.program && applications(result.program).length === 0;
       const unrun = result?.ok && result.program && !misnamed && !unasked ? subprogramNotRunYet(result.program, h.parent, h.modules, running?.program) : [];
+      // 0.6: under an envelope with `shapes` the check names the shape the sub-program applies, and only that admits it.
+      const parentWf = Object.hasOwn(h.parent.defs, h.workflow) ? h.parent.defs[h.workflow] : undefined;
+      const shapes = parentWf?.kind === "workflow" ? shapesOf(parentWf.envelope) : undefined;
+      const unshaped = result?.ok && !misnamed && !unasked && !unrun.length ? shapeProblem(shapes, result.shape) : undefined;
       const stopped =
         "limit" in checked
           ? limitDiagnostic(checked)
@@ -541,7 +569,9 @@ export class Planner {
                 ? failedDiagnostic({ failed: "the checker gave a running program for a sub-program that applies no pattern" })
               : unrun.length
                 ? notRunDiagnostic(unrun)
-                : undefined;
+                : unshaped !== undefined
+                  ? failedDiagnostic({ failed: unshaped })
+                  : undefined;
       const r = stopped ? undefined : result;
       // The errors come first: they are what the lead must act on, and a long list is cut at its end.
       const diagnostics = stopped ? [stopped] : [...r!.diagnostics.filter((d) => d.severity === "error"), ...r!.diagnostics.filter((d) => d.severity !== "error")].map(forLead);
@@ -562,6 +592,7 @@ export class Planner {
         ok,
         // What the lead's patch makes of the module it was given, and what in it a person would have had to approve
         // in a program of their own. Here the envelope's owner approved it beforehand, within the envelope.
+        ...(ok && r!.shape ? { shape: { pattern: r!.shape.pattern, module: r!.shape.module } } : {}),
         ...(ok ? { hash: r!.hash!, governance: [...new Set(governanceChanges(skeleton(h.parent.module, number, h.parent.language), r!.program!, { ...h.modules, [h.parent.module]: h.parent }).map((c) => c.kind))].sort() } : {}),
       });
       if (!ok) return refuse(diagnostics);
@@ -570,7 +601,7 @@ export class Planner {
       const wf = sub.defs[r!.workflow!];
       // What it runs as, when it applies a pattern: stored with it, and named by its admission.
       const runs = running ? { ...running, bytes: canonical(running.program as unknown as Value) } : undefined;
-      const a: Admission = { ...record, command: `${h.plan}/program/${number}`, hash: r!.hash!, base: String(input["base"]), artifact: refOf(sha256Of(bytes)), workflow: r!.workflow!, ...(runs ? { running: { hash: runs.hash, artifact: refOf(sha256Of(runs.bytes)) } } : {}) };
+      const a: Admission = { ...record, command: `${h.plan}/program/${number}`, hash: r!.hash!, base: String(input["base"]), artifact: refOf(sha256Of(bytes)), workflow: r!.workflow!, ...(runs ? { running: { hash: runs.hash, artifact: refOf(sha256Of(runs.bytes)) } } : {}), ...(r!.shape ? { shape: { pattern: r!.shape.pattern, module: r!.shape.module } } : {}) };
       try {
         const admitted = await h.journal.admitProgram(h.runId, h.fence, a, wf?.kind === "workflow" ? wf.budget : undefined, digest("request", { kind: "program", request: { plan: a.plan, number, hash: a.hash } }), async (tx) => {
           await h.artifacts.put(h.scope, bytes, PROGRAM_MEDIA_TYPE, tx);

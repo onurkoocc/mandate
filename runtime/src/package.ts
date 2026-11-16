@@ -163,8 +163,8 @@ function storesRunning(pkg: Pick<Package, "program" | "lock">): boolean {
  * The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; of
  * 0.5 the program and every field of its lock; of 0.6 what 0.5 has, `pub`, doc lines, closed imports, libraries
  * (a module of one may import another it reaches), `std.patterns`, patterns whose expansion holds only what it
- * runs, connectors with the lock that binds them, the batch commit step, `human.review` and `waive by` (review.ts);
- * see `notRunYet` and NOT_RUN_YET_06.
+ * runs, connectors with the lock that binds them, the batch commit step, `human.review` and `waive by` (review.ts), and an envelope's
+ * `shapes`, which hold a lead's sub-programs (plan.ts); see `notRunYet` and NOT_RUN_YET_06.
  */
 export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5", LANGUAGE_06];
 
@@ -237,12 +237,10 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
  * Every construct of 0.6 this runtime does not run yet, with the slice that releases it (spec/library.md, the table
  * of parts). A package of 0.6 that holds one is refused at load, `unsupported_language`, naming each it holds, so
  * that a half-built 0.6 never runs; a lead's sub-program that holds one is refused at its check. The slice that
- * implements a construct takes its line out, and nothing else.
+ * implements a construct takes its line out, and nothing else. It holds none today: `shapes` was the last (B12), so
+ * every construct of 0.6 runs, and the mechanism stays for the next language version.
  */
-export const NOT_RUN_YET_06: readonly NotRunYet06[] = [
-  // `shapes` in an envelope (spec/library.md "`shapes`").
-  { name: "shapes", slice: "B12", node: (o, at) => at.key === "envelope" && o["shapes"] !== undefined },
-];
+export const NOT_RUN_YET_06: readonly NotRunYet06[] = [];
 
 /** The names of NOT_RUN_YET_06 that `program` (linked: the definitions it sees) and the package hold, in the table's order. */
 export function notRunYet06(program: Program, p: Read06): string[] {

@@ -217,11 +217,26 @@ function world06(src: string, o: { libraries?: LibrarySource[]; lock?: Lock; con
   return world(src, { agents, decisions: { mode: "signed" }, lock: o.lock ?? { modules: {} }, ...(o.libraries ? { libraries: o.libraries } : {}), ...(o.config ? { config: o.config } : {}) });
 }
 
+/**
+ * Runs `fn` with one more line in the table of what 0.6 has that this runtime does not run yet: `probe`, found where
+ * an envelope has `shapes`, as the line `shapes` was found until B12. The table is empty now, and its mechanism stays:
+ * these tests show it still refuses by name what a line names.
+ */
+function withProbeRow<T>(fn: () => T): T {
+  const table = NOT_RUN_YET_06 as unknown as Array<(typeof NOT_RUN_YET_06)[number]>;
+  table.push({ name: "probe", slice: "T", node: (o, at) => at.key === "envelope" && o["shapes"] !== undefined });
+  try {
+    return fn();
+  } finally {
+    table.pop();
+  }
+}
+
 describe("the table of what 0.6 has that this runtime does not run yet", () => {
-  it("names each construct once, with the slice that releases it", () => {
+  it("holds no line: every construct of 0.6 runs", () => {
     // Connectors, tool.call, a lock's connectors and the batch commit step run (B9; connectors.test.ts); so do
-    // human.review and waive by (B10; review.test.ts).
-    expect(NOT_RUN_YET_06.map((r) => [r.name, r.slice])).toEqual([["shapes", "B12"]]);
+    // human.review and waive by (B10; review.test.ts), and an envelope's shapes (B12; shapes.test.ts).
+    expect(NOT_RUN_YET_06.map((r) => [r.name, r.slice])).toEqual([]);
   });
 });
 
@@ -354,8 +369,8 @@ needs06("a package of 0.6 at load", () => {
     expect(running.defs["Batch"]).toMatchObject({ kind: "type" });
     expect(JSON.stringify(running.defs["MatchInvoices"])).toContain('"name":"review"');
     expect(notRunYet06(running as unknown as Program, { lock: packaged as Lock })).toEqual([]);
-    expect(TABLE).toEqual(["shapes (B12)"]);
-    expect(namedIn("The package uses shapes (B12) of mandate/0.6, which this runtime does not run yet (spec/library.md).")).toEqual(["shapes (B12)"]);
+    expect(TABLE).toEqual([]);
+    expect(namedIn("The package uses probe (T) of mandate/0.6, which this runtime does not run yet (spec/library.md).")).toEqual(["probe (T)"]);
   });
 
   it("refuses no lock for binding connectors by name (lock.connectors runs, B9): what is wrong with a binding is the check's to say", () => {
@@ -443,7 +458,21 @@ workflow W(items: List<Item>) -> Int
     expect(refusal(buildPackage(checked(text)))).toMatchObject({ code: "load_verification_failed", message: expect.stringContaining("MDT-E1502") });
   });
 
-  it("refuses shapes in an envelope by name (B12)", () => {
+  it("loads the migration whose envelope has shapes (B12); a name that is no pattern is the compiler's refusal (E1711), not the table's", () => {
+    const lock = JSON.parse(read("fixtures/library/migrate-all.lock.json")) as Lock & { lock?: string };
+    const { lock: _format, ...packaged } = lock;
+    const program = check(read("fixtures/library/migrate-all.mdt"), "mdt", { lock });
+    expect(program.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const envelope = (program.program!.defs["MigrateAll"] as { envelope: { shapes?: string[] } }).envelope;
+    expect(envelope.shapes).toEqual(["FanOutMerge", "MakerChecker"]);
+    const pkg = buildPackage(program.program!, packaged as Lock);
+    expect(notRunYet06(pkg.program, { lock: packaged as Lock })).toEqual([]);
+    expect(refusal(pkg)).toBeUndefined();
+    const nope = { ...program.program!, defs: { ...program.program!.defs, MigrateAll: { ...program.program!.defs["MigrateAll"]!, envelope: { ...envelope, shapes: ["Nope"] } } } } as unknown as Program;
+    expect(refusal(buildPackage(nope, packaged as Lock))).toMatchObject({ code: "load_verification_failed", message: expect.stringContaining("E1711") });
+  });
+
+  it("still refuses by name what a line of the table names: the mechanism stays, with the table empty (B12)", () => {
     const text = `${HEAD}
 workflow W(i: Item) -> Inferred<Item>
   envelope {
@@ -457,7 +486,7 @@ workflow W(i: Item) -> Inferred<Item>
 `;
     const program = checked(text);
     const shaped = { ...program, defs: { ...program.defs, W: { ...program.defs["W"]!, envelope: { ...(program.defs["W"] as { envelope: object }).envelope, shapes: ["FanOutMerge"] } } } } as unknown as Program;
-    expect(refused(buildPackage(shaped))).toMatch(/uses shapes \(B12\) of/);
+    expect(withProbeRow(() => refused(buildPackage(shaped)))).toMatch(/uses probe \(T\) of/);
   });
 
   it("links a library whose module imports another through what the library reaches, and nothing outside it", () => {
@@ -488,7 +517,8 @@ workflow W(i: Item) -> Inferred<Item>
     expect(subprogramNotRunYet(sub, program, {}, running)).toEqual([]);
     // A running program that holds what the table names is refused by that name.
     const shaped = { ...running, defs: { ...running.defs, Sub: { ...(running.defs["Sub"] as object), envelope: { shapes: ["FanOutMerge"] } } } } as unknown as Program;
-    expect(subprogramNotRunYet(sub, program, {}, shaped)).toEqual(["shapes"]);
+    expect(withProbeRow(() => subprogramNotRunYet(sub, program, {}, shaped))).toEqual(["probe"]);
+    expect(subprogramNotRunYet(sub, program, {}, shaped)).toEqual([]);
     const plain = { ...sub, defs: { Sub: { kind: "workflow", params: [], returns: { ref: "Int" }, body: [{ op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
     expect(subprogramNotRunYet(plain, program, {})).toEqual([]);
   });
@@ -747,7 +777,7 @@ needs06("the stored expansion", () => {
     // One whose expansion holds what the table names, which the program as written does not, is refused by that name.
     const shaped = { ...before.program, defs: { ...before.program.defs, Greet: { ...(before.program.defs["Greet"] as object), envelope: { shapes: ["FanOutMerge"] } } } } as unknown as Program;
     expect(notRunYet06(w.pkg.program, { lock: w.pkg.lock })).toEqual([]);
-    expect(failing({ expanded: real.expanded, linked: shaped })).toMatchObject({ code: "unsupported_language", message: expect.stringContaining("uses shapes (B12) of mandate/0.6") });
+    expect(withProbeRow(() => failing({ expanded: real.expanded, linked: shaped }))).toMatchObject({ code: "unsupported_language", message: expect.stringContaining("uses probe (T) of mandate/0.6") });
     // A runtime of its own (nothing of the run in its memory) resumes and replays the run from the stored expansion.
     const again = new Runtime(w.db, w.adapters, undefined, undefined, { decisions: { mode: "signed" }, artifacts: w.rt.artifacts });
     const resumed = await withCompiler(compilerMode(), () => again.resume("x2"), { doors });

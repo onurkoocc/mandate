@@ -152,6 +152,12 @@ export interface PlanView {
     governance: string[];
     /** What its admission reserved of the envelope, by dimension. */
     reservation: Record<string, number>;
+    /**
+     * 0.6, under an envelope with `shapes`: the pattern it applies and the module that defines it, as its check
+     * named them and `program_admitted` recorded them (`program_submitted` when none was admitted). Absent, not
+     * null, for any other submission, so that the view of a run without shapes is what it was.
+     */
+    shape?: { pattern: string; module: string };
     /** The command it runs as, and how that stands: `dispatched`, `succeeded` or `failed`. */
     command: string | null;
     state: string | null;
@@ -674,6 +680,11 @@ async function storedProgram(rt: Runtime, scope: { tenant: string; runId: string
   return { text: printProgram(sub), stored: "kept" };
 }
 
+/** A shape as an event records it, `{ pattern, module }`; undefined for anything else. */
+function shapeOf(v: Value | undefined): { pattern: string; module: string } | undefined {
+  return isObj(v ?? null) && typeof (v as Obj)["pattern"] === "string" && typeof (v as Obj)["module"] === "string" ? { pattern: (v as Obj)["pattern"] as string, module: (v as Obj)["module"] as string } : undefined;
+}
+
 /**
  * What each `plan` node's lead submitted, from `program_submitted`, `program_refused` and `program_admitted`, and
  * the amendments it asked for. An admitted sub-program is read from the artifact store and printed: it is the
@@ -698,6 +709,7 @@ async function planViews(rt: Runtime, scope: { tenant: string; runId: string }, 
       const admitted = of("program_admitted", step);
       const command = admitted ? String(admitted["command"]) : null;
       const written = admitted ? await storedProgram(rt, scope, String(admitted["artifact"]), String(admitted["hash"])) : { text: null, stored: null };
+      const shape = shapeOf(admitted?.["shape"]) ?? shapeOf(d["shape"]);
       p.submissions.push({
         step,
         number: Number(d["number"]),
@@ -706,6 +718,7 @@ async function planViews(rt: Runtime, scope: { tenant: string; runId: string }, 
         codes: refused && Array.isArray(refused["codes"]) ? refused["codes"].map(String) : [],
         governance: Array.isArray(d["governance"]) ? d["governance"].map(String) : [],
         reservation: admitted && isObj(admitted["reservation"] ?? null) ? Object.fromEntries(Object.entries(admitted["reservation"] as Obj).map(([dim, n]) => [dim, Number(n)])) : {},
+        ...(shape ? { shape } : {}),
         command,
         state: command ? (stateOf(command)?.state ?? null) : null,
         ...written,
@@ -1170,13 +1183,16 @@ function planBlocks(v: RunView): Block[] {
     const admitted = p.submissions.filter((s) => s.outcome === "admitted");
     out.push({ h: `Plan at ${p.node}` });
     out.push({ p: `${p.lead ?? "The lead"} submitted ${p.submissions.length} sub-program${p.submissions.length === 1 ? "" : "s"}: ${admitted.length} admitted, ${p.submissions.filter((s) => s.outcome === "refused").length} refused.` });
+    // 0.6: a plan whose sub-programs were held to the envelope's shapes shows each by its shape, and a line per shape.
+    const shaped = p.submissions.some((s) => s.shape !== undefined);
     if (p.submissions.length) {
       out.push({
         table: {
-          head: ["Number", "Outcome", "Program", "Reserved of the envelope", "Governance changes in it", "Runs as", "State"],
+          head: ["Number", "Outcome", ...(shaped ? ["Shape"] : []), "Program", "Reserved of the envelope", "Governance changes in it", "Runs as", "State"],
           rows: p.submissions.map((s) => [
             String(s.number),
             s.outcome === "refused" ? `refused: ${s.codes.join(", ") || "no code"}` : s.outcome,
+            ...(shaped ? [s.shape ? `${s.shape.pattern} (${s.shape.module})` : "—"] : []),
             s.hash === null ? "—" : mono(s.hash),
             s.outcome === "admitted" ? amounts(s.reservation) : "—",
             s.governance.join(", ") || "—",
@@ -1185,6 +1201,11 @@ function planBlocks(v: RunView): Block[] {
           ]),
         },
       });
+    }
+    if (shaped) {
+      const by = new Map<string, number>();
+      for (const s of admitted) if (s.shape) by.set(`${s.shape.pattern} (${s.shape.module})`, (by.get(`${s.shape.pattern} (${s.shape.module})`) ?? 0) + 1);
+      out.push({ p: `Sub-programs by shape: ${[...by].sort(([a], [b]) => (a < b ? -1 : 1)).map(([shape, n]) => `${shape} ${n}`).join(", ") || "none admitted"}.` });
     }
     if (p.submissions.some((s) => s.outcome === "refused")) out.push({ p: "A refused submission takes no number: the next one is checked under the same number." });
     for (const s of admitted) {
