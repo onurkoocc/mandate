@@ -191,12 +191,35 @@ fn the_running_program_is_given_only_when_asked_and_only_for_0_6() {
     assert_eq!(refused.get("ok").and_then(JsValue::as_bool), Some(false));
     assert!(refused.get("linked").is_none());
     assert!(refused.get("expanded").is_none());
-    // `linked` is a boolean.
+    // `linked` is a boolean, for a program of 0.6.
     let d = json_doors::door("check").unwrap();
-    let bad = parse(r#"{"text":"","kind":"mdt","opts":{"linked":"yes"}}"#)
-        .unwrap()
-        .value;
-    assert!((d.call)(&bad).is_err());
+    let call = |text: &str, opts: JsObject| {
+        let input: JsValue = JsObject::new()
+            .with("text", text)
+            .with("kind", "mdt")
+            .with("opts", opts)
+            .into();
+        (d.call)(&parse(&stringify(&input).unwrap()).unwrap().value)
+    };
+    assert!(call(&text, invoices_opts(None).with("linked", "yes")).is_err());
+    // For a program of 0.1 to 0.5 the member is not read, whatever it
+    // holds: the answer is the one without it, byte for byte.
+    for wrong in [
+        JsValue::from("yes"),
+        JsValue::from(1),
+        JsValue::Array(Vec::new()),
+    ] {
+        let answered = call(
+            &older,
+            JsObject::new()
+                .with("modules", modules())
+                .with("linked", wrong),
+        )
+        .expect("a program of 0.5 is answered");
+        assert_eq!(stringify(&plain).unwrap(), stringify(&answered).unwrap());
+    }
+    // Nor for a text that is no program.
+    assert!(call("", JsObject::new().with("linked", "yes")).is_ok());
 }
 
 /// A library of two modules: `acme.two` imports a type of `acme.two.types`.

@@ -294,10 +294,12 @@ function refusal06(names: string[]): Violation {
 export function subprogramNotRunYet(sub: Program, parent: Program, modules: Modules, running?: Program): string[] {
   if (!isProgram06(sub) && !isProgram06(parent)) return [];
   const own = (p: Program): Program => ({ ...p, defs: Object.fromEntries(Object.keys(sub.defs).flatMap((n) => (Object.hasOwn(p.defs, n) ? [[n, p.defs[n]!]] : []))) });
-  const unexpanded = applications(sub).length > 0 && (!running || applications(own(running)).length > 0 || Object.keys(sub.defs).some((n) => !Object.hasOwn(running.defs, n)));
+  const applies = applications(sub).length > 0;
+  const unexpanded = applies && (!running || applications(own(running)).length > 0 || Object.keys(sub.defs).some((n) => !Object.hasOwn(running.defs, n)));
   const applied = unexpanded ? ["a pattern applied in a sub-program"] : [];
-  // What the package holds beside its program was held to the table when the run started.
-  const inSub = notRunYet06(running && !unexpanded ? running : subprogramLinked(sub, parent, modules), { lock: { modules: {} } });
+  // What the package holds beside its program was held to the table when the run started. A running program is read
+  // only for a sub-program that applies a pattern: any other runs linked into its parent, and is read so.
+  const inSub = notRunYet06(running && applies && !unexpanded ? running : subprogramLinked(sub, parent, modules), { lock: { modules: {} } });
   return [...applied, ...inSub];
 }
 
@@ -345,12 +347,21 @@ export function verifyPackage(pkg: Package, o: LoadOptions = {}): Verified {
   }
 }
 
-function verified(pkg: Package, o: LoadOptions): Verified {
-  const v06 = isPackage06(pkg);
-  // Only the Rust compiler reads 0.6: the reference compiler, frozen at 0.5, verifies nothing of it.
-  if (v06 && compilerMode() === "ts") {
+/**
+ * Refuses a package of 0.6 where the compiler is the reference (MANDATE_COMPILER=ts), by name: only the Rust compiler
+ * reads 0.6, and the reference, frozen at 0.5, verifies nothing of it. At load, and again wherever a run of such a
+ * package would be driven or read by its program (a resume, a replay): a run that was started on the Rust compiler
+ * is never driven on the reference.
+ */
+export function refuseReference06(pkg: Pick<Package, "program" | "lock" | "modules" | "libraries">): void {
+  if (isPackage06(pkg) && compilerMode() === "ts") {
     throw new Violation("unsupported_language", `The package is of mandate/0.6, which only the Rust compiler reads; this runtime's compiler is the TypeScript reference (MANDATE_COMPILER=ts), frozen at mandate/0.5, so it is not run.`);
   }
+}
+
+function verified(pkg: Package, o: LoadOptions): Verified {
+  const v06 = isPackage06(pkg);
+  refuseReference06(pkg);
   // The program and every module it was packaged with: a module's definitions run as the program's do.
   for (const p of [pkg.program, ...Object.values(pkg.modules ?? {})]) {
     if (!RUNTIME_LANGUAGES.includes(p?.language)) throw new Violation("unsupported_language", `Package language ${String(p?.language)} is not one of ${RUNTIME_LANGUAGES.join(", ")}.`);
@@ -525,7 +536,8 @@ export function libraryModules(pkg: Pick<Package, "lock" | "libraries">): Module
  * other check runs as it would for `mandate check` with that lock. Gives the running program of a program of 0.6
  * (the check's `linked`): expanded, when it applies a pattern, and linked through what each library reaches. A
  * program of 0.6 that is given none, or one that applies a pattern and is given no expansion, or a running program
- * in which a workflow still applies one, is refused, as a failure of the compiler: nothing half expanded runs. A
+ * in which a workflow of the program's own still applies one, is refused, as a failure of the compiler: nothing half
+ * expanded runs. A
  * package of 0.6 whose program is of an earlier language is given none, and runs as it is linked.
  *
  * A lock that pins no models is for simulated models only (as before 0.6, where the check is not given the lock):
@@ -552,7 +564,10 @@ function checked06(pkg: Package, modules: Modules, o: LoadOptions): Program | un
   const linked = r.linked as unknown as Program | undefined;
   if (!isProgram06(pkg.program)) return undefined;
   if (!linked || !isObj(linked.defs)) throw new Violation("load_verification_failed", "The program is of mandate/0.6, and the compiler gave no running program of it.");
-  const left = applications(linked);
+  // The program's own workflows: a run starts one of these and no other. A workflow the program only imports, which
+  // a library may write as an application, is linked as it is written: nothing starts or calls it (0.6), and the
+  // interpreter refuses to run a workflow that still applies a pattern, whatever led to it.
+  const left = applications({ ...linked, defs: Object.fromEntries(Object.keys(pkg.program.defs).flatMap((n) => (Object.hasOwn(linked.defs, n) ? [[n, linked.defs[n]!]] : []))) });
   if (left.length) throw new Violation("load_verification_failed", `The running program the compiler gave still applies a pattern (${left.join(", ")}).`);
   const missing = Object.keys(pkg.program.defs).filter((n) => !Object.hasOwn(linked.defs, n));
   if (missing.length) throw new Violation("load_verification_failed", `The running program the compiler gave lacks the program's ${missing.sort().join(", ")}.`);

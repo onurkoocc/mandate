@@ -421,7 +421,7 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
 }
 
 /// Whether `program` is of language 0.6 or later.
-fn reads_0_6(program: Program<'_>) -> bool {
+pub(crate) fn reads_0_6(program: Program<'_>) -> bool {
     program
         .language()
         .is_some_and(|l| l.at_least(mandate_ir::Language::V0_6))

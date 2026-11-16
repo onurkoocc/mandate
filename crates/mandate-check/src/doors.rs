@@ -227,6 +227,15 @@ fn workflow_with_envelope<'a>(parent: &'a Value, name: &str) -> Option<&'a Value
         .filter(|wf| wf.get("envelope").is_some_and(Value::is_truthy))
 }
 
+/// Whether a workflow of `program` applies a pattern (0.6: a definition
+/// with `apply`).
+fn applies_a_pattern(program: &Value) -> bool {
+    program
+        .get("defs")
+        .and_then(Value::as_object)
+        .is_some_and(|defs| defs.iter().any(|(_, d)| d.get("apply").is_some()))
+}
+
 /// Checks a lead's sub-program and whether it fits what is left of the
 /// envelope (spec/envelope.md "The sub-program", INV-15):
 /// `checkSubprogram(i)`. In order: the patch applies to the skeleton of its
@@ -301,8 +310,8 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             claim: Some(&claim),
             reach: reach.as_ref(),
             // 0.6: the running program, for a sub-program that applies a
-            // pattern.
-            linked: reach.is_some(),
+            // pattern; for any other it would be built and dropped.
+            linked: reach.is_some() && applies_a_pattern(&sub),
             ..CheckOptions::default()
         },
     );

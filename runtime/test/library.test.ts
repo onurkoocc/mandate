@@ -18,8 +18,9 @@ import { modulePath } from "../../bridge/src/wasm/module.js";
 import { MODULES } from "../../bridge/test/wasm-bytes.js";
 import { MemoryBlobs } from "../src/artifacts.js";
 import { readConfig } from "../src/control.js";
+import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import { applications, checkAmended, NOT_RUN_YET_06, notRunYet06, subprogramNotRunYet } from "../src/package.js";
-import { buildPackage, EXPANDED_MEDIA_TYPE, Runtime, verifyPackage, type Package } from "../src/runtime.js";
+import { buildPackage, componentsOf, EXPANDED_MEDIA_TYPE, Runtime, verifyPackage, type Package } from "../src/runtime.js";
 import { Crash, Violation } from "../src/signals.js";
 import { SimAgents } from "../src/sim.js";
 import { closeAll, commandIds, planChecker, world, type World } from "./helpers.js";
@@ -545,6 +546,10 @@ needs06("a run of a program that imports a library of two modules and applies a 
     expect(resumed.state, JSON.stringify(resumed.attention ?? resumed.error)).toBe("succeeded");
     expect(resumed.result).toBe("hello, Ada");
     expect(await again.replayRun("t3")).toEqual({ status: "complete", value: "hello, Ada" });
+    // A view of it is given the program as packaged: it applies nothing, so its own definitions are as written.
+    const viewed = await again.runProgram("t3");
+    expect(viewed.program).toEqual(w.pkg.program);
+    expect(viewed.program).toEqual(viewed.source);
   });
 
   it("starts no workflow the program only imports", async () => {
@@ -563,6 +568,92 @@ needs06("a run of a program that imports a library of two modules and applies a 
     expect(importing.pkg.program.defs).not.toHaveProperty("Elsewhere");
     await expect(importing.rt.startRun({ pkg: importing.pkg, workflow: "Elsewhere", input: { name: "Ada" }, runId: "t6" })).rejects.toMatchObject({ code: "unknown_workflow" });
     expect(importing.agents.count()).toBe(0);
+  });
+
+  it("runs a program that imports a library's workflow written as an application: it is linked as written, and never started", async () => {
+    const works: LibrarySource = {
+      manifest: JSON.stringify({ library: "mandate/library/0.6", name: "acme.applied", version: "1.0.0", modules: ["w.mdt"] }),
+      files: {
+        "w.mdt": `mandate @ 0.6\n\nmodule acme.applied @ 1.0\n\nuse std.{model}\n\n/// The model a helper asks.\npub capability LibModel = model.infer(tier: standard, max_class: internal)\n\n/// Helps.\npub agent Helper {\n  role   "Helps."\n  caps   LibModel\n  budget { time: 2m, steps: 2 }\n  skill help(name: Text) -> Inferred<Text> ! {Model}\n}\n\n/// Asks once.\npub pattern Once(\n  work: skill(Text) -> Inferred<Text>\n) (input: Text) -> Inferred<Text>\n{\n  delegate work(input)\n}\n\n/// Helps once.\npub workflow Elsewhere = Once(work: Helper.help)\n  caps   LibModel\n  budget { time: 5m, steps: 4 }\n`,
+      },
+    };
+    const w = await world06(LOCAL.replace("use std.{model}\n", "use std.{model}\nuse acme.applied.{Elsewhere}\n"), { libraries: [works], lock: lockWith(works) });
+    // The compiler accepts it, and its running program holds the library's workflow unexpanded: no fault of the
+    // compiler's, and no refusal of the package. The program's own workflow is expanded.
+    const v = verifyPackage(w.pkg);
+    expect(applications(v.stored!)).toEqual(["Elsewhere = Once"]);
+    expect((v.stored!.defs["Greet"] as { apply?: unknown }).apply).toBeUndefined();
+    await expect(w.rt.startRun({ pkg: w.pkg, workflow: "Elsewhere", input: { input: "Ada" }, runId: "t7" })).rejects.toMatchObject({ code: "unknown_workflow" });
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Greet", input: { input: "Ada" }, runId: "t8" });
+    expect(run.state, JSON.stringify(run.attention ?? run.error)).toBe("succeeded");
+    expect(run.result).toBe("hello, Ada");
+    expect(w.agents.count("Helper.help")).toBe(0);
+  });
+
+  it("verifies the evidence of a contract only the running program holds: one a library's pattern names", async () => {
+    const sure: LibrarySource = {
+      manifest: JSON.stringify({ library: "mandate/library/0.6", name: "acme.sure", version: "1.0.0", modules: ["s.mdt", "rules.mdt"] }),
+      files: {
+        "rules.mdt": `mandate @ 0.6\n\nmodule acme.sure.rules @ 1.0\n\n/// The answer says something.\npub contract Said(asked: Text, t: Text) {\n  accept said "It says something"\n    by static t != ""\n}\n`,
+        "s.mdt": `mandate @ 0.6\n\nmodule acme.sure @ 1.0\n\nuse acme.sure.rules.{Said}\n\n/// Asks once, and holds the answer to Said.\npub pattern Sure(\n  work: skill(Text) -> Inferred<Text>\n) (input: Text) -> Verified<Text, Said>\n{\n  let out = delegate work(input)\n  verify out against Said(input, out)\n}\n`,
+      },
+    };
+    const w = await world06(LOCAL.replace(/\/\/\/ Asks once[\s\S]*$/, "/// Greets, and is sure of it.\nworkflow Greet = Sure(work: Greeter.greet)\n  caps   ModelStd\n  budget { time: 5m, steps: 4 }\n").replace("use std.{model}\n", "use std.{model}\nuse acme.sure.{Sure}\n"), { libraries: [sure], lock: lockWith(sure) });
+    // The program imports the pattern alone: the contract, of another module of the library, is in the running
+    // program through what the library reaches, and in no plain linking of the program.
+    expect(w.pkg.program.defs).not.toHaveProperty("Said");
+    expect(linkedProgram(w.pkg.program, verifyPackage(w.pkg).modules).defs).not.toHaveProperty("Said");
+    expect(verifyPackage(w.pkg).stored!.defs["Said"]).toMatchObject({ kind: "contract" });
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Greet", input: { input: "Ada" }, runId: "t9" });
+    expect(run.state, JSON.stringify(run.attention ?? run.error)).toBe("succeeded");
+    expect(run.result).toMatchObject({ $verified: "hello, Ada", $contract: "Said" });
+    const evidence = await w.rt.verifyEvidence("t9");
+    expect(evidence.map((e) => [e.criterion, e.valid])).toEqual([["said", true]]);
+    // With a verifier of its own configured, a record holds only as a check of a criterion the program declares: the
+    // program read is the run's running program, which has the contract.
+    const signer = (w.rt as unknown as { signer: EvidenceSigner }).signer;
+    const strict = new Runtime(w.db, w.adapters, undefined, undefined, { decisions: { mode: "signed" }, artifacts: w.rt.artifacts, trustedKeys: [signer.publicKeyPem()],trustedVerifiers: new TrustedKeys([EvidenceSigner.generate().publicKey]) });
+    expect((await strict.verifyEvidence("t9")).map((e) => [e.criterion, e.valid])).toEqual([["said", true]]);
+  });
+
+  it("reads the components and the remote agents of the running program at a start: those a library brings", async () => {
+    const sys: LibrarySource = {
+      manifest: JSON.stringify({ library: "mandate/library/0.6", name: "acme.sys", version: "1.0.0", modules: ["sys.mdt"] }),
+      files: {
+        "sys.mdt": `mandate @ 0.6\n\nmodule acme.sys @ 1.0\n\nuse std.{component, net}\n\nrole keeper "Keeper"\n\n/// The left repository.\npub component left {\n  repo  "acme/left"\n  root  "/work/left"\n  lang  ts\n  owner role "keeper"\n}\n\n/// The left repository, as a capability.\npub capability Repos = component.repo(left)\n\n/// The partner's host.\npub capability Billing = net.https(hosts: ["billing.partner.example"])\n\n/// The partner's agent.\npub agent remote BillingAgent = a2a("https://billing.partner.example/.well-known/agent-card.json")\n  version  "1.0"\n  require  idempotent_messages\n  trust    untrusted\n  caps     Billing\n  skills {\n    quote(order: Text) -> Text\n  }\n`,
+      },
+    };
+    const plain = LOCAL.replace(/\/\/\/ Asks once[\s\S]*$/, "workflow Greet(input: Text) -> Inferred<Text>\n  caps   ModelStd\n  budget { time: 5m, steps: 4 }\n{\n  delegate Greeter.greet(input)\n}\n");
+    // A component the program names only through a capability of the library: plain linking does not see it.
+    const lock = (): Lock => ({ ...lockWith(sys), members: { ana: { keys: [`sha256:${"6".repeat(64)}`] } }, roles: { keeper: ["ana"] } }) as unknown as Lock;
+    const c = await world06(plain.replace("use std.{model}\n", "use std.{model}\nuse acme.sys.{Repos}\n").replace("  caps   ModelStd\n  budget { time: 5m", "  caps   ModelStd, Repos\n  budget { time: 5m"), { libraries: [sys], lock: lock() });
+    expect(componentsOf(c.pkg)).toEqual([]);
+    expect(componentsOf(c.pkg, verifyPackage(c.pkg).running)).toEqual([{ name: "left", repo: "acme/left", root: "/work/left" }]);
+    // Its run prepares that component's working copy, and its manifest names the base commit.
+    const started = await c.rt.startRun({ pkg: c.pkg, workflow: "Greet", input: { input: "Ada" }, runId: "t10" });
+    expect(started.state, JSON.stringify(started.attention ?? started.error)).toBe("succeeded");
+    expect((started.manifest as { components: object }).components).toEqual({ left: { repo: "acme/left", root: "/work/left", base: expect.any(String) } });
+    // A remote agent of the library that requires what its server does not give: the run does not start.
+    const r = await world06(plain.replace("use std.{model}\n", "use std.{model}\nuse acme.sys.{BillingAgent}\n"), { libraries: [sys], lock: lock() });
+    expect(r.pkg.program.defs).not.toHaveProperty("BillingAgent");
+    await expect(r.rt.startRun({ pkg: r.pkg, workflow: "Greet", input: { input: "Ada" }, runId: "t11" })).rejects.toMatchObject({ code: "unsupported_binding" });
+  });
+
+  it("a package of 0.6 whose program is of 0.5 is given no running program: its run links its program plainly, and stores none", async () => {
+    const older = LOCAL.replace("mandate @ 0.6", "mandate @ 0.5").replace(/\/\/\/ Asks once[\s\S]*$/, "workflow Greet(input: Text) -> Inferred<Text>\n  caps   ModelStd\n  budget { time: 5m, steps: 4 }\n{\n  delegate Greeter.greet(input)\n}\n");
+    // Its lock is of the 0.6 format (it has a `libraries` member, which pins none): the package is of 0.6.
+    const w = await world(older, { agents: new SimAgents().on("Greeter.greet", (req) => ({ ok: `hello, ${String((req.args as unknown[])[0])}`, cost: { steps: 1 } })), decisions: { mode: "signed" }, lock: { modules: {}, libraries: {} } as unknown as Lock });
+    expect(w.pkg.program.language).toBe("mandate/0.5");
+    const v = verifyPackage(w.pkg);
+    expect(v.stored).toBeUndefined();
+    expect(v.running).toEqual(linkedProgram(w.pkg.program, {}));
+    w.faults.arm("after_record", (i) => i.kind === "delegate");
+    await expect(w.rt.startRun({ pkg: w.pkg, workflow: "Greet", input: { input: "Ada" }, runId: "t12" })).rejects.toBeInstanceOf(Crash);
+    expect((await w.rt.getRun("t12")).manifest).not.toHaveProperty("expanded");
+    expect((await w.rt.artifacts.list({ tenant: "default", runId: "t12" })).filter((x) => x.media_type === EXPANDED_MEDIA_TYPE)).toEqual([]);
+    const resumed = await w.rt.resume("t12");
+    expect(resumed.state, JSON.stringify(resumed.attention ?? resumed.error)).toBe("succeeded");
+    expect(resumed.result).toBe("hello, Ada");
   });
 });
 
@@ -719,6 +810,51 @@ needs06("the stored expansion", () => {
     expect(run.attention).toMatchObject({ violation: "library_revoked" });
   });
 
+  it("a run of 0.6 is not resumed, replayed or read on the reference compiler: refused by name, and left as it was", async () => {
+    const plain = LOCAL.replace(/\/\/\/ Asks once[\s\S]*$/, "workflow Greet(input: Text) -> Inferred<Text>\n  caps   ModelStd\n  budget { time: 5m, steps: 4 }\n{\n  delegate Greeter.greet(input)\n}\n");
+    const cases: Array<[string, () => Promise<World>, unknown]> = [
+      ["r1", () => world06(LOCAL), { input: "Ada" }],
+      ["r2", () => world06(FROM_LIBRARY, { libraries: [FLOWS], lock: lockWith(FLOWS) }), { input: { text: "Ada" } }],
+      // Neither a pattern nor a library: nothing is stored, and a resume would link the program again.
+      ["r3", () => world06(plain), { input: "Ada" }],
+    ];
+    for (const [runId, make, input] of cases) {
+      const w = await make();
+      w.faults.arm("after_record", (i) => i.kind === "delegate");
+      await expect(w.rt.startRun({ pkg: w.pkg, workflow: "Greet", input: input as never, runId })).rejects.toBeInstanceOf(Crash);
+      const before = await w.rt.getRun(runId);
+      const calls = w.agents.count();
+      const again = new Runtime(w.db, w.adapters, undefined, undefined, { decisions: { mode: "signed" }, artifacts: w.rt.artifacts });
+      const named = { code: "unsupported_language", message: expect.stringContaining("MANDATE_COMPILER=ts") };
+      await expect(withCompiler("ts", () => again.resume(runId)), runId).rejects.toMatchObject(named);
+      await expect(withCompiler("ts", () => again.replayRun(runId)), runId).rejects.toMatchObject(named);
+      await expect(withCompiler("ts", () => again.verifyEvidence(runId)), runId).rejects.toMatchObject(named);
+      // Nothing was taken or written: the run is as it was, for a runtime on the Rust compiler to resume.
+      expect(await w.rt.getRun(runId)).toEqual(before);
+      expect(w.agents.count()).toBe(calls);
+      const resumed = await again.resume(runId);
+      expect(resumed.state, JSON.stringify(resumed.attention ?? resumed.error)).toBe("succeeded");
+      expect(resumed.result).toBe("hello, Ada");
+    }
+  });
+
+  it("an expansion stored without the definitions its program imports (the form before the running program) is not run", async () => {
+    const w = await world06(FROM_LIBRARY, { libraries: [FLOWS], lock: lockWith(FLOWS) });
+    w.faults.arm("after_record", (i) => i.kind === "delegate");
+    await expect(w.rt.startRun({ pkg: w.pkg, workflow: "Greet", input: { input: { text: "Ada" } }, runId: "x9" })).rejects.toBeInstanceOf(Crash);
+    // What that form stored: the expansion alone, under the same media type, its hash in the manifest.
+    const unlinked = check(canonicalize(w.pkg.program as unknown as Json), "json", { libraries: [FLOWS] }).expanded!;
+    expect(unlinked.defs).not.toHaveProperty("Note");
+    await w.db.query("delete from artifacts where run_id = $1", ["x9"]);
+    await w.rt.artifacts.put({ tenant: "default", runId: "x9" }, canonicalize(unlinked as unknown as Json), EXPANDED_MEDIA_TYPE);
+    await w.db.query("update runs set manifest = jsonb_set(manifest, '{expanded}', $2::jsonb) where run_id = $1", ["x9", JSON.stringify(hashProgram(unlinked as unknown as Json).program)]);
+    const calls = w.agents.count();
+    const run = await w.rt.resume("x9");
+    expect(run.state).toBe("attention_required");
+    expect(run.attention).toMatchObject({ violation: "expansion_mismatch", message: expect.stringContaining("without the definitions its program imports (Note, Once)") });
+    expect(w.agents.count()).toBe(calls);
+  });
+
   it("the run views are given the expansion: the program's own definitions as the run runs them", async () => {
     const w = await world06(LOCAL);
     await w.rt.startRun({ pkg: w.pkg, workflow: "Greet", input: { input: "Ada" }, runId: "x7" });
@@ -831,8 +967,7 @@ needs06("a lead's sub-program in a run of 0.6", () => {
     // The same run, once its admission is made to name another hash than what is stored hashes to: a replay runs nothing of it.
     const calls = w.chat.calls.length;
     await w.db.query(`update events set data = jsonb_set(data, '{running,hash}', '"sha256:00"') where run_id = 'sp3' and type = 'program_admitted'`);
-    const replayed = await w.rt.replayRun("sp3").catch((e: unknown) => ({ status: "refused", reason: { violation: (e as { code?: string }).code, message: String((e as Error).message) } }));
-    expect(replayed).toMatchObject({ reason: { violation: "expansion_mismatch", message: expect.stringContaining("what is stored hashes to") } });
+    expect(await w.rt.replayRun("sp3")).toMatchObject({ status: "attention_required", reason: { violation: "expansion_mismatch", message: expect.stringContaining("what is stored hashes to") } });
     expect(w.chat.calls).toHaveLength(calls);
     // Another run, whose stored running program is taken away before it resumes: nothing of it runs.
     const v = await planned(checker, turns(), { src: src() });
@@ -844,6 +979,31 @@ needs06("a lead's sub-program in a run of 0.6", () => {
     expect(stopped.state).toBe("attention_required");
     expect(stopped.attention).toMatchObject({ violation: "expansion_mismatch" });
     expect(String((stopped.attention as { message: string }).message)).toContain("none is stored with the run");
+    expect(await v.rt.replayRun("sp4")).toMatchObject({ status: "attention_required", reason: { violation: "expansion_mismatch" } });
+    // A third, whose stored running program's bytes are changed: the resume stops for a person, the replay reports it.
+    const t = await planned(checker, turns(), { src: src() });
+    t.faults.arm("after_record", (i) => i.kind === "delegate" && i.id.includes("/program/1/"));
+    await expect(run(t, "sp4b")).rejects.toBeInstanceOf(Crash);
+    const [c] = await admissions(t, "sp4b");
+    const scope = { tenant: "default", runId: "sp4b" };
+    const changed = (await t.rt.artifacts.text(scope, c!.running!.artifact)).replaceAll('"skill":"fix"', '"skill":"break"');
+    expect(changed).toContain('"skill":"break"');
+    (t.rt.artifacts.blobs as MemoryBlobs).tamper(c!.running!.artifact.replace(/^.*(sha256:[0-9a-f]{64}).*$/, "$1"), new TextEncoder().encode(changed));
+    const turnsBefore = t.chat.calls.length;
+    const halted = await t.rt.resume("sp4b");
+    expect(halted.state).toBe("attention_required");
+    expect(halted.attention).toMatchObject({ violation: "expansion_mismatch", message: expect.stringContaining("the bytes stored are not the ones stored then") });
+    expect(await t.rt.replayRun("sp4b")).toMatchObject({ status: "attention_required", reason: { violation: "expansion_mismatch" } });
+    expect(JSON.stringify(t.chat.calls.slice(turnsBefore))).not.toContain("break");
+    // A fourth, whose admission is made to name no running program: its sub-program applies a pattern, and is not run as written.
+    const u = await planned(checker, turns(), { src: src() });
+    u.faults.arm("after_record", (i) => i.kind === "delegate" && i.id.includes("/program/1/"));
+    await expect(run(u, "sp4c")).rejects.toBeInstanceOf(Crash);
+    await u.db.query(`update events set data = data - 'running' where run_id = 'sp4c' and type = 'program_admitted'`);
+    expect((await admissions(u, "sp4c"))[0]).not.toHaveProperty("running");
+    const unexpanded = await u.rt.resume("sp4c");
+    expect(unexpanded.state).toBe("attention_required");
+    expect(unexpanded.attention).toMatchObject({ violation: "expansion_mismatch", message: expect.stringContaining("Workflow Fix applies a pattern and is not expanded") });
   });
 
   it("whose running program does not hash to what its check named it by is not admitted (check_failed), and nothing of it runs", async () => {
@@ -860,6 +1020,50 @@ needs06("a lead's sub-program in a run of 0.6", () => {
     expect(JSON.stringify(w.told[0])).toContain("does not hash to what the checker named it by");
     expect(await admissions(w, "sp5")).toEqual([]);
     expect((await w.rt.artifacts.list({ tenant: "default", runId: "sp5" })).filter((x) => x.media_type === RUNNING_PROGRAM_MEDIA_TYPE)).toEqual([]);
+  });
+
+  const plainOps = (language: string): never => {
+    const plain = load(`mandate @ ${language}\n\nmodule ${MODULE}.plan_1 @ 0.1\n\nuse ${MODULE}\n\nworkflow Fix() -> Inferred<Text>\n  caps   ${CAPS}\n  budget ${BUDGET}\n{\n  delegate Worker.fix(Item { name: "a" })\n}\n`, "mdt");
+    return Object.entries(plain.program!.defs).map(([name, d]) => ({ op: "add", path: `/defs/${name}`, value: d })) as never;
+  };
+
+  it("that applies no pattern and is given a running program by its check is not admitted (check_failed): it would run in place of what the lead wrote", async () => {
+    const lying: ProgramChecker = {
+      check: async (i, ms) => {
+        const r = await checker.check(i, ms);
+        if (!("ok" in r) || !r.ok || !r.program) return r;
+        // Another program than the lead wrote, named by its own hash: only that the sub-program applies nothing refuses it.
+        const other = JSON.parse(JSON.stringify(r.program).replace('"name":"a"', '"name":"other"')) as Program;
+        return { ...r, running: other, running_hash: hashProgram(other as unknown as Json).program } as never;
+      },
+    };
+    const w = await planned(lying, [[toolUse("s1", "submit_program", { base: base1, ops: plainOps("0.6") })], finish("planned")], { src: src() });
+    const r = await run(w, "sp6");
+    expect(r.state, JSON.stringify(r.attention ?? r.error)).toBe("succeeded");
+    expect(w.told[0]).toMatchObject({ admitted: false });
+    expect(JSON.stringify(w.told[0])).toContain("a running program for a sub-program that applies no pattern");
+    expect(await admissions(w, "sp6")).toEqual([]);
+    expect(JSON.stringify(w.chat.calls)).not.toContain("fixed other");
+  });
+
+  it("of a parent of 0.4 is checked and admitted as before 0.6: the check's members and the admission's are the old ones", async () => {
+    const answers: object[] = [];
+    const seeing: ProgramChecker = {
+      check: async (i, ms) => {
+        const r = await checker.check(i, ms);
+        answers.push(r);
+        return r;
+      },
+    };
+    const w = await planned(seeing, [[toolUse("s1", "submit_program", { base: baseOf(MODULE, 1), ops: plainOps("0.4") })], finish("planned")]);
+    expect(w.pkg.program.language).toBe("mandate/0.4");
+    const r = await run(w, "sp7");
+    expect(r.state, JSON.stringify(r.attention ?? r.error)).toBe("succeeded");
+    expect(w.told[0]).toMatchObject({ admitted: true, result: "fixed a" });
+    expect(answers.map((a) => Object.keys(a))).toEqual([["ok", "diagnostics", "program", "hash", "workflow"]]);
+    const [a] = await admissions(w, "sp7");
+    expect(Object.keys(a!).sort()).toEqual(["artifact", "base", "command", "hash", "number", "plan", "reservation", "step", "workflow"]);
+    expect((await w.rt.artifacts.list({ tenant: "default", runId: "sp7" })).filter((x) => x.media_type === RUNNING_PROGRAM_MEDIA_TYPE)).toEqual([]);
   });
 
 });

@@ -100,7 +100,10 @@ pub(super) const CHECK: &[&str] = &["text", "kind", "opts"];
 /// pins as `[{ manifest, files }]` (as the library doors take them), and
 /// `config`, the `libraries` member of the runtime's configuration, whose
 /// revoked digests a pin is held to (E1608); and a third, `linked`, a
-/// boolean that asks for the running program of a program of 0.6.
+/// boolean that asks for the running program of a program of 0.6. For a
+/// program of 0.1 to 0.5 the member is not read at all, as the TypeScript
+/// does not read it: whatever it holds, the answer is what it was. For a
+/// program of 0.6 that loads, one that is not a boolean is `bad_input`.
 /// Output: `CheckResult`, `{ program?, spans, diagnostics, ok, hashes? }`,
 /// `spans` as [`load`] gives it and `hashes` `{ program, defs }`. Language
 /// 0.6 adds, after them, `expanded` (the expanded program of a program that
@@ -116,6 +119,7 @@ pub(super) fn check(input: &Value) -> Result<JsValue, DoorError> {
     let mut opts = CheckOptions::default();
     let mut libraries = Vec::new();
     let mut config = None;
+    let mut linked_wrong = None;
     if let Some(o) = a.opt_members("opts", "opts.")? {
         opts.lock = o.opt_lock("lock");
         opts.modules = o.opt_modules("modules")?;
@@ -124,13 +128,26 @@ pub(super) fn check(input: &Value) -> Result<JsValue, DoorError> {
         // configuration's `libraries` member (its revoked digests).
         libraries = super::library::sources_of(o, "libraries")?;
         config = super::library::config_of(o)?;
-        opts.linked = o.opt_bool("linked")?.unwrap_or(false);
+        // Held until the program's language is known: a program of 0.1
+        // to 0.5 is answered as before, whatever this member holds.
+        match o.opt_bool("linked") {
+            Ok(asked) => opts.linked = asked.unwrap_or(false),
+            Err(e) => linked_wrong = Some(e),
+        }
     }
     if !libraries.is_empty() {
         opts.libraries = Some(&libraries);
     }
     opts.revoked = config.as_ref().map(mandate_lib::LibrariesConfig::revoked);
     let r = crate::check::check(text, kind, &opts);
+    if let Some(e) = linked_wrong
+        && r.program
+            .as_ref()
+            .and_then(mandate_ir::Program::of)
+            .is_some_and(crate::check::reads_0_6)
+    {
+        return Err(e);
+    }
     Ok(JsObject::new()
         .with_some("program", r.program.as_ref().map(ir))
         .with("spans", spans_js(text, kind, &r.spans))

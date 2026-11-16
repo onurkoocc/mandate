@@ -21,7 +21,7 @@ import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { costDims, haltedRefusal, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
-import { buildPackage, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
+import { buildPackage, isPackage06, isSigned04, libraryModules, refuseReference06, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { canonical, digest, isObj, type Obj, type Value } from "./values.js";
@@ -299,7 +299,10 @@ export class Runtime {
     // A workflow with an envelope starts only once a member of its owner role approved this package (H03).
     const approval = wf.envelope ? await this.envelopeApproval(o.pkg, o.workflow, wf.envelope) : undefined;
     const approved = approval ? { package: o.pkg.hash, member: approval.record.member, role: approval.record.role ?? null, key: approval.record.key, decision: approval.decision_id } : undefined;
-    const lowered = this.remoteGuarantees(o.pkg.program);
+    // 0.6: what the run runs, so that a remote agent or a component a library or an expansion brings is seen; before
+    // 0.6, the program as packaged, as it was.
+    const seen = isPackage06(o.pkg) ? verified.running : undefined;
+    const lowered = this.remoteGuarantees(seen ?? o.pkg.program);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(workflowBounds(wf).budget), costDims(o.limits));
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
@@ -308,7 +311,7 @@ export class Runtime {
     const early = await this.journal.openHalt(policy.tenant);
     if (early) throw haltedRefusal(early, `Run ${runId} does not start`);
     // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
-    const components = await this.prepareWorkspace(runId, o.pkg);
+    const components = await this.prepareWorkspace(runId, o.pkg, seen);
     // The manifest of a run under an envelope lists the approval it starts under; another run's manifest is as it was.
     // A run that stores its running program (0.6: its program applies a pattern, or its lock pins a library) names it
     // by its hash, as `expanded`; it stores it with the run.
@@ -421,8 +424,8 @@ export class Runtime {
    * at its base commit. A program that works on components and a runtime
    * without a workspace adapter do not start (INV-11).
    */
-  private async prepareWorkspace(runId: string, pkg: Package): Promise<RunComponents> {
-    const wanted = componentsOf(pkg);
+  private async prepareWorkspace(runId: string, pkg: Package, running?: Program): Promise<RunComponents> {
+    const wanted = componentsOf(pkg, running);
     if (!wanted.length) return {};
     const ws = this.adapters.workspace;
     if (!ws) throw new Violation("no_workspace", `The program works on components (${wanted.map((c) => c.name).join(", ")}), and this runtime has no workspace adapter.`);
@@ -528,6 +531,9 @@ export class Runtime {
     // Every resume checks the host against the package's lock before it takes the lease. An unfit host takes nothing
     // and writes nothing: the run stays as it was, for a fit host to resume (unfit_host). A finished run runs nothing.
     const current = await this.journal.run(runId);
+    // A run of 0.6 is driven on the Rust compiler alone: on the reference it is refused by name before anything is
+    // taken or written, and stays as it was.
+    if (!TERMINAL.has(current.state)) refuseReference06(await this.packaged(current.package_hash));
     if (!TERMINAL.has(current.state)) await checkFitness((await this.packaged(current.package_hash)).lock, this.hostProbe);
     const { run, fence } = await this.journal.acquire(runId);
     if (TERMINAL.has(run.state)) return run;
@@ -750,8 +756,19 @@ export class Runtime {
    */
   private async loaded(packageHash: string, run?: RunRow): Promise<Loaded> {
     const p = await this.packaged(packageHash);
+    // The program of a run of 0.6 is read on the Rust compiler alone (a resume, a replay, its evidence).
+    if (run) refuseReference06(p);
     const modules = await this.linking(packageHash);
     const stored = run ? await this.storedExpansion(run) : undefined;
+    if (stored) {
+      // A running program holds every definition its program imports by name from a module the run links. One that
+      // lacks such a definition is an expansion that was stored without them (the form before the running program
+      // was stored): the run would meet a name with no definition, so it is not run.
+      const missing = (stored.uses ?? []).flatMap((u) => (Object.hasOwn(modules, u.module) ? (u.names ?? []).filter((n) => !Object.hasOwn(stored.defs, n)) : []));
+      if (missing.length) {
+        throw new Violation("expansion_mismatch", `Run ${run!.run_id} stored an expansion without the definitions its program imports (${[...new Set(missing)].sort().join(", ")}): it is not a running program, and is not run (spec/library.md).`);
+      }
+    }
     return { program: stored ?? linkedProgram(p.program, modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules };
   }
 
@@ -831,7 +848,8 @@ export class Runtime {
    */
   async verifyEvidence(runId: string): Promise<Array<{ evidence_id: string; criterion: string; valid: boolean; key_id: string | null }>> {
     const run = await this.journal.run(runId);
-    const { lock, signed, program } = await this.loaded(run.package_hash);
+    // The run's program: the running program it stored (0.6), which holds the contracts a pattern of a library names.
+    const { lock, signed, program } = await this.loaded(run.package_hash, run);
     // A person's approval rests on their signed decision (H04): the record it names must still be the one they signed.
     const decisions = new Map((await this.journal.decisions(runId)).map((d) => [d.decision_id, d]));
     const rule: AttestationRule = { keys: this.verifiers, inProcess: this.inProcess };
@@ -1487,6 +1505,8 @@ export class Runtime {
       if (e instanceof ReplayEnd) return e.reason === "payload_purged" ? { status: "incomplete_replay", missing: e.commandId } : { status: "partial", stoppedAt: e.commandId };
       if (e instanceof Fault) return { status: "failed", error: e.value() };
       if (e instanceof Attention) return { status: "attention_required", reason: e.reason };
+      // A sub-program's stored running program that is missing or another: reported as the run's own is, above.
+      if (e instanceof Violation && e.code === "expansion_mismatch") return { status: "attention_required", reason: { violation: e.code, message: e.message } };
       throw e;
     }
   }
@@ -1600,11 +1620,15 @@ export function refusingAdapters(real: Adapters): Adapters {
 /** The format of a run's manifest: what it started from (design doc 9 §12). */
 export const RUN_MANIFEST_FORMAT = "mandate/run-manifest/0.1";
 
-/** The components of the package's system model that its program refers to, by name. */
-export function componentsOf(pkg: Package): WorkspaceComponent[] {
-  const defs = link(pkg.program, pkg.modules).defs;
+/**
+ * The components of the package's system model that its program refers to, by name. With `running` (0.6), the
+ * program a run of the package runs, which holds every definition it sees: the components any of them refers to,
+ * those a library's definition or a pattern's expansion names among them.
+ */
+export function componentsOf(pkg: Package, running?: Program): WorkspaceComponent[] {
+  const defs = running ? running.defs : link(pkg.program, pkg.modules).defs;
   const names = new Set<string>();
-  for (const d of Object.values(pkg.program.defs)) for (const r of references(d)) if (Object.hasOwn(defs, r) && defs[r]!.kind === "component") names.add(r);
+  for (const d of Object.values(running ? running.defs : pkg.program.defs)) for (const r of references(d)) if (Object.hasOwn(defs, r) && defs[r]!.kind === "component") names.add(r);
   return [...names].sort().map((name) => {
     const c = defs[name] as Extract<(typeof defs)[string], { kind: "component" }>;
     return { name, repo: c.repo, root: c.root };

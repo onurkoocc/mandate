@@ -71,7 +71,7 @@ import { addCounts, CompilerDivergence, CompilerFailure, compilerForWorker, keep
 import type { Outcome, ToolSpec } from "./adapters.js";
 import { refOf, sha256Of, type ArtifactScope, type ArtifactStore } from "./artifacts.js";
 import type { Admission, CommandRow, Journal } from "./journal.js";
-import { subprogramNotRunYet, type AmendedCheck, type AmendedInput } from "./package.js";
+import { applications, subprogramNotRunYet, type AmendedCheck, type AmendedInput } from "./package.js";
 import { Fault, Suspend, Violation } from "./signals.js";
 import { canonical, digest, isObj, type Value } from "./values.js";
 
@@ -526,7 +526,10 @@ export class Planner {
       const result: SubprogramCheck06 | undefined = "limit" in checked || "failed" in checked ? undefined : checked;
       const running = result?.ok && result.running ? { program: result.running as unknown as Program, hash: hashProgram(result.running as unknown as Json).program } : undefined;
       const misnamed = running !== undefined && running.hash !== result!.running_hash;
-      const unrun = result?.ok && result.program && !misnamed ? subprogramNotRunYet(result.program, h.parent, h.modules, running?.program) : [];
+      // A running program is what a sub-program that applies a pattern runs as, and nothing else: one given for a
+      // sub-program that applies none would run in place of what the lead wrote.
+      const unasked = running !== undefined && !!result?.program && applications(result.program).length === 0;
+      const unrun = result?.ok && result.program && !misnamed && !unasked ? subprogramNotRunYet(result.program, h.parent, h.modules, running?.program) : [];
       const stopped =
         "limit" in checked
           ? limitDiagnostic(checked)
@@ -534,6 +537,8 @@ export class Planner {
             ? failedDiagnostic(checked)
             : misnamed
               ? failedDiagnostic({ failed: "the running program of the sub-program does not hash to what the checker named it by" })
+              : unasked
+                ? failedDiagnostic({ failed: "the checker gave a running program for a sub-program that applies no pattern" })
               : unrun.length
                 ? notRunDiagnostic(unrun)
                 : undefined;

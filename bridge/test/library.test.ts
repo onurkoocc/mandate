@@ -141,5 +141,21 @@ needs("library_verify and the check of 0.6 on the Rust compiler", () => {
       expect(o).not.toHaveProperty("linked");
     });
   });
+
+  it("answers a program of 0.5 as the reference does whatever `linked` holds: compared in `both`, and none excused", () => {
+    const older = `${APPLIES.replace("mandate @ 0.6", "mandate @ 0.5").replace("use acme.flows.{Once, Note}\n", "").replace("workflow Greet = Once(work: Greeter.greet)", "workflow Greet(name: Text) -> Inferred<Text>")}{\n  delegate Greeter.greet(name)\n}\n`;
+    const plain = withCompiler("ts", () => check(older, "mdt", {}));
+    expect(plain.ok).toBe(true);
+    const excused = exemptionCounts()["language-0.6"] ?? 0;
+    // `both` throws when the two compilers differ: a member the reference does not read changes nothing of the answer.
+    for (const linked of [true, false, "yes", 1, [], {}]) {
+      const r = withCompiler("both", () => check(older, "mdt", { linked } as never));
+      expect(r, JSON.stringify(linked)).toEqual(plain);
+      expect(r).not.toHaveProperty("linked");
+    }
+    expect(exemptionCounts()["language-0.6"] ?? 0).toBe(excused);
+    // For a program of 0.6 the member is a boolean.
+    expect(() => withCompiler("rust", () => check(APPLIES, "mdt", { libraries: [FLOWS], linked: "yes" } as never))).toThrow(Error);
+  });
 });
 

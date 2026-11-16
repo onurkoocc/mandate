@@ -335,6 +335,9 @@ export class Interpreter {
   async runWorkflow(name: string, input: Obj): Promise<Value> {
     const wf = this.def(name);
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${name}'.`);
+    // 0.6: a workflow that applies a pattern runs as its expansion, which its check gave and the run stored. One that
+    // still applies it has no body to run: it is never run as written, whatever led here.
+    if ((wf as { apply?: unknown }).apply !== undefined) throw new Violation("expansion_mismatch", `Workflow ${name} applies a pattern and is not expanded: a run runs the expansion stored for it, and no other (spec/library.md).`);
     const vars = new Map<string, Value>();
     for (const p of wf.params) {
       if (!Object.hasOwn(input, p.name)) throw new Violation("missing_input", `Workflow ${name} needs input '${p.name}'.`);
