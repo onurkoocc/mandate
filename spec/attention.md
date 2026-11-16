@@ -16,7 +16,7 @@ best-effort basis.
 |---|---|---|
 | Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | not implemented yet |
 | `stage`: grammar, IR, printer; E1901, E1902 | RL2 | not implemented yet |
-| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage` and `report` | RL3 | not implemented yet |
+| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | not implemented yet |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | not implemented yet |
 | The facts (`attention_facts`) | RL3, RL4 | not implemented yet |
 | `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909, E1910 | RL5 | not implemented yet |
@@ -26,7 +26,7 @@ best-effort basis.
 | The card of a 0.7 program | RP2 | not implemented yet |
 | The MCP tools of 0.7 (`mcp_tools`); a native `mandate mcp` | RP3, RP4, B9 | not implemented yet |
 | Stages and reports at run time; the stored facts and `facts_mismatch` | B2 | not implemented yet |
-| `asks` at run time; `asks_exhausted` | B3 | not implemented yet |
+| `asks` at run time; the bound under the runtime's configuration and `attention_above_asks`; `asks_exhausted` | B3 | not implemented yet |
 | Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | not implemented yet |
 | `mandate watch`, `mandate waits`, `mandate decide` | B5 | not implemented yet |
 | Card approval of a workflow with an `owner`; the `promote` decision and the ladder; `mandate promote` | B6 | not implemented yet |
@@ -149,7 +149,9 @@ statements stay `body/i`, counted with the stage markers among them.
 
 - **Where.** Only as a top-level statement of a workflow's body or of a
   pattern's body (E1901): not in a block, a branch, a loop, a map's body, a
-  function or a handler. A sub-program a lead writes has none (E1705).
+  function or a handler. One written in a sub-program's own text is E1705; a
+  sub-program that applies a listed shape has the pattern's stages
+  ([below](#sub-programs-and-amendments)).
 - **The list.** Stage names are unique within one body. A body that has
   stages starts with one. Each stage is followed by at least one statement,
   and the statement directly after it is not `on error`. Otherwise E1902.
@@ -188,14 +190,16 @@ nobody.
 - **What a field may be (E1904).** A field's expression is pure: it holds no
   `delegate`, `spawn`, `await`, `infer`, `verify`, `effect`, `changeset`,
   `map`, `plan`, `escalate`, `pause`, `human.*`, function call or tool call.
-  The built-in `len`, and the other built-ins that have no effect, may be
-  used. Its type is displayable: `Int`, `Dec`, `Bool`, `Text`, `Money`,
+  The one call it may hold is the built-in `len`; any other call, a built-in
+  or not, is E1904. Its type is displayable: `Int`, `Dec`, `Bool`, `Text`, `Money`,
   `Duration`, `Time`, an enum, an `Option` or a `List` of one of these, or a
   record of these one level deep, each of them optionally inside `Verified`,
   `Inferred` or `Untrusted`.
 - **Where (E1905).** Not in a map's body, in a loop without `max_iter`, in a
   function, in an `on error`, `on unmet` or `on budget_exceeded` handler, or
-  in a test. A sub-program a lead writes has none (E1705).
+  in a test. One written in a sub-program's own text is E1705; a sub-program
+  that applies a listed shape makes the pattern's reports
+  ([below](#sub-programs-and-amendments)).
 - **The title** follows the [title rules](#titles) (E1903).
 - **What it costs.** A report is pure, so it reserves nothing, counts in no
   budget, and does not count toward the limit of expanded nodes.
@@ -207,7 +211,8 @@ nobody.
 ### Titles
 
 A stage's and a report's title is a constant string: the parser refuses
-interpolation in it, as it does today. It holds 1 to 80 characters and no
+interpolation in it, as it does today. It holds 1 to 80 characters, counted
+as Unicode scalar values, and no
 C0 or C1 control, no format character (Unicode category Cf) and no
 bidirectional control. A title is written by the program's author, and a
 person reads it on the card; a lead's model never writes one.
@@ -229,9 +234,11 @@ workflow := "workflow" Ident params "->" type [ "owner" Ident ] ( envelope | "ca
 `owner r` names the role that approves the workflow's card before any run
 of it ([Card approval](#card-approval)) and signs its promotions
 ([Promotion](#promotion)). It is the counterpart, for a workflow without an
-envelope, of an envelope's `owner`. A workflow that applies a pattern may
-write one. A workflow with an envelope writes none: its envelope's `owner`
-has that place (E1910). A workflow with neither an `owner` nor an envelope
+envelope, of an envelope's `owner`. It names a role definition and is a role
+site of the program: E1501 when no definition has the name, E1502 with a lock
+that binds nobody to it. A workflow that applies a pattern may write one; a
+sub-program a lead writes may not (E1705). A workflow with an envelope
+writes none: its envelope's `owner` has that place (E1910). A workflow with neither an `owner` nor an envelope
 needs no card approval, as before; with `promotion: "required"` in the lock
 it is E1910, since nobody could promote it.
 
@@ -284,13 +291,13 @@ release ("Attention").
 | E1902 | Malformed stage list | Two stages of one body with one name; a statement before the first stage of a body that has stages; a stage directly before another stage or at the end of the body; `on error` directly after a stage; a title that breaks the title rules |
 | E1903 | Malformed report | A title that breaks the title rules; two fields with one name in IR (text gets E0121); in a pattern, a role that is not one of its role slots |
 | E1904 | Report field not shown | A field that is not pure, or whose type is not displayable |
-| E1905 | Report out of place | A report in a map's body, a loop without `max_iter`, a function, a handler or a test. In a lead's sub-program a `report` or a `stage` is E1705, with the fact `construct: "report"` or `"stage"` |
+| E1905 | Report out of place | A report in a map's body, a loop without `max_iter`, a function, a handler or a test. A `report`, a `stage` or an `owner` written in a lead's sub-program is E1705, with the fact `construct: "report"`, `"stage"` or `"owner"` |
 | E1906 | Attention above `asks` | The static attention total of the workflow is above its declared `asks` |
 | E1907 | Attention without a bound | The workflow declares `asks` and a question stands where the bound cannot count it (a loop without `max_iter`, recursion) |
 | E1908 | `asks` out of place | `asks` in any budget but a workflow's or an envelope's |
 | E1909 | Role shown data above its class | With a lock: a question asked of a role, the role a review escalates to, or a report to a role shows data above that role's class in `role_classes` |
 | E1910 | Owner misplaced or missing | `owner` on a workflow with an envelope; or a lock with `promotion: "required"` and a workflow with neither an `owner` nor an envelope |
-| E1609 | Module of a newer language | A program imports a module, or pins a library, whose language is newer than its own (a 0.6 lock that pins `std.patterns` 2.0.0) |
+| E1609 | Module of a newer language | A program of 0.6 or later imports a module, or pins a library, whose language is newer than its own (a 0.6 program's lock that pins `std.patterns` 2.0.0); a program of 0.1 to 0.5 stays E1603 |
 | E1509 | Criterion method name reserved | In 0.7: a criterion's verifier whose callee path is `verify` or `waiver` |
 
 E1509 brings to the check what the runtime already refuses at load
@@ -320,12 +327,12 @@ open. Each site counts as follows:
 |---|---|
 | `verify` against a contract | 1 for each `human.approve` its criteria hold; approvals joined with `and` count one by one |
 | `human.ask(…)` | 1, to its role |
-| `escalate human(…)` | 1, to its role |
+| `escalate …` | 1, whatever its target: every `escalate` waits. To the role a `human(…, role: r)` target names, otherwise to no role |
 | `pause` without `then` | 1, to no role |
 | `supervise escalate` | 5 (`SUPERVISE_ESCALATIONS`), the most escalations it makes; the one constant of the specification, the compiler and the runtime, and a test holds it equal to the runtime's `MAX_ESCALATIONS` |
-| An effect a person authorizes | 1, to the role that authorizes it |
-| A change set | 1 for each approval it asks |
-| A governance gate | 1 for each action whose write scope can reach a governance-class file (`GOVERNANCE_FILES`) |
+| An effect the program hands to a person | 1, to that role ([below](#effects-and-the-runtimes-configuration)) |
+| A change set | 1 for each member's authorization that asks a person, and 1 for the set's approver |
+| An action that touches a governance-class file (`GOVERNANCE_FILES`) | 1 to the file's owner, which takes the place of an authorization by policy; and when another role authorizes the action too, the owner's gate is 1 more |
 | `human.review(…)` | 1 to its `role`, and 1 more to its `escalate_to`, marked `only: on_escalation` |
 | `plan` | a dynamic row, "out of what is left of `asks`": each sub-program is held at its admission, and each amendment a lead asks for is counted when it is asked |
 
@@ -336,6 +343,35 @@ for them by the program: a person acts on their own.
 
 An escalation of a review is a question: it spends another person's
 attention. So the invoice flow's `asks` is 2.
+
+### Effects and the runtime's configuration
+
+The program itself hands an effect to a person, and the static total counts
+it, in these cases:
+
+- the envelope's `approve E by r`: to `r`;
+- an environment whose tier is `by human`: to the tier's role;
+- a member of a change set: to the member's approver;
+- an irreversible action: under the runtime's default policy, to the role
+  named `owner`.
+
+That is the limit of what the compiler sees. The runtime's `authorize`
+configuration (`StartRun`'s `authorize`, the runtime's policy) can hand
+further effects to a person, or an irreversible one to policy, and no check
+of the program can know it. So:
+
+- **The facts list every effect site**, with its effect's name, its
+  multiplicity, and whether the static total already counts it.
+- **At the start of a 0.7 run**, the runtime computes the bound under its
+  configuration: the static total, plus the multiplicity of every effect
+  site that its configuration hands to a person and the static total does not
+  count. A site its configuration hands to policy stays counted. It is a sum,
+  so it is sound and not tight.
+- **When an `asks` limit applies** and that bound is above it, the start is
+  refused, `attention_above_asks`: the counterpart, at deployment, of E1906.
+- **The attention view says so**: the runtime's configuration may add
+  authorizations by a person, and a run whose configuration adds more than
+  `asks` leaves room for does not start.
 
 ### The algebra
 
@@ -383,11 +419,25 @@ records `declined`; a lead's amendment request records `refused_to_lead`.
 
 ### Sub-programs and amendments
 
-- **Admission (E1706).** A sub-program's questions come out of what is left
-  of the run's `asks`. Its admission reserves its declared `asks`, or, when
-  its workflow declares none, its static attention total; a sub-program that
-  does not fit what is left is E1706, with `asks` as the dimension. The
-  questions it asks then come out of that reservation.
+- **Admission (E1706).** Under an envelope that limits `asks`, a
+  sub-program's questions come out of what is left of the run's `asks`. A
+  sub-program need not name `asks` in its budget: its admission reserves its
+  declared `asks`, or, when its workflow declares none, its static attention
+  total. A sub-program that does not fit what is left, or whose total is
+  unbounded and that declares no `asks`, is E1706, with `asks` as the
+  dimension. The questions it asks then come out of that reservation. Under
+  an envelope without `asks`, nothing is reserved.
+- **What a sub-program may show.** A `stage`, a `report` or an `owner`
+  written in a sub-program's own text is E1705 (fact `construct`: `stage`,
+  `report` or `owner`). A sub-program whose workflow applies a pattern the
+  envelope's `shapes` lists ([`library.md`](library.md#shapes), E1710) runs
+  that pattern's stages and reports: the pattern's text is pinned by the lock
+  and named on the approved card, so no lead wrote them. Their `stage_*`
+  events carry `program`; their reports go to the role the application binds
+  to the pattern's role slot, masked as everywhere. The check of a
+  sub-program is not given the lock (`SubprogramInput`,
+  `crates/mandate-check/src/doors.rs`), so E1909 is not raised at admission:
+  what such a report shows is held by the runtime's masking alone.
 - **Amendments (E1709).** In 0.7 an amendment's envelope that drops `asks`,
   adds it where there was none, or lowers it, narrows the envelope (E1709,
   dimension `asks`), as for every other dimension.
@@ -401,6 +451,8 @@ it). For a workflow it gives, by IR node path:
 
 - each stage: its name, title and position;
 - each question site: the facts [above](#what-each-question-records);
+- every effect site: its effect's name, its multiplicity, and whether the
+  static total counts it ([above](#effects-and-the-runtimes-configuration));
 - each report: its role, title and stage, and for each field its name, type,
   data class, level, and multiplicity;
 - the totals `A`, `T` and `R`, the declared `asks`, and the rows of the
@@ -426,6 +478,11 @@ the workflow tells each role. It is made from the facts and the lock only.
 - **MCP.** The `project` tool offers it ([The MCP server](#the-mcp-server)).
 - **Roles.** Each role shows the members the lock binds to it, and the class
   it may be shown (`role_classes`, `internal` when the lock does not say).
+- **The bound.** The view gives the total and the declared `asks`, or says
+  that no bound is declared. It says that the runtime's configuration may add
+  authorizations by a person that the program does not name, and that a run
+  whose configuration adds more than `asks` leaves room for does not start
+  (`attention_above_asks`).
 
 ### The invoice flow
 
@@ -461,7 +518,8 @@ these:
   first deadline has passed, and the escalated question's deadline counts from
   that escalation, not from the first deadline.
 - **What it tells whom**: each report, with its role, stage, title and fields,
-  each field with its class and how it is known.
+  each field with its class and how it is known. For an envelope with
+  `shapes`, it says, per shape, what its sub-programs may report.
 - **The owner**: for a workflow with an `owner`, that a member of that role
   approves the card before any run, with the members the lock binds to it.
   Nobody amends a workflow without an envelope.
@@ -518,6 +576,15 @@ reported at the lock's root, since the older schemas close their objects.
   the role is, and the lock is part of the package hash: raising a role's
   class is a new package, which a card approval of the old one does not
   cover.
+- **Formats and languages.** A lock is read by the schema of its own format,
+  whatever the program's language, as today (`lock_schema_of`). A 0.7 program
+  accepts a lock of an older format: with no `role_classes` every role may be
+  shown `internal`, and with no `promotion` there is no ladder. A 0.6 program
+  given a 0.7 lock: its runs mask nothing and climb no ladder, so a
+  `role_classes` or a `promotion` in that lock would not apply. The precedent
+  is E1803, which refuses a lock's `isolation` and `egress` for a program
+  before 0.5 rather than drop them silently (INV-11); the check refuses
+  these two fields for a 0.6 program the same way.
 
 ## `std.patterns` 2.0.0
 
@@ -561,10 +628,13 @@ stages `work` and `merge`, and `MakerChecker` 2.0.0 the stages `make` and
 `check`; neither has a report.
 
 - **Which version.** The version the lock pins. Without a pin, 2.0.0 for a
-  0.7 program and 1.0.0 for a 0.6 one.
-- **A newer module (E1609).** A program that imports a module, or whose lock
-  pins a library, of a language newer than its own is E1609: a 0.6 program
-  cannot read 2.0.0, and a 0.6 lock that pins it is refused.
+  0.7 program and 1.0.0 for a 0.6 one. `mandate add std.patterns` pins the
+  newest embedded version whose language is not newer than the program's.
+- **A newer module (E1609).** A program of 0.6 or later that imports a
+  module, or whose lock pins a library, of a language newer than its own is
+  E1609: a 0.6 program cannot read 2.0.0, and a 0.6 program's lock that pins
+  it is refused. A program of 0.1 to 0.5 that imports a 0.6 or a 0.7 module
+  stays E1603.
 - **Reports are governance.** In 0.7 a library's [authority
   signature](library.md#the-authority-signature) records, for each workflow
   and pattern, the reports it makes: each report's role or role slot and the
@@ -595,9 +665,10 @@ stages `work` and `merge`, and `MakerChecker` 2.0.0 the stages `make` and
 - **Stages.** `stage_started` is written once for a stage node, however
   often the run is resumed and comes to it again, and nothing is written in
   a replay, as `map_started` is. `stage_ended` is written with the next
-  stage's `stage_started`, or before the run's `run_succeeded`. A stage of a
-  sub-program names its `plan` node and number in `program`, and is shown
-  under the stage of that `plan` node.
+  stage's `stage_started`, or before the run's `run_succeeded`. `index` is the
+  stage's position among its body's stages, from 0, as IR positions count. A
+  stage of a sub-program names its `plan` node and number in `program`, and
+  is shown under the stage of that `plan` node.
 - **Reports.** `report` is written once for a report's command id, with each
   field's value, class, level and type. A value whose canonical form is longer
   than 64 KiB is written `{ "$omitted": { "bytes": n } }`. Nothing is written
@@ -626,9 +697,16 @@ on does not change what that run shows, masks or counts.
 ### `asks` at run time
 
 - **The limit.** At the start of a run of a 0.7 package, the run's `asks`
-  limit is the smaller of the workflow's (or its envelope's) declared `asks`
-  and the caller's `--limit asks=N`, kept as a row `asks` of the run's
-  budget.
+  limit is the declared `asks` of the workflow (or of its envelope) and the
+  caller's `--limit asks=N` taken together as every other limit is
+  (`minLimits`): with only the declared value, that value; with both, the
+  smaller; with only the caller's, the caller's. It is kept as a row `asks` of
+  the run's budget. With neither, the run has no `asks` limit and no such row,
+  nothing is refused for it, and the attention view says that no bound is
+  declared.
+- **At the start**, when a limit applies, the bound under the runtime's
+  configuration ([above](#effects-and-the-runtimes-configuration)) is compared
+  with it, and a bound above it refuses the start (`attention_above_asks`).
 - **Counting.** A question is counted when its wait opens, in the transaction
   that holds the run's lock and opens it, after the check for an existing
   row: a wait the journal already holds is not counted again. Outside a
@@ -643,15 +721,20 @@ on does not change what that run shows, masks or counts.
   - a review's escalation is not made, and the review expires: every open
     item is declined, by nobody;
   - a lead's amendment request is refused to the lead;
-  - any other question fails its step with that fault.
+  - any other question fails its step with `Rejected(asks_exhausted)`, which
+    an `on error` handler may handle: a `human.approve` criterion is unmet,
+    and an effect is not authorized and not committed.
 - **Sub-programs.** An admission reserves the sub-program's declared `asks`,
-  or its static total ([above](#sub-programs-and-amendments)).
+  or its static total ([above](#sub-programs-and-amendments)); under an
+  envelope without `asks`, nothing.
 - **A raise.** `raise-limits` may raise a run's `asks` up to the declared
   value, and no further. Raising the bound by asking someone would spend the
   very thing that ran out, so nothing asks for it.
 - **The bound holds.** A test hook asserts, for every test run of a 0.7
-  package, that the questions it settled are at most the static total in its
-  stored facts; a test of the sources asserts that every place the runtime
+  package, that the questions it settled are at most the bound under the
+  run's configuration: the static total in its stored facts, plus what its
+  configuration adds ([above](#effects-and-the-runtimes-configuration)); a
+  test of the sources asserts that every place the runtime
   opens a wait carries a site tag the compiler's algebra knows.
 - Replay counts nothing: it reads what the journal holds.
 
@@ -688,7 +771,8 @@ A role's view of a 0.7 run (`runView(rt, run, { role })`, `mandate show
 | `reports` | Each report addressed to the role, its fields as `Shown` |
 | `programs` | How many sub-programs started and ended |
 
-A run of 0.1 to 0.6 has none of them, so the digests of its views hold.
+All three are S2 sections; `reports` holds only what is addressed to the
+role. A run of 0.1 to 0.6 has none of them, so the digests of its views hold.
 
 ### `WatchRun`
 
@@ -710,7 +794,8 @@ most `limit` (at most 500) at a time.
    request, `run_succeeded` the result, `run_failed` the error. An event type
    with no entry is given as `{seq, at, type, class}` only. A test requires
    every event type the runtime writes to have an entry, or an explicit
-   "nothing" entry.
+   "nothing" entry. The allow-list is a table beside the event-class table of
+   [`boundary.md`](boundary.md#classes), added there with its implementation.
 3. **The values** of the projections of `wait_opened` and `report` are
    masked and labelled.
 
@@ -757,11 +842,17 @@ Promotion is enforced only when the package's lock says `promotion:
 - a `design` run needs no promotion;
 - a `read_only` run needs a promotion from a succeeded `design` run of the
   same package and workflow;
-- a `live` run needs a promotion from a succeeded `read_only` run of the same
-  package and workflow, which carries the digest of the shadow diff of that
-  run against the `design` run it was promoted from.
+- a `live` run needs a promotion from a succeeded `read_only` run A of the
+  same package and workflow, which carries the digest of the shadow diff of A
+  against D, the `design` run named by the promotion A itself started under
+  (A's manifest `promotion`).
 
-A promotion is a signed decision record of kind `promote`, in the owner role:
+A promotion holds for every later run of the same package hash and workflow
+in its target mode, not for one run. A changed package is a new hash, and
+needs new promotions.
+
+A promotion is a signed decision record of kind `promote`, made by a member
+of the workflow's `owner` role, or of its envelope's `owner` role:
 
 ```text
 { kind: "promote", package: P, run: A, revision: <A's final revision>,
@@ -773,9 +864,15 @@ A promotion is a signed decision record of kind `promote`, in the owner role:
 
 `to` is `read_only` or `live`; `shadow` is `null` for a promotion to
 `read_only`. `Runtime.promote(pkg, signed)` checks the record as every
-decision is checked (who signed, what it is for, the role) and stores it.
-`startRun` looks for a promotion that still holds, and without one refuses
-the start (`unpromoted`). The new run's manifest records its `promotion`,
+decision is checked, in that order: who signed, what it is for, the role. A
+record whose subject is not the one the runtime computes is refused by the
+existing subject check (`invalid_decision` with the reason
+`subject_mismatch`). It is refused `bad_promotion` when its from-run did not
+succeed, is not a run of the same package and workflow, or is not in the
+mode directly below `to` (`design` for `read_only`, `read_only` for `live`:
+`design` → `live` is refused). Otherwise it is stored. `startRun` looks for a
+promotion that still holds, and without one refuses the start
+(`unpromoted`). The new run's manifest records its `promotion`,
 and its journal `promotion_accepted`.
 
 `mandate promote <run> --to read_only|live --key FILE [--yes]` is guided: it
@@ -795,9 +892,13 @@ pass, or with `--follow` one pass every `--interval` until SIGINT:
 1. it selects the runs in state `waiting`;
 2. for each, it builds a runtime for the run's package and calls `tick`: a
    decision expires, a review is escalated or expires, a timer is due;
-3. in a 0.7 run, `tick` also drives a run whose wait's command is no longer
+3. in a 0.7 run, `tick` acts on every open wait whose deadline has passed,
+   the `commands` rows in state `waiting`, and not only on the one
+   `runs.waiting` names, since a `par` can leave several open; a run of 0.1 to
+   0.6 keeps today's behavior, the wait `runs.waiting` names;
+4. in a 0.7 run, `tick` also drives a run whose wait's command is no longer
    waiting (decided, and not driven on since);
-4. unless `--no-notify`, it runs the notification pass.
+5. unless `--no-notify`, it runs the notification pass.
 
 `tick` acts under the run's lock and is idempotent, so a `mandate tick` and a
 Temporal worker acting on the same run do not act twice.
@@ -810,19 +911,31 @@ Notifications are sent only for 0.7 runs.
   forward (`notify_cursors`), in the shape of the OpenTelemetry export: no
   queue is written in the journal's transactions. Delivery is at least once:
   a receiver may get one notification twice, and knows the repeat by its
-  `id`. A
-  notification that fails six times is dead, and recorded in `notify_dead`.
+  `id`.
+- **Order and dead letters.** A channel's cursor for a run does not move
+  while a notification is being retried, so a run's notifications reach a
+  channel in order. After six failed attempts the notification is recorded in
+  `notify_dead` and the cursor moves past it.
+- **The owner role** of a run is its workflow's `owner`, else its envelope's
+  `owner`. A workflow with neither has none.
 - **What is sent.** S0 events (`wait_opened`, `review_requested`,
   `review_escalated`, `amendment_requested`) go to the channels of the role
-  asked. S1 events (`run_succeeded`, `run_failed`, `run_cancelled`,
+  asked; a wait that asks no role goes to the owner role's channels, and with
+  no owner role it is not notified (it is still listed by `ListWaits`). S1
+  events (`run_succeeded`, `run_failed`, `run_cancelled`,
   `run_attention_required`, `budget_exceeded`, `asks_exhausted`) go to the
-  roles configured with `outcomes: true` and to the owner role. Nothing of S2
-  to S4 is sent.
+  roles configured with `outcomes: true` and to the owner role, or, with no
+  owner role, to those roles alone. Nothing of S2 to S4 is sent.
+- **The id** is `digest("operation", { format: "mandate/notification/0.1",
+  channel, run, seq })`: the runtime's digest of a domain and a value,
+  `sha256:` and the hex of SHA-256 over `mandate/operation/0.1\n` and the
+  value's canonical form, as an operation key is. It is the same for every
+  retry of one notification.
 - **The payload** is fixed, and built from ids, the kind, the role, the
   deadline, `as_of` and a link, never from a step's content:
 
 ```ts
-interface Notification { format: "mandate/notification/0.1"; id: string /* sha256 of channel, run, seq */;
+interface Notification { format: "mandate/notification/0.1"; id: string /* digest("operation", { format, channel, run, seq }) */;
   kind: "decision" | "outcome"; event: string; class: "S0" | "S1"; tenant; run; workflow; package; seq; at;
   role: string | null; command: string | null; deadline: number | null; as_of: { revision; event }; link: string | null }
 interface Notifier { name: string; send(n: Notification): Promise<void> /* throws NotifyFailed { retryable } */ }
@@ -882,6 +995,8 @@ PGlite and on PostgreSQL.
 | Name | When |
 |---|---|
 | `facts_mismatch` | At a resume or a replay: the stored facts are missing or do not hash to the manifest's |
+| `attention_above_asks` | At a start, when an `asks` limit applies: the bound under the runtime's configuration (the static total plus the effect sites its configuration hands to a person) is above it |
+| `bad_promotion` | `promote`: the from-run did not succeed, is not of the same package and workflow, or is not in the mode directly below `to` |
 | `Rejected(asks_exhausted)` | A question past the run's `asks`, or past a sub-program's reservation; with the event `asks_exhausted` |
 | `unapproved_envelope` | At a start: a workflow with an `owner` whose package no member of the owner role has approved |
 | `unpromoted` | At a start, with `promotion: "required"`: a `read_only` or `live` run without a promotion that holds |
@@ -891,12 +1006,12 @@ PGlite and on PostgreSQL.
 ## The command line
 
 ```sh
-mandate view <program> --attention [--format md|html|json] [--lock FILE]
+mandate view <program> --attention …                      # with what `view` takes
 mandate approve-envelope <program> --key FILE …           # a workflow with an owner too
 mandate promote <run> --to read_only|live --key FILE [--yes]
-mandate watch --member M --out DIR [--follow]
+mandate watch --member M --out DIR [--follow] [--refresh SECONDS]
 mandate watch <run> --role R --jsonl
-mandate waits
+mandate waits (--role R | --member M) [--tenant T] [--json]
 mandate decide --key FILE
 mandate tick [--follow] [--interval 10s] [--no-notify]
 mandate run … --limit asks=N
@@ -904,12 +1019,14 @@ mandate mcp                                                # native, in crates/m
 ```
 
 - **`watch --member M --out DIR`** writes script-free HTML: `index.html` with
-  the member's waits and runs, and one page per run with the member's role
-  view, each file written atomically. A `<meta refresh>` is optional and off
-  by default. `--follow` keeps the pages up to date.
+  all the member's waits and runs, and one page per run and role the member
+  holds, `<run>.<role>.html`, with that role's view, each file written
+  atomically. `--refresh SECONDS` adds a `<meta refresh>`; without it there is
+  none. `--follow` keeps the pages up to date.
 - **`watch <run> --role R --jsonl`** prints the role's projected events, one
   JSON line each.
-- **`waits`** prints the open decisions, as `ListWaits` gives them.
+- **`waits`** prints the open decisions of a role or a member, as `ListWaits`
+  gives them, optionally of one tenant; `--json` prints them as JSON.
 - **`decide --key FILE`** lists the waits, shows one masked and labelled,
   with its deadline and what happens with no answer, asks for a choice, asks
   to confirm, signs and submits. It can be scripted on standard input.
@@ -927,7 +1044,8 @@ tools:
 - `check` takes `libraries`, and finds the embedded `std.patterns` by
   default;
 - `project` offers the card and the attention view, with `lock`;
-- `spec` gains two topics, `patterns` and `attention`;
+- `spec` takes two more values of its existing `section` parameter,
+  `patterns` and `attention`;
 - the tool list of 0.7 is data from one door of the Rust compiler,
   `mcp_tools`. The frozen TypeScript tool list in the `tables` door does not
   change.
@@ -1016,5 +1134,6 @@ table.
   TypeScript compiler; a language server; a SQLite store.
 - Amending a package whose lock pins a library; telling an accepted lock from
   a hand-copied pin.
+- Revoking a promotion.
 - A review's path under Temporal; a session against a real MCP server.
 - The four points left open from 0.5.

@@ -2035,10 +2035,12 @@ Everything above holds as it is for 0.6.*
   patterns with the same slots, with stages, and with two reports to
   `reviewer` in `BatchWithExceptions`. A lock pins one of them as it pins any
   library; without a pin, a 0.7 program resolves 2.0.0 and a 0.6 one 1.0.0.
-- **E1609.** A program that imports a module, or whose lock pins a library,
-  of a newer language than its own is E1609: a 0.6 lock that pins
-  `std.patterns` 2.0.0 is refused. E1603 still holds for a program of 0.1 to
-  0.5 that imports a 0.6 module.
+- **E1609.** A program of 0.6 or later that imports a module, or whose lock
+  pins a library, of a newer language than its own is E1609: a 0.6 program's
+  lock that pins `std.patterns` 2.0.0 is refused. A program of 0.1 to 0.5
+  that imports a 0.6 or a 0.7 module stays E1603. `mandate add std.patterns`
+  pins the newest embedded version whose language is not newer than the
+  program's.
 - **Reports in the authority signature.** In 0.7 the [authority
   signature](#the-authority-signature) of a workflow and a pattern, and the
   semantic diff, record the reports it makes: each one's role or role slot,

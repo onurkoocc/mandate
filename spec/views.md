@@ -157,9 +157,11 @@ yet.*
 A fourth view of a program, made from the compiler's attention facts and the
 lock: for each role, when the workflow can ask it something, about what, at
 most how many times, by when, and what happens when nobody answers; and
-which reports each role receives. `mandate view <program> --attention` prints
-it, in the Node and the native command; a 0.7 program's view document holds
-it; a program of 0.1 to 0.6 has none.
+which reports each role receives. It also says that the runtime's
+configuration may hand further effects to a person, and that a run whose
+configuration does not fit `asks` does not start. `mandate view <program>
+--attention` prints it, in the Node and the native command; a 0.7 program's
+view document holds it; a program of 0.1 to 0.6 has none.
 
 ## What changed between two versions
 

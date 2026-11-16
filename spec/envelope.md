@@ -1093,7 +1093,15 @@ implemented yet. Everything on this page holds as it is for 0.4 to 0.6.*
   dimension: it keeps it, with at least the old amount, and adds it nowhere
   it was not. A lead's amendment request is itself a question, counted when
   it is asked; when no question is left, it is refused to the lead.
-- **In a sub-program** a lead writes no `stage` and no `report` (E1705).
+- **In a sub-program** a `stage`, a `report` or an `owner` written in its own
+  text is E1705. A sub-program that applies a pattern the envelope's
+  `shapes` lists runs that pattern's stages and reports, since the lock pins
+  the pattern's text and the approved card names it
+  ([`attention.md`](attention.md#sub-programs-and-amendments)).
+- **Containment's details.** A sub-program need not name `asks`; under an
+  envelope without `asks` nothing is reserved for questions, and one whose
+  attention total is unbounded and that declares no `asks`, under an envelope
+  that limits it, is E1706 (dimension `asks`).
 
 ## Not in 0.4
 

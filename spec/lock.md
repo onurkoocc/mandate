@@ -172,6 +172,11 @@ not change.
 - `promotion: "required"` (its one value) makes a `read_only` or `live` run
   wait for a signed promotion by the workflow's owner role, and makes
   `MDT-E1910` require an `owner` or an envelope of every workflow.
+- A lock is read by the schema of its own format, whatever the program's
+  language. A 0.7 program accepts an older lock: every role may then be
+  shown `internal`, and there is no ladder. For a 0.6 program the two fields
+  would not apply, and the check refuses them, as `MDT-E1803` refuses
+  `isolation` and `egress` for a program before 0.5.
 - Both are in the package hash, as every field is: raising a role's class is
   a new package. Where notifications go is not in the lock, but in the
   runtime's configuration ([`attention.md`](attention.md#notifications)).

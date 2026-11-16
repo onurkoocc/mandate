@@ -1283,20 +1283,26 @@ this is what they will change here. Nothing of it runs yet, and a package of
 
 - **New commands.** `mandate tick [--follow] [--interval 10s] [--no-notify]`,
   `mandate promote <run> --to read_only|live --key FILE [--yes]`, `mandate
-  watch --member M --out DIR [--follow]` and `mandate watch <run> --role R
-  --jsonl`, `mandate waits`, `mandate decide --key FILE`, and `mandate run
+  watch --member M --out DIR [--follow] [--refresh SECONDS]` and `mandate
+  watch <run> --role R --jsonl`, `mandate waits (--role R | --member M)
+  [--tenant T] [--json]`, `mandate decide --key FILE`, and `mandate run
   --limit asks=N`. `approve-envelope` also approves a package whose 0.7
   workflow has an `owner`. A native `mandate mcp` joins the native command
   ([`mcp.md`](mcp.md#07)).
 - **The driver loop.** Without a scheduler nothing calls `tick` today, so no
   deadline passes from the command line. `mandate tick` selects the runs that
   wait, calls `tick` for each under its own package (a decision expires, a
-  review is escalated or expires, a timer is due), drives a 0.7 run whose wait
-  was decided and not driven on, and then sends notifications. It acts under
+  review is escalated or expires, a timer is due; in a 0.7 run for every open
+  wait whose deadline has passed, not only the one `runs.waiting` names),
+  drives a 0.7 run whose wait was decided and not driven on, and then sends
+  notifications. It acts under
   each run's lock, so it and a Temporal worker do not act twice on one run.
-- **`asks`.** A row of its own in the run's budget, the smaller of the
-  declared `asks` and the caller's limit; a wait is counted when it opens, and one past the limit
-  is not asked (`Rejected(asks_exhausted)`, the event `asks_exhausted`).
+- **`asks`.** A row of its own in the run's budget, the declared `asks` and
+  the caller's limit taken together as every limit is (`minLimits`); with
+  neither, no limit. A start whose bound under the runtime's `authorize`
+  configuration is above the limit is refused (`attention_above_asks`). A
+  wait is counted when it opens, and one past the limit is not asked
+  (`Rejected(asks_exhausted)`, the event `asks_exhausted`).
 - **The control API** gains `watchRun` (a role's events, filtered by class,
   then through a fixed allow-list of fields per event type, masked; polled
   with a cursor), `listWaits` (the open decisions of every run, for a role or
@@ -1304,12 +1310,16 @@ this is what they will change here. Nothing of it runs yet, and a package of
 - **The ladder.** With `promotion: "required"` in the lock, a `read_only`
   run starts only on a promotion from a succeeded `design` run of the same
   package and workflow, and a `live` run on one from a succeeded `read_only`
-  run, with the shadow diff's digest; otherwise `unpromoted`. A workflow with
+  run, with the shadow diff's digest; otherwise `unpromoted`. A promotion
+  holds for every later run of the same package hash and workflow in its
+  target mode; one from a run that did not succeed, of another package or
+  workflow, or that skips a mode is refused (`bad_promotion`). A workflow with
   an `owner` starts in no mode before its card is approved
   (`unapproved_envelope`).
 - **Notifications.** A cursor pump, at least once, for 0.7 runs only: S0 to
-  the role asked and S1 to the roles that ask for outcomes and to the owner
-  role, through an HTTPS webhook (only through the egress proxy) or a local
+  the role asked (a wait that asks no role to the owner role) and S1 to the
+  roles that ask for outcomes and to the owner role, in order per channel and
+  run, through an HTTPS webhook (only through the egress proxy) or a local
   file, with a fixed payload and no content. Configured under
   `notifications` in `mandate.runtime.json`, not in the lock.
 - **Storage.** `notify_cursors`, `notify_dead`, a partial index of the
