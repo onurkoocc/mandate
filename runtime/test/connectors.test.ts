@@ -261,7 +261,7 @@ const item = (i: number): string => `/defs/PostAll/body/0/value[${i}]/body/1/val
 // ── the table ───────────────────────────────────────────────────────────
 
 needs06("what 0.6 has that this runtime does not run yet, after connectors", () => {
-  it("runs the program of connectors (drafts.mdt), and refuses the acceptance program by the names that are left: human.review, waive by", () => {
+  it("runs the program of connectors (drafts.mdt), and the acceptance program, whose review and waiver run too (B10)", () => {
     const connectors = LIB();
     const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
     const { lock: _format, ...packaged } = lock;
@@ -271,16 +271,8 @@ needs06("what 0.6 has that this runtime does not run yet, after connectors", () 
     expect(verifyPackage(buildPackage(drafts.program!, packaged as Lock, {}, [connectors])).running.defs["erp"]).toMatchObject({ kind: "connector" });
     const invoices = check(read("fixtures/library/invoices.mdt"), "mdt", { libraries: [connectors], lock, linked: true });
     expect(invoices.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
-    expect(notRunYet06(invoices.linked as unknown as Program, { lock: packaged as Lock })).toEqual(["human.review", "waive by"]);
-    let thrown: unknown;
-    try {
-      verifyPackage(buildPackage(invoices.program!, packaged as Lock, {}, [connectors]));
-    } catch (e) {
-      thrown = e;
-    }
-    expect(thrown).toMatchObject({ code: "unsupported_language" });
-    expect((thrown as Violation).message).toMatch(/The package uses waive by \(B10\) of mandate\/0\.6, which this runtime does not run yet/);
-    for (const gone of ["connector (B9)", "tool.call", "lock.connectors", "batch commit step"]) expect((thrown as Violation).message).not.toContain(gone);
+    expect(notRunYet06(invoices.linked as unknown as Program, { lock: packaged as Lock })).toEqual([]);
+    expect(verifyPackage(buildPackage(invoices.program!, packaged as Lock, {}, [connectors])).running.defs["Matched"]).toMatchObject({ kind: "contract" });
   });
 });
 

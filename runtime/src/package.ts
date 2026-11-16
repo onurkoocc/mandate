@@ -161,7 +161,8 @@ function storesRunning(pkg: Pick<Package, "program" | "lock">): boolean {
  * The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; of
  * 0.5 the program and every field of its lock; of 0.6 what 0.5 has, `pub`, doc lines, closed imports, libraries
  * (a module of one may import another it reaches), `std.patterns`, patterns whose expansion holds only what it
- * runs, connectors with the lock that binds them, and the batch commit step; see `notRunYet` and NOT_RUN_YET_06.
+ * runs, connectors with the lock that binds them, the batch commit step, `human.review` and `waive by` (review.ts);
+ * see `notRunYet` and NOT_RUN_YET_06.
  */
 export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5", LANGUAGE_06];
 
@@ -229,8 +230,6 @@ interface NotRunYet06 {
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-/** `<name>.<member>` as a callee: `{ op: "field", of: { op: "var", name }, name: member }`. */
-const named = (o: Record<string, unknown>, name: string, member: string): boolean => o["op"] === "field" && o["name"] === member && isObj(o["of"]) && o["of"]["op"] === "var" && o["of"]["name"] === name;
 
 /**
  * Every construct of 0.6 this runtime does not run yet, with the slice that releases it (spec/library.md, the table
@@ -239,9 +238,6 @@ const named = (o: Record<string, unknown>, name: string, member: string): boolea
  * implements a construct takes its line out, and nothing else.
  */
 export const NOT_RUN_YET_06: readonly NotRunYet06[] = [
-  // `human.review` and waivers (spec/library.md "`human.review` and waivers").
-  { name: "human.review", slice: "B10", node: (o) => named(o, "human", "review") },
-  { name: "waive by", slice: "B10", node: (o, at) => at.key !== "" && Array.isArray(o["waive"]) && o["by"] !== undefined },
   // `shapes` in an envelope (spec/library.md "`shapes`").
   { name: "shapes", slice: "B12", node: (o, at) => at.key === "envelope" && o["shapes"] !== undefined },
 ];

@@ -73,6 +73,34 @@ export interface RunView {
   plans: PlanView[];
   /** Each map that began to run its items, in the order they began. */
   maps: MapView[];
+  /** Each review of a batch (0.6), in the order they asked; a run that has none has no such section. */
+  reviews?: ReviewView[];
+}
+
+/**
+ * A review of a batch (0.6; spec/library.md "Views"): its items by index, open, waived or declined, who was asked and
+ * when it escalates, who decided and whether the signature holds, and each waiver beside the failed record it waives.
+ */
+export interface ReviewView {
+  /** The review's wait, the contract its map verifies against, and the map. */
+  node: string;
+  contract: string;
+  map: string;
+  /** The role asked first and its deadline, and the role it is escalated to. */
+  role: string;
+  deadline: number | null;
+  escalate_to: string | null;
+  /** Once escalated: the role asked then, and its deadline. */
+  escalated: { to: string; deadline: number | null } | null;
+  /** `waiting`, `decided`, or `expired` (every open item declined, by nobody). */
+  state: "waiting" | "decided" | "expired";
+  /** The decision: who, in which role, its digest, and whether its record and signature hold now. */
+  decision: { by: string | null; role: string | null; decision_id: string | null; signature: "valid" | "invalid" } | null;
+  /**
+   * By input index: `accepted` (it passed; nobody was asked), `open`, `waived`, `declined` (by the decision),
+   * `declined at expiry`, `declined without asking` (it failed what no one may waive), or `failed` (its work did).
+   */
+  items: Array<{ index: number; outcome: string; by: string | null; waivers: Array<{ criterion: string; failed: string; waiver: string; signature_valid: boolean }> }>;
 }
 
 /** A decision a person made on a run (spec/envelope.md "Views"): who, in which role, and whether its signature holds. */
@@ -221,6 +249,8 @@ export interface RoleView {
   /** The envelope, with its amendments only for the role that owns it. */
   envelope: EnvelopeView | null;
   maps: MapView[];
+  /** The reviews asked of this role, first or after an escalation (0.6); none for a run that has none. */
+  reviews?: ReviewView[];
 }
 
 /** How the run ended, and what stopped or bent it (S1), by the fields named: no message, no fault argument. */
@@ -337,10 +367,14 @@ async function commandViews(rt: Runtime, runId: string): Promise<CommandView[]> 
   return rows.map((r) => ({ command: r.command_id, kind: r.kind, label: r.label ?? null, state: r.state, request_digest: r.request_digest, result: r.result ?? null, error: r.error ?? null, purged: r.payload_purged === true }));
 }
 
-/** The role each wait was asked of, by its command, as `wait_opened` names it. */
+/**
+ * The role each wait was asked of, by its command, as `wait_opened` names it; a review that was escalated (0.6), the
+ * role its `review_escalated` asks it of then, who decides it.
+ */
 function waitRoles(events: Stored[]): Map<string, string> {
   const out = new Map<string, string>();
   for (const e of events) {
+    if (e.type === "review_escalated" && isObj(e.data) && typeof e.data["to"] === "string") out.set(String(e.data["command"]), e.data["to"]);
     if (e.type !== "wait_opened" || !isObj(e.data)) continue;
     const request = isObj(e.data["request"] ?? null) ? (e.data["request"] as Obj) : {};
     const role = text(request["role"]);
@@ -370,6 +404,8 @@ function roleView(v: RunView, role: string, events: Stored[]): RoleView {
   for (const [section, value] of Object.entries(v)) if (section !== "format" && section !== "kind" && may(section)) out[section] = value;
   out["waiting"] = may("waiting", waitingRole(v.waiting)) ? v.waiting : null;
   out["decisions"] = v.decisions.filter((d) => may("decisions", askedOf(d)));
+  // A review (0.6) is shown to each role it was asked of: the first, and the one it was escalated to.
+  if (v.reviews) out["reviews"] = v.reviews.filter((r) => may("reviews", r.role) || (r.escalated !== null && may("reviews", r.escalated.to)));
   if (out["budget"]) out["budget"] = { dimensions: v.budget.dimensions, commands: v.budget.commands.filter((c) => shows(audience, stepClass(c.kind), asked.get(c.command))) };
   if (v.envelope && out["envelope"]) out["envelope"] = { ...v.envelope, amendments: may("envelope.amendments", v.envelope.owner) ? v.envelope.amendments : [] };
   // What stopped the run is drawn from the events of the classes the role sees, by their types.
@@ -379,7 +415,7 @@ function roleView(v: RunView, role: string, events: Stored[]): RoleView {
 }
 
 /** The order of a role's view's sections, as a person reads them. */
-const ROLE_ORDER = ["format", "kind", "role", "program", "package", "run", "manifest", "modules", "as_of", "waiting", "decisions", "exceptions", "budget", "envelope", "maps"];
+const ROLE_ORDER = ["format", "kind", "role", "program", "package", "run", "manifest", "modules", "as_of", "waiting", "decisions", "exceptions", "budget", "envelope", "maps", "reviews"];
 
 /** A fault's tag: the name of what went wrong, never its arguments. */
 const tagOf = (v: Value | undefined): string | null => (isObj(v ?? null) ? text((v as Obj)["$tag"]) : null);
@@ -468,7 +504,59 @@ async function defaultView(rt: Runtime, runId: string): Promise<{ view: RunView;
     plans: await planViews(rt, { tenant: run.tenant, runId }, events, commands),
     maps: mapViews(events, commands),
   };
+  // 0.6: a run that asked for a review shows each; any other has no such section, and its view is as it was.
+  if (events.some((e) => e.type === "review_requested")) view.reviews = reviewViews(events, await rt.verifyDecisions(runId), signed);
   return { view, program, modules };
+}
+
+/**
+ * Each review of the run (0.6), from `review_requested` and what came of it: `review_escalated`, `review_decided` or
+ * `review_expired`, and each `criterion_waived`. The decision is checked again now, as every signed one is, and each
+ * waiver by its record's signature and the decision it rests on (`Runtime.verifyEvidence`).
+ */
+function reviewViews(events: Event[], records: Array<{ decision_id: string; valid: boolean }>, signed: ReadonlyMap<string, boolean>): ReviewView[] {
+  const out: ReviewView[] = [];
+  const of = (type: string, node: string): Obj | undefined => events.map((e) => (e.type === type && isObj(e.data) && e.data["command"] === node ? e.data : undefined)).find((d) => d !== undefined);
+  const list = (v: Value | undefined): number[] => (Array.isArray(v) ? v.filter((x): x is number => typeof x === "number") : []);
+  for (const e of events) {
+    if (e.type !== "review_requested" || !isObj(e.data)) continue;
+    const d = e.data;
+    const node = String(d["node"]);
+    const escalated = of("review_escalated", node);
+    const decided = of("review_decided", node);
+    const expired = of("review_expired", node);
+    const waivers = events.filter((x) => x.type === "criterion_waived" && isObj(x.data) && x.data["command"] === node).map((x) => x.data as Obj);
+    const by = decided ? text(decided["member"]) : null;
+    const id = decided ? text(decided["decision"]) : null;
+    const outcomes = new Map<number, { outcome: string; by: string | null }>();
+    for (const i of list(d["accepted"])) outcomes.set(i, { outcome: "accepted", by: null });
+    for (const i of list(d["declined"])) outcomes.set(i, { outcome: "declined without asking", by: null });
+    for (const i of list(d["failed"])) outcomes.set(i, { outcome: "failed", by: null });
+    for (const i of list(d["open"])) {
+      const waived = decided && list(decided["waive"]).includes(i);
+      const declined = decided && list(decided["decline"]).includes(i);
+      outcomes.set(i, waived ? { outcome: "waived", by } : declined ? { outcome: "declined", by } : expired ? { outcome: "declined at expiry", by: null } : { outcome: "open", by: null });
+    }
+    out.push({
+      node,
+      contract: String(d["contract"]),
+      map: String(d["map"]),
+      role: String(d["role"]),
+      deadline: typeof d["deadline"] === "number" ? d["deadline"] : null,
+      escalate_to: text(d["escalate_to"]),
+      escalated: escalated ? { to: String(escalated["to"]), deadline: typeof escalated["deadline"] === "number" ? escalated["deadline"] : null } : null,
+      state: decided ? "decided" : expired ? "expired" : "waiting",
+      decision: decided ? { by, role: text(decided["role"]), decision_id: id, signature: records.some((r) => r.decision_id === id && r.valid) ? "valid" : "invalid" } : null,
+      items: [...outcomes.keys()]
+        .sort((a, b) => a - b)
+        .map((i) => ({
+          index: i,
+          ...outcomes.get(i)!,
+          waivers: waivers.filter((w) => w["index"] === i).map((w) => ({ criterion: String(w["criterion"]), failed: String(w["failed"]), waiver: String(w["waiver"]), signature_valid: signed.get(String(w["waiver"])) ?? false })),
+        })),
+    });
+  }
+  return out;
 }
 
 type Event = { seq: number; type: string; data: Value };
@@ -886,10 +974,60 @@ function waitBlocks(v: Pick<RunView, "run" | "as_of" | "waiting">): Block[] {
       out.push({ note: `Approve or decline at revision ${v.as_of.revision}: mandate amend ${v.run.id} --revision ${v.as_of.revision} --key <your key file> approve. A decision on an older revision is refused.` });
     } else if (w["kind"] === "timer") {
       out.push({ p: `Waiting until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "a timer")}); the scheduler resumes it then.` });
+    } else if (w["kind"] === "review") {
+      out.push(...reviewWaitBlocks(v, req));
     } else {
       out.push({ p: w["kind"] === "budget_exceeded" ? "Waiting for a person after the budget ran out. The question, as the program asks it:" : "Waiting for an answer. The question, as the program asks it:" });
       out.push({ code: show((req["question"] ?? req["escalation"] ?? null) as Value), untrusted: true });
     }
+  }
+  return out;
+}
+
+/**
+ * What a review's wait asks (0.6), as the role asked sees it: who decides and until when, then whom it is escalated
+ * to; each open item by its index with what it failed and who may waive that, and its value, which a model wrote;
+ * and the command that decides it at this revision.
+ */
+function reviewWaitBlocks(v: Pick<RunView, "run" | "as_of">, req: Obj): Block[] {
+  const q = isObj(req["question"] ?? null) ? (req["question"] as Obj) : {};
+  const items = (Array.isArray(q["items"]) ? q["items"] : []).filter(isObj) as Obj[];
+  const until = typeof req["deadline"] === "number" ? new Date(req["deadline"]).toISOString() : "—";
+  const then = typeof req["escalate_to"] === "string" && req["escalated"] === undefined ? `then ${req["escalate_to"]} is asked the same` : "then every open item is declined; nothing passes on its own";
+  const out: Block[] = [
+    { p: `Waiting for ${String(req["role"] ?? "a person")} to review ${items.length} item${items.length === 1 ? "" : "s"} of the map at ${String(q["map"] ?? "?")} that failed ${String(q["contract"] ?? "its contract")} only where a person may waive it; ${then}. The decision applies only to this subject:` },
+    { table: { head: ["Subject digest", "Deadline"], rows: [[mono(String(req["subject_digest"] ?? "")), until]] } },
+  ];
+  for (const i of items) {
+    const unmet = (Array.isArray(i["unmet"]) ? i["unmet"] : []).filter(isObj) as Obj[];
+    out.push({ p: `Item ${String(i["index"])} did not meet ${unmet.map((u) => `${String(q["contract"])}.${String(u["criterion"])} ("${String(u["description"] ?? "")}", which ${(Array.isArray(u["waive"]) ? u["waive"] : []).join(" or ")} may waive)`).join(", ")}. Its value, as the map recorded it:` });
+    out.push({ code: JSON.stringify(i["value"] ?? null, null, 2), untrusted: true });
+  }
+  out.push({ note: `Decide every open item at revision ${v.as_of.revision}: mandate review ${v.run.id} --revision ${v.as_of.revision} --key <your key file> --waive <indices> --decline <indices>. A decision on an older revision, or one that leaves an item out, is refused.` });
+  return out;
+}
+
+/** Each review of the run (0.6): who was asked, when it escalates, and what was decided of each item. */
+function reviewBlocks(v: Pick<RunView, "reviews">): Block[] {
+  const out: Block[] = [];
+  for (const r of v.reviews ?? []) {
+    const at = (t: number | null): string => (t === null ? "—" : new Date(t).toISOString());
+    out.push({ h: `Review at ${r.node}` });
+    const asked = `${r.role} was asked once about the items of the map at ${r.map} that failed ${r.contract} only where a person may waive it, until ${at(r.deadline)}`;
+    const escalation = r.escalated ? `; it was escalated to ${r.escalated.to}, until ${at(r.escalated.deadline)}` : r.escalate_to ? `; then ${r.escalate_to}` : "";
+    const how =
+      r.state === "decided" && r.decision
+        ? `Decided by ${r.decision.by ?? "?"}${r.decision.role ? ` as ${r.decision.role}` : ""}; the signature ${r.decision.signature === "valid" ? "holds" : "does NOT hold"} (${r.decision.decision_id ?? "no record"}).`
+        : r.state === "expired"
+          ? "Nobody decided before the deadline: every open item was declined. Nothing passes on its own."
+          : "It waits for the decision.";
+    out.push({ p: `${asked}${escalation}. ${how}` });
+    out.push({
+      table: {
+        head: ["Item", "Outcome", "By", "Waivers"],
+        rows: r.items.map((i) => [String(i.index), i.outcome, i.by ?? "—", i.waivers.length ? mono(i.waivers.map((x) => `${x.criterion}: ${x.failed.slice(0, 19)} waived by ${x.waiver.slice(0, 19)}${x.signature_valid ? "" : " (INVALID)"}`).join("; ")) : "—"]),
+      },
+    });
   }
   return out;
 }
@@ -904,7 +1042,8 @@ function evidenceBlocks(v: RunView): Block[] {
         rows: v.evidence.map((e) => [
           `${e.contract}.${e.criterion}`,
           e.method,
-          e.passed ? "met" : "not met",
+          // A waiver (0.6) is not a check that passed: it stands beside the failed one it waives.
+          e.method === "waiver" ? "waived" : e.passed ? "met" : "not met",
           untrusted(e.producer),
           e.signature_valid ? "valid" : "INVALID",
           Array.isArray(e.artifacts) && e.artifacts.length ? mono(e.artifacts.map((a) => (isObj(a) ? `${String(a["kind"])}${a["phase"] ? `/${String(a["phase"])}` : ""} ${String(a["ref"])}` : "")).join("; ")) : "—",
@@ -1088,7 +1227,7 @@ export function runDoc(v: RunView, program: Program, modules?: Modules): Doc {
 
 /** The sections of a run's view, in the order a person reads them. */
 function runBlocks(v: RunView): Block[] {
-  return [...statusBlocks(v), ...envelopeBlocks(v), ...planBlocks(v), ...mapBlocks(v), ...changesetBlocks(v), ...evidenceBlocks(v), ...decisionBlocks(v), ...costBlocks(v), ...actionBlocks(v)];
+  return [...statusBlocks(v), ...envelopeBlocks(v), ...planBlocks(v), ...mapBlocks(v), ...reviewBlocks(v), ...changesetBlocks(v), ...evidenceBlocks(v), ...decisionBlocks(v), ...costBlocks(v), ...actionBlocks(v)];
 }
 
 /** The modules a view of a program is given: those it links, for a program of 0.6 alone (as the bridge's views take them). */
@@ -1126,6 +1265,7 @@ export function roleDoc(v: RoleView, program: Program, modules?: Modules): Doc {
       ...exceptionBlocks(v.exceptions),
       ...envelopeBlocks(v),
       ...mapBlocks(v),
+      ...reviewBlocks(v),
       ...decisionBlocks(v),
       ...costBlocks(v),
       ...architectureBlocks(architecture(program, viewModules(program, modules))),

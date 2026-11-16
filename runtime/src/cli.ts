@@ -9,14 +9,18 @@
 //   mandate approve <run> --revision N --key FILE [--member NAME]
 //   mandate decline <run> --revision N --key FILE [--member NAME]
 //   mandate answer <run> --revision N --key FILE [--member NAME] <text>
+//   mandate review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]
+//                                                         decide a review of a batch (0.6): every open item, by its
+//                                                         index, waived or declined, in one signed decision
 //   mandate cancel <run> [--key FILE]
 //   mandate reconcile <run> <operation> [--key FILE]      ask the system of record what an unknown outcome was
 //   mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
 //   mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
 //                                                         decide an amendment of the envelope a lead asked for
 //   mandate decision <run> <digest>                       a decision the run took, as its signed record
-//   mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
-//                                                         check a decision's signature; no configuration, no database
+//   mandate verify-decision <record.json> --key <public key.pem> [--lock FILE] [--waive I,J --decline K]
+//                                                         check a decision's signature (and a review's, that it decided
+//                                                         those items); no configuration, no database
 //   mandate journal export <run> [--out FILE]            the run's journal as an outsider checks it (spec/journal.md)
 //   mandate journal key [--out FILE]                      the public keys its anchors are signed with
 //   mandate journal verify <export.json> --key <public key.pem> [--key …] [--json]
@@ -90,7 +94,7 @@ interface Args {
   all: Record<string, string[]>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries", "--waive", "--decline"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -135,12 +139,13 @@ const USAGE = `usage:
   mandate approve <run> --revision N --key FILE [--member NAME]
   mandate decline <run> --revision N --key FILE [--member NAME]
   mandate answer <run> --revision N --key FILE [--member NAME] <text>
+  mandate review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]
   mandate cancel <run> [--key FILE]
   mandate reconcile <run> <operation> [--key FILE]
   mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
   mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
   mandate decision <run> <digest>
-  mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
+  mandate verify-decision <record.json> --key <public key.pem> [--lock FILE] [--waive I,J --decline K]
   mandate journal export <run> [--out FILE]
   mandate journal key [--out FILE]
   mandate journal verify <export.json> --key <public key.pem> [--key FILE]… [--json]
@@ -163,7 +168,7 @@ options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 --libraries DIR is the directory of libraries a lock of 0.6 pins its libraries in (default: libraries.dir of the configuration)
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -277,6 +282,18 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         const w = waitOf(await rt.getRun(runId));
         if (w.kind !== "input") throw new Violation("no_wait", `Run ${runId} is not waiting for an answer.`);
         run = await rt.submitInput(runId, msg, key ? { value: text, signed: await sign("wait", "answer", payloadOf.answer(text)) } : { commandId: w.command, revision: rev, value: text });
+        break;
+      }
+      case "review": {
+        // A review of a batch (0.6; spec/library.md "The wait and the decision"): every open item `status` listed, by
+        // its index, waived or declined, in one decision signed for what the wait asks. The decision names indices
+        // and nothing else.
+        revision(a);
+        if (!key) throw new Usage("--key FILE is required: a review is decided with a signed decision");
+        const lists = { waive: itemIndices(a, "--waive"), decline: itemIndices(a, "--decline") };
+        const w = waitOf(await rt.getRun(runId));
+        if (w.kind !== "review") throw new Violation("no_wait", `Run ${runId} is not waiting for a review.`);
+        run = await rt.decideReview(runId, msg, { ...lists, signed: await sign("wait", "review", payloadOf.review(lists)) });
         break;
       }
       case "cancel":
@@ -495,6 +512,21 @@ function revision(a: Args): number {
   const n = Number(str(a, "--revision"));
   if (!Number.isInteger(n)) throw new Usage("--revision takes the revision number `status` showed");
   return n;
+}
+
+/**
+ * The item indices a flag gives, `--waive 2,5`: the map's input indices, from 0, as `status` lists them; none when
+ * the flag is not given. Each is taken as written, twice included: whether they decide the review is the runtime's.
+ */
+function itemIndices(a: Args, flag: "--waive" | "--decline"): number[] {
+  const v = a.flags[flag];
+  if (v === undefined) return [];
+  if (typeof v !== "string") throw new Usage(`${flag} takes item indices, e.g. ${flag} 2,5`);
+  return v.split(",").map((s) => {
+    const t = s.trim();
+    if (!/^(0|[1-9][0-9]*)$/.test(t) || !Number.isSafeInteger(Number(t))) throw new Usage(`${flag} takes item indices, e.g. ${flag} 2,5; ${JSON.stringify(s)} is not one`);
+    return Number(t);
+  });
 }
 
 /** `spend=20USD,tokens=2M,steps=40,agents=30`. */
@@ -789,15 +821,21 @@ function verifyDecision(a: Args, out: (s: string) => void): number {
   }
   const keyId = keys.ids()[0]!;
   const lock = typeof a.flags["--lock"] === "string" ? (readLock(a.flags["--lock"]) ?? fail(`no lock file at ${a.flags["--lock"]}`)) : undefined;
+  // A review's decision (0.6) carries the digest of the items it waived and declined: given them, it is checked too.
+  const lists = a.flags["--waive"] !== undefined || a.flags["--decline"] !== undefined ? { waive: itemIndices(a, "--waive"), decline: itemIndices(a, "--decline") } : undefined;
   const problem = !isSignedDecision(signed)
     ? `${file} is not a signed decision record ({ "record": …, "signature": "ed25519:…" })`
     : signed.record.key !== keyId
       ? `the record names key ${signed.record.key}; ${keyFile} holds ${keyId}`
       : !signatureHolds(signed, keys)
         ? `the signature does not verify under key ${keyId}: the record is not what was signed`
-        : lock
-          ? (signerRefusal(signed, keys, lock) ?? roleRefusal(signed.record, lock, signed.record.role))?.message
-          : undefined;
+        : lists && signed.record.kind !== "review"
+          ? `the record is a decision of kind ${signed.record.kind}, which decides no items (--waive, --decline are for a review's)`
+          : lists && signed.record.payload !== payloadOf.review(lists)
+            ? `the review's decision did not waive ${lists.waive.join(",") || "nothing"} and decline ${lists.decline.join(",") || "nothing"}: its payload is the digest of other lists`
+            : lock
+              ? (signerRefusal(signed, keys, lock) ?? roleRefusal(signed.record, lock, signed.record.role))?.message
+              : undefined;
   if (problem || !isSignedDecision(signed)) {
     out(`invalid: ${problem}\n`);
     return 1;
@@ -810,6 +848,7 @@ function verifyDecision(a: Args, out: (s: string) => void): number {
       `  package ${r.package}`,
       ...(r.run !== undefined ? [`  run ${r.run}${r.revision !== undefined ? ` at revision ${r.revision}` : ""}${r.command !== undefined ? `, ${r.command}` : ""}`] : []),
       `  subject ${r.subject}${r.payload !== undefined ? `, payload ${r.payload}` : ""}`,
+      ...(r.kind === "review" ? [lists ? `  it waived ${lists.waive.join(",") || "nothing"} and declined ${lists.decline.join(",") || "nothing"}` : "  a review's decision: its payload is the digest of the items it waived and declined (--waive, --decline check them)"] : []),
       lock ? `  the lock binds the key to ${r.member}${r.role !== undefined ? `, who holds ${r.role}` : ""}` : "  the signature holds; whether the key is this member's is what the package's lock says (--lock)",
     ].join("\n") + "\n",
   );
@@ -1063,6 +1102,31 @@ function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
   return { kind, command: String(w["command"]), request: isObj(w["request"] ?? null) ? (w["request"] as Obj) : {} };
 }
 
+/**
+ * What a review's wait asks (0.6), as `status` shows it: the role asked, its deadline and who it escalates to, each
+ * open item by its index with what it failed and who may waive that, and its value, which a model wrote; then the
+ * command that decides it.
+ */
+function reviewLines(run: RunRow, req: Obj, as: string): string[] {
+  const q = isObj(req["question"] ?? null) ? (req["question"] as Obj) : {};
+  const items = (Array.isArray(q["items"]) ? q["items"] : []).filter(isObj) as Obj[];
+  const until = typeof req["deadline"] === "number" ? new Date(req["deadline"]).toISOString() : "?";
+  const then = typeof req["escalate_to"] === "string" && req["escalated"] === undefined ? `; then ${req["escalate_to"]} is asked` : "; then every open item is declined";
+  const lines = [`waiting for: ${String(req["role"] ?? "a person")} to review ${items.length} item${items.length === 1 ? "" : "s"} that failed ${String(q["contract"] ?? "its contract")} only where a person may waive it (deadline ${until}${then})`];
+  for (const i of items) {
+    const unmet = (Array.isArray(i["unmet"]) ? i["unmet"] : []).filter(isObj) as Obj[];
+    lines.push(`  item ${String(i["index"])}: unmet ${unmet.map((u) => `${String(u["criterion"])} ("${String(u["description"] ?? "")}"; waivable by ${(Array.isArray(u["waive"]) ? u["waive"] : []).join(", ")})`).join(", ")}`);
+    lines.push(`    value (model output): ${JSON.stringify(i["value"] ?? null)}`);
+  }
+  const declined = Array.isArray(q["declined"]) ? q["declined"].filter(isObj).map((d) => String((d as Obj)["index"])) : [];
+  if (declined.length) lines.push(`  declined without asking (they failed what no one may waive): ${declined.join(", ")}`);
+  const failed = Array.isArray(q["failed"]) ? q["failed"].map(String) : [];
+  if (failed.length) lines.push(`  failed (their work did not end): ${failed.join(", ")}`);
+  const all = items.map((i) => String(i["index"])).join(",");
+  lines.push(`  decide: mandate review ${run.run_id} --revision ${run.revision} ${as} --waive <indices> --decline <indices> (every open item once: ${all})`);
+  return lines;
+}
+
 /** What a person needs to see to decide: the run, what it waits for, the budget, the evidence and the actions. */
 async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeConfig): Promise<string> {
   const budget = await rt.budgetReport(run.run_id);
@@ -1094,6 +1158,8 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
       lines.push(`  approve: mandate amend ${run.run_id} --revision ${run.revision} ${as} approve`, `  decline: mandate amend ${run.run_id} --revision ${run.revision} ${as} decline`);
     } else if (w["kind"] === "timer") {
       lines.push(`waiting for: a timer until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "")}); the scheduler resumes the run then`);
+    } else if (w["kind"] === "review") {
+      lines.push(...reviewLines(run, req, as));
     } else if (w["kind"] === "decision") {
       lines.push(`waiting for: approval of action ${req["effect"] ?? ""} (digest ${req["action_digest"]})`);
       lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} ${as}`);
@@ -1112,7 +1178,8 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
     const f = (n: number) => (money ? `${(n / 1_000_000).toFixed(4)} ${d.dimension.slice(6)}` : String(n));
     lines.push(`budget ${d.dimension}: limit ${f(d.limit)}, settled ${f(d.settled)}, reserved ${f(d.reserved)}, available ${f(d.available)}`);
   }
-  for (const e of evidence) lines.push(`evidence ${e.contract}.${e.criterion}: ${e.passed ? "met" : "not met"} (${e.method}; ${signed.get(e.evidence_id) ? "signed" : "SIGNATURE INVALID"})`);
+  // A waiver (0.6) is not a check that passed: it is shown as what it is, beside the failed check it waives.
+  for (const e of evidence) lines.push(`evidence ${e.contract}.${e.criterion}: ${e.method === "waiver" ? "waived" : e.passed ? "met" : "not met"} (${e.method}; ${signed.get(e.evidence_id) ? "signed" : "SIGNATURE INVALID"})`);
   for (const d of decisions) lines.push(`decision ${d.record.kind} by ${d.record.member}${d.record.role !== undefined ? ` as ${d.record.role}` : ""}: ${d.valid ? "signed" : "SIGNATURE INVALID"} (${d.decision_id})`);
   for (const x of actions) lines.push(`action ${x.effect}: ${x.state}${x.receipt ? ` ${show(x.receipt)}` : ""}`);
   return lines.join("\n") + "\n";

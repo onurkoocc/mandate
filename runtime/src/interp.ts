@@ -73,6 +73,7 @@ import { runAgentLoop, type LoopTask } from "./loop.js";
 import { McpDenied, McpError } from "./mcp-client.js";
 import { MAX_TOOL_OUTPUT } from "./tools.js";
 import { PLAN_TOOLS, planBrief, Planner, programsInFlight, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
+import { asVerdict, classify, decisionProblem, outcomeProblem, questionDigest, questionOf, REVIEW, reviewValue, subjectValue, valueDigest, VERDICT, WAIVER, waiverFacts, waiverProblem, waiversOf, type Outcome as ReviewOutcome, type Question, type Split, type Verdict } from "./review.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import type { ActionRow, Admission, CommandRow, Journal, ViolationKind } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
@@ -305,6 +306,12 @@ export class Interpreter {
    * sub-program's interpreter is given no `plan`, and what `held` guards is reached only under an envelope.
    */
   private readonly amendable: boolean;
+  /**
+   * The list of outcomes each map of this run's body gave, with the map's node as the run stands at it: a review is
+   * given such a list (0.6, `review`), and reads every item's verdict from the journal at that node. A list that is
+   * not one of these is no review's source, whatever it holds.
+   */
+  private readonly mapOutcomes = new WeakMap<Value[], { path: string; map: MapExpr }>();
 
   constructor(private readonly o: InterpOptions) {
     this.defs = o.program.defs;
@@ -732,6 +739,8 @@ export class Interpreter {
       out.push("ok" in end ? tag("Ok", end.ok) : tag("Failed", end.fault.value()));
     }
     await ended();
+    // 0.6: the outcomes of this map, as a review of them finds the map they are of (`review`).
+    this.mapOutcomes.set(out, { path, map: e });
     return out;
   }
 
@@ -914,6 +923,9 @@ export class Interpreter {
     if (this.o.connectors && e.callee.op === "field" && e.callee.of.op === "var" && this.o.connectors.has(e.callee.of.name) && !this.isLocal(e.callee.of.name, ctx)) {
       return this.toolRead(e.callee.of.name, e.callee.name, e, ctx, path);
     }
+    // 0.6: one wait for a person about the outcomes of a map that verifies; a connector's tool of that name is a tool
+    // call first (above), as the compiler reads it.
+    if (p === "human.review" && is06(this.o.program)) return this.review(e, ctx, path);
     if (p === "quote" || p === "peek") return this.expr(e.args[0]!.value, ctx, `${path}/args/0/value`);
     if (p === "len") {
       const v = unwrap(await this.expr(e.args[0]!.value, ctx, `${path}/args/0/value`));
@@ -1612,8 +1624,10 @@ export class Interpreter {
     const vars = new Map<string, Value>();
     c.params.forEach((p, i) => vars.set(p.name, pos[i] ?? null));
     const cctx: Ctx = { scope: { vars }, where: "contract", workflow: ctx.workflow };
-    const unmet: string[] = [];
-    const evidence: string[] = [];
+    let unmet: string[] = [];
+    let evidence: string[] = [];
+    // 0.6 (B25): every record of this verify names, by its digest, the value it was given (`subject.value`).
+    const bound = is06(this.o.program) ? { value: valueDigest(subject), failed: {} as Record<string, string[]> } : undefined;
     for (let i = 0; i < (c.require ?? []).length; i++) {
       if (!truthy(unwrap(await this.expr(c.require![i]!, cctx, `${path}/contract/require/${i}`)))) unmet.push(`require/${i}`);
     }
@@ -1626,20 +1640,43 @@ export class Interpreter {
       .sort((a, b) => methodRank(a.by) - methodRank(b.by) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const k of criteria) {
       if (methodRank(k.by) === HUMAN_RANK && unmet.length) unmet.push(k.name);
-      else if (!(await this.criterion(k.by, e.contract, k.name, cctx, k.path, evidence))) unmet.push(k.name);
+      else if (!(await this.criterion(k.by, e.contract, k.name, cctx, k.path, evidence, k.path, bound && { value: bound.value, failed: (bound.failed[k.name] ??= []) }))) unmet.push(k.name);
     }
-    if (!unmet.length) return verified(subject, e.contract, evidence.sort());
+    // 0.6: against a contract a person may waive part of, the outcome is journaled, with the value it was given and
+    // the failed records of each criterion it did not meet: a review of the map this verify ends reads it there
+    // (review.ts), and never a value anyone else carries. The journal's verdict decides, so that a resumed run and a
+    // replay decide as the first run did.
+    if (bound && waiversOf(c).size) {
+      const verdict: Verdict = {
+        contract: e.contract,
+        value: subject,
+        value_digest: bound.value,
+        met: !unmet.length,
+        unmet,
+        failed: Object.fromEntries(unmet.filter((u) => !u.startsWith("require/")).map((u) => [u, [...(bound.failed[u] ?? [])].sort()])),
+        evidence: [...evidence].sort(),
+      };
+      const recorded = asVerdict(await this.command(`${path}/verdict`, VERDICT, { contract: e.contract, value: bound.value }, undefined, async () => ({ ok: verdict as unknown as Value, cost: {} }), { label: `verdict ${e.contract}` }), e.contract);
+      if (!recorded || recorded.value_digest !== bound.value) throw new Violation("nondeterministic_replay", `The verdict journaled at ${path} is not one of the value this verify is given.`);
+      unmet = recorded.unmet;
+      evidence = recorded.evidence;
+    }
+    if (!unmet.length) return verified(subject, e.contract, [...evidence].sort());
     if (e.on_unmet) {
       return this.expr(e.on_unmet.then, { ...ctx, scope: { vars: new Map([[e.on_unmet.bind, unmet]]), parent: ctx.scope } }, `${path}/on_unmet/then`);
     }
     throw new Fault("Rejected", [{ contract: e.contract, unmet }]);
   }
 
-  /** One criterion of a contract, or one part of it under `and`; `root` is the criterion's own path, whichever part `path` is. */
-  private async criterion(v: Verifier, contract: string, name: string, ctx: Ctx, path: string, evidence: string[], root = path): Promise<boolean> {
+  /**
+   * One criterion of a contract, or one part of it under `and`; `root` is the criterion's own path, whichever part
+   * `path` is. With `bound` (0.6), its records name the verified value's digest, and the ids of those that fail are
+   * kept in `bound.failed`.
+   */
+  private async criterion(v: Verifier, contract: string, name: string, ctx: Ctx, path: string, evidence: string[], root = path, bound?: { value: string; failed: string[] }): Promise<boolean> {
     if ("all" in v) {
       let ok = true;
-      for (let i = 0; i < v.all.length; i++) ok = (await this.criterion(v.all[i]!, contract, name, ctx, `${path}/all/${i}`, evidence, root)) && ok;
+      for (let i = 0; i < v.all.length; i++) ok = (await this.criterion(v.all[i]!, contract, name, ctx, `${path}/all/${i}`, evidence, root, bound)) && ok;
       return ok;
     }
     let passed: boolean;
@@ -1702,8 +1739,9 @@ export class Interpreter {
       if (isObj(r) && Array.isArray(r["artifacts"])) outputs = r["artifacts"];
       if (isObj(r) && r["producer"] !== undefined) producer = r["producer"]!;
     }
-    // What the check was about: the contract's arguments, and for a check of the working copy, its files (§10.3).
-    const subject: Obj = { contract_args: this.subjectDigest(contract, ctx), ...(files ? { files } : {}) };
+    // What the check was about: the contract's arguments, and for a check of the working copy, its files (§10.3); in
+    // 0.6 also the value verified, by its digest (B25).
+    const subject: Obj = { contract_args: this.subjectDigest(contract, ctx), ...(files ? { files } : {}), ...(bound ? { value: bound.value } : {}) };
     if (files && !this.o.replay) subject["tree"] = (await this.o.artifacts.putTree(this.scope(), { format: "mandate/tree/0.1", files: files as Record<string, string> })).ref;
     const id = evidenceIdOf(this.o.runId, path, method, passed);
     if (!this.o.replay) {
@@ -1729,6 +1767,7 @@ export class Interpreter {
       await this.o.journal.recordEvidence(this.o.runId, { record, ...this.o.signer.sign(record) });
     }
     if (passed) evidence.push(id);
+    else bound?.failed.push(id);
     return passed;
   }
 
@@ -1773,6 +1812,106 @@ export class Interpreter {
       throw f;
     }
     return isObj(decision) ? { ...decision, role } : { approved: false, role };
+  }
+
+  // ── a review of a batch (0.6; spec/library.md "human.review") ──────────
+
+  /**
+   * `human.review(results, role: r, deadline: d [, escalate_to: r2])`: one wait for a person about the outcomes of a
+   * map whose body ends with a verify. What each item is, and its value, is read from the journal, as its verify
+   * recorded it (`<item's verify>/verdict`), never from the list the program holds; how they split, what is asked and
+   * every rule of a decision are review.ts's. With no open item no wait opens. Otherwise the run waits (`review`)
+   * until a signed decision decides every open item (runtime.ts `decideReview`), or the wait expires, after its
+   * escalation when it has one (`Runtime.tick`); then the review's value is made of what was decided.
+   *
+   * The compiler's rules for a review (E1506 to E1508, and INV-18: never in a map's body) are held here again: a
+   * review that breaks one stops the run for a person, and asks nobody.
+   */
+  private async review(e: Extract<Expr, { op: "call" }>, ctx: Ctx, path: string): Promise<Value> {
+    const { journal, runId } = this.o;
+    if (ctx.map !== undefined) throw new Violation("person_in_map", `human.review at ${path} is in the body of the map at ${ctx.map}: a batch asks once, after its map (INV-18, MDT-E1708).`);
+    if (ctx.where !== "workflow") throw new Violation("bad_review", `human.review at ${path} is not in a workflow's body (MDT-E1506).`);
+    // The source (E1506): the outcomes of a map of this run whose body ends with a verify with no `on unmet`.
+    const first = e.args[0];
+    const results = first && first.name === undefined && first.value.op === "var" ? await this.expr(first.value, ctx, `${path}/args/0/value`) : undefined;
+    const source = Array.isArray(results) ? this.mapOutcomes.get(results) : undefined;
+    const last = source ? source.map.body.length - 1 : -1;
+    const tail = source?.map.body[last];
+    const verifying = tail?.op === "expr" && tail.value.op === "verify" && !tail.value.on_unmet ? tail.value : undefined;
+    if (!source || !verifying || !Array.isArray(results)) throw new Violation("bad_review", `human.review at ${path} is not given the outcomes of a map whose body ends with a verify (MDT-E1506).`);
+    const contract = verifying.contract;
+    const c = this.def(contract);
+    // Its roles and deadline (E1507), and that each role may waive every criterion of the contract that may be waived (E1508).
+    const named = (n: string): number => e.args.findIndex((a) => a.name === n);
+    const roleOf = (i: number): string | undefined => {
+      const x = i < 0 ? undefined : e.args[i]!.value;
+      const n = x?.op === "var" && !this.isLocal(x.name, ctx) ? x.name : x?.op === "text" ? x.value : undefined;
+      return n !== undefined && this.def(n)?.kind === "role" ? n : undefined;
+    };
+    const role = roleOf(named("role"));
+    const escalate = named("escalate_to") < 0 ? null : (roleOf(named("escalate_to")) ?? "");
+    const at = named("deadline");
+    const ms = at < 0 ? NaN : Number(unwrap(await this.expr(e.args[at]!.value, ctx, `${path}/args/${at}/value`)));
+    if (role === undefined || escalate === "" || escalate === role || !Number.isSafeInteger(ms) || ms <= 0) {
+      throw new Violation("bad_review", `human.review at ${path} needs role: a role definition, deadline: a Duration above zero, and escalate_to, when given, another role definition (MDT-E1507).`);
+    }
+    const waivers = waiversOf(c);
+    const cannot = [role, ...(escalate ? [escalate] : [])].flatMap((r) => [...waivers].filter(([, roles]) => !roles.includes(r)).map(([k]) => `${r} may not waive ${contract}.${k}`));
+    if (!waivers.size || cannot.length) throw new Violation("bad_review", `human.review at ${path}: ${waivers.size ? cannot.join("; ") : `${contract} has no criterion a person may waive`} (MDT-E1508).`);
+    // Each item's verdict, as its verify journaled it. An item whose work faulted before its verify ended has none.
+    const verdicts: Array<Verdict | undefined> = [];
+    for (let i = 0; i < results.length; i++) {
+      const id = `${source.path}[${i}]/body/${last}/value/verdict`;
+      const row = await journal.command(runId, id);
+      const ok = tagOf(results[i] ?? null)?.tag === "Ok";
+      if (row?.payload_purged) throw this.purged(id);
+      const verdict = row ? (row.state === "succeeded" ? asVerdict(row.result, contract) : undefined) : undefined;
+      // What the map gave and what the journal holds of it are one: anything else is not this run's.
+      if (row ? !verdict || verdict.met !== ok : ok) throw new Violation("nondeterministic_replay", `Item ${i} of the map at ${source.path} ended otherwise than the verdict its verify journaled says.`);
+      verdicts.push(verdict);
+    }
+    const split = classify(verdicts, c, role);
+    const question = questionOf({ review: path, contract, map: source.path, role, escalate_to: escalate, deadline_ms: ms, c, verdicts, split });
+    if (!split.open.length) return reviewValue({ run: runId, contract, verdicts, split });
+    return reviewValue({ run: runId, contract, verdicts, split, outcome: await this.reviewWait(path, question, split) });
+  }
+
+  /**
+   * The wait of a review with open items (`review`), opened once with `review_requested`, and what it ended with.
+   * Its request is the question (its digest is the subject a decision is signed on), the role asked now and the
+   * deadline; an escalation changes those two and nothing of the question. Ended, its outcome is held to the question
+   * and to the stored decision it names (review.ts), so that what a later step reads is what a person signed.
+   */
+  private async reviewWait(id: string, q: Question, split: Split): Promise<ReviewOutcome> {
+    const { journal, runId, fence } = this.o;
+    const subject = questionDigest(q);
+    const deadline = this.o.adapters.clock.now() + q.deadline_ms;
+    const request: Obj = { question: q as unknown as Value, subject_digest: subject, role: q.role, escalate_to: q.escalate_to, deadline, deadline_ms: q.deadline_ms };
+    const requested: Obj = { node: id, contract: q.contract, map: q.map, role: q.role, escalate_to: q.escalate_to, deadline, open: split.open, declined: split.declined, failed: split.failed, accepted: split.accepted };
+    const row = this.o.replay ? await journal.command(runId, id) : await journal.openReview(runId, fence, { id, digest: digest("request", { kind: REVIEW, request }) }, request, requested);
+    if (row && row.kind !== REVIEW) throw new Violation("nondeterministic_replay", `The command at ${id} is a ${row.kind}, not a review's wait.`);
+    if (!row || row.state === "waiting") {
+      if (this.o.replay) throw new ReplayEnd(id, "no_result");
+      // The request as first recorded (a resumed worker must not move its deadline), as an escalation left it.
+      const held = row?.result ?? request;
+      if (!isObj(held) || held["subject_digest"] !== subject) throw new Violation("nondeterministic_replay", `The review at ${id} would ask another question than the one its wait recorded.`);
+      throw new Suspend({ kind: REVIEW, command: id, request: held });
+    }
+    if (row.payload_purged) throw this.purged(id);
+    const why = row.state === "succeeded" ? outcomeProblem(row.result, q, subject) : `its wait ended ${row.state}`;
+    if (why) throw new Violation("invalid_decision", `The review at ${id} ended with what it did not ask: ${why}.`);
+    const outcome = row.result as Obj;
+    if (outcome["expired"] !== true) {
+      const d = this.o.decisions ? await journal.decision(String(outcome["decision"])) : undefined;
+      const bad = this.o.decisions ? decisionProblem(d, { run: runId, review: id, subject, outcome, keys: this.o.decisions.keys, lock: this.o.decisions.lock }) : "this run checks no signed decision";
+      if (bad) throw new Violation("invalid_decision", `The decision the review at ${id} rests on does not hold: ${bad}.`);
+    }
+    return outcome as unknown as ReviewOutcome;
+  }
+
+  /** What a review meets in a command whose payload retention purged (R14): a replay's end, and in a run a stop for a person. */
+  private purged(id: string): Error {
+    return this.o.replay ? new ReplayEnd(id, "payload_purged") : new Violation("payload_purged", `The review reads ${id}, whose payload is purged.`);
   }
 
   // ── external effects: prepare → authorize → commit (§8.8) ─────────────
@@ -1881,7 +2020,7 @@ export class Interpreter {
    */
   private async prepareAction(
     name: string,
-    info: { params: TypeExpr[]; retryClass?: string },
+    info: { params: TypeExpr[]; retryClass?: string; irreversible?: boolean },
     pos: Value[],
     params: Value,
     key: Value,
@@ -1894,14 +2033,32 @@ export class Interpreter {
     batch?: string,
   ): Promise<{ tool: ToolAdapter; action: ActionRow; receipt?: undefined } | { tool: ToolAdapter; action?: undefined; receipt: Value }> {
     // INV-13: a parameter declared Verified<T, C> must carry evidence for C at run time too.
-    for (const [i, t] of info.params.entries()) {
-      if (!("ref" in t) || t.ref !== "Verified") continue;
-      const v = pos[i];
-      const want = t.args?.[1] && "ref" in t.args[1] ? t.args[1].ref : undefined;
-      if (!isObj(v) || !("$verified" in v) || (want && v["$contract"] !== want)) {
-        throw new Fault("PolicyDenied", [{ effect: name, parameter: i, reason: "unverified_parameter" }]);
+    if (!is06(this.o.program)) {
+      for (const [i, t] of info.params.entries()) {
+        if (!("ref" in t) || t.ref !== "Verified") continue;
+        const v = pos[i];
+        const want = t.args?.[1] && "ref" in t.args[1] ? t.args[1].ref : undefined;
+        if (!isObj(v) || !("$verified" in v) || (want && v["$contract"] !== want)) {
+          throw new Fault("PolicyDenied", [{ effect: name, parameter: i, reason: "unverified_parameter" }]);
+        }
+        if (!this.o.replay) await this.checkVerified(name, v);
       }
-      if (!this.o.replay) await this.checkVerified(name, v);
+    } else {
+      // 0.6: so must every value a parameter holds where its type says Verified<T, C>, nested in a list, an option, a
+      // record or a variant: what a person answered an escalation with keeps its verified type (H08), and is never
+      // taken for one. Each is held to its evidence, and a value that rests on a waiver never reaches an effect that
+      // cannot be undone (`checkVerified`).
+      for (const [i, t] of info.params.entries()) {
+        const found: Array<{ at: string; value: Value; contract: string | undefined }> = [];
+        this.verifiedIn(t, pos[i] ?? null, "", found, new Map(), 0);
+        for (const f of found) {
+          const v = f.value;
+          if (!isObj(v) || !("$verified" in v) || (f.contract && v["$contract"] !== f.contract)) {
+            throw new Fault("PolicyDenied", [{ effect: name, parameter: i, reason: "unverified_parameter", ...(f.at ? { at: f.at } : {}) }]);
+          }
+          if (!this.o.replay) await this.checkVerified(name, v, info.irreversible === true);
+        }
+      }
     }
     // 0.6: a connector's write tool has the connector's adapter, and no other; the configuration's tools cannot stand in for it.
     const tool = this.o.connectors?.write(name) ?? this.o.adapters.tools[name];
@@ -2003,7 +2160,9 @@ export class Interpreter {
     const plan = await this.expr(e.plan, ctx, `${path}/plan`);
     // INV-13 at run time: the plan was verified, and its evidence holds.
     if (!isObj(plan) || !("$verified" in plan)) throw new Fault("PolicyDenied", [{ changeset: path, reason: "unverified_plan" }]);
-    if (!this.o.replay) await this.checkVerified("changeset", plan);
+    // 0.6: a plan a person may waive part of never lets a set land that commits an effect that cannot be undone (E1505).
+    const undone = is06(this.o.program) && Object.values(e.members).some((m) => this.effectInfo(m.effect).irreversible);
+    if (!this.o.replay) await this.checkVerified("changeset", plan, undone);
     const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
     const mode = this.o.mode ?? "live";
     // What the set lands and why, for its view (doc 9 §3.4, §8.2): recorded with the set in every mode.
@@ -2248,17 +2407,28 @@ export class Interpreter {
    * needs a record of its own method. A model or an agent can produce JSON
    * that looks like a Verified value; it never has such evidence.
    */
-  private async checkVerified(effect: string, v: Obj): Promise<void> {
+  private async checkVerified(effect: string, v: Obj, irreversible = false): Promise<void> {
     const contract = String(v["$contract"] ?? "");
     const ids = Array.isArray(v["$evidence"]) ? v["$evidence"].map(String) : [];
     const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
-    // A person's approval holds only while the decision it names is the one they signed (H04).
+    const c = this.def(contract);
+    const v06 = is06(this.o.program);
+    // 0.6: what a person may waive part of never reaches an effect that cannot be undone, nor is what makes one allowed
+    // (E1505): a value verified against such a contract, or one that rests on a waiver record, is refused here, before
+    // its evidence is read any further and before anything is prepared.
+    const waived = rows.some((r) => r.method === WAIVER);
+    if (v06 && irreversible && (waived || waiversOf(c).size > 0)) {
+      throw new Violation("waived_irreversible", `${effect} cannot be undone, and it received a value verified against ${contract}, which ${waived ? "rests on a person's waiver" : "a person may waive part of"}: a waiver does not clear what cannot be undone (MDT-E1505).`);
+    }
+    // A person's approval holds only while the decision it names is the one they signed (H04); so does a waiver (0.6).
     const approved = this.o.decisions;
     const decisions = approved && rows.some((r) => r.method === "human.approve") ? new Map((await this.o.journal.decisions(this.o.runId)).map((d) => [d.decision_id, d])) : new Map<string, StoredDecision>();
+    const facts = v06 && waived && approved ? await waiverFacts(this.o.journal, this.o.runId, { contract: (n) => this.def(n), keys: approved.keys, lock: approved.lock, trusted: this.o.trusted }) : undefined;
+    // 0.6 (B25): every record the value rests on names, in its subject, the digest of the value the effect is given.
+    const value = v06 ? valueDigest(v["$verified"] ?? null) : undefined;
     const problems: string[] = [];
     const found = new Set(rows.map((r) => r.evidence_id));
     for (const id of ids) if (!found.has(id)) problems.push(`${id} is not evidence of this run`);
-    const c = this.def(contract);
     // Which checks need their verifier's attestation is the configuration's to say, and which methods a criterion
     // uses is the program's: never the record's (attestation.ts recordProblem).
     const rule: AttestationRule = { keys: this.o.verifiers, inProcess: this.o.inProcess ?? new Set() };
@@ -2267,25 +2437,111 @@ export class Interpreter {
       if (!r.passed) problems.push(`${r.evidence_id} did not pass`);
       if (r.contract !== contract) problems.push(`${r.evidence_id} is evidence for ${r.contract}`);
       if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
-      else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion) problems.push(`${r.evidence_id} does not match its signed record`);
+      else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion || (v06 && record.method !== r.method)) problems.push(`${r.evidence_id} does not match its signed record`);
       else {
-        const why = recordProblem(record, { ...r, run: this.o.runId }, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined);
+        // A waiver is held to the review decision it names (review.ts); a run of 0.1 to 0.5 has none, and one in it covers nothing.
+        const why =
+          record.method === WAIVER
+            ? !v06
+              ? "a waiver covers nothing in a run of a package of 0.1 to 0.5"
+              : facts
+                ? waiverProblem(record, facts)
+                : "a waiver rests on a signed review decision, and this run checks none"
+            : (recordProblem(record, { ...r, run: this.o.runId }, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined));
         if (why) problems.push(`${r.evidence_id}: ${why}`);
+        if (v06 && subjectValue(record) !== value) problems.push(`${r.evidence_id} is evidence for another value than the one ${effect} is given`);
       }
     }
     const criteria = c?.kind === "contract" ? [...Object.keys(c.accept), ...Object.keys(c.invariant ?? {})] : [];
     if (c?.kind !== "contract") problems.push(`${contract} is not a contract of this program`);
-    const covered = new Set(rows.filter((r) => r.passed).map((r) => r.criterion));
-    for (const k of criteria) {
-      if (!covered.has(k)) problems.push(`no evidence for ${contract}.${k}`);
-      // With a verifier of its own, every part of a criterion needs a passing record of its own method: under `and`,
-      // a static part's record does not stand for the verifier's check beside it.
-      else if (attestationsRequired(rule)) {
+    if (v06) {
+      // 0.6: a criterion is covered by passing records of every part it declares, or, when its `waive by` lets a
+      // person waive it, by a waiver that holds; a criterion nobody may waive is never covered by a waiver, so no
+      // value is accepted while one of those still fails.
+      for (const k of criteria) {
+        if (rows.some((r) => r.method === WAIVER && r.criterion === k)) continue;
         const passed = rows.filter((r) => r.passed && r.criterion === k).map((r) => r.method);
-        for (const m of uncovered(criterionMethods(c, k) ?? [], passed)) problems.push(`no evidence by ${m} for ${contract}.${k}`);
+        if (!passed.length) problems.push(`no evidence for ${contract}.${k}`);
+        else for (const m of uncovered(criterionMethods(c, k) ?? [], passed)) problems.push(`no evidence by ${m} for ${contract}.${k}`);
+      }
+    } else {
+      const covered = new Set(rows.filter((r) => r.passed && r.method !== WAIVER).map((r) => r.criterion));
+      for (const k of criteria) {
+        if (!covered.has(k)) problems.push(`no evidence for ${contract}.${k}`);
+        // With a verifier of its own, every part of a criterion needs a passing record of its own method: under `and`,
+        // a static part's record does not stand for the verifier's check beside it.
+        else if (attestationsRequired(rule)) {
+          const passed = rows.filter((r) => r.passed && r.criterion === k).map((r) => r.method);
+          for (const m of uncovered(criterionMethods(c, k) ?? [], passed)) problems.push(`no evidence by ${m} for ${contract}.${k}`);
+        }
       }
     }
     if (problems.length) throw new Violation("forged_evidence", `${effect} received a Verified value whose evidence does not hold: ${[...new Set(problems)].sort().join("; ")}.`);
+  }
+
+  /**
+   * Each value `v` holds where its type `t` says `Verified<T, C>` (0.6), with the contract `C` it names, if any, at its
+   * place in `v` (`at`, a JSON pointer): through `Inferred`, `Untrusted` and `Option`, the items of a `List`, a `Set` or
+   * a `Map`, the fields of a record, the fields of a variant, an `Outcome`'s value, a `Review`'s accepted items, and
+   * the program's named types, generic ones with their arguments. A Verified value's own value is read on as `T`.
+   * `generic` gives the type arguments of the named type being read. Nothing is taken from the value but its shape.
+   */
+  private verifiedIn(t: TypeExpr, v: Value, at: string, out: Array<{ at: string; value: Value; contract: string | undefined }>, generic: ReadonlyMap<string, TypeExpr>, depth: number): void {
+    // A type that names itself without a value in between ends here, as does a value nested beyond any program's: as
+    // a place that holds no Verified value, so that what is not read is never taken for checked.
+    if (depth > 256) return void out.push({ at, value: null, contract: undefined });
+    const next = depth + 1;
+    if ("record" in t) {
+      if (isObj(v)) for (const [k, ft] of Object.entries(t.record)) if (Object.hasOwn(v, k)) this.verifiedIn(ft, v[k]!, `${at}/${k}`, out, generic, next);
+      return;
+    }
+    if ("refine" in t) return this.verifiedIn(t.refine, v, at, out, generic, next);
+    if ("union" in t) {
+      const tv = tagOf(v);
+      const variant = tv ? t.union.find((x) => x.tag === tv.tag) : undefined;
+      (variant?.fields ?? []).forEach((f, j) => this.verifiedIn(f.type, tv!.args[j] ?? null, `${at}/$args/${j}`, out, generic, next));
+      return;
+    }
+    if (!("ref" in t)) return;
+    const bound = generic.get(t.ref);
+    if (bound && !t.args?.length) return this.verifiedIn(bound, v, at, out, new Map(), next);
+    const args = (t.args ?? []).map((a) => substituted(a, generic));
+    switch (t.ref) {
+      case "Verified":
+        out.push({ at, value: v, contract: args[1] && "ref" in args[1] ? args[1].ref : undefined });
+        if (args[0]) this.verifiedIn(args[0], unwrap(v), at, out, generic, next);
+        return;
+      case "Inferred":
+      case "Untrusted":
+      case "Decision":
+        if (args[0]) this.verifiedIn(args[0], v, at, out, generic, next);
+        return;
+      case "Option":
+        if (args[0] && v !== null) this.verifiedIn(args[0], v, at, out, generic, next);
+        return;
+      case "List":
+      case "Set":
+        if (args[0] && Array.isArray(v)) v.forEach((x, j) => this.verifiedIn(args[0]!, x, `${at}/${j}`, out, generic, next));
+        return;
+      case "Map":
+        if (args[1] && isObj(v)) for (const [k, x] of Object.entries(v)) this.verifiedIn(args[1], x, `${at}/${k}`, out, generic, next);
+        return;
+      case "Outcome": {
+        const tv = tagOf(v);
+        if (args[0] && tv?.tag === "Ok") this.verifiedIn(args[0], tv.args[0] ?? null, `${at}/$args/0`, out, generic, next);
+        return;
+      }
+      case "Review":
+        if (args[0] && isObj(v) && Array.isArray(v["accepted"])) {
+          v["accepted"].forEach((x, j) => this.verifiedIn({ ref: "Verified", args: args.slice(0, 2) }, x, `${at}/accepted/${j}`, out, generic, next));
+        }
+        return;
+    }
+    const d = this.def(t.ref);
+    if (d?.kind !== "type") return;
+    const names = (d as { generics?: unknown }).generics;
+    const own = new Map<string, TypeExpr>(Array.isArray(names) ? names.flatMap((n, j) => (typeof n === "string" && args[j] ? [[n, args[j]!] as const] : [])) : []);
+    this.verifiedIn(d.type, v, at, out, own, next);
   }
 
   /** The files frozen at prepare, read back from the artifact store (which checks their digests). */
@@ -2448,6 +2704,18 @@ export class Interpreter {
  */
 function staticPath(path: string): string {
   return path.replace(/@\d+|#all\d+|\[\d+\]/g, "");
+}
+
+/** `t` with each name of a type parameter that `generic` gives an argument for replaced by that argument. */
+function substituted(t: TypeExpr, generic: ReadonlyMap<string, TypeExpr>): TypeExpr {
+  if (!generic.size) return t;
+  if ("record" in t) return { record: Object.fromEntries(Object.entries(t.record).map(([k, f]) => [k, substituted(f, generic)])) };
+  if ("refine" in t) return { ...t, refine: substituted(t.refine, generic) };
+  if ("union" in t) return { union: t.union.map((v) => ({ ...v, ...(v.fields ? { fields: v.fields.map((f) => ({ ...f, type: substituted(f.type, generic) })) } : {}) })) };
+  if (!("ref" in t)) return t;
+  const bound = generic.get(t.ref);
+  if (bound && !t.args?.length) return bound;
+  return t.args ? { ref: t.ref, args: t.args.map((a) => substituted(a, generic)) } : t;
 }
 
 /** A delegation's budget less what its finished steps spent; dimensions never go below zero. */
