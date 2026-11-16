@@ -1,0 +1,16 @@
+// The definitions of a lead's sub-program of N11/parent.mdt (E1710b): an
+// application of MakerChecker, a pattern of std.patterns the parent imports
+// and its envelope does not list among its shapes. Only its definitions are
+// read.
+
+mandate @ 0.6
+
+module example.shaped.plan_1 @ 0.1
+
+use example.shaped
+
+workflow Look = MakerChecker<Item, Text>(
+    input: Item { name: "a" },
+    make: Worker.look, check: Worker.look, accepted: Fine, owner: owner_role)
+  caps   M, R
+  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }

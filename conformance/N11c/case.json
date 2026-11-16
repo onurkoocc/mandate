@@ -1,0 +1,16 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "N11c",
+  "kind": "compile",
+  "title": "A lead's sub-program that applies Each, a pattern of its parent the envelope lists among its shapes, is admitted when its expansion fits the envelope.",
+  "spec": ["spec/library.md#shapes", "spec/envelope.md#the-sub-program", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../N11/parent.mdt", "kind": "mdt" },
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "../P06/sub.mdt", "kind": "mdt" },
+    "room": { "left": { "tokens": 50000, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": { "ok": true, "diagnostics": [] }
+}
