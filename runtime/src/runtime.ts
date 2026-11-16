@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { atLeast, capsOf, check, domainHash, hashProgram, isProgram06, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters, Cost, EgressNeed, RunComponents, RunMode, ToolAdapter } from "./adapters.js";
-import { Connectors, ConnectorWrite, connectorsOf, forbidden } from "./connectors.js";
+import { Connectors, ConnectorWrite, connectorsOf } from "./connectors.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { recordProblem, type AttestationRule } from "./attestation.js";
@@ -25,7 +25,7 @@ import { exportJournal, verifyExport, type JournalExport, type JournalReport } f
 import { buildPackage, isPackage06, isSigned04, libraryModules, refuseReference06, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
-import { listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
+import { givenValueProblem, listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
 import { canonical, digest, isObj, type Obj, type Value } from "./values.js";
 
 export type { Lock };
@@ -291,7 +291,8 @@ export class Runtime {
     const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
     // 0.6: what a run is started with holds none of the members the runtime's own values are known by, at any depth,
     // as a person's answer holds none: a Verified value is made by a verify of the run, never handed in.
-    if (isPackage06(o.pkg) && forbidden(input)) throw new Violation("reserved_value", `The input of ${o.workflow} holds a member of the runtime's own values ($verified, $contract, $evidence, …), which a run is never started with.`);
+    const given = isPackage06(o.pkg) ? givenValueProblem(input) : undefined;
+    if (given) throw new Violation(given.reason, `The input of ${o.workflow} is not taken. ${given.message}`);
     for (const p of wf.params) {
       if (!Object.hasOwn(input, p.name)) continue;
       const problems = schemaErrors(typeSchema(linked, p.type), input[p.name]!);
@@ -1087,7 +1088,8 @@ export class Runtime {
     // that looked like a Verified value would otherwise reach a step that takes one. Refused by name, and the wait stays.
     const v06 = isPackage06(await this.packaged((await this.journal.run(runId)).package_hash));
     const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "input", i as unknown as Value, { signed, kinds: ["answer"], payload: payloadOf.answer(i.value) }, async () => {
-      if (v06 && forbidden(i.value)) throw new Refused({ reason: "reserved_value", message: "The answer holds a member of the runtime's own values ($verified, $contract, $evidence, …): a person's answer is never one of those." }, signed, at.commandId);
+      const why = v06 ? givenValueProblem(i.value) : undefined;
+      if (why) throw new Refused({ reason: why.reason, message: `The answer is not taken. ${why.message}` }, signed, at.commandId);
       return { state: "succeeded", result: i.value };
     });
     return fresh ? this.drive(runId) : this.journal.run(runId);
@@ -1163,12 +1165,13 @@ export class Runtime {
   async decideReview(runId: string, msg: Message, d: { signed: SignedDecision; waive: number[]; decline: number[] }): Promise<RunRow> {
     // Only these are taken from the caller: whatever else comes with them is no part of the decision. Nothing of them
     // is read before who signed is: lists that are not lists are refused below, after the signature, and recorded.
-    const shaped = Array.isArray(d?.waive) && Array.isArray(d?.decline);
+    // Lists of numbers alone: anything else (a BigInt among them, which no digest takes) is lists that are not lists.
+    const shaped = Array.isArray(d?.waive) && Array.isArray(d?.decline) && [...d.waive, ...d.decline].every((x) => typeof x === "number");
     const lists = { waive: shaped ? [...d.waive] : [], decline: shaped ? [...d.decline] : [] };
     const at = named(d?.signed);
     const seen = await this.journal.run(runId);
     const loaded = await this.loaded(seen.package_hash, seen);
-    const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, REVIEW, { signed: d?.signed ?? null, waive: d?.waive ?? null, decline: d?.decline ?? null } as unknown as Value, { signed: d?.signed, kinds: [REVIEW], payload: payloadOf.review(lists) }, async (tx, request, run, who) => {
+    const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, REVIEW, { signed: d?.signed ?? null, waive: shaped ? d.waive : null, decline: shaped ? d.decline : null } as unknown as Value, { signed: d?.signed, kinds: [REVIEW], payload: payloadOf.review(lists) }, async (tx, request, run, who) => {
       // A review is decided by a signed record alone, whatever the runtime's mode.
       const signer = isObj(who.signed as Value) && typeof who.signed.member === "string" ? (who.signed as { member: string; role: string | null; key: string; decision: string }) : undefined;
       if (!signer) throw new Refused({ reason: "invalid_signature", message: "A review is decided by a signed decision, and this one carries no signature." }, d?.signed, at.commandId);
@@ -1315,11 +1318,17 @@ export class Runtime {
     const run = await this.journal.run(runId);
     const w = run.waiting;
     if (run.state !== "waiting" || !isObj(w)) return run;
-    // A review (0.6) is escalated once, when it has a role to escalate to, and then expires; and a review that was
-    // decided while the drive after it did not run is driven now, whatever its deadline.
-    if (w["kind"] === REVIEW) return this.expireReview(runId, String(w["command"]));
     const req = w["request"];
     const deadline = isObj(req) ? req["deadline"] : null;
+    // A review (0.6) is escalated once, when it has a role to escalate to, and then expires; and a review that was
+    // decided while the drive after it did not run is driven now, whatever its deadline. One that waits within its
+    // deadline is left as it is, and nothing is asked of the host for it.
+    if (w["kind"] === REVIEW) {
+      const due = typeof deadline === "number" && this.adapters.clock.now() >= deadline;
+      const [row] = due ? [] : await this.db.query<Row>("select state from commands where run_id = $1 and command_id = $2", [runId, String(w["command"])]);
+      if (!due && (!row || row["state"] === "waiting")) return run;
+      return this.expireReview(runId, String(w["command"]));
+    }
     if (typeof deadline !== "number" || this.adapters.clock.now() < deadline) return run;
     if (w["kind"] === "timer") return this.drive(runId);
     // A decision expires, and so does an amendment nobody answered: the lead is told, and the envelope stays.
