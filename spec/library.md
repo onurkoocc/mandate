@@ -808,7 +808,9 @@ pub pattern BatchWithExceptions<Item, Out, R>(
   items that did not pass and may be waived; after the deadline, the same
   decision for `escalate_to`; then the result.
 
-`stage` and `report` are 0.7; the body has neither.
+`stage` and `report` are 0.7; the body has neither. Version 2.0.0 of
+`std.patterns` (0.7, not implemented yet) adds them, beside this version,
+which does not change ([below](#07-stdpatterns-200-e1609-and-reports)).
 
 ### `FanOutMerge`
 
@@ -1833,7 +1835,8 @@ the wait left open.
 | INV-22 | A connector's tool is called only with the schema the lock pins, and only through the egress proxy. A tool that is not declared cannot be called | Closed declarations (E1404); schema digests at start and resume (`tool_schema_mismatch`); `no_egress_for_connector`; E1406 |
 | INV-02 (kept) | A running run's package does not change | The lock pins every library's digest; the stored expansion keeps a run's command ids |
 
-INV-19 and INV-20 are kept for a later release.
+INV-19 and INV-20 are kept for a later release: 0.7 binds them
+([`attention.md`](attention.md#invariants)).
 
 ## Diagnostics and conformance cases
 
@@ -2019,10 +2022,38 @@ The three acceptance criteria of 0.6:
    `person_in_map`, a waiver that is forged or from the wrong role,
    `expansion_mismatch`) each have a test.
 
+## 0.7: `std.patterns` 2.0.0, E1609 and reports
+
+*Added 2026-11-17. Specified in
+[`attention.md`](attention.md#stdpatterns-200); 0.7, not implemented yet.
+Everything above holds as it is for 0.6.*
+
+- **Two embedded versions.** `std.patterns` 1.0.0 stays in
+  `lib/std.patterns/`, with the same bytes and the same digest, so that every
+  0.6 lock that pins it keeps checking. Version 2.0.0, in
+  `lib/std.patterns@2/`, is written in `mandate @ 0.7`: the same three
+  patterns with the same slots, with stages, and with two reports to
+  `reviewer` in `BatchWithExceptions`. A lock pins one of them as it pins any
+  library; without a pin, a 0.7 program resolves 2.0.0 and a 0.6 one 1.0.0.
+- **E1609.** A program of 0.6 or later that imports a module, or whose lock
+  pins a library, of a newer language than its own is E1609: a 0.6 program's
+  lock that pins `std.patterns` 2.0.0 is refused. A program of 0.1 to 0.5
+  that imports a 0.6 or a 0.7 module stays E1603. `mandate add std.patterns`
+  pins the newest embedded version whose language is not newer than the
+  program's.
+- **Reports in the authority signature.** In 0.7 the [authority
+  signature](#the-authority-signature) of a workflow and a pattern, and the
+  semantic diff, record the reports it makes: each one's role or role slot,
+  and the highest data class of its fields. A report added, or one whose
+  highest class rises, widens the signature: it is a governance change, which
+  `mandate upgrade` writes only with `--accept-governance`, and which
+  `mandate publish` refuses in a version that is not a major one (E1607).
+
 ## Not in 0.6
 
 - `stage`, `report`, the attention view, `asks`, `WatchRun`, `ListWaits`
-  and masking by data class: 0.7.
+  and masking by data class: 0.7, specified in [`attention.md`](attention.md)
+  and not implemented yet.
 - Fetching a library from git or OCI, a registry service, signed
   publication, an organization's policy module, and `extern` in a
   library.

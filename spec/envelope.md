@@ -1070,6 +1070,39 @@ would be None, and a program with an envelope needs both (INV-11).
 | H04 | Evidence for `human.approve` whose decision record was changed after signing shows as invalid, and a `Verified` value resting on it is refused | `forged_evidence` (G03) |
 | H05 | A changed role binding in the lock is a new package and shows as a governance change | — |
 
+## In 0.7: `owner` and `asks`
+
+*Added 2026-11-17. Specified in [`attention.md`](attention.md); 0.7, not
+implemented yet. Everything on this page holds as it is for 0.4 to 0.6.*
+
+- **`owner` without an envelope.** A 0.7 workflow that has no envelope, one
+  that applies a pattern included, may name an `owner` role
+  ([`attention.md`](attention.md#owner)). It is the counterpart of the
+  envelope's `owner`: a member of that role approves the package with the
+  same signed decision of kind `envelope` on the package hash, and no run of
+  the workflow starts in any mode without one (`unapproved_envelope`). A
+  workflow with an envelope writes no `owner` of its own (E1910). The same
+  role signs the workflow's promotions when the lock requires them. A
+  workflow without an envelope still cannot be amended.
+- **`asks` in an envelope.** In 0.7 an envelope's budget may hold `asks`,
+  the most questions a run may put to people
+  ([`attention.md`](attention.md#the-attention-bound)). Containment (E1706)
+  then covers it: a sub-program's questions come out of what is left of the
+  run's `asks`, and its admission reserves its declared `asks`, or its static
+  attention total. An amendment (E1709) treats `asks` as every other budget
+  dimension: it keeps it, with at least the old amount, and adds it nowhere
+  it was not. A lead's amendment request is itself a question, counted when
+  it is asked; when no question is left, it is refused to the lead.
+- **In a sub-program** a `stage`, a `report` or an `owner` written in its own
+  text is E1705. A sub-program that applies a pattern the envelope's
+  `shapes` lists runs that pattern's stages and reports, since the lock pins
+  the pattern's text and the approved card names it
+  ([`attention.md`](attention.md#sub-programs-and-amendments)).
+- **Containment's details.** A sub-program need not name `asks`; under an
+  envelope without `asks` nothing is reserved for questions, and one whose
+  attention total is unbounded and that declares no `asks`, under an envelope
+  that limits it, is E1706 (dimension `asks`).
+
 ## Not in 0.4
 
 - `shapes` (the patterns a lead may apply), `human.review`, `waive by`,
@@ -1078,7 +1111,8 @@ would be None, and a program with an envelope needs both (INV-11).
   package whose program applies a pattern or whose lock pins a library is
   refused by name (`unsupported_language`) to the lead that asks
   ([`library.md`](library.md#shapes)).
-- `stage`, `report`, the attention view and `asks`: 0.7.
+- `stage`, `report`, the attention view and `asks`: 0.7, specified in
+  [`attention.md`](attention.md) and not implemented yet.
 - An egress proxy for sub-programs that need the network: 0.5
   ([`boundary.md`](boundary.md#the-egress-proxy)). On a host that does not
   reach one, a sub-program with `net.https` is refused like any sandbox that
