@@ -15,8 +15,10 @@ import { commandClass, EVENT_CLASSES, stepClass, WAIT_KINDS } from "../src/class
 import { InvalidDecision, payloadOf, signDecision, type DecisionKind, type Shown, type SignedDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "../src/evidence.js";
 import type { RunRow } from "../src/journal.js";
-import { NOT_RUN_YET_06 } from "../src/package.js";
-import { classify, listsRefusal, outcomeProblem, questionOf as askOf, waiverFacts, waiverProblem, waiveRoleRefusal, waiversOf, type Question, type Verdict, type WaiverFacts } from "../src/review.js";
+import { NOT_RUN_YET_06, reservedMethods } from "../src/package.js";
+import { forbidden } from "../src/connectors.js";
+import { buildPackage, verifyPackage } from "../src/runtime.js";
+import { classify, givenValueProblem, listsRefusal, outcomeProblem, RESERVED_MEMBERS, questionOf as askOf, waiverFacts, waiverProblem, waiveRoleRefusal, waiversOf, type Question, type Verdict, type WaiverFacts } from "../src/review.js";
 import { Crash } from "../src/signals.js";
 import { SimAgents, SimTool } from "../src/sim.js";
 import { digest, isObj, plain, type Obj, type Value } from "../src/values.js";
@@ -1074,6 +1076,93 @@ needs06("a value that rests on a waiver, or on a person's answer", () => {
     expect(reads).toBe(1);
     const details = await w.db.query<{ detail: Obj }>("select detail from evidence where run_id = 'm1' and method = 'waiver'");
     for (const d of details) expect(Object.keys(d.detail).sort()).toEqual(["index", "review", "waives"]);
+  });
+
+  it("a number or text the journal cannot keep exactly is refused with a reason of its own, in an answer and in a run's input (r3.2)", async () => {
+    const who = people();
+    const w = await world(UNDONE, { tools: [new SimTool("tag_release")], lock: { modules: {}, members: who.members, roles: { owner: ["ana"], reviewer: ["ben"] } }, decisions: { keys: who.keys } });
+    // A 19-digit id, read already rounded: the run is not started, and says why.
+    const refused = await violationOf(() => w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { changes: [], c: { branch: "b", risk: 1234567890123456789 } }, runId: "k0" }));
+    expect(refused).toMatchObject({ code: "unkeepable_value" });
+    expect(refused!.message).toMatch(/the number 1234567890123456800, a whole number past 2\^53, which cannot be kept exactly .*give it as text/);
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { changes: [{ branch: "b1", risk: 5 }], c: { branch: "", risk: 0 } }, runId: "k1" });
+    await decide(w, "k1", who.ana, { waive: [0], decline: [] });
+    for (const value of [-0, { n: 2 ** 60 }, ["ok", Number.NaN]] as Value[]) {
+      const message = await refusedAs(w, "k1", () => answer(w, "k1", who.ana, value), "invalid_decision", "unkeepable_value");
+      expect(message).not.toContain("member of the runtime's own values");
+    }
+    // A reserved member is named as such, whatever else the answer holds.
+    expect(await refusedAs(w, "k1", () => answer(w, "k1", who.ana, { $evidence: [], n: -0 }), "invalid_decision", "reserved_value")).toContain("It holds $evidence");
+    // The members held reserved are the ones a server's answer may not hold either (connectors.ts forbidden).
+    for (const k of RESERVED_MEMBERS) expect(forbidden({ [k]: 1 } as Value), k).toBe(true);
+    for (const k of ["$tag", "$args", "$money", "$currency"]) expect(givenValueProblem({ [k]: 1 } as Value), k).toBeUndefined();
+  });
+
+  it("a verify's own record, as every record, is this run's, under its package and of its mode (r3.3)", async () => {
+    const who = people();
+    const w = await world(NESTED, { tools: [new SimTool("note_all"), new SimTool("note_one")], lock: { modules: {}, members: who.members, roles: {} }, decisions: { keys: who.keys } });
+    const a = { branch: "b1", risk: 0 };
+    await w.rt.startRun({ pkg: w.pkg, workflow: "NoteAll", input: { a, b: { branch: "", risk: 0 } }, runId: "k3" });
+    const rows = await w.db.query<{ evidence_id: string; method: string; record: Obj }>("select evidence_id, method, record from evidence where run_id = 'k3' and (passed or method = 'verify') and subject->>'value' = $1", [digest("request", a)]);
+    const ids = rows.map((r) => r.evidence_id).sort();
+    const whole = rows.find((r) => r.method === "verify")!;
+    const checks = await checksOf(w, "k3");
+    const wrapper = { $verified: a, $contract: "Named", $evidence: ids };
+    expect(await violationOf(() => checks.checkVerified("note_all", wrapper))).toBeUndefined();
+    for (const [change, why] of [
+      [{ run: "another run" }, /is a record of another run/],
+      [{ package: `sha256:${"0".repeat(64)}` }, /is a record of another package than this run's/],
+      [{ mode: "design" }, /is a record of a design run, and this run is live/],
+    ] as const) {
+      const record = { ...whole.record, ...change } as unknown as EvidenceRecord;
+      const sig = w.rt.signer.sign(record);
+      await w.db.query("update evidence set record = $2, signature = $3 where evidence_id = $1", [whole.evidence_id, JSON.stringify(record), sig.signature]);
+      expect((await violationOf(() => checks.checkVerified("note_all", wrapper)))?.message).toMatch(why);
+    }
+  });
+
+  it("a tick of a review within its deadline asks nothing of the host; one with something to do asks first (r3.4)", async () => {
+    const who = people();
+    let fit = true;
+    let asked = 0;
+    const hostProbe = { read: async () => (asked++, fit ? { output: "99.0.0" } : { output: "1.0.0" }) } as never;
+    const tool = new SimTool("post_draft");
+    const agents = new SimAgents().on("Matcher.match", (req) => {
+      const m = MATCHES[String((req.args[0] as Obj)["invoice_no"])];
+      return m === "fail" || m === undefined ? { error: { tag: "SkillFailed", args: ["no_match"] }, cost: { steps: 1 } } : { ok: m, cost: { steps: 1 } };
+    });
+    const w = await world(PROGRAM, { agents, tools: [tool], lock: { modules: {}, members: who.members, roles: who.roles, host: { node: "22.0.0" } } as Lock, decisions: { keys: who.keys }, hostProbe });
+    const r = await start(w, "k4");
+    expect(r.state).toBe("waiting");
+    // The host is unfit now: a tick within the deadline leaves the run as it was, reads nothing of the host, throws nothing.
+    fit = false;
+    const before = asked;
+    w.clock.advance(DAY - 1);
+    expect((await w.rt.tick("k4")).revision).toBe(r.revision);
+    expect(asked).toBe(before);
+    // At the deadline there is something to do, and the host is asked first: an unfit one escalates nothing.
+    w.clock.advance(1);
+    expect(await violationOf(() => w.rt.tick("k4"))).toMatchObject({ code: "unfit_host" });
+    expect(asked).toBeGreaterThan(before);
+    expect(await events(w, "k4", "review_escalated")).toEqual([]);
+  });
+
+  it("a criterion whose check would write a record of the runtime's own methods is refused at load (r3.5)", async () => {
+    const w = await world(PAIR, { lock: { modules: {} }, decisions: { keys: new TrustedKeys() } });
+    for (const method of ["waiver", "verify"]) {
+      const program = structuredClone(w.pkg.program) as unknown as { defs: Record<string, { accept: Record<string, { by: unknown }> }> };
+      program.defs["Pair"]!.accept["small"]!.by = { call: { op: "call", callee: { op: "var", name: method }, args: [] } };
+      expect(reservedMethods(program as never)).toEqual(["Pair.small"]);
+      expect(await violationOf(async () => verifyPackage(buildPackage(program as never, w.pkg.lock)))).toMatchObject({ code: "reserved_method", message: expect.stringContaining("Pair.small would write evidence of a method the runtime keeps") });
+    }
+    expect(reservedMethods(w.pkg.program)).toEqual([]);
+  });
+
+  it("a BigInt in a decision's lists is a recorded refusal, never a failure of the digest (r3, BigInt)", async () => {
+    const w = await rworld();
+    await start(w, "k5");
+    const s = await signed(w, "k5", w.who.ana, { waive: [], decline: [] });
+    await refusedAs(w, "k5", () => w.rt.decideReview("k5", msg(), { signed: s, waive: [1n, 4], decline: [] } as never), "incomplete_review", "incomplete_review");
   });
 
   it("a decision whose lists are not lists is refused after who signed it, and recorded, like every refusal (7)", async () => {

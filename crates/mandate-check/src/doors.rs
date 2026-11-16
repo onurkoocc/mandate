@@ -153,7 +153,8 @@ pub struct SubprogramInput<'a> {
 
 /// What [`check_subprogram`] gives: `SubprogramCheck`, `{ ok, diagnostics,
 /// program?, hash?, workflow? }`, and, 0.6, `{ running?, running_hash? }`
-/// for a sub-program that applies a pattern, then `shape?`.
+/// for a sub-program that applies a pattern and `shape?` for one whose
+/// parent has `shapes`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SubprogramCheck {
     /// The sub-program passed every check and fits what is left of the
@@ -188,8 +189,8 @@ pub struct SubprogramCheck {
 
 impl SubprogramCheck {
     /// The result as the TypeScript writes it: `{ ok, diagnostics, program?,
-    /// hash?, workflow? }`, then, 0.6, `{ running?, running_hash? }`, and
-    /// `shape` after them when there is one (0.6).
+    /// hash?, workflow? }`, then, 0.6, `shape` and `{ running?, running_hash? }`,
+    /// each when there is one.
     #[must_use]
     pub fn to_js(&self) -> JsValue {
         JsObject::new()
@@ -204,9 +205,9 @@ impl SubprogramCheck {
             .with_some("program", self.program.as_ref().map(JsValue::from))
             .with_some("hash", self.hash.as_deref())
             .with_some("workflow", self.workflow.as_deref())
+            .with_some("shape", self.shape.as_ref().map(Shape::to_js))
             .with_some("running", self.running.as_ref().map(JsValue::from))
             .with_some("running_hash", self.running_hash.as_deref())
-            .with_some("shape", self.shape.as_ref().map(Shape::to_js))
             .into()
     }
 
