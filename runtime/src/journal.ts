@@ -176,7 +176,11 @@ export function costDims(c: Cost | Budget | undefined): Record<string, number> {
  * "Admission"): the `plan` node and the sub-program's number there, the step
  * of the lead's loop that submitted it, the command its workflow runs under,
  * its hash and the base its patch was written against, where its IR is in
- * the artifact store, the name of its workflow, and what was reserved.
+ * the artifact store, the name of its workflow, and what was reserved. For a
+ * sub-program that applies a pattern (0.6), also `running`: the hash of its
+ * running program (expanded, with all its parent sees linked in) as its check
+ * gave it, and where that is in the artifact store. Its run, its resumes and
+ * its replays run that stored one, and never expand again.
  */
 export interface Admission {
   plan: string;
@@ -187,6 +191,7 @@ export interface Admission {
   base: string;
   artifact: string;
   workflow: string;
+  running?: { hash: string; artifact: string };
   reservation?: Record<string, number>;
 }
 

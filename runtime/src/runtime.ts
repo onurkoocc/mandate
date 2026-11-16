@@ -46,6 +46,25 @@ export function egressNeed(pkg: Package, running: { program: Program; modules: M
   return { hosts, credentials };
 }
 
+/**
+ * A stored running program as a view reads a program: the definitions the packaged program has, as the running
+ * program holds them, and nothing it only sees of a module. A connector of its own is as its text declares it: the
+ * marks a table of linked definitions puts on one (`module`, `unbound`) are no part of a program.
+ */
+function ownDefinitions(stored: Program, source: Program): Program {
+  const defs = Object.fromEntries(
+    Object.keys(source.defs)
+      .filter((n) => Object.hasOwn(stored.defs, n))
+      .map((n) => {
+        const d = stored.defs[n] as unknown as Record<string, unknown>;
+        if (d["kind"] !== "connector") return [n, d];
+        const { module: _module, unbound: _unbound, ...declared } = d;
+        return [n, declared];
+      }),
+  );
+  return { ...stored, defs } as unknown as Program;
+}
+
 export interface StartOptions {
   pkg: Package;
   workflow: string;
@@ -143,7 +162,10 @@ export interface RuntimeOptions {
   libraries?: Partial<LibrariesConfig>;
 }
 
-/** The media type of a run's stored expansion (spec/library.md "Hashes, and what the runtime stores"). */
+/**
+ * The media type of a run's stored running program (spec/library.md "Hashes, and what the runtime stores"): the
+ * expansion of its program, linked through what each library reaches, as the compiler's check gave it at the start.
+ */
 export const EXPANDED_MEDIA_TYPE = "application/vnd.mandate.expanded+json";
 
 /** What stops a run at its resume for a person, as `attention_required`, rather than being thrown at the caller. */
@@ -241,7 +263,8 @@ export class Runtime {
     // as something else, and the run would live under a name it was not started with (spec/journal.md).
     if (o.runId !== undefined && (o.runId === "" || !storable(o.runId))) throw new Violation("invalid_run_id", "A run id is non-empty, well-formed Unicode without U+0000; this one would be stored as another, or as none.");
     if (o.tenant !== undefined && !storable(o.tenant)) throw new Violation("invalid_tenant", "A tenant is well-formed Unicode without U+0000; this one would be stored as another.");
-    // What a run of the package runs: its program, or (0.6) the expansion of it, which the run stores at its start.
+    // What a run of the package runs: its program linked, or (0.6) the running program its check gave (expanded, and
+    // linked through what each library reaches), which the run stores at its start.
     const verified = verifyPackage(o.pkg, this.load);
     if (this.decisionMode === "unsigned" && isSigned04(o.pkg.program, o.pkg.modules)) {
       throw new Violation("signed_decisions_required", "A mandate/0.4 package does not run in unsigned mode: its decisions are signed records (spec/envelope.md). Take decisions.mode out of the runtime configuration.");
@@ -250,9 +273,11 @@ export class Runtime {
     // With a scheduler this process only records the run and starts its workflow; the worker that takes the run
     // checks its own host when it resumes it.
     if (!this.driver) await checkFitness(o.pkg.lock, this.hostProbe);
-    const wf = Object.hasOwn(verified.running.defs, o.workflow) ? verified.running.defs[o.workflow] : undefined;
+    // A run starts a workflow of the package's own program, as the running program holds it (its expansion, when it
+    // applies a pattern): never one the program only imports.
+    const wf = Object.hasOwn(o.pkg.program.defs, o.workflow) && Object.hasOwn(verified.running.defs, o.workflow) ? verified.running.defs[o.workflow] : undefined;
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
-    const linked = linkedProgram(verified.running, verified.modules);
+    const linked = verified.running;
     // The input is a value of the workflow's parameter types, as a model's answer is of its type: a Path in it keeps the Path rule (K68).
     const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
     for (const p of wf.params) {
@@ -263,7 +288,8 @@ export class Runtime {
     // A package whose lock binds credentials needs the egress proxy; with none configured it starts nothing. With the
     // control plane's gateways on, or a package whose sandboxes reach hosts, a proxy that does not answer, or lacks a
     // gateway's credential or one the lock binds, starts nothing either.
-    const need = egressNeed(o.pkg, { program: verified.running, modules: verified.modules });
+    // A stored running program holds every definition it sees, the agents of its libraries among them.
+    const need = egressNeed(o.pkg, verified.stored ? { program: verified.stored, modules: {} } : { program: o.pkg.program, modules: verified.modules });
     if (need.credentials.length && !this.adapters.egress) {
       throw new Violation("no_egress_proxy", `The package's lock binds ${need.credentials.map((c) => `${c.credential} to ${c.agent}'s requests to ${c.host}`).join(", ")}; a credential is put in only by the egress proxy, and this runtime's configuration names none (egress.admin).`);
     }
@@ -284,8 +310,9 @@ export class Runtime {
     // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
     const components = await this.prepareWorkspace(runId, o.pkg);
     // The manifest of a run under an envelope lists the approval it starts under; another run's manifest is as it was.
-    // A run of a program that applies a pattern names its expansion by its program hash; it stores it with the run.
-    const expanded = verified.expanded ? { program: verified.expanded, hash: hashProgram(verified.expanded as unknown as Json).program } : undefined;
+    // A run that stores its running program (0.6: its program applies a pattern, or its lock pins a library) names it
+    // by its hash, as `expanded`; it stores it with the run.
+    const expanded = verified.stored ? { program: verified.stored, hash: hashProgram(verified.stored as unknown as Json).program } : undefined;
     const manifest = {
       format: RUN_MANIFEST_FORMAT,
       package: o.pkg.hash,
@@ -306,7 +333,7 @@ export class Runtime {
         if (halt) throw haltedRefusal(halt, `Run ${runId} does not start`);
         await this.keep(tx, o.pkg);
         await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
-        // The expansion the run runs from here on, its resumes and its replays: never one made again (spec/library.md).
+        // The running program the run runs from here on, its resumes and its replays: never one made again (spec/library.md).
         if (expanded) await this.artifacts.put({ tenant: policy.tenant, runId }, canonical(expanded.program as unknown as Value), EXPANDED_MEDIA_TYPE, tx);
         if (approved) await this.journal.event(tx, runId, "envelope_approved", approved);
         for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
@@ -718,18 +745,21 @@ export class Runtime {
 
   /**
    * A package as a run uses it. Its decisions are signed in signed mode, and always when it is a 0.4 package. With
-   * `run`, the program is the run's: the expansion it stored at its start, when its manifest names one (0.6).
+   * `run`, the program is the run's: the running program it stored at its start, when its manifest names one (0.6),
+   * which holds every definition it sees and is not linked again.
    */
   private async loaded(packageHash: string, run?: RunRow): Promise<Loaded> {
     const p = await this.packaged(packageHash);
     const modules = await this.linking(packageHash);
-    const expanded = run ? await this.storedExpansion(run) : undefined;
-    return { program: linkedProgram(expanded ?? p.program, modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules };
+    const stored = run ? await this.storedExpansion(run) : undefined;
+    return { program: stored ?? linkedProgram(p.program, modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules };
   }
 
   /**
-   * What the views of a run's program are given: the program as packaged (`source`), the program the run runs (its
-   * stored expansion, when it applies a pattern, 0.6; else the same), and the modules it links (with its libraries').
+   * What the views of a run's program are given: the program as packaged (`source`), the program the run runs as a
+   * view reads one (`program`), and the modules it links (with its libraries'). For a run that stored its running
+   * program (0.6), `program` is the program's own definitions as that one holds them (its expansion, when it applies
+   * a pattern), with its `use`s: what it sees of its modules a view links itself. For any other, the same as `source`.
    */
   async runProgram(runId: string): Promise<{ source: Program; program: Program; modules: Modules }> {
     const run = await this.journal.run(runId);
@@ -739,12 +769,13 @@ export class Runtime {
     const source = row["program"] as Program;
     const libraries = (row["libraries"] ?? undefined) as Package["libraries"];
     const modules = { ...((row["modules"] ?? {}) as Modules), ...(libraries?.length ? libraryModules({ lock: row["lock"] as Lock, libraries }) : {}) };
-    return { source, program: (await this.storedExpansion(run)) ?? source, modules };
+    const stored = await this.storedExpansion(run);
+    return { source, program: stored ? ownDefinitions(stored, source) : source, modules };
   }
 
   /**
-   * The expansion a run stored at its start (spec/library.md "Hashes, and what the runtime stores"), or undefined
-   * for a run whose manifest names none. One that is missing, or whose bytes do not hash to what the manifest names,
+   * The running program a run stored at its start (spec/library.md "Hashes, and what the runtime stores"): the
+   * expansion of its program, with every definition it sees linked in. Undefined for a run whose manifest names none. One that is missing, or whose bytes do not hash to what the manifest names,
    * is not run: `expansion_mismatch`. It is never made again: a compiler that expands the package otherwise now
    * cannot move the command ids of a run that is going on.
    */

@@ -1243,7 +1243,7 @@ export class Interpreter {
         shared: this.shared,
         step,
         // The lead holds no place among the run's delegations while its sub-program runs: the sub-program's own do.
-        run: (a, sub) => aside(() => this.subprogram(a, sub)),
+        run: (a, sub, running) => aside(() => this.subprogram(a, sub, running)),
       });
     if (this.o.replay) {
       await planner(
@@ -1261,10 +1261,13 @@ export class Interpreter {
    * command it was admitted as, with its own definitions and all its parent sees, and from its own reservation.
    * The envelope's rules hold inside it: who approves an effect, and how many delegations are in flight at once.
    * A map without `max` is bounded by the sub-program's own `agents`.
+   *
+   * A sub-program that applies a pattern (0.6) runs as `running`, the running program stored at its admission, which
+   * holds its expansion and all its parent sees; any other is linked into its parent here.
    */
-  private subprogram(a: Admission, sub: Program): Promise<Value> {
+  private subprogram(a: Admission, sub: Program, running?: Program): Promise<Value> {
     const { plan, ...o } = this.o;
-    const program = subprogramLinked(sub, plan!.parent, plan!.modules);
+    const program = running ?? subprogramLinked(sub, plan!.parent, plan!.modules);
     const wf = Object.hasOwn(program.defs, a.workflow) ? program.defs[a.workflow] : undefined;
     if (wf?.kind !== "workflow") throw new Violation("unknown_workflow", `Sub-program ${a.number} of ${a.plan} has no workflow '${a.workflow}'.`);
     const inner = new Interpreter({ ...o, program, envelope: { ...o.envelope!, budget: wf.budget ?? {} }, sub: { command: a.command, plan: a.plan }, shared: this.shared });

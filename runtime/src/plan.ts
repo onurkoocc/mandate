@@ -64,6 +64,7 @@ import {
   type Program,
   type Room,
   type SubprogramCheck,
+  type SubprogramCheck06,
   type SubprogramInput,
 } from "@mandate/bridge";
 import { addCounts, CompilerDivergence, CompilerFailure, compilerForWorker, keepDivergence, type WorkerCompiler } from "@mandate/bridge/mode";
@@ -90,6 +91,11 @@ const MAX_DIAGNOSTICS = 40;
 const MAX_REASON = 2000;
 
 export const PROGRAM_MEDIA_TYPE = "application/vnd.mandate.program+json";
+/**
+ * The media type of the running program of a sub-program that applies a pattern (0.6): its expansion, with all its
+ * parent sees linked in, as its check gave it. It is stored at its admission, and its run runs that one.
+ */
+export const RUNNING_PROGRAM_MEDIA_TYPE = "application/vnd.mandate.program.running+json";
 
 const OPS = {
   type: "array",
@@ -399,8 +405,8 @@ export interface PlanHost {
   shared: Shared;
   /** Runs one journaled step of the lead's delegation. */
   step(id: string, request: Value, call: () => Promise<Outcome>, label: string): Promise<Value>;
-  /** Runs an admitted sub-program's workflow to its end and returns its value. */
-  run(a: Admission, sub: Program): Promise<Value>;
+  /** Runs an admitted sub-program's workflow to its end and returns its value; `running` is its stored running program, when its admission names one. */
+  run(a: Admission, sub: Program, running?: Program): Promise<Value>;
 }
 
 type Answer = { content: string; is_error?: boolean };
@@ -515,10 +521,22 @@ export class Planner {
       const checked = over ?? (await h.checker.check({ parent: h.parent, modules: h.modules, workflow: h.workflow, number, base: String(input["base"]), ops: input["ops"] as SubprogramInput["ops"], lead: h.leadClass, room }, h.checkMs));
       // A check that was stopped, or that failed, is no check: it admits nothing, and the lead is told which.
       // So is one of a sub-program that holds what this runtime does not run in a sub-program yet (0.6): it is refused
-      // by name, `check_failed`, and not run.
-      const result = "limit" in checked || "failed" in checked ? undefined : checked;
-      const unrun = result?.ok && result.program ? subprogramNotRunYet(result.program, h.parent, h.modules) : [];
-      const stopped = "limit" in checked ? limitDiagnostic(checked) : "failed" in checked ? failedDiagnostic(checked) : unrun.length ? notRunDiagnostic(unrun) : undefined;
+      // by name, `check_failed`, and not run. A sub-program that applies a pattern is read as its check gave it to
+      // run: its running program, which is held to the hash the check named it by.
+      const result: SubprogramCheck06 | undefined = "limit" in checked || "failed" in checked ? undefined : checked;
+      const running = result?.ok && result.running ? { program: result.running as unknown as Program, hash: hashProgram(result.running as unknown as Json).program } : undefined;
+      const misnamed = running !== undefined && running.hash !== result!.running_hash;
+      const unrun = result?.ok && result.program && !misnamed ? subprogramNotRunYet(result.program, h.parent, h.modules, running?.program) : [];
+      const stopped =
+        "limit" in checked
+          ? limitDiagnostic(checked)
+          : "failed" in checked
+            ? failedDiagnostic(checked)
+            : misnamed
+              ? failedDiagnostic({ failed: "the running program of the sub-program does not hash to what the checker named it by" })
+              : unrun.length
+                ? notRunDiagnostic(unrun)
+                : undefined;
       const r = stopped ? undefined : result;
       // The errors come first: they are what the lead must act on, and a long list is cut at its end.
       const diagnostics = stopped ? [stopped] : [...r!.diagnostics.filter((d) => d.severity === "error"), ...r!.diagnostics.filter((d) => d.severity !== "error")].map(forLead);
@@ -545,10 +563,13 @@ export class Planner {
       const sub = r!.program!;
       const bytes = canonical(sub as unknown as Value);
       const wf = sub.defs[r!.workflow!];
-      const a: Admission = { ...record, command: `${h.plan}/program/${number}`, hash: r!.hash!, base: String(input["base"]), artifact: refOf(sha256Of(bytes)), workflow: r!.workflow! };
+      // What it runs as, when it applies a pattern: stored with it, and named by its admission.
+      const runs = running ? { ...running, bytes: canonical(running.program as unknown as Value) } : undefined;
+      const a: Admission = { ...record, command: `${h.plan}/program/${number}`, hash: r!.hash!, base: String(input["base"]), artifact: refOf(sha256Of(bytes)), workflow: r!.workflow!, ...(runs ? { running: { hash: runs.hash, artifact: refOf(sha256Of(runs.bytes)) } } : {}) };
       try {
         const admitted = await h.journal.admitProgram(h.runId, h.fence, a, wf?.kind === "workflow" ? wf.budget : undefined, digest("request", { kind: "program", request: { plan: a.plan, number, hash: a.hash } }), async (tx) => {
           await h.artifacts.put(h.scope, bytes, PROGRAM_MEDIA_TYPE, tx);
+          if (runs) await h.artifacts.put(h.scope, runs.bytes, RUNNING_PROGRAM_MEDIA_TYPE, tx);
         });
         return { admitted, sub };
       } catch (e) {
@@ -591,9 +612,11 @@ export class Planner {
     // A replay runs it against the journal even when the journal says how it ended, and holds the two to each other.
     if (ended && !h.replay) return told(ended);
     sub ??= await loadProgram(h, a);
+    // What it runs as, when it applies a pattern: what was stored at its admission, and never an expansion made again.
+    const running = a.running ? await loadRunning(h, a, a.running) : undefined;
     let outcome: { ok: Value } | { error: { tag: string; args: Value[] } };
     try {
-      outcome = { ok: await h.run(a, sub) };
+      outcome = { ok: await h.run(a, sub, running) };
     } catch (e) {
       // A fault is how the sub-program ended, a budget that ran out among them: what runs inside it is paid from
       // its own reservation and never from the run's (N02). Anything else stops the lead's step where it is.
@@ -651,6 +674,32 @@ async function loadProgram(r: Pick<ProgramReader, "artifacts" | "scope">, a: Adm
   const hash = hashProgram(sub as unknown as Json).program;
   if (hash !== a.hash) throw new Violation("program_hash_mismatch", `Sub-program ${a.number} of ${a.plan} was admitted as ${a.hash}, and what is stored hashes to ${hash}.`);
   return sub;
+}
+
+/**
+ * The running program of an admitted sub-program that applies a pattern (0.6), from the artifact store, held to the
+ * hash its admission names it by. One that is missing, or is another, is not run: `expansion_mismatch`, as for a
+ * run's own.
+ */
+async function loadRunning(r: Pick<ProgramReader, "artifacts" | "scope">, a: Admission, named: { hash: string; artifact: string }): Promise<Program> {
+  const refusal = (what: string): Violation =>
+    new Violation("expansion_mismatch", `Sub-program ${a.number} of ${a.plan} was admitted to run as ${named.hash}, and ${what}: a sub-program runs the running program stored at its admission, and no other (spec/library.md).`);
+  let text: string;
+  try {
+    text = await r.artifacts.text(r.scope, named.artifact);
+  } catch (e) {
+    if (!(e instanceof Violation)) throw e;
+    throw refusal(e.code === "artifact_not_found" ? "none is stored with the run" : "the bytes stored are not the ones stored then");
+  }
+  let running: Program;
+  try {
+    running = JSON.parse(text) as Program;
+  } catch {
+    throw refusal("what is stored does not read");
+  }
+  const hash = hashProgram(running as unknown as Json).program;
+  if (hash !== named.hash) throw refusal(`what is stored hashes to ${hash}`);
+  return running;
 }
 
 /** A diagnostic as a lead is shown it: what it is, where, and the facts to act on. */

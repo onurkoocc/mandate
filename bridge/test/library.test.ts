@@ -117,5 +117,29 @@ needs("library_verify and the check of 0.6 on the Rust compiler", () => {
       expect(wrong.expanded).toBeUndefined();
     });
   });
+
+  it("gives the running program, linked through the library's reach, only when it is asked for and only of 0.6", () => {
+    withCompiler("rust", () => {
+      // Not asked for: the result is as it was.
+      expect(check(APPLIES, "mdt", { libraries: [FLOWS] })).not.toHaveProperty("linked");
+      const r = check(APPLIES, "mdt", { libraries: [FLOWS], linked: true });
+      expect(r.ok).toBe(true);
+      const linked = r.linked!;
+      // The expansion's workflow, and with it what the program names of the library: its type and its pattern.
+      expect(linked.defs["Greet"]).toEqual(r.expanded!.defs["Greet"]);
+      expect(linked.defs["Note"]).toMatchObject({ kind: "type" });
+      expect(linked.defs["Once"]).toMatchObject({ kind: "pattern" });
+      expect(r.expanded!.defs).not.toHaveProperty("Note");
+      expect(Object.keys(linked).sort()).toEqual(Object.keys(r.expanded!).sort());
+      // The same answer twice, byte for byte.
+      expect(JSON.stringify(check(APPLIES, "mdt", { libraries: [FLOWS], linked: true }).linked)).toBe(JSON.stringify(linked));
+      // A program that does not check has none, and neither has one of an older language, asked for or not.
+      expect(check(APPLIES, "mdt", { linked: true })).not.toHaveProperty("linked");
+      const older = APPLIES.replace("mandate @ 0.6", "mandate @ 0.5").replace("use acme.flows.{Once, Note}\n", "").replace("workflow Greet = Once(work: Greeter.greet)", "workflow Greet(name: Text) -> Inferred<Text>");
+      const o = check(`${older}{\n  delegate Greeter.greet(name)\n}\n`, "mdt", { linked: true } as never);
+      expect(o.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+      expect(o).not.toHaveProperty("linked");
+    });
+  });
 });
 

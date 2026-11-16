@@ -21,7 +21,7 @@ import { CODES as TS_CODES } from "@mandate/compiler";
 import { facade, onCompilerMode, rustCodes } from "./mode.js";
 import * as ts from "./ts.js";
 import type { Modules } from "@mandate/compiler";
-import type { Check06 } from "./library.js";
+import type { Check06, CheckSubprogram06 } from "./library.js";
 
 // The names below are exported here and so are not taken from the reference compiler's `export *`.
 export * from "@mandate/compiler";
@@ -29,7 +29,7 @@ export type { AuthorityContext, GrantDelegation, GrantInput, GrantOutput, InFlig
 // Language 0.6 (library.ts): its versions, `atLeast` over them, its shapes, its lock, and the Rust-only doors. The
 // reference compiler's LanguageVersion and Lock, which know nothing of 0.6, are these in the bridge.
 export { atLeast, BRIDGE_LANGUAGE_VERSIONS, isProgram06, LANGUAGE_06, LIBRARY_FORMAT, libraryVerify, LOCK_FORMAT_06, NoReference } from "./library.js";
-export type { Apply, Check06, CheckOptions06, CheckResult06, ConnectorBinding, ConnectorDef, ConnectorTool, Criterion06, Def06, Documented, Envelope06, LanguageVersion, LibrariesConfig, LibraryPin, LibrarySource, LibraryVerified, Lock, PatternDef, Program06, Slot, SlotArg, WorkflowDef06 } from "./library.js";
+export type { Apply, Check06, CheckOptions06, CheckResult06, CheckSubprogram06, SubprogramCheck06, ConnectorBinding, ConnectorDef, ConnectorTool, Criterion06, Def06, Documented, Envelope06, LanguageVersion, LibrariesConfig, LibraryPin, LibrarySource, LibraryVerified, Lock, PatternDef, Program06, Slot, SlotArg, WorkflowDef06 } from "./library.js";
 
 /**
  * A view or a diff of a program that takes the modules besides, last (doors.ts): the Rust's alone, for a program of
@@ -72,7 +72,8 @@ export let requirementFor = ts.requirementFor;
 export let denialDiagnostics = ts.denialDiagnostics;
 export let applyPatch = ts.applyPatch;
 export let checkPatch = ts.checkPatch;
-export let checkSubprogram = ts.checkSubprogram;
+/** `checkSubprogram`: with the running program of a sub-program of 0.6 that applies a pattern, the Rust's alone. */
+export let checkSubprogram: CheckSubprogram06 = ts.checkSubprogram;
 export let checkAmendment = ts.checkAmendment;
 export let semanticDiff: WithModules<typeof ts.semanticDiff> = ts.semanticDiff;
 export let governanceChanges = ts.governanceChanges;
