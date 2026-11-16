@@ -11,7 +11,9 @@
 //   the configuration's `libraries` member, and the expanded program; and, when it is asked (`linked`), the running
 //   program, expanded and linked through what each library reaches, which a run runs and stores;
 // - what the `check_subprogram` door gives besides: the running program of a sub-program that applies a pattern;
-// - the Rust-only doors the runtime calls (doors.ts, RUST_ONLY): `library_verify`.
+// - the Rust-only doors the runtime and the command line call (doors.ts, RUST_ONLY): `library_verify`, the doors of
+//   `mandate add`, `upgrade` and `publish` (`library_add`, `library_upgrade`, `library_publish`), the authority
+//   signature, and the reading of the configuration's `libraries` member.
 //
 // In `ts` mode a call of a Rust-only door has no reference to answer it: it throws NoReference, by name, and never
 // passes. A program of 0.6 given to the reference compiler is refused by it on its own (E0103).
@@ -254,4 +256,134 @@ function rustOnly(fn: string, door: string, input: Record<string, unknown>): unk
  */
 export function libraryVerify(library: LibrarySource, libraries?: LibrarySource[]): LibraryVerified {
   return rustOnly("libraryVerify", "library_verify", { library, ...(libraries ? { libraries } : {}) }) as LibraryVerified;
+}
+
+// ── the doors of `mandate add`, `upgrade` and `publish` ─────────────────
+
+/** One version directory of a library, as a caller read it: the directory's name, its library, and the text of its `index.json` (null when it has none). */
+export interface PublishedVersion {
+  version: string;
+  library: LibrarySource;
+  index: string | null;
+}
+
+/** A change an upgrade or a publication finds: its kind (`widened`, `requires_changed`, a governance kind, or `behavior`), where, and the change for a person. */
+export interface LibraryChange {
+  kind: string;
+  at: string;
+  text: string;
+}
+
+/** What `library_add` and `library_upgrade` take: what the caller read of the lock, the directory, the configuration and the clock. */
+export interface LibraryRequest {
+  library: string;
+  /** `^1.0`, an exact version, or none for any version. */
+  range?: string;
+  /** The lock as read; one that is not there yet is `{ lock: "mandate/lock/0.6", modules: {} }`. */
+  lock: Lock;
+  /** Every version directory of the library that the operator's directory holds. */
+  versions: PublishedVersion[];
+  /** The other libraries the lock pins, each at its pinned version. */
+  libraries?: LibrarySource[];
+  /** The `libraries` member of the configuration: its waiting period and its revoked digests are held here. */
+  config?: LibrariesConfig;
+  /** The time, `YYYY-MM-DDTHH:MM:SSZ`. */
+  now: string;
+}
+
+/**
+ * What `library_add` and `library_upgrade` give. `lock` is the lock with the new pin, or null when it is not to be
+ * written: a diagnostic is an error, or (an upgrade) the comparison holds a governance change that was not accepted.
+ */
+export interface LibraryResolved {
+  ok: boolean;
+  diagnostics: Diagnostic[];
+  resolution: Record<string, unknown>;
+  version?: string;
+  digest?: string;
+  signature?: Record<string, unknown>;
+  governance?: LibraryChange[];
+  behavior?: LibraryChange[];
+  widenings?: unknown[];
+  before?: Record<string, unknown>;
+  lock: Lock | null;
+}
+
+/** One version a publication was compared with. */
+export interface PublishedAgainst {
+  version: string;
+  requires_major: boolean;
+  widenings: unknown[];
+  governance: LibraryChange[];
+}
+
+/** What `library_publish` gives: when `ok`, the files to copy into `<dir>/<name>/<version>/` by path, and the text of its `index.json`. */
+export interface LibraryPublished {
+  ok: boolean;
+  diagnostics: Diagnostic[];
+  name?: string;
+  version?: string;
+  digest?: string;
+  against: PublishedAgainst[];
+  files?: Record<string, string>;
+  index?: string | null;
+}
+
+/**
+ * `library_add`, `mandate add <library>[@<range>]`: the highest version within the range that is published, is not
+ * within its waiting period and is not revoked (E1606, E1608), read and checked, with its authority signature and the
+ * lock that pins it.
+ */
+export function libraryAdd(request: LibraryRequest): LibraryResolved {
+  return rustOnly("libraryAdd", "library_add", { ...request }) as LibraryResolved;
+}
+
+/**
+ * `library_upgrade`, `mandate upgrade <library>[@<range>] [--accept-governance]`: as `libraryAdd`, compared with
+ * `pinned`, the library of the version the lock pins. A comparison that holds a governance change gives no lock
+ * unless `accept_governance` is true.
+ */
+export function libraryUpgrade(request: LibraryRequest & { pinned: LibrarySource; accept_governance?: boolean }): LibraryResolved {
+  return rustOnly("libraryUpgrade", "library_upgrade", { ...request }) as LibraryResolved;
+}
+
+/**
+ * `library_publish`, `mandate publish <source dir>`: the library to publish, held to every version of it the
+ * directory holds (`published`) and to the libraries it requires. A version that widens the authority signature of
+ * the one below it, removes one of its criteria or adds a waiver, and is not a major version, is refused (E1607).
+ */
+export function libraryPublish(request: { source: LibrarySource; published: PublishedVersion[]; libraries?: LibrarySource[]; now: string }): LibraryPublished {
+  return rustOnly("libraryPublish", "library_publish", { ...request }) as LibraryPublished;
+}
+
+/** `authority_signature`: the authority signature of a library's `pub` definitions, or null when the library does not read. */
+export function authoritySignature(library: LibrarySource, libraries?: LibrarySource[]): Record<string, unknown> | null {
+  return rustOnly("authoritySignature", "authority_signature", { library, ...(libraries ? { libraries } : {}) }) as Record<string, unknown> | null;
+}
+
+/** What a door says of a `config` it does not read, before the identifiers of its problems. */
+const CONFIG_REFUSED = "`config` is not the libraries member of a configuration: ";
+
+/**
+ * Whether the compiler reads `member` as the `libraries` member of a configuration, `{ dir, wait_days?, revoked? }`
+ * (a member it does not know is refused, not read as nothing): the identifiers of its problems, none when it reads.
+ * The compiler's own reader decides: the member is given to the door `library_add`, which reads it before it
+ * resolves anything, in a request that resolves nothing.
+ */
+export function librariesConfigProblems(member: unknown): string[] {
+  if (compilerMode() === "ts") throw new NoReference("librariesConfigProblems");
+  if (compilerMode() === "both") countLanguage06();
+  // The door reads a `config` of null as none given, where the member null is not an object; and a request holds
+  // whole numbers only, where a number that is not one is of the wrong type wherever the member has it.
+  if (member === null) return ["wrong_type"];
+  const whole = (v: unknown): unknown =>
+    typeof v === "number" ? (Number.isSafeInteger(v) ? v : false) : Array.isArray(v) ? v.map(whole) : typeof v === "object" && v !== null ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, whole(x)])) : v;
+  try {
+    rustCall("library_add", { library: "none", lock: {}, versions: [], config: whole(member), now: "2000-01-01T00:00:00Z" });
+    return [];
+  } catch (e) {
+    if (e instanceof DoorRefusal && e.detail.startsWith(CONFIG_REFUSED)) return e.detail.slice(CONFIG_REFUSED.length).split(", ");
+    if (e instanceof DoorRefusal) throw new Error(e.detail);
+    throw e;
+  }
 }
