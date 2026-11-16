@@ -27,7 +27,7 @@
 //     "workspace": { "components": { "mcp": { "url": "https://github.com/acme/mcp.git", "ref": "main" } } }
 //     "broker":    { "prod_sim/core": { "url_env": "MANDATE_PROD_SIM_CORE_URL" }, "prod_sim/mcp": { "logs": "data/prod_sim/logs" } }
 //                 // the read broker (B6): a read-only database login (from the environment) or a logs directory per environment/component
-//     "samples":   "samples.json"          // sample rows for design runs, by "<environment>.<read>"
+//     "samples":   "samples.json"          // sample rows for design runs, by "<environment>.<read>"; and (0.6) a read tool's result, by "<module>.<connector>.<tool>"
 //     "boundary": { "integration": { "dir": "../acme-system/compose", "files": ["base.yml", "staging.yml", "integration.yml"], "service": "e2e" },
 //                   "ci": { "mode": "rerun", "workflow": "ci" }, "pinned": { "mcp": ["test/**"] }, "extraRead": { "core": ["/root/.m2"] } }
 //                 // boundary evidence (B5): test.suite_each, test.contract, test.integration, test.ci
@@ -42,6 +42,7 @@
 //   }
 
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,7 +73,7 @@ import { SandboxVerifier, type VerifierConfig } from "./verifier.js";
 import { GitWorkspace, type ComponentSource } from "./workspace.js";
 import { ProcessVerifier, type ChildEnvSource } from "./verifier-service.js";
 import { CREDENTIAL_NAME, isPipe } from "./egress/config.js";
-import { EgressLink, Gateway, gatewaySpec, givenGateway, refuseCredentials, type EgressScope, type GatewayName } from "./gateway.js";
+import { EgressLink, Gateway, gatewaySpec, givenGateway, refuseCredentials, type EgressScope, type GatewayName, type GatewaySpec } from "./gateway.js";
 
 export interface RuntimeConfig {
   database: string;
@@ -587,7 +588,7 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
     tools,
     ...(config.workspace ? { workspace: new GitWorkspace(config.workspace.components) } : {}),
     ...(config.broker ? { broker: brokerFor(config, env) } : {}),
-    ...(config.samples ? { samples: new SampleReads(JSON.parse(readFileSync(config.samples, "utf8")) as Record<string, Value[]>) } : {}),
+    ...(config.samples ? { samples: new SampleReads(JSON.parse(readFileSync(config.samples, "utf8")) as Record<string, Value[] | Value>) } : {}),
     clock: wallClock,
     random: Math.random,
     ...(egress ? egressAdapters(egress, !!sandbox) : {}),
@@ -599,15 +600,50 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
  * A start asks the proxy when a gateway is on, or, with a sandbox configured, when the package's sandboxes reach hosts
  * or its lock binds credentials.
  */
-function egressAdapters(egress: EgressSetup, sandboxed: boolean): Pick<Adapters, "revoke" | "egress"> {
+function egressAdapters(egress: EgressSetup, sandboxed: boolean): Pick<Adapters, "revoke" | "egress" | "connectors"> {
+  // 0.6: a connector's requests leave in a gateway session of the connector's own (spec/library.md "Egress"), opened
+  // at its first request for the run and tenant the link names, with the credential its lock entry names. The proxy
+  // puts the secret in; this process holds the session's placeholder only.
+  const gateways = new Map<string, Gateway>();
   return {
     revoke: (scope) => egress.link.revoke(scope),
     egress: {
       ready: async (need) => {
         const sandboxes = sandboxed && need && (need.hosts || need.credentials.length) ? need : undefined;
-        if (egress.on.length || sandboxes) await egress.link.ready(egress.gateways, sandboxes?.credentials ?? []);
+        const connectors = need?.connectors ?? [];
+        // A start asks the proxy for a connector's credential as for a gateway's: one it does not hold starts nothing.
+        const sent = connectors.length ? { ...egress.gateways, ...Object.fromEntries(connectors.map((c) => [`connector ${c.connector}`, c.credential])) } : egress.gateways;
+        if (egress.on.length || sandboxes || connectors.length) await egress.link.ready(sent, sandboxes?.credentials ?? []);
       },
       close: () => egress.link.closeAll(),
     },
+    connectors: {
+      fetch: (gateway) => {
+        const key = canonicalSpec(gateway.spec);
+        let g = gateways.get(key);
+        if (!g) gateways.set(key, (g = new Gateway(egress.link, gateway.spec)));
+        return g.fetch;
+      },
+    },
   };
+}
+
+/**
+ * How `mandate connector pin` reaches a connector's server: through the egress proxy the configuration names, in a
+ * gateway session of the connector's own, and no other way. Without `egress.admin` there is none
+ * (`no_egress_for_connector`). `ready` asks the proxy for the credentials the lock's entries name; `close` closes
+ * what was opened. No model, tool or sandbox is built, and no secret is read.
+ */
+export function connectorEgress(config: RuntimeConfig, env: NodeJS.ProcessEnv = process.env): { connectors: NonNullable<Adapters["connectors"]>; ready(need: Array<{ connector: string; host: string; credential: string }>): Promise<void>; close(): Promise<void> } {
+  // The sessions are opened for a scope of the command's own, which no run has: a run's revocation does not cut them,
+  // and the command closes them when it ends.
+  const egress = egressFor(config, env, { tenant: "default", run: `connector-pin-${randomUUID()}` });
+  if (!egress) throw new Violation("no_egress_for_connector", "A connector's server is asked only through the egress proxy, and the runtime configuration names none (egress.admin).");
+  const a = egressAdapters(egress, false);
+  return { connectors: a.connectors!, ready: (need) => a.egress!.ready({ hosts: false, credentials: [], connectors: need }), close: () => a.egress!.close() };
+}
+
+/** A gateway spec as a key:two connectors share a gateway only when every field of their specs is the same. */
+function canonicalSpec(spec: GatewaySpec): string {
+  return JSON.stringify([spec.name, spec.host, spec.methods, spec.credential, spec.header, spec.template]);
 }

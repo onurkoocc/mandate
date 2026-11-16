@@ -60,7 +60,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { check, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure, compilerMode } from "@mandate/bridge/mode";
 import type { Adapters } from "./adapters.js";
-import { adaptersFor, anthropicClient, connect, operatorAdapters, readConfig, replayAdapters, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
+import { Connectors } from "./connectors.js";
+import { adaptersFor, anthropicClient, connect, connectorEgress, operatorAdapters, readConfig, replayAdapters, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { credentialAdvice } from "./gateway.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
 import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
@@ -157,11 +158,12 @@ const USAGE = `usage:
   mandate drift --module MODEL --component NAME=DIR… [--host HOST=NAME]… [--json]
   mandate deploy <program> --target managed-agents [--lock FILE] [--module FILE]… [--libraries DIR] [--agents A,B] [--name PREFIX] [--harness-tokens N]
   mandate egress serve [--config FILE (default ./mandate.egress.json)]
+  mandate connector pin <program> [--lock FILE] [--module FILE]… [--libraries DIR]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 --libraries DIR is the directory of libraries a lock of 0.6 pins its libraries in (default: libraries.dir of the configuration)
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -181,6 +183,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "verify-decision") return verifyDecision(a, out);
     if (cmd === "journal" && a.positional[0] === "verify") return journalVerify(a, out);
     if (cmd === "egress") return await egress(a, out, env);
+    if (cmd === "connector") return await connectorPin(a, out, env);
     if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile} (see spec/runtime.md, "Control CLI")`);
     const config = readConfig(configFile);
     db = await connect(config);
@@ -634,6 +637,75 @@ async function deploy(a: Args, out: (s: string) => void, env: NodeJS.ProcessEnv)
     `the binding is in ${lockPath}: the lock, and so the package hash, changed`,
   ];
   out(lines.join("\n") + "\n");
+  return 0;
+}
+
+/**
+ * `mandate connector pin <program>` (spec/library.md "The lock binding and schema digests"): asks each connector's
+ * server for its tools, through the egress proxy the configuration names and no other way, and writes the digest of
+ * every declared tool's schema into the lock entry the connector already has. The entry's credential, URL, header and
+ * template are the operator's and are left as they are: a credential is a name there, and no secret is read, sent
+ * or written by this command. A connector without an entry is refused (E1407); so is a declared tool the server does
+ * not list (`tool_schema_mismatch`), and then nothing is written. It prints each digest that changed.
+ *
+ * The program is checked without the lock, whose digests are what is being written, with the libraries the lock
+ * pins; and once more against the lock as it would be written, so that a lock the program does not bind its
+ * connectors with (E1407, E1408) is not written.
+ */
+async function connectorPin(a: Args, out: (s: string) => void, env: NodeJS.ProcessEnv): Promise<number> {
+  if (a.positional[0] !== "pin") throw new Usage("connector takes pin: mandate connector pin <program> [--lock FILE]");
+  const file = a.positional[1] ?? fail("connector pin needs a program file");
+  const lockPath = typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : join(dirname(file), "mandate.lock.json");
+  const raw = readLock(lockPath) ?? fail(`connector pin writes the digests into the lock file, and there is none at ${lockPath}`);
+  const configFile = typeof a.flags["--config"] === "string" ? a.flags["--config"] : "mandate.runtime.json";
+  if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile}: a connector's server is asked through the egress proxy it names (egress.admin)`);
+  const config = readConfig(configFile);
+  const { modules, problems } = loadModules(a.modules.map((f) => ({ file: f, text: readFileSync(f, "utf8"), kind: kindOf(f) })));
+  if (problems.length) throw new Violation("load_verification_failed", problems.flatMap((p) => p.diagnostics.filter((d) => d.severity === "error").map((d) => `${p.file}: ${d.code} ${d.message}`)).join("\n"));
+  const { libraries } = pinned(raw, librariesFrom(a, config));
+  const read = { modules, ...(libraries.length ? { libraries } : {}) };
+  const text = readFileSync(file, "utf8");
+  const r = check(text, kindOf(file), { ...read, linked: true });
+  if (!r.ok) throw new Violation("load_verification_failed", r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`).join("\n"));
+  const linked = r.linked as unknown as Program | undefined;
+  if (!linked) throw new Violation("unsupported_language", `${file} is not a program of mandate/0.6: only a program of 0.6 holds connectors.`);
+  const entries = { ...(isObj(raw.connectors as unknown as Value) ? raw.connectors! : {}) };
+  const egress = connectorEgress(config, env);
+  let pins: Record<string, Record<string, string>>;
+  try {
+    // Binding refuses a connector the lock has no entry for (`bad_connector`, naming E1407: the operator writes its
+    // credential's name and URL first), and one whose entry names another URL than the one it declares.
+    const connectors = new Connectors({ program: linked, lock: raw, transport: egress.connectors });
+    if (!connectors.any) {
+      out("the program holds no connector; nothing to pin\n");
+      return 0;
+    }
+    await egress.ready(connectors.credentials());
+    pins = await connectors.pins();
+  } finally {
+    await egress.close();
+  }
+  const lines: string[] = [];
+  for (const [connector, tools] of Object.entries(pins)) {
+    const entry = entries[connector]!;
+    const before: Record<string, string> = isObj(entry.tools as unknown as Value) ? entry.tools : {};
+    for (const [tool, digest] of Object.entries(tools)) {
+      const had = Object.hasOwn(before, tool) ? before[tool] : undefined;
+      if (had !== digest) lines.push(`${connector}.${tool}: ${typeof had === "string" ? had : "(not pinned)"} -> ${digest}`);
+    }
+    for (const tool of Object.keys(before)) if (!Object.hasOwn(tools, tool)) lines.push(`${connector}.${tool}: ${String(before[tool])} -> (removed: the connector does not declare it)`);
+    entries[connector] = { ...entry, tools };
+  }
+  const next: Lock = { ...raw, connectors: entries };
+  const after = check(text, kindOf(file), { ...read, lock: next });
+  const refused = after.diagnostics.filter((d) => d.severity === "error" && (d.code === "MDT-E1407" || d.code === "MDT-E1408"));
+  if (refused.length) throw new Violation("load_verification_failed", `${refused.map((d) => `${d.code} ${d.message}`).join("\n")}\nNothing was written.`);
+  if (!lines.length) {
+    out(`every schema digest in ${lockPath} is the one its server lists; nothing changed\n`);
+    return 0;
+  }
+  writeFileSync(lockPath, JSON.stringify(next, null, 2) + "\n");
+  out(`${lines.join("\n")}\nthe digests are in ${lockPath}: the lock, and so the package hash, changed\n`);
   return 0;
 }
 

@@ -219,11 +219,8 @@ function world06(src: string, o: { libraries?: LibrarySource[]; lock?: Lock; con
 
 describe("the table of what 0.6 has that this runtime does not run yet", () => {
   it("names each construct once, with the slice that releases it", () => {
+    // Connectors, tool.call, a lock's connectors and the batch commit step run (B9; connectors.test.ts).
     expect(NOT_RUN_YET_06.map((r) => [r.name, r.slice])).toEqual([
-      ["connector", "B9"],
-      ["tool.call", "B9"],
-      ["lock.connectors", "B9"],
-      ["batch commit step", "B9"],
       ["human.review", "B10"],
       ["waive by", "B10"],
       ["shapes", "B12"],
@@ -337,15 +334,14 @@ needs06("a package of 0.6 at load", () => {
   const namedIn = (message: string): string[] => /The package uses (.*) of mandate\/0\.6, which this runtime does not run yet \(spec\/library\.md\)\.$/.exec(message)?.[1]?.split(", ") ?? [`not a refusal by the table: ${message}`];
   const TABLE = NOT_RUN_YET_06.map((r) => `${r.name} (${r.slice})`);
 
-  it("refuses connectors and tool.call by name (B9); the library of connectors, whose module imports another, is no refusal", () => {
+  it("refuses nothing of connectors and tool.call by name (they run, B9): the program of connectors is verified with the lock that binds them", () => {
     const connectors = fixtureLibrary("acme.connectors");
     const program = load(read("fixtures/library/drafts.mdt"), "mdt").program!;
-    const { lock: _format, connectors: _bound, ...lock } = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
-    const message = refused(buildPackage(program, lock as Lock, {}, [connectors]));
-    expect(namedIn(message)).toEqual(["connector (B9)", "tool.call (B9)"]);
+    const { lock: _format, ...lock } = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
+    expect(refusal(buildPackage(program, lock as Lock, {}, [connectors]))).toBeUndefined();
   });
 
-  it("refuses the acceptance program by the table's lines alone: connectors (B9) and what its pattern holds, never what a door was missing for", () => {
+  it("refuses the acceptance program by the table's lines alone: what its pattern holds, never connectors or what a door was missing for", () => {
     const connectors = fixtureLibrary("acme.connectors");
     const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
     const program = check(read("fixtures/library/invoices.mdt"), "mdt", { libraries: [connectors], lock });
@@ -355,7 +351,7 @@ needs06("a package of 0.6 at load", () => {
     const message = refused(pkg);
     const names = namedIn(message);
     // As written, before its check: what the program itself holds, and its lock.
-    expect(names).toEqual(["connector (B9)", "tool.call (B9)", "lock.connectors (B9)", "waive by (B10)"]);
+    expect(names).toEqual(["waive by (B10)"]);
     for (const n of names) expect(TABLE).toContain(n);
     for (const gone of ["imports another module", "cannot link", "std.patterns", "module the package does not carry"]) expect(message).not.toContain(gone);
     // Its running program, as its check gives it, holds besides what the pattern of std.patterns brings: every
@@ -363,25 +359,26 @@ needs06("a package of 0.6 at load", () => {
     const running = check(canonicalize(pkg.program as unknown as Json), "json", { libraries: [connectors], lock, linked: true }).linked!;
     expect(applications(running as unknown as Program)).toEqual([]);
     expect(running.defs["Batch"]).toMatchObject({ kind: "type" });
-    expect(notRunYet06(running as unknown as Program, { lock: packaged as Lock })).toEqual(["connector", "tool.call", "lock.connectors", "batch commit step", "human.review", "waive by"]);
+    expect(notRunYet06(running as unknown as Program, { lock: packaged as Lock })).toEqual(["human.review", "waive by"]);
   });
 
-  it("refuses a lock that binds connectors by name (lock.connectors, B9), the program aside", () => {
+  it("refuses no lock for binding connectors by name (lock.connectors runs, B9): what is wrong with a binding is the check's to say", () => {
     const lock = { modules: {}, connectors: { "example.library.minimal.store": { credential: "made-up", url: "https://store.example/mcp", tools: {} } } } as unknown as Lock;
-    expect(refused(buildPackage(checked(read("fixtures/library/minimal.mdt")), lock))).toMatch(/uses lock\.connectors \(B9\) of mandate\/0\.6/);
-    // An empty binding binds nothing, and is no refusal.
+    const e = refusal(buildPackage(checked(read("fixtures/library/minimal.mdt")), lock));
+    if (e) expect(e.code).not.toBe("unsupported_language");
     expect(refusal(buildPackage(checked(read("fixtures/library/minimal.mdt")), { modules: {}, connectors: {} } as unknown as Lock))).toBeUndefined();
   });
 
-  it("refuses a batch commit step by name (a critical effect in a map body, B9), though the program checks", () => {
+  it("refuses no batch commit step by name (a critical effect in a map body runs, B9)", () => {
     const text = read("conformance/E1708b/program.mdt")
       .replace(/\/\/\/ The ERP[\s\S]*?\n}\n\n/, "")
       .replace("capability ErpDraft = tool.call(erp, post_draft)\n", "")
       .replace("caps   ErpDraft, Files", "caps   Files")
       .replace(/  let posted = map d in drafts max 20 \{[\s\S]*?\n  \}\n/, "")
       .replace("use std.{fs, human, tool}", "use std.{fs, human}");
-    const message = refused(buildPackage(checked(text)));
-    expect(message).toMatch(/uses batch commit step \(B9\) of/);
+    expect(notRunYet06(checked(text), { lock: { modules: {} } as Lock })).toEqual([]);
+    // What is left to refuse it is the check's own: its roles have no members in this lock (E1502).
+    expect(refusal(buildPackage(checked(text)))).toMatchObject({ code: "load_verification_failed" });
   });
 
   const HEAD = `mandate @ 0.6

@@ -96,7 +96,41 @@ function convert(program: Program, t: TypeExpr, defs: Record<string, JsonSchema>
   return {};
 }
 
-/** The bounds JSON Schema can state: `x >= n`, `x <= n`, `x > n`, `x < n`, `len(x) in a..b`. Others are not checked here. */
+/**
+ * Whether `type` is closed in `program`: every name it reaches is a built-in type or a type the program defines, so
+ * that its schema admits nothing it does not say. A name the program does not define becomes the schema `{}`, which
+ * accepts any value; what comes from outside the run (a connector's result, spec/library.md "Connectors") is never
+ * checked against such a schema.
+ */
+export function isClosed(program: Program, type: TypeExpr, seen: Set<string> = new Set()): boolean {
+  if ("record" in type) return Object.values(type.record).every((f) => isClosed(program, f, seen));
+  if ("enum" in type) return true;
+  if ("union" in type) return type.union.every((v) => (v.fields ?? []).every((f) => isClosed(program, f.type, seen)));
+  if ("refine" in type) return isClosed(program, type.refine, seen);
+  const args = type.args ?? [];
+  if (WRAPPERS.has(type.ref)) return args.length > 0 && isClosed(program, args[0]!, seen);
+  if (BASE[type.ref]) return true;
+  if (type.ref === "List" || type.ref === "Set" || type.ref === "Option") return args.length === 1 && isClosed(program, args[0]!, seen);
+  if (type.ref === "Map") return args.length === 2 && isClosed(program, args[1]!, seen);
+  const def: Def | undefined = Object.hasOwn(program.defs, type.ref) ? program.defs[type.ref] : undefined;
+  if (def?.kind !== "type") return false;
+  if (seen.has(type.ref)) return true;
+  seen.add(type.ref);
+  return isClosed(program, def.type, seen);
+}
+
+/** Whether `type` is a record in `program`, through the names and refinements it is written with. */
+export function isRecord(program: Program, type: TypeExpr, seen: Set<string> = new Set()): boolean {
+  if ("record" in type) return true;
+  if ("refine" in type) return isRecord(program, type.refine, seen);
+  if (!("ref" in type) || seen.has(type.ref)) return false;
+  const def: Def | undefined = Object.hasOwn(program.defs, type.ref) ? program.defs[type.ref] : undefined;
+  if (def?.kind !== "type") return false;
+  seen.add(type.ref);
+  return isRecord(program, def.type, seen);
+}
+
+/** The bounds JSON Schema can state:`x >= n`, `x <= n`, `x > n`, `x < n`, `len(x) in a..b`. Others are not checked here. */
 function refinement(e: Expr): JsonSchema {
   if (e.op !== "binary") return {};
   const int = (x: Expr): number | undefined => (x.op === "int" ? x.value : undefined);

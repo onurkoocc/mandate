@@ -4,9 +4,10 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { atLeast, capsOf, check, domainHash, hashProgram, isProgram06, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
-import type { Adapters, Cost, EgressNeed, RunComponents, RunMode } from "./adapters.js";
+import type { Adapters, Cost, EgressNeed, RunComponents, RunMode, ToolAdapter } from "./adapters.js";
+import { Connectors, connectorsOf } from "./connectors.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { recordProblem, type AttestationRule } from "./attestation.js";
@@ -168,8 +169,15 @@ export interface RuntimeOptions {
  */
 export const EXPANDED_MEDIA_TYPE = "application/vnd.mandate.expanded+json";
 
+/**
+ * What a connector's check at a resume stops a run with (spec/library.md "The lock binding and schema digests",
+ * "Egress"): a tool whose schema is not the one the lock pins, a server that does not answer as the narrow protocol
+ * allows, a request the proxy denied, a runtime with no way out for a connector, and a connector the lock does not bind.
+ */
+const CONNECTOR_STOPS = ["tool_schema_mismatch", "connector_protocol", "egress_denied", "no_egress_for_connector", "bad_connector"] as const;
+
 /** What stops a run at its resume for a person, as `attention_required`, rather than being thrown at the caller. */
-const STOPS_AT_RESUME = new Set(["library_revoked", "expansion_mismatch"]);
+const STOPS_AT_RESUME = new Set(["library_revoked", "expansion_mismatch", ...CONNECTOR_STOPS]);
 
 /** The violation limit of a 0.5 package's run when the configuration names none. */
 export const VIOLATION_LIMIT = 3;
@@ -293,6 +301,18 @@ export class Runtime {
     if (need.credentials.length && !this.adapters.egress) {
       throw new Violation("no_egress_proxy", `The package's lock binds ${need.credentials.map((c) => `${c.credential} to ${c.agent}'s requests to ${c.host}`).join(", ")}; a credential is put in only by the egress proxy, and this runtime's configuration names none (egress.admin).`);
     }
+    // 0.6: the connectors the package can call, bound by its lock. A run that reaches their servers (`read_only`,
+    // `live`) starts only where their requests have a way out, and the proxy is asked for their credentials too.
+    const connectors = isPackage06(o.pkg) ? this.connectorsFor(linked, o.pkg.lock, this.adapters) : undefined;
+    const reaches = connectors !== undefined && (o.mode ?? "live") !== "design" ? connectors : undefined;
+    if (reaches) {
+      if (!this.adapters.connectors) {
+        throw new Violation("no_egress_for_connector", `The package can call ${reaches.names().join(", ")}; a connector's requests leave only through the egress proxy, and this runtime's configuration names none (egress.admin).`);
+      }
+      need.connectors = reaches.credentials();
+    }
+    // A batch commit step is authorized by policy, never by a person: a policy that hands a person an effect a map's body commits starts nothing.
+    if (isPackage06(o.pkg)) refusePersonInMap(wf, o.authorize);
     await this.adapters.egress?.ready(need);
     await this.validateBindings(linked, o.workflow);
     await this.validateExecutor(o.pkg);
@@ -310,6 +330,11 @@ export class Runtime {
     // for a run that will not start; what decides is asked again where the run is created.
     const early = await this.journal.openHalt(policy.tenant);
     if (early) throw haltedRefusal(early, `Run ${runId} does not start`);
+    // 0.6: each connector's server is asked for its tools, and every declared tool's schema is held to the digest the
+    // lock pins: a difference starts nothing (`tool_schema_mismatch`), and nothing is called. A design run reaches no server.
+    if (reaches) {
+      await reaches.verifySchemas();
+    }
     // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
     const components = await this.prepareWorkspace(runId, o.pkg, seen);
     // The manifest of a run under an envelope lists the approval it starts under; another run's manifest is as it was.
@@ -545,8 +570,12 @@ export class Runtime {
     try {
       refuseRevoked((await this.packaged(run.package_hash)).lock, this.load);
       const loaded = await this.loaded(run.package_hash, run);
+      // 0.6: every resume asks each connector's server for its tools again before the run goes on, and a schema that
+      // is not the one the lock pins stops the run for a person (`tool_schema_mismatch`); nothing is called. A design
+      // run reaches no server. (A start asks too, before the run exists: a difference there starts nothing.)
+      const connectors = await this.connectorsAtResume(run, loaded, fence);
       await this.write(runId, fence, async (tx) => this.journal.setState(tx, runId, "running"));
-      interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run));
+      interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run), connectors);
     } catch (e) {
       if (!(e instanceof CompilerFailure) && !(e instanceof Violation && STOPS_AT_RESUME.has(e.code))) throw e;
       await this.settle(runId, fence, e);
@@ -696,8 +725,54 @@ export class Runtime {
     return out;
   }
 
-  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[]): Interpreter {
+  /**
+   * The connectors of a 0.6 package's running program, bound by its lock (spec/library.md "Connectors"); undefined for
+   * a package of 0.1 to 0.5, and for one that holds no connector. Building it reaches no server. Their requests leave
+   * by `adapters.connectors`, and a design run's samples come from `adapters.samples`.
+   */
+  private connectorsFor(program: Program, lock: Lock, adapters: Adapters): Connectors | undefined {
+    if (!isProgram06(program) || !connectorsOf(program).length) return undefined;
+    const samples = adapters.samples;
+    return new Connectors({ program, lock, transport: adapters.connectors, samples: samples?.tool ? (name) => samples.tool!(name) : undefined });
+  }
+
+  /**
+   * A resumed run's connectors, their schemas held to the lock again unless the run is a design run. A request of
+   * the check that the proxy denied is recorded as a violation of the run, as every denied request is, before the
+   * run stops.
+   */
+  private async connectorsAtResume(run: RunRow, loaded: Loaded, fence: number): Promise<Connectors | undefined> {
+    const connectors = this.connectorsFor(loaded.program, loaded.lock, this.adapters);
+    const mode = isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? run.manifest["mode"] : "live";
+    if (!connectors || mode === "design") return connectors;
+    if (!this.adapters.connectors) throw new Violation("no_egress_for_connector", `Run ${run.run_id} can call ${connectors.names().join(", ")}; a connector's requests leave only through the egress proxy, and this runtime's configuration names none (egress.admin).`);
+    try {
+      await connectors.verifySchemas();
+    } catch (e) {
+      if (e instanceof Violation && e.code === "egress_denied") await this.journal.violation(run.run_id, fence, { kind: "egress_denied", delegate: "/connectors", agent: "connectors", step: `/connectors#${fence}`, detail: e.message });
+      throw e;
+    }
+    return connectors;
+  }
+
+  /**
+   * The adapter of an action's effect: the connector's, for a write tool of a 0.6 package's connector; else the
+   * configuration's. It is given in an object: an adapter may have a `then` of its own (a test's does), and must not
+   * be taken for a promise.
+   */
+  private async toolOf(runId: string, effect: string): Promise<{ tool: ToolAdapter | undefined }> {
+    const run = await this.journal.run(runId);
+    if (isPackage06(await this.packaged(run.package_hash))) {
+      const loaded = await this.loaded(run.package_hash, run);
+      const write = this.connectorsFor(loaded.program, loaded.lock, this.adapters)?.write(effect);
+      if (write) return { tool: write };
+    }
+    return { tool: this.adapters.tools[effect] };
+  }
+
+  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[], bound?: Connectors): Interpreter {
     const wf = Object.hasOwn(loaded.program.defs, run.workflow) ? loaded.program.defs[run.workflow] : undefined;
+    const connectors = bound ?? this.connectorsFor(loaded.program, loaded.lock, adapters);
     // The limit is the package's language's: a 0.5 program's run has one by default, an earlier one's only when configured.
     const violationLimit = this.violationLimit ?? (atLeast(loaded.source.language, "mandate/0.5") ? VIOLATION_LIMIT : undefined);
     return new Interpreter({
@@ -725,6 +800,7 @@ export class Runtime {
       durableTimers: this.durableTimers,
       ...(this.limiter ? { limiter: this.limiter } : {}),
       ...(violationLimit !== undefined ? { violationLimit } : {}),
+      ...(connectors ? { connectors } : {}),
     });
   }
 
@@ -1301,7 +1377,8 @@ export class Runtime {
   async cancelAction(runId: string, operationKey: string): Promise<RunRow> {
     const action = await this.journal.action(operationKey);
     if (!action || action.run_id !== runId) throw new Violation("unknown_action", `No action ${operationKey} in run ${runId}.`);
-    const tool = this.adapters.tools[action.effect];
+    // A connector's adapter (0.6) cannot cancel; whatever keeps it from being read keeps nothing from being cancelled.
+    const { tool } = await this.toolOf(runId, action.effect).catch(() => ({ tool: undefined }));
     if (tool?.cancel && (action.state === "unknown_outcome" || action.state === "prepared")) {
       const r = await tool.cancel(operationKey);
       if ("cancelled" in r) await this.journal.finishAction(runId, undefined, operationKey, "cancelled", { detail: { cancelled: r.cancelled } });
@@ -1454,7 +1531,7 @@ export class Runtime {
   async reconcileAction(runId: string, operationKey: string, signed?: SignedDecision): Promise<RunRow> {
     const action = await this.journal.action(operationKey);
     if (!action || action.run_id !== runId) throw new Violation("unknown_action", `No action ${operationKey} in run ${runId}.`);
-    const tool = this.adapters.tools[action.effect];
+    const { tool } = await this.toolOf(runId, action.effect);
     if (!tool) throw new Violation("no_adapter", `No adapter for effect ${action.effect}.`);
     // A reconciliation is a person's message too: signed, it names the action and the revision it was asked on.
     const loaded = await this.loaded((await this.journal.run(runId)).package_hash);
@@ -1595,6 +1672,28 @@ function minLimits(a: Record<string, number>, b: Record<string, number>): Record
   const out: Record<string, number> = { ...a };
   for (const [k, v] of Object.entries(b)) out[k] = k in out ? Math.min(out[k]!, v) : v;
   return out;
+}
+
+/**
+ * 0.6, at a start (spec/library.md "The batch commit step"): a run whose policy hands a person an effect that a
+ * map's body of its workflow commits is refused at once, `person_in_map`; nothing in a map's body waits for a person.
+ * `authorize` is the override `StartRun` was given.
+ */
+function refusePersonInMap(wf: unknown, authorize: Policy["authorize"]): void {
+  const asked = Object.entries(authorize ?? {}).filter(([, a]) => a?.by === "human");
+  if (!asked.length) return;
+  const inMaps = new Set<string>();
+  const visit = (v: unknown, inMap: boolean, depth: number): void => {
+    if (depth > 512) return;
+    if (Array.isArray(v)) return v.forEach((x) => visit(x, inMap, depth + 1));
+    if (!v || typeof v !== "object") return;
+    const node = v as Record<string, unknown>;
+    if (inMap && node["op"] === "effect" && typeof node["name"] === "string") inMaps.add(node["name"]);
+    for (const [k, x] of Object.entries(node)) visit(x, inMap || (node["op"] === "map" && k === "body"), depth + 1);
+  };
+  visit(wf, false, 0);
+  const found = asked.filter(([name]) => inMaps.has(name)).map(([name, a]) => `${name} (${a.by === "human" ? a.role : ""})`);
+  if (found.length) throw new Violation("person_in_map", `The run's policy hands a person ${found.sort().join(", ")}, which a map's body commits: a batch commit step is authorized by policy, never by a person (spec/library.md).`);
 }
 
 /** Adapters that fail the test if replay ever reaches the outside world. */

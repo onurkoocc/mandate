@@ -42,7 +42,7 @@ import { SandboxRefused, SESSION_ENDED, type ExecRequest, type ExecResult, type 
 import { schemaErrors, typeSchema, type JsonSchema } from "./schema.js";
 import { Fault } from "./signals.js";
 import { callKey, commandFor, Denied, FINISH, SUBMIT_PLAN, toolResult, toolsFor, type AgentTools } from "./tools.js";
-import { canonical, digest, isObj, type Value } from "./values.js";
+import { canonical, digest, escapeAngles, isObj, type Value } from "./values.js";
 
 /** How often a model may get a malformed result, tool or argument back and try again. */
 export const MAX_REPAIRS = 2;
@@ -73,6 +73,17 @@ export interface LoopTask {
   extra?: ToolSpec[];
   /** What the task's first message says after the inputs: how a lead writes a sub-program. The same on every run of the loop. */
   brief?: string;
+  /**
+   * Tools the program declares and this delegation's grant does not give (0.6: the other tools of its connectors,
+   * every write tool among them), by the name one would be offered under. The agent has none of them; a call of one
+   * is a call outside the grant, recorded as a violation (`authority_denied`) before the model is told.
+   */
+  refused?: string[];
+  /**
+   * 0.6 (spec/library.md "What reaches a model", B28): `<` and `>` are escaped in the data the task hands the model.
+   * Absent for a package of 0.1 to 0.5, whose task text is the bytes it always was.
+   */
+  escape?: boolean;
 }
 
 /** What the loop needs from the interpreter and the outside world. */
@@ -344,6 +355,7 @@ class Loop {
       const s = isObj(raw as Value) ? (raw as { tool?: unknown; input?: unknown }) : {};
       const name = typeof s.tool === "string" ? s.tool : "";
       if (!this.tools.names.has(name)) {
+        if (this.task.refused?.includes(name)) await this.io.violation?.("authority_denied", `${this.task.id}/${where}/plan/${i}`, `${name}: a tool the delegation's grant does not give`);
         problems.push({ kind: "InvalidTool", text: `step ${i}: there is no tool ${JSON.stringify(s.tool)}; you have ${[...this.tools.names].join(", ")}` });
         continue;
       }
@@ -408,6 +420,8 @@ class Loop {
 
   private async call(u: ToolUse, where: string): Promise<{ block: Block; observedNew: boolean }> {
     if (!this.tools.names.has(u.name)) {
+      // A declared tool the grant does not give (0.6: a connector's write tool, or a read tool of another grant) is an attempt to cross the grant.
+      if (this.task.refused?.includes(u.name)) await this.io.violation?.("authority_denied", `${this.task.id}/${where}`, `${u.name}: a tool the delegation's grant does not give`);
       this.repair("InvalidTool", `there is no tool ${u.name}`);
       return { block: error(u.id, `There is no tool ${u.name}. You have: ${[...this.tools.names, FINISH].join(", ")}.`), observedNew: false };
     }
@@ -558,7 +572,8 @@ function systemPrompt(task: LoopTask, tools: AgentTools): string {
 }
 
 function taskText(task: LoopTask): string {
-  const inputs = task.params.map((p, i) => `<data name="${p.name}">\n${canonical(task.args[i] ?? null)}\n</data>`);
+  const data = (v: Value): string => (task.escape ? escapeAngles(canonical(v)) : canonical(v));
+  const inputs = task.params.map((p, i) => `<data name="${p.name}">\n${data(task.args[i] ?? null)}\n</data>`);
   return [`Skill: ${task.skill}`, inputs.length ? "Inputs:" : "This skill takes no inputs.", ...inputs, ...(task.brief ? [task.brief] : [])].join("\n");
 }
 
