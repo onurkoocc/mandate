@@ -741,6 +741,18 @@ pub const CODES: &[CodeRow] = &[
         explain: "A pattern is applied only as the whole definition of a workflow: `workflow W = P<…>(…)` with the workflow's caps and budget. An application anywhere else (in a body, as a constant or a capability, as a slot's argument, inside a pattern's body), one with an envelope, parameters, a result, a body, `ensures` or handlers of its own, and a name of a pattern used as a value are refused. A check that meets a workflow that was not expanded refuses it too, rather than read it as one that does nothing (spec/library.md \"Application\").",
         reference: Reference::Rust,
     },
+    CodeRow {
+        code: "MDT-E1710",
+        title: "Sub-program is not one of the envelope's shapes",
+        explain: "When an envelope has `shapes [P, …]` (0.6), a lead's sub-program's one workflow is an application of a pattern the list names, `workflow W = P<…>(…)` with its caps and budget, and the name means what it means in the program the envelope belongs to: the same pattern of the same module. A workflow written out, an application of a pattern the list does not name, and a pattern of another module under a listed name are refused. The fact `problem` says which (`not_an_application`, `not_listed`, `other_definition`). Its containment in the envelope is proven over the expansion, as every other check. Returned to the lead, never to the run, as E1705 (spec/library.md \"shapes\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1711",
+        title: "Shape is not a pattern",
+        explain: "Every name an envelope's `shapes` lists (0.6) is a pattern the program defines, or one a `use` list brings from a module the check is given or from a library (`std.patterns` among them). A name that names no definition, or a definition of another kind, is refused at the name; the facts name the workflow, the shape and, when it is one, the kind and the module. A list that is empty or names a pattern twice is refused when it is read (E0104 in IR, E0101 or E0121 in the text) (spec/library.md \"shapes\").",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.

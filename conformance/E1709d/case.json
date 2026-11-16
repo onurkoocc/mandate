@@ -1,0 +1,20 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1709d",
+  "kind": "compile",
+  "title": "An amendment that gives shapes to an envelope that had none narrows what the lead may submit: E1709 with the dimension shapes.",
+  "spec": ["spec/library.md#shapes", "spec/envelope.md#amendments-n04", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../P06/parent.mdt", "kind": "mdt" },
+  "amendment": {
+    "workflow": "Run",
+    "patch": [{ "op": "add", "path": "/shapes", "value": ["Each"] }]
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E1709", "path": "/defs/Run/envelope/shapes", "facts": { "dimension": "shapes", "was": null, "asked": ["Each"] } }
+    ]
+  }
+}

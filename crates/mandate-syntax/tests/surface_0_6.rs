@@ -538,3 +538,91 @@ fn before_0_6_and_outside_a_pattern_its_words_are_what_they_were() {
         "mandate @ 0.6\n\nmodule m @ 0.1\n\ntype T = { pattern: Text, slot: Text, field: Text }\n",
     );
 }
+
+/// An envelope's `shapes [P, …]` (spec/library.md "`shapes`") reads to a
+/// sorted set of names after the other members and prints back; the
+/// migration of fixtures/library/ lists two.
+#[test]
+fn an_envelopes_shapes_read_to_a_sorted_set_and_print_back() {
+    let text = mandate_testkit::read_text("fixtures/library/migrate-all.mdt").unwrap();
+    let p = round_trip(&text);
+    let envelope = def(&p, "MigrateAll").get("envelope").unwrap();
+    assert_eq!(
+        canonicalize(envelope.get("shapes").unwrap()),
+        r#"["FanOutMerge","MakerChecker"]"#
+    );
+    let printed = print_program(&p).unwrap();
+    assert!(
+        printed.contains(
+            "    approve git.merge by release_manager\n    shapes  [FanOutMerge, MakerChecker]\n  }"
+        ),
+        "{printed}"
+    );
+    // Written in another order, it is the same set.
+    let other = read(&text.replace(
+        "shapes  [FanOutMerge, MakerChecker]",
+        "shapes [MakerChecker, FanOutMerge]",
+    ));
+    assert_eq!(canonicalize(&other), canonicalize(&p));
+    // A name twice is E0121 at the second, the set keeping it once; a list
+    // of none is E0101.
+    let twice = load(
+        &text.replace(
+            "shapes  [FanOutMerge, MakerChecker]",
+            "shapes  [FanOutMerge, MakerChecker, FanOutMerge]",
+        ),
+        SourceKind::Mdt,
+    );
+    /// A diagnostic's code, its message and where it starts.
+    type Found = (String, String, Option<(usize, usize)>);
+    let found: Vec<Found> = twice
+        .diagnostics
+        .iter()
+        .map(|d| {
+            (
+                d.code.clone(),
+                d.message.clone(),
+                d.at.span.map(|s| (s.start_line, s.start_col)),
+            )
+        })
+        .collect();
+    let line = text.lines().position(|l| l.contains("shapes  [")).unwrap() + 1;
+    assert_eq!(
+        found,
+        [(
+            "MDT-E0121".to_owned(),
+            "Duplicate shape 'FanOutMerge'.".to_owned(),
+            Some((line, 41))
+        )]
+    );
+    let (code, message, _) = refused(&text.replace("[FanOutMerge, MakerChecker]", "[]"));
+    assert_eq!(
+        (code.as_str(), message.as_str()),
+        ("MDT-E0101", "Expected a pattern name but found ']'.")
+    );
+}
+
+/// `shapes` is contextual: before 0.6 it is no member of an envelope, and in
+/// 0.6 it is still a name.
+#[test]
+fn before_0_6_an_envelope_has_no_shapes() {
+    let text = mandate_testkit::read_text("fixtures/library/migrate-all.mdt").unwrap();
+    let old = text
+        .replace("mandate @ 0.6", "mandate @ 0.5")
+        .replace("use std.patterns.{FanOutMerge, MakerChecker}\n", "");
+    let (code, message, _) = refused(&old);
+    assert_eq!(
+        (code.as_str(), message.as_str()),
+        (
+            "MDT-E0101",
+            "Expected owner, caps, budget, spawn or approve in an envelope but found 'shapes'."
+        )
+    );
+    // In 0.6 an envelope's message names it among the members.
+    let (_, message, _) = refused(&text.replace("shapes  [", "shape  ["));
+    assert_eq!(
+        message,
+        "Expected owner, caps, budget, spawn, approve or shapes in an envelope but found 'shape'."
+    );
+    read("mandate @ 0.6\n\nmodule m @ 0.1\n\ntype T = { shapes: List<Text> }\n");
+}

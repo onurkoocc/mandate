@@ -6,7 +6,7 @@
 // facade calls is there, standing for the function the facade has it for, with the parameters the facade sends
 // (doors.ts). A module that fails that answers no call: every call on it is the same `doors_mismatch`.
 
-import { DOOR_BACKED, OWN_DOORS } from "../doors.js";
+import { DOOR_BACKED, OWN_DOORS, RUST_ONLY } from "../doors.js";
 import { CompilerFailure } from "./errors.js";
 import { WasmHost } from "./host.js";
 import { processModule } from "./module.js";
@@ -81,6 +81,7 @@ function tableProblem(host: WasmHost): CompilerFailure | undefined {
     if (JSON.stringify(row.params) !== JSON.stringify(params)) wrong.push(`${door} takes ${JSON.stringify(row.params)}, and the bridge sends ${JSON.stringify(params)}`);
   };
   for (const [fn, d] of Object.entries(DOOR_BACKED)) want(d.door, fn, d.params);
+  for (const d of Object.values(RUST_ONLY)) want(d.door, null, d.params);
   for (const [door, params] of Object.entries(OWN_DOORS)) want(door, null, params);
   return wrong.length ? new CompilerFailure("doors_mismatch", undefined, `the module's table of doors is not the one the bridge calls: ${wrong.join("; ")}`) : undefined;
 }

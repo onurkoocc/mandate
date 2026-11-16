@@ -330,7 +330,10 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
             "MDT-E1304",
             "MDT-E1305",
             "MDT-E1306",
-            "MDT-E1307"
+            "MDT-E1307",
+            // The shapes of an envelope (RL9).
+            "MDT-E1710",
+            "MDT-E1711"
         ]
     );
     for row in &rust {

@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { atLeast, capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters, Cost, EgressNeed, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
@@ -21,10 +21,10 @@ import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { costDims, haltedRefusal, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
-import { buildPackage, isSigned04, verifyPackage, type Package } from "./package.js";
+import { buildPackage, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
-import { digest, isObj, type Obj, type Value } from "./values.js";
+import { canonical, digest, isObj, type Obj, type Value } from "./values.js";
 
 export type { Lock };
 export { buildPackage, isSigned04, notRunYet, RUNTIME_LANGUAGES, verifyPackage, type Package } from "./package.js";
@@ -38,8 +38,8 @@ function envelopeOwners(program: Program): Set<string> {
  * What a package needs of the egress proxy (spec/boundary.md "Sandbox egress"): whether the sandbox of one of its
  * local agents reaches a host, and each credential its lock binds, in the order agent, host.
  */
-export function egressNeed(pkg: Package): EgressNeed {
-  const hosts = Object.values(sandboxRequirements(pkg.program, pkg.modules ?? {}, pkg.lock)).some((r) => r.network.hosts.length > 0);
+export function egressNeed(pkg: Package, running: { program: Program; modules: Modules } = { program: pkg.program, modules: pkg.modules ?? {} }): EgressNeed {
+  const hosts = Object.values(sandboxRequirements(running.program, running.modules, pkg.lock)).some((r) => r.network.hosts.length > 0);
   const credentials = Object.entries(pkg.lock.egress ?? {})
     .flatMap(([agent, bound]) => Object.entries(bound ?? {}).map(([host, credential]) => ({ agent, host, credential })))
     .sort((a, b) => (a.agent < b.agent ? -1 : a.agent > b.agent ? 1 : a.host < b.host ? -1 : a.host > b.host ? 1 : 0));
@@ -136,7 +136,18 @@ export interface RuntimeOptions {
    * "Isolation level and host fitness"). Default: this process's Node version and the first `bwrap` on PATH.
    */
   hostProbe?: HostProbe;
+  /**
+   * The `libraries` member of the runtime's configuration (spec/library.md "The local directory"): a package that
+   * carries a `revoked` digest is not loaded, and a run of one stops at its next resume (`library_revoked`).
+   */
+  libraries?: Partial<LibrariesConfig>;
 }
+
+/** The media type of a run's stored expansion (spec/library.md "Hashes, and what the runtime stores"). */
+export const EXPANDED_MEDIA_TYPE = "application/vnd.mandate.expanded+json";
+
+/** What stops a run at its resume for a person, as `attention_required`, rather than being thrown at the caller. */
+const STOPS_AT_RESUME = new Set(["library_revoked", "expansion_mismatch"]);
 
 /** The violation limit of a 0.5 package's run when the configuration names none. */
 export const VIOLATION_LIMIT = 3;
@@ -190,7 +201,11 @@ export class Runtime {
   readonly violationLimit: number | undefined;
   /** Reads the host's tools for a lock's `host`. */
   readonly hostProbe: HostProbe;
+  /** What a package is held to at load besides itself: the configuration's libraries. */
+  readonly load: LoadOptions;
   private readonly packages = new Map<string, Package>();
+  /** The modules of a stored package's libraries, as loaded again from their text, by package hash. */
+  private readonly linkingCache = new Map<string, Modules>();
 
   constructor(
     readonly db: Db,
@@ -216,6 +231,7 @@ export class Runtime {
     this.checkMs = options.plan?.checkMs ?? CHECK_MS;
     this.violationLimit = options.violations?.limit;
     this.hostProbe = options.hostProbe ?? systemProbe;
+    this.load = options.libraries ? { libraries: options.libraries } : {};
   }
 
   // ── StartRun / resume ─────────────────────────────────────────────────
@@ -225,7 +241,8 @@ export class Runtime {
     // as something else, and the run would live under a name it was not started with (spec/journal.md).
     if (o.runId !== undefined && (o.runId === "" || !storable(o.runId))) throw new Violation("invalid_run_id", "A run id is non-empty, well-formed Unicode without U+0000; this one would be stored as another, or as none.");
     if (o.tenant !== undefined && !storable(o.tenant)) throw new Violation("invalid_tenant", "A tenant is well-formed Unicode without U+0000; this one would be stored as another.");
-    verifyPackage(o.pkg);
+    // What a run of the package runs: its program, or (0.6) the expansion of it, which the run stores at its start.
+    const verified = verifyPackage(o.pkg, this.load);
     if (this.decisionMode === "unsigned" && isSigned04(o.pkg.program, o.pkg.modules)) {
       throw new Violation("signed_decisions_required", "A mandate/0.4 package does not run in unsigned mode: its decisions are signed records (spec/envelope.md). Take decisions.mode out of the runtime configuration.");
     }
@@ -233,9 +250,9 @@ export class Runtime {
     // With a scheduler this process only records the run and starts its workflow; the worker that takes the run
     // checks its own host when it resumes it.
     if (!this.driver) await checkFitness(o.pkg.lock, this.hostProbe);
-    const wf = o.pkg.program.defs[o.workflow];
+    const wf = Object.hasOwn(verified.running.defs, o.workflow) ? verified.running.defs[o.workflow] : undefined;
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
-    const linked = linkedProgram(o.pkg.program, o.pkg.modules);
+    const linked = linkedProgram(verified.running, verified.modules);
     // The input is a value of the workflow's parameter types, as a model's answer is of its type: a Path in it keeps the Path rule (K68).
     const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
     for (const p of wf.params) {
@@ -246,7 +263,7 @@ export class Runtime {
     // A package whose lock binds credentials needs the egress proxy; with none configured it starts nothing. With the
     // control plane's gateways on, or a package whose sandboxes reach hosts, a proxy that does not answer, or lacks a
     // gateway's credential or one the lock binds, starts nothing either.
-    const need = egressNeed(o.pkg);
+    const need = egressNeed(o.pkg, { program: verified.running, modules: verified.modules });
     if (need.credentials.length && !this.adapters.egress) {
       throw new Violation("no_egress_proxy", `The package's lock binds ${need.credentials.map((c) => `${c.credential} to ${c.agent}'s requests to ${c.host}`).join(", ")}; a credential is put in only by the egress proxy, and this runtime's configuration names none (egress.admin).`);
     }
@@ -267,6 +284,8 @@ export class Runtime {
     // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
     const components = await this.prepareWorkspace(runId, o.pkg);
     // The manifest of a run under an envelope lists the approval it starts under; another run's manifest is as it was.
+    // A run of a program that applies a pattern names its expansion by its program hash; it stores it with the run.
+    const expanded = verified.expanded ? { program: verified.expanded, hash: hashProgram(verified.expanded as unknown as Json).program } : undefined;
     const manifest = {
       format: RUN_MANIFEST_FORMAT,
       package: o.pkg.hash,
@@ -276,6 +295,7 @@ export class Runtime {
       mode: o.mode ?? "live",
       components,
       ...(approved ? { envelope_approval: { decision: approved.decision, member: approved.member, role: approved.role, key: approved.key } } : {}),
+      ...(expanded ? { expanded: expanded.hash } : {}),
     } as unknown as Value;
     const manifestHash = digest("run", manifest);
     try {
@@ -286,6 +306,8 @@ export class Runtime {
         if (halt) throw haltedRefusal(halt, `Run ${runId} does not start`);
         await this.keep(tx, o.pkg);
         await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
+        // The expansion the run runs from here on, its resumes and its replays: never one made again (spec/library.md).
+        if (expanded) await this.artifacts.put({ tenant: policy.tenant, runId }, canonical(expanded.program as unknown as Value), EXPANDED_MEDIA_TYPE, tx);
         if (approved) await this.journal.event(tx, runId, "envelope_approved", approved);
         for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
       });
@@ -300,11 +322,12 @@ export class Runtime {
 
   /** Stores a package under its hash; one that is already there is left as it is. */
   private async keep(tx: Tx, pkg: Package): Promise<void> {
-    await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [
+    await tx.query("insert into packages (package_hash, program, lock, modules, libraries) values ($1, $2, $3, $4, $5) on conflict (package_hash) do nothing", [
       pkg.hash,
       JSON.stringify(pkg.program),
       JSON.stringify(pkg.lock),
       JSON.stringify(pkg.modules ?? {}),
+      pkg.libraries?.length ? JSON.stringify(pkg.libraries) : null,
     ]);
   }
 
@@ -321,7 +344,7 @@ export class Runtime {
    * record it.
    */
   async approveEnvelope(pkg: Package, signed: SignedDecision): Promise<string> {
-    verifyPackage(pkg);
+    verifyPackage(pkg, this.load);
     const owners = envelopeOwners(pkg.program);
     if (!owners.size) throw new Violation("no_envelope", "The package has no workflow with an envelope, so there is nothing to approve.");
     const refusal = (): Refusal | undefined => {
@@ -483,13 +506,16 @@ export class Runtime {
     if (TERMINAL.has(run.state)) return run;
     // From here every call of the compiler is the drive's: one that fails (a CompilerFailure) stops the run for a
     // person, `compiler_failed`, and is not thrown on, so that a scheduler does not drive it again and again.
+    // So does a package that now carries a revoked library digest, or a run whose stored expansion is missing or is
+    // not the one its manifest names: the run stops for a person (`library_revoked`, `expansion_mismatch`).
     let interp: Interpreter;
     try {
-      const loaded = await this.loaded(run.package_hash);
+      refuseRevoked((await this.packaged(run.package_hash)).lock, this.load);
+      const loaded = await this.loaded(run.package_hash, run);
       await this.write(runId, fence, async (tx) => this.journal.setState(tx, runId, "running"));
       interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run));
     } catch (e) {
-      if (!(e instanceof CompilerFailure)) throw e;
+      if (!(e instanceof CompilerFailure) && !(e instanceof Violation && STOPS_AT_RESUME.has(e.code))) throw e;
       await this.settle(runId, fence, e);
       return this.journal.run(runId);
     }
@@ -669,19 +695,77 @@ export class Runtime {
     });
   }
 
-  /** The program, modules and lock of a package, as packaged. */
-  private async packaged(packageHash: string): Promise<{ program: Program; modules: Modules; lock: Lock }> {
+  /** The program, modules, lock and libraries of a package, as packaged. */
+  private async packaged(packageHash: string): Promise<{ program: Program; modules: Modules; lock: Lock; libraries: Package["libraries"] }> {
     const cached = this.packages.get(packageHash);
-    if (cached) return { program: cached.program, modules: cached.modules ?? {}, lock: cached.lock };
-    const [row] = await this.db.query<Row>("select program, modules, lock from packages where package_hash = $1", [packageHash]);
+    if (cached) return { program: cached.program, modules: cached.modules ?? {}, lock: cached.lock, libraries: cached.libraries };
+    const [row] = await this.db.query<Row>("select program, modules, lock, libraries from packages where package_hash = $1", [packageHash]);
     if (!row) throw new Violation("unknown_package", `No package ${packageHash}.`);
-    return { program: row["program"] as Program, modules: (row["modules"] ?? {}) as Modules, lock: row["lock"] as Lock };
+    return { program: row["program"] as Program, modules: (row["modules"] ?? {}) as Modules, lock: row["lock"] as Lock, libraries: (row["libraries"] ?? undefined) as Package["libraries"] };
   }
 
-  /** A package as a run uses it. Its decisions are signed in signed mode, and always when it is a 0.4 package. */
-  private async loaded(packageHash: string): Promise<Loaded> {
+  /**
+   * The modules a run of a package links: the package's, and (0.6) those of its libraries, loaded again from their
+   * text and held to the lock's pins, as at load.
+   */
+  private async linking(packageHash: string): Promise<Modules> {
     const p = await this.packaged(packageHash);
-    return { program: linkedProgram(p.program, p.modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules: p.modules };
+    if (!p.libraries?.length) return p.modules;
+    let libs = this.linkingCache.get(packageHash);
+    if (!libs) this.linkingCache.set(packageHash, (libs = libraryModules(p)));
+    return { ...p.modules, ...libs };
+  }
+
+  /**
+   * A package as a run uses it. Its decisions are signed in signed mode, and always when it is a 0.4 package. With
+   * `run`, the program is the run's: the expansion it stored at its start, when its manifest names one (0.6).
+   */
+  private async loaded(packageHash: string, run?: RunRow): Promise<Loaded> {
+    const p = await this.packaged(packageHash);
+    const modules = await this.linking(packageHash);
+    const expanded = run ? await this.storedExpansion(run) : undefined;
+    return { program: linkedProgram(expanded ?? p.program, modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules };
+  }
+
+  /**
+   * What the views of a run's program are given: the program as packaged (`source`), the program the run runs (its
+   * stored expansion, when it applies a pattern, 0.6; else the same), and the modules it links (with its libraries').
+   */
+  async runProgram(runId: string): Promise<{ source: Program; program: Program; modules: Modules }> {
+    const run = await this.journal.run(runId);
+    // As stored, never as this process holds it: a view is made of what the database holds, members in its order.
+    const [row] = await this.db.query<Row>("select program, modules, lock, libraries from packages where package_hash = $1", [run.package_hash]);
+    if (!row) throw new Violation("unknown_package", `No package ${run.package_hash}.`);
+    const source = row["program"] as Program;
+    const libraries = (row["libraries"] ?? undefined) as Package["libraries"];
+    const modules = { ...((row["modules"] ?? {}) as Modules), ...(libraries?.length ? libraryModules({ lock: row["lock"] as Lock, libraries }) : {}) };
+    return { source, program: (await this.storedExpansion(run)) ?? source, modules };
+  }
+
+  /**
+   * The expansion a run stored at its start (spec/library.md "Hashes, and what the runtime stores"), or undefined
+   * for a run whose manifest names none. One that is missing, or whose bytes do not hash to what the manifest names,
+   * is not run: `expansion_mismatch`. It is never made again: a compiler that expands the package otherwise now
+   * cannot move the command ids of a run that is going on.
+   */
+  async storedExpansion(run: RunRow): Promise<Program | undefined> {
+    const named = isObj(run.manifest) ? run.manifest["expanded"] : undefined;
+    if (named === undefined) return undefined;
+    const scope = { tenant: run.tenant, runId: run.run_id };
+    const stored = (await this.artifacts.list(scope)).filter((a) => a.media_type === EXPANDED_MEDIA_TYPE);
+    for (const a of stored) {
+      try {
+        const program = JSON.parse(await this.artifacts.text(scope, a.ref)) as Program;
+        if (hashProgram(program as unknown as Json).program === named) return program;
+      } catch (e) {
+        // Bytes that do not read, or do not hash, are no expansion; a compiler that fails has decided nothing.
+        if (e instanceof CompilerFailure) throw e;
+      }
+    }
+    throw new Violation(
+      "expansion_mismatch",
+      `Run ${run.run_id}'s manifest names the expansion ${String(named)}, and ${stored.length ? "no expansion stored with the run hashes to it" : "none is stored with the run"}: a run runs the expansion it stored at its start, and no other (spec/library.md).`,
+    );
   }
 
   /** The package's program with its imported modules linked in: what the interpreter runs. Never hashed. */
@@ -953,7 +1037,7 @@ export class Runtime {
    */
   async raiseLimits(runId: string, msg: Message, r: { revision: number; limits: Limits; by: string } | { limits: Limits; signed: SignedDecision }): Promise<RunRow> {
     const seen = await this.journal.run(runId);
-    const loaded = await this.loaded(seen.package_hash);
+    const loaded = await this.loaded(seen.package_hash, seen);
     const wf = loaded.program.defs[seen.workflow];
     const program = costDims(wf?.kind === "workflow" ? workflowBounds(wf).budget : undefined);
     const wanted = costDims(r.limits);
@@ -1357,7 +1441,15 @@ export class Runtime {
   /** Rebuilds the run from its journal without calling any adapter (INV-09, R13). */
   async replayRun(runId: string, adapters: Adapters = refusingAdapters(this.adapters)): Promise<ReplayResult> {
     const run = await this.journal.run(runId);
-    const interp = this.interpreter(run, await this.loaded(run.package_hash), run.fence, true, adapters, await this.journal.startedAt(runId), await this.earlier(run));
+    let loaded: Loaded;
+    try {
+      loaded = await this.loaded(run.package_hash, run);
+    } catch (e) {
+      // A stored expansion that is missing or another: the replay reports it, and runs nothing.
+      if (e instanceof Violation && e.code === "expansion_mismatch") return { status: "attention_required", reason: { violation: e.code, message: e.message } };
+      throw e;
+    }
+    const interp = this.interpreter(run, loaded, run.fence, true, adapters, await this.journal.startedAt(runId), await this.earlier(run));
     try {
       return { status: "complete", value: await interp.runWorkflow(run.workflow, run.input as Obj) };
     } catch (e) {
