@@ -18,19 +18,22 @@
 // own. Every rule holds on PGlite and on PostgreSQL (helpers.ts, MANDATE_TEST_DATABASE_URL; counts are read with
 // Number). The hook of asks-hook.ts holds every run here to its bound as well.
 
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { attentionFacts, hashProgram, load, type AttentionFacts, type AttentionFactsInput, type Json, type Program } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { ASKS, SITE_KINDS, SUPERVISE_ESCALATIONS } from "../src/asks.js";
+import type { PreparedFile } from "../src/adapters.js";
 import { limits } from "../src/cli.js";
 import { payloadOf, signDecision, type DecisionKind } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import { SimAgents, SimTool, type SimTool as Tool } from "../src/sim.js";
 import type { RunRow } from "../src/journal.js";
-import type { Obj } from "../src/values.js";
+import type { Obj, Value } from "../src/values.js";
+import { tickPass } from "../src/tick.js";
 import { closeAll, world, type World } from "./helpers.js";
+import { BATCH, DAY, fileChannels, lines, nworld, REVIEW, REVIEW_AT, scratch, type NWorld } from "./notify-world.js";
 
 afterAll(closeAll);
 
@@ -379,6 +382,170 @@ describe("counting", () => {
     expect(await asksRow(w, "h")).toEqual({ limit: 1, settled: 0, reserved: 1 });
   });
 });
+
+// ── when asks is exhausted ──────────────────────────────────────────────
+
+/** What a run refused for asks shows of the question at `command`: its command, its one event, and no wait. */
+async function refusedAt(w: World, runId: string, command: string, kind: string): Promise<void> {
+  const row = await w.rt.journal.command(runId, command);
+  expect(row, command).toMatchObject({ state: "failed", error: { tag: "Rejected", args: ["asks_exhausted"] } });
+  const events = await eventsOf(w, runId, "asks_exhausted");
+  expect(events.filter((d) => d["command"] === command)).toHaveLength(1);
+  expect(events.find((d) => d["command"] === command)).toEqual({ command, kind, limit: expect.any(Number), settled: expect.any(Number) });
+  expect((await eventsOf(w, runId, "wait_opened")).map((d) => d["command"])).not.toContain(command);
+}
+
+describe("when asks is exhausted, the question is not asked, and nothing passes on its own", () => {
+  it("ask, escalate, pause and supervise escalate: the step fails with Rejected(asks_exhausted), which on error may handle", async () => {
+    const cases: Array<[number, string, string, number]> = [
+      [0, "/defs/Asking/body/1/value", "ask", 0],
+      [1, "/defs/Asking/body/2/value", "escalate", 1],
+      [2, "/defs/Asking/body/4/value", "pause", 2],
+      [3, "/defs/Asking/body/5/value/escalate", "supervise_escalate", 3],
+    ];
+    for (const [total, command, kind, answered] of cases) {
+      const w = await aworld(ASKS_MDT, { fails: true });
+      w.rt.attentionFacts = understated(total);
+      const runId = `x${total}`;
+      let r = await w.rt.startRun({ pkg: w.pkg, workflow: "Asking", runId, input: { note: "long note" } });
+      for (let i = 0; i < answered; i++) r = await answer(w, runId);
+      expect(r.state, `${kind}: ${state(r)}`).toBe("failed");
+      expect(r.error).toEqual({ $tag: "Rejected", $args: ["asks_exhausted"] });
+      await refusedAt(w, runId, command, kind);
+      expect((await asksRow(w, runId))!.settled).toBe(answered);
+      // Nothing after it ran: no other question, and the delegation was not retried.
+      expect((await eventsOf(w, runId, "wait_opened")).length).toBe(answered);
+      if (kind === "supervise_escalate") expect(w.writer.calls.filter((c) => c.skill === "write")).toHaveLength(1);
+      // A resume and a replay read the refusal: nothing is counted or written again.
+      const events = await w.rt.journal.events(runId);
+      expect((await w.rt.replayRun(runId)).status).toBe("failed");
+      expect(await w.rt.journal.events(runId)).toEqual(events);
+    }
+  });
+
+  it("verify: a human.approve criterion past asks is unmet, and the value is not verified", async () => {
+    const w = await aworld();
+    w.rt.attentionFacts = understated(4);
+    let r = await w.rt.startRun({ pkg: w.pkg, workflow: "Approving", runId: "v", input: { n: { text: "x" } } });
+    for (let i = 0; i < 4; i++) r = await answer(w, "v");
+    expect(r.state, state(r)).toBe("failed");
+    expect(r.error).toMatchObject({ $tag: "Rejected", $args: [{ contract: "Approved", unmet: expect.arrayContaining(["both"]) }] });
+    // Both parts of `both` are past asks; the criteria after it are not asked once one is unmet.
+    await refusedAt(w, "v", "/defs/Approving/body/4/value/contract/accept/both/all/0/call", "verify");
+    await refusedAt(w, "v", "/defs/Approving/body/4/value/contract/accept/both/all/1/call", "verify");
+    expect((await eventsOf(w, "v", "asks_exhausted")).map((d) => d["command"])).toHaveLength(2);
+    const evidence = (await w.rt.evidence("v")).filter((e) => e.criterion === "both").map((e) => [e.passed, e.detail]);
+    expect(evidence.sort((a, b) => (JSON.stringify(a) < JSON.stringify(b) ? -1 : 1))).toEqual([
+      [false, { by: null, role: "code_owner", exhausted: true }],
+      [false, { by: null, role: "finance_lead", exhausted: true }],
+    ]);
+  });
+
+  it("effect: an authorization past asks is not asked, and the action is not committed", async () => {
+    const merge = new SimTool("git.merge");
+    const deploy = new SimTool("deploy");
+    const w = await aworld(ASKS_MDT, { tools: [merge, deploy] });
+    w.rt.attentionFacts = understated(1);
+    let r = await w.rt.startRun({ pkg: w.pkg, workflow: "Releasing", runId: "e", input: { c: { files: ["a.ts"] } } });
+    r = await answer(w, "e");
+    expect(r.state, state(r)).toBe("failed");
+    await refusedAt(w, "e", "/defs/Releasing/body/1/value/authorize", "effect");
+    expect(merge.executions).toEqual([]);
+    expect((await w.rt.journal.actions("e")).map((a) => [a.effect, a.state])).toEqual([["git.merge", "prepared"]]);
+    expect(deploy.prepares).toEqual([]);
+  });
+
+  it("governance: the owner's gate past asks, at /governance or in the place of a policy at /authorize, commits nothing", async () => {
+    for (const [authorize, command] of [
+      [undefined, "/defs/Opening/body/1/value/authorize"],
+      [{ "git.open_pr": { by: "human" as const, role: "code_owner" } }, "/defs/Opening/body/1/value/governance"],
+    ] as const) {
+      const pr = new GovernedTool("git.open_pr");
+      const w = await aworld(OPENING.replace("asks: 2", "asks: 3"), { tools: [pr] });
+      w.rt.attentionFacts = understated(0);
+      const r = await w.rt.startRun({ pkg: w.pkg, workflow: "Opening", runId: "g", input: { c: { files: ["a.ts"] } }, ...(authorize ? { authorize } : {}) });
+      expect(r.state, state(r)).toBe("failed");
+      await refusedAt(w, "g", command, "governance");
+      expect(pr.executions).toEqual([]);
+    }
+  });
+
+  it("changeset: a member's approval past asks is not asked, and the set is not approved or committed", async () => {
+    const merge = new SimTool("git.merge");
+    const w = await aworld(ASKS_MDT, { tools: [merge] });
+    w.rt.attentionFacts = understated(1);
+    let r = await w.rt.startRun({ pkg: w.pkg, workflow: "Landing", runId: "cs", input: { task: "t" } });
+    expect(r.state, state(r)).toBe("waiting");
+    r = await answer(w, "cs");
+    expect(r.state, state(r)).toBe("failed");
+    await refusedAt(w, "cs", "/defs/Landing/body/3/value/members/web/authorize", "changeset");
+    expect(merge.executions).toEqual([]);
+    expect((await w.rt.journal.changesets("cs")).map((c) => c.state)).toEqual(["prepared"]);
+  });
+});
+
+describe("a review past asks", () => {
+  /** The batch review of notify-world.ts in 0.7, its asks the review and its escalation. */
+  const reviewing = (): Promise<NWorld> => nworld(REVIEW.replace("budget { time: 7d }\n{\n  let checked", "budget { time: 7d, asks: 2 }\n{\n  let checked"), "0.7");
+
+  it("is not asked when the review would open: its open items are declined, and the run goes on with what passed", async () => {
+    const w = await reviewing();
+    w.rt.attentionFacts = understated(0);
+    const r = await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "ro" });
+    expect(r.state, state(r)).toBe("succeeded");
+    // Only I0 matched; I1 and I2 were open, and are declined by nobody.
+    expect(r.result).toBe(1);
+    await refusedAt(w, "ro", REVIEW_AT, "review");
+    expect(await eventsOf(w, "ro", "review_requested")).toEqual([]);
+    expect((await w.rt.replayRun("ro")).status).toBe("complete");
+  });
+
+  it("past asks at its escalation: the escalation is not made, the review expires, and the finance lead is told nothing of it", async () => {
+    const w = await reviewing();
+    w.rt.attentionFacts = understated(1);
+    const d = scratch();
+    const config = fileChannels(d, { accountant: false, finance_lead: true });
+    expect((await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "re" })).state).toBe("waiting");
+    expect((await asksRow(w, "re"))!.settled).toBe(1);
+    const now = () => w.clock.now();
+    // The channels are in use from the first pass on, which tells the accountant of the review.
+    await tickPass(w.db, { runtimeFor: async () => ({ rt: w.rt }), now, notify: { now, config } });
+    w.clock.advance(DAY);
+    await tickPass(w.db, { runtimeFor: async () => ({ rt: w.rt }), now, notify: { now, config } });
+    // The finance lead, who asks for outcomes, hears that asks ran out and how the run ended, never a question; the
+    // accountant was asked, and hears nothing more of it.
+    const told = (role: string): string[] => lines(join(d, `${role}.jsonl`)).map((x) => `${String(x["event"])} ${String(x["kind"])}`);
+    const [lead, accountant] = [told("finance_lead"), told("accountant")];
+    rmSync(d, { recursive: true, force: true });
+    expect(lead).toEqual(["asks_exhausted outcome", "run_succeeded outcome"]);
+    expect(accountant).toEqual(["review_requested decision"]);
+    const done = await w.rt.getRun("re");
+    expect(done.state, state(done)).toBe("succeeded");
+    expect(done.result).toBe(1);
+    expect(await eventsOf(w, "re", "review_escalated")).toEqual([]);
+    expect(await eventsOf(w, "re", "asks_exhausted")).toEqual([{ command: REVIEW_AT, kind: "review", limit: 2, settled: 1 }]);
+    expect(await eventsOf(w, "re", "review_expired")).toEqual([{ command: REVIEW_AT, role: "accountant", declined: [1, 2] }]);
+    expect((await asksRow(w, "re"))!.settled).toBe(1);
+  });
+
+  it("counts its escalation, once, in the transaction that makes it", async () => {
+    const w = await reviewing();
+    expect((await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "rc" })).state).toBe("waiting");
+    w.clock.advance(DAY);
+    await w.rt.tick("rc");
+    await w.rt.tick("rc");
+    expect(await eventsOf(w, "rc", "review_escalated")).toHaveLength(1);
+    expect(await asksRow(w, "rc")).toEqual({ limit: 2, settled: 2, reserved: 0 });
+  });
+});
+
+/** A pull request whose prepared change carries a governance-class file: the owner's gate applies. */
+class GovernedTool extends SimTool {
+  override async prepare(params: Value): Promise<{ prepared: true; artifacts?: PreparedFile[] } | { rejected: string }> {
+    this.prepares.push(params);
+    return { prepared: true, artifacts: [{ path: ".github/workflows/ci.yml", content: "on: push\n" }] };
+  }
+}
 
 // ── the role of an approval (D2) ────────────────────────────────────────
 
