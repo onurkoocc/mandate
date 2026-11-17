@@ -5,13 +5,15 @@
 #   scripts/docker-ci.sh quick [<commit>] -- <command...>     one command in the clone, e.g. cargo test -p mandate-ir
 #   scripts/docker-ci.sh build | selfcheck | clean
 #
-# It tests a commit, not the working tree: `git archive` of the commit is piped into the container, which extracts it
-# and runs the job steps of that commit. Nothing of the host is mounted into a container (no bind mount at all), no
+# It tests a commit, not the working tree: a pack of exactly that commit, its trees and its blobs is piped into the
+# container, which checks it out there. Nothing of the host is mounted into a container (no bind mount at all), no
 # environment variable of the host reaches a container, and no dotenv file is read by Docker Compose (every call passes
-# `--project-directory docker --env-file docker/empty.env`). The exit status is the job's result.
+# `--project-directory docker --env-file docker/empty.env`). The exit status is the job's result. At most
+# MANDATE_CI_MAX_JOBS (default 2) jobs run at once across all worktrees of the repository; the others wait.
 #
 # Run from Git Bash on Windows, or from a shell on Linux. Docker Desktop (or an engine) must be running.
-# docker/check.mjs allows the invocations of Docker in this file by their exact form: a new one is a change of that check.
+# docker/check.mjs pins every line of this file that reaches Docker or feeds a container, exactly: changing one is a
+# visible change of that check.
 set -u
 
 # Git Bash would rewrite every argument that looks like a path; the paths below are made Windows-style where needed.
@@ -46,6 +48,10 @@ control_loads_dotenv() { ( cd "$tmp" && docker compose --project-directory "$ntm
 # The other Docker calls, all on a container this script started.
 insp() { docker inspect --format "$2" "$1"; }
 rm_container() { docker rm -f "$1" >/dev/null 2>&1; }
+container_of() { docker ps -aq --filter "name=^$1\$"; }
+# What goes into a container: a pack of exactly one commit, its trees and its blobs, made from git's objects with no
+# conversion of any kind (no working tree, no filter, no autocrlf, no export-subst, no attributes, no replace refs).
+pack_of_commit() { git --no-replace-objects -C "$root_native" rev-list --objects --no-walk "$1" | git --no-replace-objects -C "$root_native" pack-objects --stdout -q; }
 
 usage() {
   sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//' >&2
@@ -69,6 +75,9 @@ elif [ "$#" -gt 0 ]; then
   die "unexpected arguments: $*"
 fi
 
+max_jobs="${MANDATE_CI_MAX_JOBS:-2}"
+case "$max_jobs" in '' | *[!0-9]* | 0) die "MANDATE_CI_MAX_JOBS must be a whole number of at least 1" ;; esac
+
 start="$(date +%s)"
 finish() { # <label> <status>
   local took=$(($(date +%s) - start))
@@ -78,10 +87,11 @@ finish() { # <label> <status>
 
 resolve() {
   sha="$(git -C "$root_native" rev-parse --verify --quiet "$commit_arg^{commit}")" || die "no such commit: $commit_arg"
-  tree="$(git -C "$root_native" rev-parse "$sha^{tree}")"
-  # The digest of the two files the image holds, that boot.sh compares with its own: the image must be the one this
-  # checkout built.
-  ctx="$(cat "$docker_dir/boot.sh" "$docker_dir/run-job.sh" | sha256sum | cut -d' ' -f1)"
+  # What decides whether an image is the one this checkout built: the digest of the Dockerfile, .dockerignore and boot.sh
+  # (boot.sh computes the same from its copies in the image), and, for a commit that has no run-job.sh of its own, the
+  # digest of run-job.sh.
+  image_digest="$(cat "$docker_dir/Dockerfile" "$docker_dir/.dockerignore" "$docker_dir/boot.sh" | sha256sum | cut -d' ' -f1)"
+  steps_digest="$(sha256sum <"$docker_dir/run-job.sh" | cut -d' ' -f1)"
   if [ "$commit_arg" = HEAD ]; then
     local dirty
     dirty="$(git -C "$root_native" status --porcelain)"
@@ -103,20 +113,121 @@ ensure_image() {
   rm -f "$log"
 }
 
-# Runs boot.sh in a fresh container of the service, the commit's archive on its standard input. The values passed in are
-# the digest of the checkout's boot.sh and run-job.sh and, for quick, the Node release (validated here): nothing else.
-run_in() { # <service> <job> [command...]
+# ── locks: slots for the jobs, and the one of the test job; directories in the common git directory, so that every
+#    worktree of the repository shares them ─────────────────────────────────────────────────────────────────────
+
+git_dir="$(git -C "$root_native" rev-parse --path-format=absolute --git-common-dir)" || die "not a git repository"
+test_lock="$git_dir/mandate-ci-test.lock"
+held_test=0
+slot_dir=""
+
+# Whether the holder of a lock is gone: its process does not exist and no job container of its name exists. (Services a
+# killed test job left running do not keep its lock: the next test job removes them once it has the lock.) A lock with no
+# process recorded is stale when it is two minutes old (its holder died between making the directory and writing its
+# process); one that is six hours old is stale whatever.
+lock_stale() { # <dir>
+  local d="$1" pid
+  [ -d "$d" ] || return 1
+  if [ -n "$(find "$d" -maxdepth 0 -mmin +360 2>/dev/null)" ]; then return 0; fi
+  pid="$(cat "$d/pid" 2>/dev/null || true)"
+  if [ -z "$pid" ]; then [ -n "$(find "$d" -maxdepth 0 -mmin +2 2>/dev/null)" ]; return; fi
+  if kill -0 "$pid" 2>/dev/null; then return 1; fi
+  if [ -n "$(container_of "mandate-ci-job-$pid")" ]; then return 1; fi
+  return 0
+}
+
+# Takes the lock directory if it is free, or if it is stale. Recovery is guarded by a directory of its own and decided
+# again under the guard, so that a waiter that judged the lock stale earlier cannot remove the lock that another waiter
+# recovered and took in the meantime.
+try_lock() { # <dir>
+  local d="$1"
+  if mkdir "$d" 2>/dev/null; then printf '%s\n' "$$" >"$d/pid"; return 0; fi
+  if lock_stale "$d"; then
+    if mkdir "$d.recover" 2>/dev/null; then
+      if lock_stale "$d"; then
+        echo "docker-ci: recovering a stale lock ($(basename "$d"), holder $(cat "$d/pid" 2>/dev/null || echo unknown))"
+        rm -rf "$d"
+      fi
+      rmdir "$d.recover"
+    elif [ -n "$(find "$d.recover" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then
+      rmdir "$d.recover" 2>/dev/null || true
+    fi
+    if mkdir "$d" 2>/dev/null; then printf '%s\n' "$$" >"$d/pid"; return 0; fi
+  fi
+  return 1
+}
+
+lock_release() { # <dir>: only a lock this process holds
+  if [ "$(cat "$1/pid" 2>/dev/null || true)" = "$$" ]; then rm -rf "$1"; fi
+}
+
+acquire_test_lock() {
+  local waited=0
+  while ! try_lock "$test_lock"; do
+    if [ $((waited % 30)) -eq 0 ]; then echo "docker-ci: another test job (process $(cat "$test_lock/pid" 2>/dev/null || echo unknown)) holds the PostgreSQL and collector services; waiting (${waited} s)"; fi
+    sleep 5
+    waited=$((waited + 5))
+  done
+  held_test=1
+  if [ "$waited" -gt 0 ]; then echo "docker-ci: the test lock is mine after ${waited} s"; fi
+}
+
+# At most max_jobs job containers at once, across the worktrees: a slot is a lock directory.
+acquire_slot() {
+  local waited=0 i held
+  while :; do
+    for i in $(seq 1 "$max_jobs"); do
+      if try_lock "$git_dir/mandate-ci-slot.$i"; then
+        slot_dir="$git_dir/mandate-ci-slot.$i"
+        if [ "$waited" -gt 0 ]; then echo "docker-ci: a place for this job after ${waited} s"; fi
+        return 0
+      fi
+    done
+    if [ $((waited % 30)) -eq 0 ]; then
+      held="$(for i in $(seq 1 "$max_jobs"); do cat "$git_dir/mandate-ci-slot.$i/pid" 2>/dev/null; done | tr '\n' ' ')"
+      echo "docker-ci: $max_jobs jobs are running already (processes ${held:-unknown}); waiting for a place (${waited} s)"
+    fi
+    sleep 5
+    waited=$((waited + 5))
+  done
+}
+
+# On exit, however it comes: the services and the test lock of a test job that holds them, and the slot. A job that was
+# still waiting removes nothing that is another's.
+cleanup_all() {
+  if [ "$held_test" = 1 ]; then
+    dc --profile services rm -sfv postgres otel-collector >/dev/null 2>&1 || true
+    lock_release "$test_lock"
+    held_test=0
+  fi
+  if [ -n "$slot_dir" ]; then lock_release "$slot_dir"; slot_dir=""; fi
+}
+
+job_container=""
+on_signal() { # INT, TERM or HUP: the job container goes, and with it this script (its EXIT trap cleans up the rest)
+  if [ -n "$job_container" ]; then rm_container "$job_container"; fi
+  exit "$1"
+}
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+trap 'on_signal 129' HUP
+trap cleanup_all EXIT
+
+# ── running a job ───────────────────────────────────────────────────────────────────────────────────────────────
+
+# One boot.sh in a fresh container of the service, the commit's pack on its standard input. The values passed in are
+# the two digests and, for quick, the Node release (validated here): nothing else of the host's environment.
+# In the background and waited for, so that a signal to this script is handled at once (a trap waits for a foreground
+# command to end) and removes the container by its name.
+run_once() { # <service> <job> [command...]
   local service="$1" jobname="$2"
   shift 2
-  local envs=(-e "MANDATE_CI_CONTEXT=$ctx")
+  local envs=(-e "MANDATE_CI_IMAGE=$image_digest" -e "MANDATE_CI_STEPS=$steps_digest")
   if [ -n "${MANDATE_CI_NODE:-}" ]; then
     case "$MANDATE_CI_NODE" in 22 | 24) envs+=(-e "MANDATE_CI_NODE=$MANDATE_CI_NODE") ;; *) die "MANDATE_CI_NODE must be 22 or 24" ;; esac
   fi
-  # In the background and waited for, so that a signal to this script is handled at once (a trap waits for a foreground
-  # command to end) and removes the container by its name.
   job_container="mandate-ci-job-$$"
-  ( set -o pipefail; git -C "$root_native" archive --format=tar "$sha" |
-      dc --profile run run --rm -T --no-deps --name "$job_container" "${envs[@]}" "$service" bash /usr/local/lib/mandate-ci/boot.sh "$jobname" "$sha" "$tree" "$@" ) &
+  ( set -o pipefail; pack_of_commit "$sha" | dc --profile run run --rm -T --no-deps --name "$job_container" "${envs[@]}" "$service" bash /usr/local/lib/mandate-ci/boot.sh "$jobname" "$sha" "$@" ) &
   local child=$!
   wait "$child"
   local rc=$?
@@ -124,65 +235,29 @@ run_in() { # <service> <job> [command...]
   return "$rc"
 }
 
-job_container=""
-on_signal() { # INT or TERM: the job container goes, and with it this script (its EXIT trap, if any, cleans up the rest)
-  if [ -n "$job_container" ]; then rm_container "$job_container"; fi
-  exit "$1"
-}
-trap 'on_signal 130' INT
-trap 'on_signal 143' TERM
-
-# ── the test job: services, and a lock shared by every worktree of the repository ───────────────────────────────
-
-git_dir="$(git -C "$root_native" rev-parse --path-format=absolute --git-common-dir)"
-lock="$git_dir/mandate-ci-test.lock"
-have_lock=0
-
-acquire_lock() {
-  local waited=0 pid stale
-  while ! mkdir "$lock" 2>/dev/null; do
-    stale=0
-    pid="$(cat "$lock/pid" 2>/dev/null || true)"
-    # Stale: the holder is gone (its process does not exist, and no service of the project is running), or the lock is
-    # more than four hours old.
-    if [ -n "$pid" ]; then
-      if ! kill -0 "$pid" 2>/dev/null && [ -z "$(dc --profile services ps --status running -q postgres otel-collector 2>/dev/null)" ]; then stale=1; fi
-    elif [ -n "$(find "$lock" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then
-      stale=1
-    fi
-    if [ -n "$(find "$lock" -maxdepth 0 -mmin +240 2>/dev/null)" ]; then stale=1; fi
-    if [ "$stale" = 1 ]; then
-      echo "docker-ci: recovering a stale test lock (holder ${pid:-unknown})"
-      mv "$lock" "$lock.stale.$$" 2>/dev/null && rm -rf "$lock.stale.$$"
-      continue
-    fi
-    if [ $((waited % 30)) -eq 0 ]; then echo "docker-ci: another test job (process ${pid:-unknown}) holds the PostgreSQL and collector services; waiting (${waited} s)"; fi
-    sleep 5
-    waited=$((waited + 5))
+# boot.sh says with its status 97 (which a job cannot return: boot.sh turns it into 1) that the image is not the one this
+# checkout built: another checkout built it under the same tag since. The image is built again and the job tried again,
+# up to five times; a job never runs on another checkout's image.
+run_in() { # <service> <job> [command...]
+  local attempt rc=0
+  for attempt in 1 2 3 4 5; do
+    rc=0
+    run_once "$@" || rc=$?
+    if [ "$rc" -ne 97 ]; then return "$rc"; fi
+    echo "docker-ci: the image holds another checkout's Dockerfile, .dockerignore, boot.sh or run-job.sh (attempt $attempt of 5); building it again"
+    ensure_image
   done
-  printf '%s\n' "$$" >"$lock/pid"
-  have_lock=1
-  if [ "$waited" -gt 0 ]; then echo "docker-ci: the test lock is mine after ${waited} s"; fi
-}
-
-cleanup_test() {
-  # Only the holder of the lock owns the services: a job that was waiting for the lock removes nothing.
-  if [ "$have_lock" = 1 ]; then
-    dc --profile services rm -sfv postgres otel-collector >/dev/null 2>&1 || true
-    if [ "$(cat "$lock/pid" 2>/dev/null || true)" = "$$" ]; then rm -rf "$lock"; fi
-  fi
-  have_lock=0
+  echo "docker-ci: the image was changed by another checkout each of five times; run the job again" >&2
+  return 3
 }
 
 run_test_job() {
   local rc=0
-  trap cleanup_test EXIT
-  acquire_lock
   # Services left by a job that was killed.
   dc --profile services rm -sfv postgres otel-collector >/dev/null 2>&1 || true
   # This commit's collector configuration and an empty output directory, in the volumes the collector and the runner
   # share. (The runner image is used for the copy; the commit's file is read from the git objects on the host.)
-  git -C "$root_native" show "$sha:runtime/test/otel-collector.yaml" |
+  git -C "$root_native" cat-file blob "$sha:runtime/test/otel-collector.yaml" |
     dc --profile run run --rm -T --no-deps runner sh -c 'cat > /otel/config/config.yaml && rm -f /otel/out/spans.json' || return 1
   dc --profile services up -d --wait postgres otel-collector || rc=$?
   if [ "$rc" -eq 0 ]; then run_in runner test || rc=$?; fi
@@ -197,8 +272,8 @@ run_test_job() {
 
 # ── selfcheck ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-in_container() { # <container id>: the commit's archive into boot.sh of a running container, to run its selfcheck
-  git -C "$root_native" archive --format=tar "$sha" | docker exec -i -e "MANDATE_CI_CONTEXT=$ctx" "$1" bash /usr/local/lib/mandate-ci/boot.sh selfcheck "$sha" "$tree"
+in_container() { # <container id>: the commit's pack into boot.sh of a running container, to run its selfcheck
+  pack_of_commit "$sha" | docker exec -i -e "MANDATE_CI_IMAGE=$image_digest" -e "MANDATE_CI_STEPS=$steps_digest" "$1" bash /usr/local/lib/mandate-ci/boot.sh selfcheck "$sha"
 }
 
 cid="" cid2="" tmp="" ntmp=""
@@ -237,7 +312,7 @@ selfcheck() {
   echo "--- the runner container, as Docker made it"
   cid="$(dc --profile run run -d -T --no-deps runner sleep 900 | tail -n 1)" || die "could not start the runner container"
   inspect_container "$cid" runner "no-new-privileges:true" ""
-  echo "--- inside the runner container, on the archive of $sha"
+  echo "--- inside the runner container, on the pack of $sha"
   in_container "$cid" || fail=1
   rm_container "$cid"
   cid=""
@@ -245,7 +320,7 @@ selfcheck() {
   echo "--- the sandbox container, as Docker made it"
   cid2="$(dc --profile run run -d -T --no-deps runner-sandbox sleep 900 | tail -n 1)" || die "could not start the sandbox container"
   inspect_container "$cid2" runner-sandbox "no-new-privileges:true seccomp=unconfined" "/dev/net/tun->/dev/net/tun"
-  echo "--- inside the sandbox container, on the archive of $sha"
+  echo "--- inside the sandbox container, on the pack of $sha"
   in_container "$cid2" || fail=1
   rm_container "$cid2"
   cid2=""
@@ -302,7 +377,10 @@ case "$job" in
       die "the commit $sha has no runtime/test/otel-collector.yaml, which the test job needs: nothing was started"
     fi
     ensure_image
-    echo "docker-ci: $job on commit $sha (tree $tree)"
+    # The test job takes the test lock first (a waiting test job holds no place), then a place among the running jobs.
+    if [ "$job" = test ]; then acquire_test_lock; fi
+    acquire_slot
+    echo "docker-ci: $job on commit $sha"
     rc=0
     note=""
     case "$job" in
