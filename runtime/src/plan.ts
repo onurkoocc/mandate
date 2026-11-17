@@ -69,6 +69,7 @@ import {
   type Shape06,
   type SubprogramCheck06,
   type SubprogramInput,
+  type SubprogramInput07,
 } from "@mandate/bridge";
 import { CompilerFailure, compilerForWorker, type WorkerCompiler } from "@mandate/bridge/mode";
 import type { Outcome, ToolSpec } from "./adapters.js";
@@ -541,7 +542,10 @@ export class Planner {
       const room = await this.room();
       const told = { number, base, room: { left: room.left, ...(room.time_left_ms !== undefined ? { time_left_ms: room.time_left_ms } : {}), writes_in_flight: room.writes.map(showCap) } };
       const over = overLimit(input["ops"]);
-      const checked = over ?? (await h.checker.check({ parent: h.parent, modules: h.modules, workflow: h.workflow, number, base: String(input["base"]), ops: input["ops"] as SubprogramInput["ops"], lead: h.leadClass, room }, h.checkMs));
+      // 0.7: the check, given no lock, reads std.patterns at the version the package's lock pins.
+      const pin = isProgram07OrLater(h.parent) ? h.lock.libraries?.["std.patterns"]?.version : undefined;
+      const asked: SubprogramInput07 = { parent: h.parent, modules: h.modules, workflow: h.workflow, number, base: String(input["base"]), ops: input["ops"] as SubprogramInput["ops"], lead: h.leadClass, room, ...(pin !== undefined ? { std_patterns: pin } : {}) };
+      const checked = over ?? (await h.checker.check(asked, h.checkMs));
       // A check that was stopped, or that failed, is no check: it admits nothing, and the lead is told which.
       // So is one of a sub-program that holds what this runtime does not run in a sub-program yet (0.6): it is refused
       // by name, `check_failed`, and not run. A sub-program that applies a pattern is read as its check gave it to
