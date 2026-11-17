@@ -1,0 +1,48 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1609",
+  "kind": "compile",
+  "title": "A program of 0.6 (fixtures/attention/batch.mdt under the header of 0.6) whose lock pins std.patterns 2.0.0, a library of 0.7, is refused at the pin and at its use.",
+  "spec": [
+    "spec/attention.md#stdpatterns-200",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/batch.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/language",
+      "value": "mandate/0.6"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1609",
+        "path": "/libraries/std.patterns",
+        "facts": {
+          "library": "std.patterns",
+          "version": "2.0.0",
+          "library_language": "mandate/0.7",
+          "language": "mandate/0.6"
+        }
+      },
+      {
+        "code": "MDT-E1609",
+        "path": "/uses/1",
+        "facts": {
+          "module": "std.patterns",
+          "module_language": "mandate/0.7",
+          "language": "mandate/0.6"
+        }
+      }
+    ]
+  }
+}

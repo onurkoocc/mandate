@@ -1,0 +1,51 @@
+// A program of language 0.7 that applies MakerChecker of the built-in
+// std.patterns 2.0.0 (spec/attention.md "std.patterns 2.0.0"), which its
+// lock (maker-checker.lock.json, of format 0.7) pins. Its expansion has the
+// two stages of the pattern, make and check, and no report. Only the Rust
+// compiler reads it.
+
+mandate @ 0.7
+
+module example.attention.makerchecker @ 0.1
+
+use std.{fs, model, human}
+use std.patterns.{MakerChecker}
+
+role platform_lead "Platform lead"
+
+type Repo    = { name: Text, root: Path }
+type Summary = { migrated: List<Text>, left: List<Text>, notes: Text }
+
+capability RepoRead = fs.read("/work/repos")
+capability SrcWrite = fs.write("/work/repos")
+capability ModelStd = model.infer(tier: standard)
+
+/// What a migration of one repository must have done.
+contract Moved(repo: Repo, s: Summary) {
+  accept moved "The migrator reports what it moved"
+    by static len(s.migrated) >= 1
+  accept nothing_left "Nothing of the repository is left to move"
+    by static len(s.left) == 0
+}
+
+agent Migrator {
+  role   "Moves one repository to the new logging API."
+  caps   RepoRead, SrcWrite, ModelStd
+  budget { tokens: 400k, time: 20m, spend: 0.5 USD, steps: 12 }
+  skill migrate(repo: Repo) -> Inferred<Summary> ! {Fs.Read, Fs.Write, Model}
+}
+
+agent Auditor {
+  role   "Looks for what the migration of one repository left out. Writes nothing."
+  caps   RepoRead, ModelStd
+  budget { tokens: 100k, spend: 0.5 USD, steps: 6 }
+  skill audit(repo: Repo, s: Inferred<Summary>) -> Inferred<Summary> ! {Fs.Read, Model}
+}
+
+/// Migrates one repository, and has an auditor that writes nothing look for
+/// what it left out; the criteria left open go to the platform lead.
+workflow Billing = MakerChecker<Repo, Summary>(
+    input: Repo { name: "billing", root: "billing" },
+    make: Migrator.migrate, check: Auditor.audit, accepted: Moved, owner: platform_lead)
+  caps   RepoRead, SrcWrite, ModelStd
+  budget { tokens: 1000k, time: 1h, spend: 2 USD, steps: 40, agents: 2 }

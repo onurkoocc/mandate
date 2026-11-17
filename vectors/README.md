@@ -1332,16 +1332,18 @@ same way, by gates of its own beside those of 0.6:
   (slice RL7), the stages (slice RL2): `A01` to `A01b`, `E0101h`, `E0104h` to `E0104j`, `E1901` to
   `E1901b` and `E1902` to `E1902g`, and the reports (slice RL3): `A02` to `A02b`, `A03`, `E0101i`,
   `E0104k` to `E0104o`, `E0121g`, `E1501b`, `E1502a`, `E1705b`, `E1705c`, `E1903` to `E1903e`, `E1904`
-  to `E1904v` and `E1905` to `E1905g` (`conformance/README.md`, "Cases of 0.7").
-- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (three today,
-  `minimal.mdt`, `reports.mdt` and `stages.mdt`, 36 outputs), the digest of each output text, made
+  to `E1904v` and `E1905` to `E1905g`, and `std.patterns` 2.0.0 (slice RL6): `E1609` to `E1609c`,
+  `E1603b` and `L10` to `L10e` (`conformance/README.md`, "Cases of 0.7").
+- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (six today,
+  `minimal.mdt`, `reports.mdt`, `stages.mdt`, and `batch.mdt`, `fan-out.mdt` and `maker-checker.mdt`,
+  which apply the patterns of `std.patterns` 2.0.0 with their locks; 81 outputs), the digest of each output text, made
   by the code of `golden/0.6.json` (`crates/mandate-testkit/tests/golden_0_7.rs`).
 - **`diagnostics-0.7/`**: the whole result of every compile case of 0.7 and of the
   checks and `load` of every 0.7 program, in the layout of `diagnostics-0.6/`
   (`crates/mandate-testkit/tests/diagnostics_0_7.rs`; the code is shared with
   `diagnostics_0_6.rs`, `tests/rust_diagnostics/`).
 - **`attention-0.7/facts.json`**: the attention facts of every workflow of every 0.7
-  program of `fixtures/attention/` (five workflows today), as the door `attention_facts`
+  program of `fixtures/attention/` (eight workflows today), as the door `attention_facts`
   gives them with the program's modules, `{ "<program>": { "<workflow>": <facts> } }`
   (`crates/mandate-testkit/tests/attention_0_7.rs`, which also holds the door to the
   function, `mandate_check::attention_facts`). Their shape is below ("The attention facts").

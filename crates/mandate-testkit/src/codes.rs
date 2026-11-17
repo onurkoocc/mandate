@@ -571,6 +571,13 @@ pub const FAMILIES: &[Family] = &[
         reference: Reference::Rust,
     },
     Family {
+        glob: "*MDT-E1609*",
+        codes: "E1609",
+        stage: "Rust only: a 0.6 program or later that imports a module of a newer language (the import checks, crates/mandate-check/src/imports.rs) or whose lock pins a library of one (for_check, crates/mandate-check/src/library/mod.rs)",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
         glob: "*MDT-E1701*",
         codes: "E1701",
         stage: "staticCheck: an envelope's own fields (checkEnvelope in check/envelope.ts); also checkAmendment (check.ts)",

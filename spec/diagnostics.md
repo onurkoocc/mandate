@@ -407,3 +407,16 @@ its role is a role site (E1501, E1501b; with a lock E1502, E1502a).
 A program of 0.1 to 0.6 has no `stage` and no `report`: in its text the line
 is ordinary names (A01b, A02b), and in its IR a statement its schema does not
 have (E0104, E0104h, E0104k).
+
+## Newer modules (0.7)
+
+Specified in [`attention.md`](attention.md#stdpatterns-200). E1609 extends
+E16xx, the family of libraries, and is a code of 0.7 (`CODES_0_7`), with
+hand-written conformance cases of `mandate/0.6` and `mandate/0.7`: what it
+refuses is a program of 0.6 that reads what 0.7 wrote. `mandate check`
+reports it; the runtime's check at load refuses such a package
+(`load_verification_failed`).
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1609 | Module of a newer language | E1609, E1609a; E1609b, E1609c (allowed); E1603b (E1603) | a program of 0.6 or later imports a module written in a newer language than its own (a module given to the check, a library's, or the built-in `std.patterns` 2.0.0), at the `use` (facts `module`, `module_language`, `language`), and not E1602 besides; or its lock pins a library written in a newer language, the language of its newest module, at `/libraries/<name>` (facts `library`, `version`, `library_language`, `language`). A 0.6 program whose lock pins `std.patterns` 2.0.0 and imports it has both (E1609). A 0.7 program reads a module of 0.6 (E1609b), and one whose lock pins `std.patterns` 1.0.0 reads 1.0.0, with no stage (E1609c). A program of 0.1 to 0.5 that imports a module of 0.6 or 0.7 stays E1603 (E1603b) |
