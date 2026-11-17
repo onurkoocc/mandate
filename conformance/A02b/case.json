@@ -8,7 +8,7 @@
     "spec/attention.md#version-gating",
     "spec/attention.md#report"
   ],
-  "language": "mandate/0.6",
+  "language": "mandate/0.7",
   "input": {
     "text": "mandate @ 0.6\n\nmodule example.attention.older @ 0.1\n\nfn next(n: Int) -> Int ! {} {\n  report to accountant\n  n + 1\n}\n",
     "kind": "mdt"

@@ -485,7 +485,9 @@ pub static DOORS: &[Door] = &[
 /// The note of a library door: no TypeScript function stands for it.
 const LIBRARY_NOTE: &str = "Language 0.6, which only the Rust compiler reads: no TypeScript function stands for it, and crates/mandate-check/tests/library_doors.rs holds it to the compiler's functions (crate::library).";
 
-/// The library doors of language 0.6 (spec/library.md "The bridge"), in a
+/// The library doors of language 0.6 (spec/library.md "The bridge"), and
+/// those of 0.7 (`tool_schema_digest`, `callable_connectors`,
+/// `attention_facts`, spec/attention.md), in a
 /// table of their own, since no TypeScript function stands for them and
 /// [`DOORS`] is held to the TypeScript call for call. It is committed as
 /// `crates/mandate-check/tests/library_doors/doors.json`, and the

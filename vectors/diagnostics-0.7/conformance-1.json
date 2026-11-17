@@ -134,6 +134,812 @@
       }
     },
     {
+      "name": "A02",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:e79e046095bb80e89b057fbff333b74f8097e41efe534b153b5e4d01bff84ad4",
+          "defs": {
+            "Batch": "sha256:efe9cf7981843738936cff8f323c6f910bdab62aa81f88fdbd0cf640a25a9173",
+            "BatchWithExceptions": "sha256:334d664bebe6c94da642354d8385f3b3f96f3d84a1b7b842ead62e612bc9d35b",
+            "Draft": "sha256:865f3086643ca75df8201227650c24e9abacc7c50ec71ef29f2ec5491ba564ca",
+            "DraftId": "sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c",
+            "ErpDraft": "sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79",
+            "ErpRead": "sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d",
+            "ErpVendor": "sha256:cc91ee54360c4d2aca4bdb2ccdca7cc0723f4df0748b421a67655b2c21bc53b3",
+            "Greet": "sha256:e13b3bb2b06e6006cafc5ff023230f252358345824e3db9852a2e741a2d02723",
+            "Greeted": "sha256:01fd5bae846be1f68ca39e02b86e48ac6a2347559e7603a66ff4ca0eca136649",
+            "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+            "Inbox": "sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6",
+            "Invoice": "sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75",
+            "Match": "sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56",
+            "MatchAll": "sha256:91d9e769dc5afdeb09fac6f46418b0acbdd51306f1a1b742aa2cd698a2a4c20f",
+            "Matched": "sha256:06c260687ff67cade4bb6131eceae313721f8d637c69737bccd220b8cd07d0db",
+            "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+            "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+            "Order": "sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555",
+            "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+            "erp": "sha256:af89464405275692c6af956725ae726ba8e96a5aa4c4d1ae5d05d41730dceacb",
+            "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+            "near": "sha256:86f822ac6b931c08609cd06ac1c5ea71f98095b7184b563c2b257bfc18195026"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Greeted.said: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Greeted/accept/said/by/static",
+              "span": [85, 15, 85, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [78, 15, 78, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [76, 15, 76, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "A02a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:f41196b9acc0128c7b10354c44afb6f142a3564562075bccedc495e1dee1913c",
+          "defs": {
+            "Note": "sha256:7f0e2138f51ee94bd7eadd7aaa203512415143ba4d070c746b3f9908431c2662",
+            "next": "sha256:f7510a6ac72e848f227f7585b80791fae49320a8095a48d9e51194ce85391b9e",
+            "title_of": "sha256:3f2270c29871b1b6af53afc442907cfdf0086afc31122a108e9012dc40c9a18a"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "A02b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown name 'report'.",
+            "at": {
+              "path": "/defs/next/body/0/value",
+              "span": [6, 3, 6, 9]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "report",
+              "expected": "value"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown name 'to'.",
+            "at": {
+              "path": "/defs/next/body/1/value",
+              "span": [6, 10, 6, 12]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "to",
+              "expected": "value",
+              "did_you_mean": "n"
+            },
+            "repair": [
+              {
+                "id": "r1",
+                "summary": "Use 'n'",
+                "patch": [
+                  {
+                    "op": "replace",
+                    "path": "/defs/next/body/1/value",
+                    "value": {
+                      "op": "var",
+                      "name": "n"
+                    }
+                  }
+                ],
+                "risk": "low"
+              }
+            ]
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown name 'accountant'.",
+            "at": {
+              "path": "/defs/next/body/2/value",
+              "span": [6, 13, 6, 23]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "accountant",
+              "expected": "value"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "A03",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.7",
+          "module": "example.shaped.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.shaped"
+            }
+          ],
+          "defs": {
+            "Look": {
+              "kind": "workflow",
+              "apply": {
+                "pattern": "Each",
+                "args": [
+                  {
+                    "name": "work",
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "Worker"
+                      },
+                      "name": "look"
+                    }
+                  },
+                  {
+                    "name": "width",
+                    "value": {
+                      "op": "int",
+                      "value": 2
+                    }
+                  },
+                  {
+                    "name": "reviewer",
+                    "value": {
+                      "op": "var",
+                      "name": "owner_role"
+                    }
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "budget": {
+                "tokens": 2000,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            }
+          }
+        },
+        "hash": "sha256:9abfe45a3149e6664d881ed58319c284a38934e5211c46811bd84320bbb726fa",
+        "workflow": "Look",
+        "shape": {
+          "pattern": "Each",
+          "module": "example.shaped"
+        },
+        "running": {
+          "language": "mandate/0.7",
+          "module": "example.shaped.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.shaped"
+            }
+          ],
+          "defs": {
+            "Look": {
+              "kind": "workflow",
+              "params": [],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "body": [
+                {
+                  "op": "stage",
+                  "name": "gather",
+                  "title": "Gather the items"
+                },
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "report",
+                  "role": "owner_role",
+                  "title": "Items gathered",
+                  "fields": [
+                    {
+                      "name": "items",
+                      "value": {
+                        "op": "call",
+                        "callee": {
+                          "op": "var",
+                          "name": "len"
+                        },
+                        "args": [
+                          {
+                            "value": {
+                              "op": "var",
+                              "name": "items"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "op": "stage",
+                  "name": "look",
+                  "title": "Look at each item"
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "agent": "Worker",
+                          "skill": "look",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2,
+                    "par": 2
+                  }
+                }
+              ],
+              "budget": {
+                "tokens": 2000,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            },
+            "Each": {
+              "kind": "pattern",
+              "slots": [
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "width",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                },
+                {
+                  "name": "reviewer",
+                  "kind": "role"
+                }
+              ],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "stage",
+                  "name": "gather",
+                  "title": "Gather the items"
+                },
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "report",
+                  "role": "reviewer",
+                  "title": "Items gathered",
+                  "fields": [
+                    {
+                      "name": "items",
+                      "value": {
+                        "op": "call",
+                        "callee": {
+                          "op": "var",
+                          "name": "len"
+                        },
+                        "args": [
+                          {
+                            "value": {
+                              "op": "var",
+                              "name": "items"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "op": "stage",
+                  "name": "look",
+                  "title": "Look at each item"
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2,
+                    "par": "width"
+                  }
+                }
+              ],
+              "doc": "The two items, each looked at by `work`, `width` at a time; `reviewer`\nis told how many there were."
+            },
+            "Item": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "name": {
+                    "ref": "Text"
+                  }
+                }
+              }
+            },
+            "Lead": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "finish": {
+                  "params": [
+                    {
+                      "name": "items",
+                      "type": {
+                        "ref": "List",
+                        "args": [
+                          {
+                            "ref": "Item"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Plans what is left.",
+              "budget": {
+                "tokens": 5000,
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 20
+              }
+            },
+            "M": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "model"
+                  },
+                  "name": "infer"
+                },
+                "args": [
+                  {
+                    "name": "tier",
+                    "value": {
+                      "op": "var",
+                      "name": "standard"
+                    }
+                  }
+                ]
+              }
+            },
+            "R": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "read"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work"
+                    }
+                  }
+                ]
+              }
+            },
+            "Run": {
+              "kind": "workflow",
+              "params": [
+                {
+                  "name": "items",
+                  "type": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Item"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "Text"
+                  }
+                ]
+              },
+              "caps": [],
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "plan",
+                    "agent": "Lead",
+                    "skill": "finish",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "items"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "envelope": {
+                "owner": "owner_role",
+                "caps": [
+                  {
+                    "op": "var",
+                    "name": "M"
+                  },
+                  {
+                    "op": "var",
+                    "name": "R"
+                  }
+                ],
+                "budget": {
+                  "tokens": 100000,
+                  "time": {
+                    "ms": 3600000
+                  },
+                  "spend": {
+                    "micros": 20000000,
+                    "currency": "USD"
+                  },
+                  "steps": 200,
+                  "agents": 20
+                },
+                "spawn": {
+                  "max_concurrent": 4
+                },
+                "shapes": [
+                  "Each"
+                ]
+              }
+            },
+            "Worker": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "look": {
+                  "params": [
+                    {
+                      "name": "i",
+                      "type": {
+                        "ref": "Item"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Looks at one item.",
+              "budget": {
+                "tokens": 1000,
+                "spend": {
+                  "micros": 1000000,
+                  "currency": "USD"
+                },
+                "steps": 5
+              }
+            },
+            "owner_role": {
+              "kind": "role",
+              "description": "Owner"
+            }
+          }
+        },
+        "running_hash": "sha256:bcb413f09979d193e9fb8e0984f5b9f9d7f89040cfa4b3d00893705e20618394"
+      }
+    },
+    {
       "name": "E0101h",
       "kind": "compile",
       "door": "check",
@@ -153,6 +959,32 @@
             "message": "Interpolation is not allowed in a stage title.",
             "at": {
               "span": [20, 15, 20, 44]
+            },
+            "docs": "mandate explain MDT-E0101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0101i",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0101",
+            "severity": "error",
+            "message": "Interpolation is not allowed in a report title.",
+            "at": {
+              "span": [23, 24, 23, 45]
             },
             "docs": "mandate explain MDT-E0101"
           }
@@ -259,6 +1091,200 @@
       }
     },
     {
+      "name": "E0104k",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown or missing tag: value of tag \"op\" must be in oneOf.",
+            "at": {
+              "path": "/defs/Greet/body/0",
+              "span": [1, 815, 1, 924]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "discriminator",
+              "schema_path": "#/discriminator"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104l",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Schema violation: must NOT have more than 80 characters.",
+            "at": {
+              "path": "/defs/Greet/body/3/title",
+              "span": [1, 11831, 1, 11914]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "maxLength",
+              "schema_path": "#/oneOf/9/properties/title/maxLength"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104m",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Schema violation: must NOT have fewer than 1 characters.",
+            "at": {
+              "path": "/defs/Greet/body/3/title",
+              "span": [1, 11831, 1, 11833]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "minLength",
+              "schema_path": "#/oneOf/9/properties/title/minLength"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104n",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Schema violation: must NOT have more than 16 items.",
+            "at": {
+              "path": "/defs/Greet/body/3/fields",
+              "span": [1, 11859, 1, 12639]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "maxItems",
+              "schema_path": "#/oneOf/9/properties/fields/maxItems"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104o",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Schema violation: must NOT have fewer than 1 items.",
+            "at": {
+              "path": "/defs/Greet/body/3/fields",
+              "span": [1, 11859, 1, 11861]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "minItems",
+              "schema_path": "#/oneOf/9/properties/fields/minItems"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121g",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "Duplicate report field 'draft'.",
+            "at": {
+              "span": [23, 58, 23, 63]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "draft"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0140d",
       "kind": "compile",
       "door": "check",
@@ -285,6 +1311,91 @@
               "params": {
                 "additionalProperty": "extensions"
               }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1501b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1501",
+            "severity": "error",
+            "message": "A report names the role 'acountant', but 'acountant' is not a role this module defines or imports. Define it: role acountant \"\u2026\" (spec/envelope.md).",
+            "at": {
+              "path": "/defs/Greet/body/3/role",
+              "span": [1, 11810, 1, 11821]
+            },
+            "docs": "mandate explain MDT-E1501",
+            "facts": {
+              "role": "acountant",
+              "where": "a report",
+              "roles": [
+                "accountant",
+                "finance_lead"
+              ],
+              "did_you_mean": "accountant"
+            },
+            "repair": [
+              {
+                "id": "r1",
+                "summary": "Use 'accountant'",
+                "patch": [
+                  {
+                    "op": "replace",
+                    "path": "/defs/Greet/body/3/role",
+                    "value": "accountant"
+                  }
+                ],
+                "risk": "low"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1502a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1502",
+            "severity": "error",
+            "message": "Role accountant has no member in the lock file, so nobody could decide for it.",
+            "at": {
+              "path": "/defs/Greet/body/1/role"
+            },
+            "docs": "mandate explain MDT-E1502",
+            "facts": {
+              "role": "accountant",
+              "lock": "mandate/lock/0.7",
+              "bound": [
+                "reviewer"
+              ]
             }
           }
         ]
@@ -379,6 +1490,70 @@
           }
         },
         "diagnostics": []
+      }
+    },
+    {
+      "name": "E1705b",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../A03/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1705",
+            "severity": "error",
+            "message": "A sub-program cannot write a stage ('Look'): what a person is shown is written by the program a person approved, and a sub-program shows only the stages and reports of a pattern its envelope's shapes list (spec/attention.md \"Sub-programs and amendments\").",
+            "at": {
+              "path": "/defs/Look/body/0"
+            },
+            "docs": "mandate explain MDT-E1705",
+            "facts": {
+              "def": "Look",
+              "construct": "stage"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1705c",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../A03/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1705",
+            "severity": "error",
+            "message": "A sub-program cannot write a report ('Look'): what a person is shown is written by the program a person approved, and a sub-program shows only the stages and reports of a pattern its envelope's shapes list (spec/attention.md \"Sub-programs and amendments\").",
+            "at": {
+              "path": "/defs/Look/body/1"
+            },
+            "docs": "mandate explain MDT-E1705",
+            "facts": {
+              "def": "Look",
+              "construct": "report"
+            }
+          }
+        ]
       }
     },
     {
@@ -667,7 +1842,7 @@
           {
             "code": "MDT-E1902",
             "severity": "error",
-            "message": "The title of stage 'give' of workflow Greet holds the control character U+0007; a title is constant text of 1 to 80 characters with no control, format or bidirectional character, since a person reads it on an approval card.",
+            "message": "The title of stage 'give' of workflow Greet holds the control character U+0007; a title is constant text of 1 to 80 characters with no control, format, bidirectional, line separator or paragraph separator character, since a person reads it on one line of an approval card.",
             "at": {
               "path": "/defs/Greet/body/2/title",
               "span": [1, 9868, 1, 9888]
@@ -703,7 +1878,7 @@
           {
             "code": "MDT-E1902",
             "severity": "error",
-            "message": "The title of stage 'post' of pattern BatchWithExceptions holds the format or bidirectional character U+202E; a title is constant text of 1 to 80 characters with no control, format or bidirectional character, since a person reads it on an approval card.",
+            "message": "The title of stage 'post' of pattern BatchWithExceptions holds the format or bidirectional character U+202E; a title is constant text of 1 to 80 characters with no control, format, bidirectional, line separator or paragraph separator character, since a person reads it on one line of an approval card.",
             "at": {
               "path": "/defs/BatchWithExceptions/body/6/title",
               "span": [1, 7500, 1, 7525]
@@ -715,6 +1890,1491 @@
               "problem": "title",
               "rule": "format",
               "char": "U+202E"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1902g",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1902",
+            "severity": "error",
+            "message": "The title of stage 'give' of workflow Greet holds the line or paragraph separator U+2028; a title is constant text of 1 to 80 characters with no control, format, bidirectional, line separator or paragraph separator character, since a person reads it on one line of an approval card.",
+            "at": {
+              "path": "/defs/Greet/body/2/title",
+              "span": [1, 9868, 1, 9882]
+            },
+            "docs": "mandate explain MDT-E1902",
+            "facts": {
+              "workflow": "Greet",
+              "stage": "give",
+              "problem": "title",
+              "rule": "separator",
+              "char": "U+2028"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1903",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1903",
+            "severity": "error",
+            "message": "The title of the report to accountant holds the control character U+0007; a title is constant text of 1 to 80 characters with no control, format, bidirectional, line separator or paragraph separator character, since a person reads it on one line of an approval card.",
+            "at": {
+              "path": "/defs/Greet/body/3/title",
+              "span": [1, 11831, 1, 11855]
+            },
+            "docs": "mandate explain MDT-E1903",
+            "facts": {
+              "role": "accountant",
+              "problem": "title",
+              "rule": "control",
+              "char": "U+0007"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1903a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1903",
+            "severity": "error",
+            "message": "The title of the report to reviewer holds the format or bidirectional character U+202E; a title is constant text of 1 to 80 characters with no control, format, bidirectional, line separator or paragraph separator character, since a person reads it on one line of an approval card.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/9/title",
+              "span": [1, 8996, 1, 9009]
+            },
+            "docs": "mandate explain MDT-E1903",
+            "facts": {
+              "role": "reviewer",
+              "problem": "title",
+              "rule": "format",
+              "char": "U+202E"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1903b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1903",
+            "severity": "error",
+            "message": "The title of the report to accountant holds the line or paragraph separator U+2029; a title is constant text of 1 to 80 characters with no control, format, bidirectional, line separator or paragraph separator character, since a person reads it on one line of an approval card.",
+            "at": {
+              "path": "/defs/Greet/body/3/title",
+              "span": [1, 11831, 1, 11849]
+            },
+            "docs": "mandate explain MDT-E1903",
+            "facts": {
+              "role": "accountant",
+              "problem": "title",
+              "rule": "separator",
+              "char": "U+2029"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1903c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1903",
+            "severity": "error",
+            "message": "The report \"Greeting drafted\" to accountant has two fields named 'draft'; a person reads each field by its name.",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/4/name",
+              "span": [1, 12238, 1, 12245]
+            },
+            "docs": "mandate explain MDT-E1903",
+            "facts": {
+              "role": "accountant",
+              "problem": "duplicate_field",
+              "field": "draft"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1903d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1903",
+            "severity": "error",
+            "message": "The report \"Items collected\" of pattern BatchWithExceptions is to accountant, which is not one of its role slots; a pattern's report goes to a role slot, which each application binds to a role of its own (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/2/role",
+              "span": [1, 7475, 1, 7487]
+            },
+            "docs": "mandate explain MDT-E1903",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "role": "accountant",
+              "problem": "role",
+              "slots": [
+                "reviewer",
+                "escalate_to"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1903e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1903",
+            "severity": "error",
+            "message": "The report \"Items collected\" of pattern BatchWithExceptions is to deadline, which is not one of its role slots; a pattern's report goes to a role slot, which each application binds to a role of its own (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/2/role",
+              "span": [1, 7475, 1, 7485]
+            },
+            "docs": "mandate explain MDT-E1903",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "role": "deadline",
+              "problem": "role",
+              "slots": [
+                "reviewer",
+                "escalate_to"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a delegation: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12236]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "delegate"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a spawn: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12233]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "spawn"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds an await: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12180]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "await"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds an inference: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12209]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "infer"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a verification: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12293]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "verify"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'posted' of the report \"Batch done\" to reviewer holds an effect: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/9/fields/0/value",
+              "span": [1, 9044, 1, 9123]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "reviewer",
+              "field": "posted",
+              "problem": "impure",
+              "what": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a change set: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12315]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "changeset"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904g",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a map: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12252]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "map"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904h",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a plan: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12232]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "plan"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904i",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds an escalation: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12273]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "escalate"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904j",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a pause: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12148]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "pause"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904k",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a try, which can end the run: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12178]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "try"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904l",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a block of statements: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12202]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "block"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904m",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a call of human.ask, which asks a person: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12323]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "call",
+              "callee": "human.ask"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904n",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a call of near: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12291]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "call",
+              "callee": "near"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904o",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a call of erp.vendor_name: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12274]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "call",
+              "callee": "erp.vendor_name"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904p",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a call of quote: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12230]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "call",
+              "callee": "quote"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904q",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant holds a delegation: a report's field is pure, and the one call it may hold is the built-in len, since a report shows values and does nothing (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value/args/0/value",
+              "span": [1, 12199, 1, 12301]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "impure",
+              "what": "delegate"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904r",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant is of type Set<Int>, which a person is not shown: it is no scalar, enum, Option, List or record. A field is of a type a person can read: Int, Dec, Bool, Text, Money, Duration, Time, an enum, an Option or a List of one of these, or a record of these one level deep, each of them optionally inside Verified, Inferred or Untrusted (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12179]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "type",
+              "type": "Set<Int>"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Greeted.said: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Greeted/accept/said/by/static",
+              "span": [1, 5463, 1, 5556]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4818, 1, 5096]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 4532, 1, 4736]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904s",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant is of type List<List<Int>>, which a person is not shown: a List is shown when it holds a scalar or an enum, and this one holds List<Int>. A field is of a type a person can read: Int, Dec, Bool, Text, Money, Duration, Time, an enum, an Option or a List of one of these, or a record of these one level deep, each of them optionally inside Verified, Inferred or Untrusted (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12204]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "type",
+              "type": "List<List<Int>>"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Greeted.said: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Greeted/accept/said/by/static",
+              "span": [1, 5463, 1, 5556]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4818, 1, 5096]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 4532, 1, 4736]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904t",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant is of type Match, which a person is not shown: a record is shown one level deep, of scalars, enums and Options or Lists of them, and its field 'order' is of type Order. A field is of a type a person can read: Int, Dec, Bool, Text, Money, Duration, Time, an enum, an Option or a List of one of these, or a record of these one level deep, each of them optionally inside Verified, Inferred or Untrusted (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12376]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "type",
+              "type": "Match"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Greeted.said: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Greeted/accept/said/by/static",
+              "span": [1, 5463, 1, 5556]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4818, 1, 5096]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 4532, 1, 4736]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904u",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'words' of the report \"Greeting drafted\" to accountant is of type ?, which a person is not shown: the check does not know its type. A field is of a type a person can read: Int, Dec, Bool, Text, Money, Duration, Time, an enum, an Option or a List of one of these, or a record of these one level deep, each of them optionally inside Verified, Inferred or Untrusted (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/fields/3/value",
+              "span": [1, 12134, 1, 12206]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "words",
+              "problem": "type",
+              "type": "?"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Greeted.said: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Greeted/accept/said/by/static",
+              "span": [1, 5463, 1, 5556]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4818, 1, 5096]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 4532, 1, 4736]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1904v",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Greeted.said: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Greeted/accept/said/by/static",
+              "span": [1, 5463, 1, 5556]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E1904",
+            "severity": "error",
+            "message": "Field 'items' of the report \"Items collected\" to accountant is of type Untrusted<List<Invoice>>, which a person is not shown: a List is shown when it holds a scalar or an enum, and this one holds Invoice. A field is of a type a person can read: Int, Dec, Bool, Text, Money, Duration, Time, an enum, an Option or a List of one of these, or a record of these one level deep, each of them optionally inside Verified, Inferred or Untrusted (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/MatchAll/apply",
+              "span": [1, 9897, 1, 10685]
+            },
+            "docs": "mandate explain MDT-E1904",
+            "facts": {
+              "role": "accountant",
+              "field": "items",
+              "problem": "type",
+              "type": "Untrusted<List<Invoice>>",
+              "pattern": "BatchWithExceptions",
+              "pattern_path": "/defs/BatchWithExceptions/body/2/fields/0/value",
+              "expanded_path": "/defs/MatchAll/body/2/fields/0/value"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4818, 1, 5096]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 4532, 1, 4736]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1905",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1905",
+            "severity": "error",
+            "message": "The report \"Moved\" to reviewer stands in a map's body; a report stands in the body of a workflow or a pattern, outside a map's body, a loop without max_iter and a handler, since what it shows is shown a known number of times (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/4/value/body/0",
+              "span": [1, 7806, 1, 7910]
+            },
+            "docs": "mandate explain MDT-E1905",
+            "facts": {
+              "role": "reviewer",
+              "title": "Moved",
+              "place": "map"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1905a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1905",
+            "severity": "error",
+            "message": "The report \"Moved\" to accountant stands in a loop without max_iter; a report stands in the body of a workflow or a pattern, outside a map's body, a loop without max_iter and a handler, since what it shows is shown a known number of times (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/7/body/0",
+              "span": [1, 13091, 1, 13260]
+            },
+            "docs": "mandate explain MDT-E1905",
+            "facts": {
+              "role": "accountant",
+              "title": "Moved",
+              "place": "loop"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1905b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1905",
+            "severity": "error",
+            "message": "The report \"Moved\" to accountant stands in fn near; a report stands in the body of a workflow or a pattern, outside a map's body, a loop without max_iter and a handler, since what it shows is shown a known number of times (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/near/body/0",
+              "span": [1, 3612, 1, 3718]
+            },
+            "docs": "mandate explain MDT-E1905",
+            "facts": {
+              "role": "accountant",
+              "title": "Moved",
+              "place": "fn"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1905c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1905",
+            "severity": "error",
+            "message": "The report \"Moved\" to accountant stands in an on error handler; a report stands in the body of a workflow or a pattern, outside a map's body, a loop without max_iter and a handler, since what it shows is shown a known number of times (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3/then/body/0",
+              "span": [1, 11857, 1, 11963]
+            },
+            "docs": "mandate explain MDT-E1905",
+            "facts": {
+              "role": "accountant",
+              "title": "Moved",
+              "place": "on_error"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1905d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1905",
+            "severity": "error",
+            "message": "The report \"Moved\" to accountant stands in an on unmet handler; a report stands in the body of a workflow or a pattern, outside a map's body, a loop without max_iter and a handler, since what it shows is shown a known number of times (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/6/value/on_unmet/then/body/0",
+              "span": [1, 13120, 1, 13226]
+            },
+            "docs": "mandate explain MDT-E1905",
+            "facts": {
+              "role": "accountant",
+              "title": "Moved",
+              "place": "on_unmet"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1905e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1905",
+            "severity": "error",
+            "message": "The report \"Moved\" to accountant stands in an on budget_exceeded handler of Greet; a report stands in the body of a workflow or a pattern, outside a map's body, a loop without max_iter and a handler, since what it shows is shown a known number of times (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/on/0/then/body/0",
+              "span": [1, 13924, 1, 14030]
+            },
+            "docs": "mandate explain MDT-E1905",
+            "facts": {
+              "role": "accountant",
+              "title": "Moved",
+              "place": "on_budget_exceeded"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1905f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1905",
+            "severity": "error",
+            "message": "The report \"Moved\" to accountant stands in test \"greets\"; a report stands in the body of a workflow or a pattern, outside a map's body, a loop without max_iter and a handler, since what it shows is shown a known number of times (spec/attention.md \"report\").",
+            "at": {
+              "path": "/tests/greets/body/0",
+              "span": [1, 13950, 1, 14056]
+            },
+            "docs": "mandate explain MDT-E1905",
+            "facts": {
+              "role": "accountant",
+              "title": "Moved",
+              "place": "test"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1905g",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/reports.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1905",
+            "severity": "error",
+            "message": "The report \"Moved\" to accountant stands directly before an on error, which would handle the statement before the report; a report changes no value of the run and is no statement a handler handles: put it after the handler (spec/attention.md \"report\").",
+            "at": {
+              "path": "/defs/Greet/body/3",
+              "span": [1, 11788, 1, 12423]
+            },
+            "docs": "mandate explain MDT-E1905",
+            "facts": {
+              "role": "accountant",
+              "title": "Moved",
+              "place": "before_on_error"
             }
           }
         ]

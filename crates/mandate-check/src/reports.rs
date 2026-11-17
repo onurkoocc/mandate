@@ -237,10 +237,15 @@ fn one_report(v: &Value, path: &str, place: Place<'_>, w: &Within<'_>, out: &mut
     let role = s.role().unwrap_or_default();
     let title = s.title().unwrap_or_default();
     if let Place::Not(place) = place {
+        let why = if place == "before_on_error" {
+            "a report changes no value of the run and is no statement a handler handles: put it after the handler (spec/attention.md \"report\")."
+        } else {
+            "a report stands in the body of a workflow or a pattern, outside a map's body, a loop without max_iter and a handler, since what it shows is shown a known number of times (spec/attention.md \"report\")."
+        };
         out.report(
             "E1905",
             format!(
-                "The report \"{title}\" to {role} stands {}; a report stands in the body of a workflow or a pattern, outside a map's body, a loop without max_iter and a handler, since what it shows is shown a known number of times (spec/attention.md \"report\").",
+                "The report \"{title}\" to {role} stands {}; {why}",
                 where_said(place, w)
             ),
             path,

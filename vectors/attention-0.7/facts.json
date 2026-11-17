@@ -1,0 +1,259 @@
+{
+  "fixtures/attention/minimal.mdt": {
+    "Greet": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Greet",
+      "program": "sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e",
+      "stages": [],
+      "reports": []
+    }
+  },
+  "fixtures/attention/reports.mdt": {
+    "MatchAll": {
+      "format": "mandate/attention/0.1",
+      "workflow": "MatchAll",
+      "program": "sha256:e79e046095bb80e89b057fbff333b74f8097e41efe534b153b5e4d01bff84ad4",
+      "stages": [
+        {
+          "path": "/defs/MatchAll/body/0",
+          "name": "collect",
+          "title": "Collect the items",
+          "index": 0
+        },
+        {
+          "path": "/defs/MatchAll/body/3",
+          "name": "work",
+          "title": "Work on each item",
+          "index": 1
+        },
+        {
+          "path": "/defs/MatchAll/body/5",
+          "name": "exceptions",
+          "title": "Decide on the exceptions",
+          "index": 2
+        },
+        {
+          "path": "/defs/MatchAll/body/7",
+          "name": "commit",
+          "title": "Commit what was accepted",
+          "index": 3
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/MatchAll/body/2",
+          "role": "accountant",
+          "title": "Items collected",
+          "stage": "collect",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "items",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            }
+          ]
+        },
+        {
+          "path": "/defs/MatchAll/body/9",
+          "role": "accountant",
+          "title": "Batch done",
+          "stage": "commit",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "posted",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            },
+            {
+              "name": "declined",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            },
+            {
+              "name": "failed",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            }
+          ]
+        }
+      ]
+    },
+    "Greet": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Greet",
+      "program": "sha256:e79e046095bb80e89b057fbff333b74f8097e41efe534b153b5e4d01bff84ad4",
+      "stages": [
+        {
+          "path": "/defs/Greet/body/0",
+          "name": "draft",
+          "title": "Write the greeting",
+          "index": 0
+        },
+        {
+          "path": "/defs/Greet/body/5",
+          "name": "check",
+          "title": "Check the greeting",
+          "index": 1
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Greet/body/3",
+          "role": "accountant",
+          "title": "Greeting drafted",
+          "stage": "draft",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "draft",
+              "type": "Inferred<Text>",
+              "class": "public",
+              "known": "model"
+            },
+            {
+              "name": "vendor",
+              "type": "Untrusted<Text>",
+              "class": "confidential",
+              "known": "external"
+            },
+            {
+              "name": "both",
+              "type": "Text",
+              "class": "confidential",
+              "known": "external"
+            },
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            },
+            {
+              "name": "note",
+              "type": "Inferred<Draft>",
+              "class": "public",
+              "known": "model"
+            }
+          ]
+        },
+        {
+          "path": "/defs/Greet/body/4/then/0",
+          "role": "finance_lead",
+          "title": "A long greeting",
+          "stage": "draft",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        },
+        {
+          "path": "/defs/Greet/body/7/body/0",
+          "role": "accountant",
+          "title": "One round",
+          "stage": "check",
+          "multiplicity": 3,
+          "fields": [
+            {
+              "name": "greeting",
+              "type": "Verified<Text, Greeted>",
+              "class": "public",
+              "known": "verified"
+            },
+            {
+              "name": "checked",
+              "type": "Bool",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        },
+        {
+          "path": "/defs/Greet/body/8",
+          "role": "accountant",
+          "title": "Greeting checked",
+          "stage": "check",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "greeting",
+              "type": "Verified<Text, Greeted>",
+              "class": "public",
+              "known": "verified"
+            },
+            {
+              "name": "mixed",
+              "type": "Text",
+              "class": "public",
+              "known": "model"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "fixtures/attention/stages.mdt": {
+    "MatchAll": {
+      "format": "mandate/attention/0.1",
+      "workflow": "MatchAll",
+      "program": "sha256:e128e710b149a13805d73a0d31b798ef78d86d9871868ceff1a88c8583d43e9f",
+      "stages": [
+        {
+          "path": "/defs/MatchAll/body/0",
+          "name": "collect",
+          "title": "Collect the items",
+          "index": 0
+        },
+        {
+          "path": "/defs/MatchAll/body/2",
+          "name": "work",
+          "title": "Work on each item and check it",
+          "index": 1
+        },
+        {
+          "path": "/defs/MatchAll/body/4",
+          "name": "review",
+          "title": "Ask once about what failed",
+          "index": 2
+        },
+        {
+          "path": "/defs/MatchAll/body/6",
+          "name": "post",
+          "title": "Post what was accepted",
+          "index": 3
+        }
+      ],
+      "reports": []
+    },
+    "Greet": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Greet",
+      "program": "sha256:e128e710b149a13805d73a0d31b798ef78d86d9871868ceff1a88c8583d43e9f",
+      "stages": [
+        {
+          "path": "/defs/Greet/body/0",
+          "name": "draft",
+          "title": "Write the greeting",
+          "index": 0
+        },
+        {
+          "path": "/defs/Greet/body/2",
+          "name": "give",
+          "title": "Give it back",
+          "index": 1
+        }
+      ],
+      "reports": []
+    }
+  }
+}

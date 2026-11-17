@@ -8,7 +8,7 @@
     "spec/attention.md#the-ir",
     "spec/attention.md#report"
   ],
-  "language": "mandate/0.6",
+  "language": "mandate/0.7",
   "input": {
     "file": "../../fixtures/library/minimal.mdt",
     "kind": "mdt"

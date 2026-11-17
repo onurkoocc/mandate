@@ -16,9 +16,9 @@ best-effort basis.
 |---|---|---|
 | Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | the compiler's part implemented (RL1); the runtime's gates not implemented yet |
 | `stage`: grammar, IR, printer; E1901, E1902 | RL2 | not implemented yet |
-| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | not implemented yet |
+| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | implemented (RL3), but for E1705 for `owner`, which is RL5's |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | not implemented yet |
-| The facts (`attention_facts`) | RL3, RL4 | not implemented yet |
+| The facts (`attention_facts`) | RL3, RL4 | the door and its stages and reports implemented (RL3, `mandate/attention/0.1`, `vectors/README.md`); the question sites, the effect sites and the totals not implemented yet (RL4) |
 | `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | not implemented yet |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | not implemented yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
@@ -197,7 +197,11 @@ nobody.
   `Inferred` or `Untrusted`.
 - **Where (E1905).** Not in a map's body, in a loop without `max_iter`, in a
   function, in an `on error`, `on unmet` or `on budget_exceeded` handler, or
-  in a test. One written in a sub-program's own text is E1705; a sub-program
+  in a test; nor directly before an `on error`, since a report changes no
+  value of the run and the handler would handle the statement before it. A
+  report is no statement of its block's value: a block's value is that of
+  its last statement that is not a report or a stage. One written in a
+  sub-program's own text is E1705; a sub-program
   that applies a listed shape makes the pattern's reports
   ([below](#sub-programs-and-amendments)).
 - **The title** follows the [title rules](#titles) (E1903).
@@ -206,7 +210,12 @@ nobody.
 - **What is shown.** Each field is shown with its name, its value, its type,
   its data class (the class of the value, `Val.cls`) and how it is known (the
   level of its type, [below](#masking-and-how-a-value-is-known)). A value of
-  `Inferred` type is a model's output and is shown as such (G09).
+  `Inferred` type is a model's output and is shown as such (G09). The weakest
+  wrapper decides, around the value and around its elements or fields, and a
+  field is known no better than the weakest value it is made of, where its
+  type does not say so: a text that interpolates a model's output, or a list
+  typed by its first item, is a model's output. A count is the exception:
+  what `len` gives is counted by the run, however what it counts is known.
 
 ### Titles
 
@@ -214,7 +223,9 @@ A stage's and a report's title is a constant string: the parser refuses
 interpolation in it, as it does today. It holds 1 to 80 characters, counted
 as Unicode scalar values, and no
 C0 or C1 control, no format character (Unicode category Cf) and no
-bidirectional control. A title is written by the program's author, and a
+bidirectional control. Nor a line separator (U+2028) or a paragraph
+separator (U+2029), which break the line in some renderers: a title is one
+line (fact `rule: "separator"`). A title is written by the program's author, and a
 person reads it on the card; a lead's model never writes one.
 
 ### `owner`
@@ -288,10 +299,10 @@ release ("Attention").
 | Code | Name | Raised when |
 |---|---|---|
 | E1901 | Stage out of place | A `stage` that is not a top-level statement of a workflow's or a pattern's body |
-| E1902 | Malformed stage list | Two stages of one body with one name; a statement before the first stage of a body that has stages; a stage directly before another stage or at the end of the body; `on error` directly after a stage; a title that breaks the title rules |
-| E1903 | Malformed report | A title that breaks the title rules; two fields with one name in IR (text gets E0121); in a pattern, a role that is not one of its role slots |
+| E1902 | Malformed stage list | Two stages of one body with one name; a statement before the first stage of a body that has stages; a stage directly before another stage or at the end of the body; `on error` directly after a stage; a title that breaks the title rules (a control, format or bidirectional character, or a line or paragraph separator) |
+| E1903 | Malformed report | A title that breaks the title rules (a control, format or bidirectional character, or a line or paragraph separator); two fields with one name in IR (text gets E0121); in a pattern, a role that is not one of its role slots |
 | E1904 | Report field not shown | A field that is not pure, or whose type is not displayable |
-| E1905 | Report out of place | A report in a map's body, a loop without `max_iter`, a function, a handler or a test. A `report`, a `stage` or an `owner` written in a lead's sub-program is E1705, with the fact `construct: "report"`, `"stage"` or `"owner"` |
+| E1905 | Report out of place | A report in a map's body, a loop without `max_iter`, a function, a handler or a test, or directly before an `on error`. A `report`, a `stage` or an `owner` written in a lead's sub-program is E1705, with the fact `construct: "report"`, `"stage"` or `"owner"` |
 | E1906 | Attention above `asks` | The static attention total of the workflow is above its declared `asks` |
 | E1907 | Attention without a bound | The workflow declares `asks` and a question stands where the bound cannot count it (a loop without `max_iter`, recursion) |
 | E1908 | `asks` out of place | `asks` in any budget but a workflow's or an envelope's |

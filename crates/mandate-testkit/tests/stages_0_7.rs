@@ -44,6 +44,21 @@
 //! no two are one), and the program hash must differ: what a person will
 //! see is part of the program. Nothing else is exempt: every count of what
 //! was compared is printed and held above zero.
+//!
+//! **Reports** (spec/attention.md "`report`", slice RL3). The same test is
+//! run again with reports: `report to R "Part N of D" { part: N, count:
+//! len([N]) }`, a report of pure fields, before every statement a stage
+//! marker may stand before, where `R` is, in a workflow written out, the
+//! first role the program already names (`roles_named_in`, so that its lock
+//! binds it), else the first it defines that its lock binds; and in a
+//! pattern its first role slot. A body with no such role is left unmarked,
+//! and listed. Every output, the nodes and the costs are compared as for
+//! stages; the role
+//! sites of the marked program are those of the unmarked one, paths mapped,
+//! and exactly one more for each report its workflows' bodies hold (the
+//! expansions of a marked pattern's applications among them), at the
+//! report's role; the roles named are the same, but for a role a report
+//! names that nothing named before.
 
 #![allow(
     clippy::unwrap_used,
@@ -119,6 +134,8 @@ struct Marks {
     bodies: Vec<String>,
     /// The bodies left unmarked, with why.
     skipped: Vec<String>,
+    /// The roles the reports of workflows written out are addressed to.
+    roles: Vec<String>,
 }
 
 impl Marks {
@@ -178,8 +195,37 @@ fn marked_kind(d: &Value) -> bool {
     }
 }
 
-/// The text of `program` (relabelled 0.7) with markers put in, and where.
-fn mark(program: &str, text: &str) -> Result<(String, Marks), String> {
+/// What is put in: stage markers, or reports.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Marker {
+    Stage,
+    Report,
+}
+
+impl Marker {
+    /// The `op` of what is put in.
+    fn op(self) -> &'static str {
+        match self {
+            Marker::Stage => "stage",
+            Marker::Report => "report",
+        }
+    }
+}
+
+/// The first role slot of a pattern.
+fn role_slot(d: &Value) -> Option<String> {
+    d.get("slots")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .find(|s| s.get("kind").and_then(Value::as_str) == Some("role"))
+        .and_then(|s| s.get("name").and_then(Value::as_str))
+        .map(str::to_owned)
+}
+
+/// The text of `program` (relabelled 0.7) with `marker`'s statements put
+/// in, and where.
+fn mark_with(program: &str, text: &str, marker: Marker) -> Result<(String, Marks), String> {
     let loaded = load(text, SourceKind::Mdt);
     let ir = loaded
         .program
@@ -190,6 +236,28 @@ fn mark(program: &str, text: &str) -> Result<(String, Marks), String> {
     // (line from 1, marker text), to insert.
     let mut inserts: Vec<(usize, String)> = Vec::new();
     let defs = ir.get("defs").and_then(Value::as_object).ok_or("no defs")?;
+    // A report's role: the first the program names already, else the first
+    // role it defines that its lock binds (any, with no lock).
+    let bound: Option<Vec<String>> = outputs::lock_file_of(program)
+        .map(|f| read_json(&f))
+        .transpose()?
+        .map(|lock| {
+            lock.get("roles")
+                .and_then(Value::as_object)
+                .map(|r| r.keys().map(str::to_owned).collect())
+                .unwrap_or_default()
+        });
+    let defined = defs
+        .iter()
+        .filter(|(n, d)| {
+            d.get("kind").and_then(Value::as_str) == Some("role")
+                && bound.as_ref().is_none_or(|b| b.iter().any(|x| x == n))
+        })
+        .map(|(n, _)| n.to_owned());
+    let named: Vec<String> = roles_named_in(defs, Language::V0_7)
+        .into_iter()
+        .chain(defined)
+        .collect();
     for (name, d) in defs.iter() {
         if !marked_kind(d) {
             continue;
@@ -198,6 +266,30 @@ fn mark(program: &str, text: &str) -> Result<(String, Marks), String> {
         if body.is_empty() {
             continue;
         }
+        let role = match (marker, d.get("kind").and_then(Value::as_str)) {
+            (Marker::Stage, _) => None,
+            (Marker::Report, Some("pattern")) => match role_slot(d) {
+                Some(r) => Some(r),
+                None => {
+                    marks.skipped.push(format!("{name}: no role slot"));
+                    continue;
+                }
+            },
+            (Marker::Report, _) => match named.first() {
+                Some(r) => {
+                    if !marks.roles.contains(r) {
+                        marks.roles.push(r.clone());
+                    }
+                    Some(r.clone())
+                }
+                None => {
+                    marks
+                        .skipped
+                        .push(format!("{name}: the program has no role to report to"));
+                    continue;
+                }
+            },
+        };
         // Where a marker line may go: before a statement that starts its
         // line, that is not an `on error`; and its indentation.
         let mut at: Vec<Option<(usize, String)>> = Vec::new();
@@ -230,10 +322,21 @@ fn mark(program: &str, text: &str) -> Result<(String, Marks), String> {
         if chosen.len() == 1 && !others.is_empty() {
             chosen.push(others[(places.next() as usize) % others.len()]);
         }
+        // A report goes before every statement a marker may stand before:
+        // the bodies that may have one are few.
+        if marker == Marker::Report {
+            chosen = std::iter::once(0).chain(others).collect();
+        }
         for (j, k) in chosen.iter().enumerate() {
             let (line, indent) = at[*k].clone().unwrap();
             let n = j + 1;
-            inserts.push((line, format!("{indent}stage s{n} \"Part {n} of {name}\"")));
+            let text = match &role {
+                None => format!("{indent}stage s{n} \"Part {n} of {name}\""),
+                Some(r) => format!(
+                    "{indent}report to {r} \"Part {n} of {name}\" {{ part: {n}, count: len([{n}]) }}"
+                ),
+            };
+            inserts.push((line, text));
         }
         marks.markers += chosen.len();
         marks
@@ -336,6 +439,7 @@ struct Tally {
     costs: usize,
     role_sites: usize,
     subprogram_stages: usize,
+    report_sites: usize,
 }
 
 /// `a`, a value of the unmarked program, mapped by `m`, is `b`, a value of
@@ -485,17 +589,17 @@ fn pretty(v: &JsValue) -> String {
     text
 }
 
-/// A value with every statement whose `op` is `stage` taken out of its
-/// lists, and how many.
-fn without_stages(v: &Value, n: &mut usize) -> Value {
+/// A value with every statement whose `op` is `op` taken out of its lists,
+/// and how many.
+fn without_op(v: &Value, op: &str, n: &mut usize) -> Value {
     match v {
         Value::Array(items) => {
             let mut kept = Vec::with_capacity(items.len());
             for x in items {
-                if x.get("op").and_then(Value::as_str) == Some("stage") {
+                if x.get("op").and_then(Value::as_str) == Some(op) {
                     *n += 1;
                 } else {
-                    kept.push(without_stages(x, n));
+                    kept.push(without_op(x, op, n));
                 }
             }
             Value::Array(kept)
@@ -503,7 +607,7 @@ fn without_stages(v: &Value, n: &mut usize) -> Value {
         Value::Object(m) => {
             let mut out = mandate_ir::Map::new();
             for (k, x) in m.iter() {
-                out.insert(k, without_stages(x, n));
+                out.insert(k, without_op(x, op, n));
             }
             Value::Object(out)
         }
@@ -511,23 +615,44 @@ fn without_stages(v: &Value, n: &mut usize) -> Value {
     }
 }
 
-/// The printed text with the marker lines taken out, each with the blank
-/// line the printer puts before a stage that does not start its block.
+/// How many statements whose `op` is `op` the bodies of the workflows of
+/// `defs` hold, at any depth.
+fn ops_in_workflows(defs: &mandate_ir::Map, op: &str) -> usize {
+    defs.iter()
+        .filter(|(_, d)| d.get("kind").and_then(Value::as_str) == Some("workflow"))
+        .map(|(_, d)| {
+            let mut n = 0;
+            without_op(d, op, &mut n);
+            n
+        })
+        .sum()
+}
+
+/// The printed text with the marker lines taken out: each stage's with the
+/// blank line the printer puts before a stage that does not start its
+/// block, and each report's (one line, as the printer writes a short one).
 fn without_marker_lines(text: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     for line in text.split('\n') {
         let t = line.trim_start();
-        let marker = t.starts_with("stage s")
+        let stage = t.starts_with("stage s")
             && t.contains(" \"Part ")
             && t.ends_with('"')
             && t.split(' ').nth(1).is_some_and(|n| {
                 n.strip_prefix('s')
                     .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
             });
-        if marker {
+        if stage {
             if out.last() == Some(&"") {
                 out.pop();
             }
+            continue;
+        }
+        let report = t.starts_with("report to ")
+            && t.contains(" \"Part ")
+            && t.contains("\" { part: ")
+            && t.ends_with("]) }");
+        if report {
             continue;
         }
         out.push(line);
@@ -555,12 +680,18 @@ fn role_site_text(s: &RoleSite, m: &Marks) -> String {
 
 /// One program: marked, and every output of both compared.
 fn compare(program: &str, t: &mut Tally) -> Result<Marks, String> {
+    compare_with(program, t, Marker::Stage)
+}
+
+/// [`compare`], with `marker`'s statements put in.
+fn compare_with(program: &str, t: &mut Tally, marker: Marker) -> Result<Marks, String> {
     let text = common::read_source(program)?;
     if kind_of(program) != SourceKind::Mdt {
         return Err("not Mandate text".to_owned());
     }
     let unmarked = as_0_7(&text)?;
-    let (marked, marks) = mark(program, &unmarked)?;
+    let (marked, marks) = mark_with(program, &unmarked, marker)?;
+    let op = marker.op();
     let outs_a = outputs::outputs_of_text(program, &unmarked)?;
     let outs_b = outputs::outputs_of_text(program, &marked)?;
     let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
@@ -586,14 +717,12 @@ fn compare(program: &str, t: &mut Tally) -> Result<Marks, String> {
             "ir --canonical" => {
                 let mut n = 0;
                 let ir_b = parse(b).map_err(|e| at(format!("{e:?}")))?.value;
-                let bare = canonicalize(&without_stages(&ir_b, &mut n));
+                let bare = canonicalize(&without_op(&ir_b, op, &mut n));
                 if bare != *a {
-                    return Err(at(
-                        "the marked IR without its stages is not the IR".to_owned()
-                    ));
+                    return Err(at(format!("the marked IR without its {op}s is not the IR")));
                 }
                 if n != marks.markers {
-                    return Err(at(format!("{n} stages for {} markers", marks.markers)));
+                    return Err(at(format!("{n} {op}s for {} markers", marks.markers)));
                 }
             }
             "fmt" => {
@@ -623,7 +752,7 @@ fn compare(program: &str, t: &mut Tally) -> Result<Marks, String> {
                         let read =
                             |s: &str| parse(s).map(|p| p.value).map_err(|e| at(format!("{e:?}")));
                         let mut n = 0;
-                        let bare = canonicalize(&without_stages(&read(b)?, &mut n));
+                        let bare = canonicalize(&without_op(&read(b)?, op, &mut n));
                         same_text(&canonicalize(&read(a)?), &bare, &mut renamed).map_err(at)?;
                         t.subprogram_stages += n;
                     }
@@ -686,20 +815,56 @@ fn compare(program: &str, t: &mut Tally) -> Result<Marks, String> {
         .iter()
         .map(|s| role_site_text(s, &marks))
         .collect();
-    let sites_b: Vec<String> = role_sites_of(&db, Some(Language::V0_7))
+    // A report is a role site of its own: those of the marked program but
+    // its reports' are the unmarked one's, and it has one for each report
+    // its workflows hold.
+    let all_b = role_sites_of(&db, Some(Language::V0_7));
+    let sites_b: Vec<String> = all_b
         .iter()
+        .filter(|s| marker == Marker::Stage || s.r#where != "a report")
         .map(|s| role_site_text(s, &Marks::default()))
         .collect();
     if sites_a != sites_b {
         return Err(format!("role sites {sites_a:?} and {sites_b:?}"));
+    }
+    if marker == Marker::Report {
+        let added = all_b.iter().filter(|s| s.r#where == "a report").count();
+        let held = ops_in_workflows(&db, "report");
+        let before = role_sites_of(&da, Some(Language::V0_7))
+            .iter()
+            .filter(|s| s.r#where == "a report")
+            .count();
+        if added != held || before > 0 {
+            return Err(format!("{added} report sites for {held} reports"));
+        }
+        if all_b
+            .iter()
+            .any(|s| s.r#where == "a report" && s.role.is_none())
+        {
+            return Err("a report's site names no role".to_owned());
+        }
+        t.report_sites += added;
     }
     t.role_sites += sites_a.len();
     t.paths += role_sites_of(&da, Some(Language::V0_7))
         .iter()
         .filter(|s| marks.paths(&s.path) != s.path)
         .count();
-    if roles_named_in(&da, Language::V0_7) != roles_named_in(&db, Language::V0_7) {
-        return Err("the roles named differ".to_owned());
+    // The roles named: the same, but for the roles of the reports, which a
+    // report names (a report of a pattern names the role its application
+    // binds, which the program names already).
+    let mut expected = roles_named_in(&da, Language::V0_7);
+    for r in &marks.roles {
+        if !expected.contains(r) {
+            expected.push(r.clone());
+        }
+    }
+    mandate_ir::sort_utf16(&mut expected);
+    if expected != roles_named_in(&db, Language::V0_7) {
+        return Err(format!(
+            "the roles named are {:?}, not {expected:?}",
+            roles_named_in(&db, Language::V0_7)
+        ));
     }
     Ok(marks)
 }
@@ -752,6 +917,57 @@ fn a_program_with_stage_markers_gives_what_it_gives_without_them() {
     assert!(t.subprogram_stages > 0);
 }
 
+/// The same as [`a_program_with_stage_markers_gives_what_it_gives_without_them`],
+/// with reports of pure fields in the markers' places (RL3): they change no
+/// cost, node count, authority or view, and add exactly their role sites.
+#[test]
+fn a_program_with_reports_gives_what_it_gives_without_them_but_its_role_sites() {
+    let programs = programs_0_6().expect("the 0.6 programs");
+    let mut t = Tally::default();
+    let mut problems: Vec<String> = Vec::new();
+    let (mut reports, mut bodies, mut marked_programs) = (0, 0, 0);
+    for p in &programs {
+        match compare_with(p, &mut t, Marker::Report) {
+            Ok(marks) => {
+                reports += marks.markers;
+                bodies += marks.bodies.len();
+                marked_programs += usize::from(!marks.bodies.is_empty());
+                println!(
+                    "{p}: {} reports in {}{}",
+                    marks.markers,
+                    marks.bodies.join(", "),
+                    if marks.skipped.is_empty() {
+                        String::new()
+                    } else {
+                        format!("; left unmarked: {}", marks.skipped.join(", "))
+                    }
+                );
+            }
+            Err(e) => problems.push(format!("{p}: {e}")),
+        }
+    }
+    println!(
+        "reports: {} programs, {marked_programs} with reports, {bodies} bodies, {reports} reports; compared {} outputs, {} values ({} paths and {} spans moved), {} workflows' nodes and {} costs, {} role sites, and {} role sites the reports add; {} reports of a marked parent in the sub-programs' results",
+        programs.len(),
+        t.outputs,
+        t.values,
+        t.paths,
+        t.spans,
+        t.nodes,
+        t.costs,
+        t.role_sites,
+        t.report_sites,
+        t.subprogram_stages
+    );
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+    // The bodies of 0.6 a report may go in: a workflow written out of a
+    // program with a role, and a pattern with a role slot.
+    assert!(marked_programs >= 3 && bodies >= 3 && reports >= 10);
+    assert!(t.paths > 0 && t.nodes > 0 && t.costs > 0 && t.role_sites > 0);
+    // A pattern of a module applied nowhere in it adds no site there.
+    assert!(t.report_sites > 0 && t.report_sites <= reports);
+}
+
 #[test]
 fn the_paths_and_lines_move_by_the_markers_before_them() {
     let mut m = Marks::default();
@@ -773,5 +989,11 @@ fn the_paths_and_lines_move_by_the_markers_before_them() {
             "{\n  stage s1 \"Part 1 of W\"\n  a\n\n  stage s2 \"Part 2 of W\"\n  b\n}"
         ),
         "{\n  a\n  b\n}"
+    );
+    assert_eq!(
+        without_marker_lines(
+            "{\n  report to r \"Part 1 of W\" { part: 1, count: len([1]) }\n  a\n\n  stage s\n  b\n}"
+        ),
+        "{\n  a\n\n  stage s\n  b\n}"
     );
 }

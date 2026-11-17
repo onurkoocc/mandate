@@ -203,7 +203,9 @@ impl Sites {
 /// (by UTF-16 code units, stably): a component's owner, an environment's
 /// authorization, an envelope's owner and approvals, a change set's
 /// approvers, `human.approve`, `human.ask`, `escalate human(…)` and
-/// `supervise escalate(human, …)`: `roleSites(defs)`.
+/// `supervise escalate(human, …)`: `roleSites(defs)`; and, in 0.7, the
+/// role a `report` is addressed to ("a report"), which no IR before 0.7
+/// has, so that the sites of an older program are the TypeScript's.
 #[must_use]
 pub fn role_sites(defs: &Map) -> Vec<RoleSite> {
     let mut s = Sites {
