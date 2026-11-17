@@ -26,6 +26,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readConfig } from "../src/control.js";
 import type { Db, Row } from "../src/db.js";
 import { EVENT_CLASSES } from "../src/classes.js";
+import { plantedRun } from "./asks-hook.js";
 import { payloadOf } from "../src/decisions.js";
 import {
   backoffMs,
@@ -739,6 +740,7 @@ describe("the pump", () => {
       await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "am" });
       // An amendment a lead asked for, as the journal holds one: the request, then its wait, in one transaction.
       const command = "/defs/Ship/body/0/value/step/0/tool/0/amendment";
+      plantedRun("am", "its amendment's events are written by hand, for a program with no plan");
       const at = await w.db.tx(async (tx) => {
         await w.rt.journal.lock(tx, "am");
         const asked = await w.rt.journal.event(tx, "am", "amendment_requested", { plan: "/defs/Ship/body/0/value", step: "s", lead: "Lead.finish", from: w.pkg.hash, package: w.pkg.hash, diff: "sha256:d" });
@@ -1219,6 +1221,7 @@ workflow Ship(title: Text) -> Untrusted<Text>
     // What a lead can write, and what an exception holds, as the journal holds them: an amendment's reason, a wait of a
     // sub-program whose definition names a lead chose, the details of a budget run out and of a run that needs attention.
     const plan = "/defs/Ship/body/1/value";
+    plantedRun("leak-ship", "its amendment's and its sub-program's events are written by hand, with markers in them");
     await append(w, "leak-ship", "amendment_requested", { plan, step: `${plan}/step/0/tool/0`, lead: `${M}Lead.finish`, from: w.pkg.hash, package: w.pkg.hash, diff: `sha256:${M}` });
     await append(w, "leak-ship", "wait_opened", { command: `${plan}/step/0/tool/0/amendment`, kind: "amendment", request: { role: "platform_lead", reason: `${M}-reason: three more repositories`, envelope: { owner: `${M}` }, deadline: null } });
     await waitingRow(w, "leak-ship", `${plan}/step/0/tool/0/amendment`, "amendment");

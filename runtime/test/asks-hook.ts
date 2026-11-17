@@ -23,26 +23,55 @@
 // the exempt ones, by test file.
 
 import type { AttentionCount, AttentionFacts } from "@mandate/bridge";
-import { afterAll, afterEach, expect, inject } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, inject } from "vitest";
 import { note, REPORT_KEY } from "../../bridge/test/compiler-setup.js";
 import { boundUnder, rowOf, SITE_KINDS, type SiteTag } from "../src/asks.js";
-import { readFacts } from "../src/attention.js";
+import type { readFacts as ReadFacts } from "../src/attention.js";
 import type { AuthorizePolicy } from "../src/interp.js";
-import { Runtime, type StartOptions } from "../src/runtime.js";
-import { Violation } from "../src/signals.js";
-import { isObj, type Obj, type Value } from "../src/values.js";
+import type { Runtime, StartOptions } from "../src/runtime.js";
+import type { Violation as ViolationClass } from "../src/signals.js";
+import type { Obj, Value } from "../src/values.js";
+
+// The runtime's modules are imported once the test file has imported its own, so that a test file that mocks one of
+// them (vi.mock) has the module it mocked: a setup file that imported them first would hand it the real ones.
+let readFacts: typeof ReadFacts;
+let Violation: typeof ViolationClass;
+const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 
 const noted = new Map<Runtime, Set<string>>();
 const covered = { runs: 0, waits: 0, exempt: [] as string[] };
+/** Runs a test writes events of by hand, which no run of the runtime would write: exempt, with why. */
+const planted = new Map<string, string>();
 
-const start = Runtime.prototype.startRun;
-Runtime.prototype.startRun = async function (this: Runtime, o: StartOptions) {
-  const mark = (id: string): void => void (noted.get(this) ?? noted.set(this, new Set()).get(this)!).add(id);
-  if (o.runId !== undefined) mark(o.runId);
-  const run = await start.call(this, o);
-  mark(run.run_id);
-  return run;
-};
+/**
+ * Exempts the run `runId` from the hook, for the rest of the test file, with the reason listed at the end: for a test
+ * that writes a run's journal by hand (an event no run of its program could write), not for a run the runtime drove.
+ */
+export function plantedRun(runId: string, why: string): void {
+  planted.set(runId, why);
+}
+
+/** The mark a patched `startRun` carries, so that a file's Runtime is patched once. */
+const PATCHED = Symbol.for("mandate.asks-hook");
+
+beforeAll(async () => {
+  ({ readFacts } = await import("../src/attention.js"));
+  ({ Violation } = await import("../src/signals.js"));
+  const { Runtime } = await import("../src/runtime.js");
+  const proto = Runtime.prototype as Runtime & { [PATCHED]?: true };
+  if (proto[PATCHED]) return;
+  const start = proto.startRun;
+  proto.startRun = async function (this: Runtime, o: StartOptions) {
+    const mark = (id: string): void => void (noted.get(this) ?? noted.set(this, new Set()).get(this)!).add(id);
+    // A start that throws may have created its run (a crash in its first drive): noted by the id it was given, when
+    // that id is one a text column holds (one that is not was refused before anything was written).
+    if (o.runId !== undefined && (o.runId as unknown as { isWellFormed(): boolean }).isWellFormed() && !o.runId.includes(String.fromCharCode(0))) mark(o.runId);
+    const run = await start.call(this, o);
+    mark(run.run_id);
+    return run;
+  };
+  proto[PATCHED] = true;
+});
 
 afterEach(async () => {
   for (const [rt, runs] of noted) {
@@ -95,6 +124,7 @@ async function checkRun(rt: Runtime, runId: string): Promise<boolean> {
     covered.exempt.push(`${runId}: ${why}`);
     return true;
   };
+  if (planted.has(runId)) return exempt(planted.get(runId)!);
   try {
     return await held(rt, runId, run.manifest["attention"], scope, authorize, events, exempt);
   } catch (e) {
