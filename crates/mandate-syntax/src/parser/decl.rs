@@ -598,8 +598,8 @@ impl<'a> Parser<'a> {
             .with("returns", returns)
             .with("caps", caps)
             .with("body", Vec::new());
-        if let Some(owner) = owner {
-            def.set("owner", owner);
+        if let Some((owner, span)) = owner {
+            def.set_spanned("owner", owner, span);
         }
         if self.is_w("budget") {
             let budget = self.budget()?;
@@ -622,13 +622,23 @@ impl<'a> Parser<'a> {
     /// puts it: after a written-out workflow's result type, after the
     /// application of a pattern. `owner` is contextual: in a program before
     /// 0.7 it is no word here, and the parser goes on as before (to `caps`,
-    /// whose message does not change).
-    fn workflow_owner(&mut self) -> Res<Option<String>> {
+    /// whose message does not change). The role's name, and the span of the
+    /// role's name, which the source map holds at `/defs/<W>/owner`: what a
+    /// diagnostic at the owner (E1501, E1502, E1910) points at.
+    fn workflow_owner(&mut self) -> Res<Option<(String, mandate_ir::Span)>> {
         if !self.reads_0_7() || !self.is_w("owner") {
             return Ok(None);
         }
         self.bump();
-        Ok(Some(self.ident("a role")?))
+        let t = self.t();
+        let role = self.ident("a role")?;
+        let span = mandate_ir::Span {
+            start_line: t.line,
+            start_col: t.col,
+            end_line: t.end_line,
+            end_col: t.end_col,
+        };
+        Ok(Some((role, span)))
     }
 
     /// `envelope { owner r  caps K, …  budget { … }  spawn { max_concurrent: n, max_class: c }
@@ -971,8 +981,8 @@ impl<'a> Parser<'a> {
             .with("kind", "workflow")
             .with("apply", apply)
             .with("caps", caps);
-        if let Some(owner) = owner {
-            def.set("owner", owner);
+        if let Some((owner, span)) = owner {
+            def.set_spanned("owner", owner, span);
         }
         if self.is_w("budget") {
             let budget = self.budget()?;

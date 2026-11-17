@@ -234,10 +234,20 @@ pub struct QuestionFact {
     /// The IR path of the construct that asks it, in the running program
     /// (in a function or a contract, the path in its definition).
     pub path: String,
-    /// The path of the wait, as the runtime names its command without the
-    /// iterations it adds (`@i`, `#allN`, `[i]`): `path`, or `path` with
-    /// the part the runtime adds (`/contract/accept/<criterion>/call`,
-    /// `/authorize`, `/governance`, `/members/<m>/authorize`, `/escalate`).
+    /// The wait in its static form: the site's IR path in the running
+    /// program, and the part the runtime adds for the wait it opens there
+    /// (`/contract/<group>/<criterion>[/all/i]/call`, `/authorize`,
+    /// `/governance`, `/escalate`), or nothing. With `kind` it names one row
+    /// (a review and its `only: on_escalation` row share the review's
+    /// wait). A run's command id is not this text: it adds iterations
+    /// (`@i` after a loop's body, `#allN` after a branch of a `par` run
+    /// again, `[i]` after a map, `#k` after a delegation's attempt), a
+    /// function's site stands under its call (`<call>>f/…`, not
+    /// `/defs/f/…`), a contract's under its `verify`
+    /// (`<verify>/contract/require/i/…`, not `/defs/C/require/i/…`), and a
+    /// sub-program's under its command (`<plan>/program/<n>…`): the
+    /// runtime tags each wait it opens with its static site (kind and
+    /// wait), which these rows are the list of.
     pub wait: String,
     /// Its kind.
     pub kind: SiteKind,
@@ -442,15 +452,14 @@ struct Found {
 }
 
 impl Found {
+    /// One row for each site: its kind and its wait, and the `only` that
+    /// tells a review's escalation from the review (a site's role is fixed
+    /// where it is written). A site met again, through another call of its
+    /// function or contract, adds its count to the row; its stage stays only
+    /// if every call stands in the same stage; and the row shows the highest
+    /// class and the weakest level of every time it is met.
     fn question(&mut self, q: QuestionFact) {
-        let same = |x: &QuestionFact| {
-            x.path == q.path
-                && x.wait == q.wait
-                && x.kind == q.kind
-                && x.role == q.role
-                && x.stage == q.stage
-                && x.only == q.only
-        };
+        let same = |x: &QuestionFact| x.kind == q.kind && x.wait == q.wait && x.only == q.only;
         match self.questions.iter_mut().find(|x| same(x)) {
             Some(x) => {
                 x.multiplicity = x.multiplicity.plus(q.multiplicity);
@@ -458,29 +467,39 @@ impl Found {
                 if x.multiplicity == Count::Unbounded && x.unbounded.is_none() {
                     x.unbounded = Some("overflow");
                 }
+                if x.stage != q.stage {
+                    x.stage = None;
+                }
+                x.shown = x.shown.max(q.shown);
+                x.known = weaker(x.known, q.known);
+                x.typed = x.typed && q.typed;
             }
             None => self.questions.push(q),
         }
     }
 
+    /// One row for each effect site, as [`Found::question`].
     fn effect(&mut self, e: EffectFact) {
-        match self
-            .effects
-            .iter_mut()
-            .find(|x| x.path == e.path && x.stage == e.stage)
-        {
-            Some(x) => x.multiplicity = x.multiplicity.plus(e.multiplicity),
+        match self.effects.iter_mut().find(|x| x.path == e.path) {
+            Some(x) => {
+                x.multiplicity = x.multiplicity.plus(e.multiplicity);
+                if x.stage != e.stage {
+                    x.stage = None;
+                }
+            }
             None => self.effects.push(e),
         }
     }
 
+    /// One row for each `plan`, as [`Found::question`].
     fn plan(&mut self, p: PlanFact) {
-        match self
-            .plans
-            .iter_mut()
-            .find(|x| x.path == p.path && x.stage == p.stage)
-        {
-            Some(x) => x.multiplicity = x.multiplicity.plus(p.multiplicity),
+        match self.plans.iter_mut().find(|x| x.path == p.path) {
+            Some(x) => {
+                x.multiplicity = x.multiplicity.plus(p.multiplicity);
+                if x.stage != p.stage {
+                    x.stage = None;
+                }
+            }
             None => self.plans.push(p),
         }
     }
@@ -571,9 +590,44 @@ struct Env<'a> {
     /// For a lead's sub-program: the class of what its lead received, a
     /// floor of everything it shows.
     floor: DataClass,
+    /// What the calls of each function and the `verify`s of each contract
+    /// hand it, through every caller: the highest class and the weakest
+    /// level of their arguments ([`Handed`]). A site in the function or
+    /// the contract shows at least that class, and is known no better.
+    handed: &'a HashMap<String, Handed>,
+}
+
+/// The highest class and the weakest level of what one function's calls or
+/// one contract's `verify`s hand it, through every caller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Handed {
+    pub(crate) cls: DataClass,
+    pub(crate) known: Level,
+}
+
+impl Handed {
+    /// What nothing is handed: the floor that raises nothing.
+    pub(crate) const NOTHING: Handed = Handed {
+        cls: DataClass::Public,
+        known: Level::Verified,
+    };
+
+    /// Both: the higher class and the weaker level.
+    pub(crate) fn join(self, other: Handed) -> Handed {
+        Handed {
+            cls: self.cls.max(other.cls),
+            known: weaker(self.known, other.known),
+        }
+    }
 }
 
 impl<'a> Env<'a> {
+    /// What the calls of `unit` hand it.
+    fn unit_floor(&self, unit: Unit<'_>) -> Handed {
+        let (Unit::Fn(n) | Unit::Contract(n)) = unit;
+        self.handed.get(n).copied().unwrap_or(Handed::NOTHING)
+    }
+
     fn def(&self, name: &str) -> Option<Definition<'a>> {
         self.defs.get(name).map(Definition::of)
     }
@@ -611,8 +665,9 @@ struct Walk<'e, 'a> {
     /// Those being walked: a call of one recurses.
     pending: &'e HashSet<Unit<'a>>,
     found: Found,
-    /// The calls that recurse: the unit called, and where.
-    cycles: Vec<(Unit<'a>, String)>,
+    /// What the calls of the function or the contract walked hand it, the
+    /// floor of what each of its sites shows (nothing, for a workflow).
+    floor: Handed,
 }
 
 /// The role a `role:` argument names: a name, or a text.
@@ -646,7 +701,7 @@ impl<'e, 'a> Walk<'e, 'a> {
             units,
             pending,
             found: Found::default(),
-            cycles: Vec::new(),
+            floor: Handed::NOTHING,
         }
     }
 
@@ -688,8 +743,9 @@ impl<'e, 'a> Walk<'e, 'a> {
             wait: site.wait,
             kind: site.kind,
             role: site.role,
-            shown: cls.max(self.env.floor),
-            known,
+            // In a function or a contract, at least what its calls hand it.
+            shown: cls.max(self.env.floor).max(self.floor.cls),
+            known: weaker(known, self.floor.known),
             typed,
             deadline_ms,
             on_no_answer,
@@ -831,8 +887,15 @@ impl<'e, 'a> Walk<'e, 'a> {
     /// What the node itself asks, per run of it.
     fn own(&mut self, v: &'a Value, path: &str, ctx: Ctx<'a>) -> Counts {
         let mut out = Counts::default();
-        if let Some(s) = Stmt::of(v).filter(|s| s.op() == Some(StmtOp::Report)) {
-            out.reports.add(s.role(), Count::ONE);
+        // A statement's `op` is no expression's: what the statement is to
+        // the bound, by the one classification.
+        if let Some(s) = Stmt::of(v)
+            && let Some(op) = s.op()
+        {
+            match statement_site(op) {
+                StmtSite::Report => out.reports.add(s.role(), Count::ONE),
+                StmtSite::Holds | StmtSite::Marker => {}
+            }
             return out;
         }
         let Some(e) = Expr::of(v) else { return out };
@@ -972,16 +1035,17 @@ impl<'e, 'a> Walk<'e, 'a> {
                 let Some(unit) = key_of(self.env.defs, name).map(Unit::Fn) else {
                     return;
                 };
-                self.unit(unit, path, ctx, out);
+                self.unit(unit, ctx, out);
             }
             _ => {}
         }
     }
 
     /// What a function or a contract asks, at a call of it.
-    fn unit(&mut self, unit: Unit<'a>, path: &str, ctx: Ctx<'a>, out: &mut Counts) {
+    fn unit(&mut self, unit: Unit<'a>, ctx: Ctx<'a>, out: &mut Counts) {
+        // A call of one still being walked recurses: `bound` makes what
+        // the cycle reaches unbounded.
         if self.pending.contains(&unit) {
-            self.cycles.push((unit, path.to_owned()));
             return;
         }
         if let Some(b) = self.units.get(&unit) {
@@ -1032,7 +1096,7 @@ impl<'e, 'a> Walk<'e, 'a> {
                 }
             }
         }
-        self.unit(Unit::Contract(name), path, ctx, out);
+        self.unit(Unit::Contract(name), ctx, out);
     }
 
     /// An effect at `path` (a change set's member when `member` gives its
@@ -1360,12 +1424,16 @@ impl OpSite {
     }
 }
 
-/// What a statement of `op` asks itself: none does, but through the
-/// expressions it holds; a `report` is a report, no question. A `match`
-/// with no arm for the rest, as [`site_of`].
+/// What the bound counts of a statement of `op` itself, besides what its
+/// members hold, which the walk reads whatever the statement: the one
+/// classification of statements the bound reads, a `match` with no arm for
+/// the rest, as [`site_of`]. No statement asks a person by itself.
 #[must_use]
-pub const fn statement_asks(op: StmtOp) -> bool {
+pub const fn statement_site(op: StmtOp) -> StmtSite {
     match op {
+        // What they hold is walked: an `if` takes its larger branch, a
+        // `loop` and a `par` multiply theirs (`Walk::multiplier`), and
+        // `run` stands in a test, which no run of a workflow runs.
         StmtOp::Let
         | StmtOp::Par
         | StmtOp::If
@@ -1373,10 +1441,22 @@ pub const fn statement_asks(op: StmtOp) -> bool {
         | StmtOp::Return
         | StmtOp::OnError
         | StmtOp::Run
-        | StmtOp::Expr
-        | StmtOp::Stage
-        | StmtOp::Report => false,
+        | StmtOp::Expr => StmtSite::Holds,
+        StmtOp::Report => StmtSite::Report,
+        StmtOp::Stage => StmtSite::Marker,
     }
+}
+
+/// What a statement is to the bound ([`statement_site`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StmtSite {
+    /// It asks nothing itself; the expressions and blocks it holds may.
+    Holds,
+    /// A report: one more in `R` for its role, and no question (its
+    /// fields are pure, E1904).
+    Report,
+    /// A stage: it names the statements after it, and holds nothing.
+    Marker,
 }
 
 /// The functions and contracts `v` calls or verifies against, in order.
@@ -1457,18 +1537,18 @@ fn unit_parts<'a>(defs: &'a Map, unit: Unit<'a>) -> Vec<(String, &'a Value)> {
 /// What each function and contract asks, per call.
 type Units<'a> = HashMap<Unit<'a>, UnitBound>;
 
-/// The calls that recur: the unit whose walk met it, the unit it calls,
-/// and where.
-type Cycles<'a> = Vec<(Unit<'a>, Unit<'a>, String)>;
+/// What each function and contract calls or verifies against.
+type Edges<'a> = HashMap<Unit<'a>, Vec<Unit<'a>>>;
 
 /// The functions and contracts the parts `roots` reach, walked so that each
 /// is walked after what it calls: depth first and without recursion of the
 /// compiler's own, so that a chain of calls as long as a program may write
-/// costs no stack. A call of one still being walked recurses: it is left
-/// for [`bound`] to make unbounded.
-fn walk_units<'a>(env: &Env<'a>, roots: &[&'a Value]) -> (Units<'a>, Cycles<'a>) {
+/// costs no stack. A call of one still being walked recurses: it counts
+/// nothing here, and [`bound`] makes unbounded every question a cycle
+/// reaches. Also what each unit calls.
+fn walk_units<'a>(env: &Env<'a>, roots: &[&'a Value]) -> (Units<'a>, Edges<'a>) {
     let mut done: Units<'a> = HashMap::new();
-    let mut cycles: Cycles<'a> = Vec::new();
+    let mut edges: Edges<'a> = HashMap::new();
     let mut pending: HashSet<Unit<'a>> = HashSet::new();
     let mut start: Vec<Unit<'a>> = Vec::new();
     for r in roots {
@@ -1501,13 +1581,12 @@ fn walk_units<'a>(env: &Env<'a>, roots: &[&'a Value]) -> (Units<'a>, Cycles<'a>)
                 continue;
             }
             let unit = *unit;
+            edges.insert(unit, callees.clone());
             let mut w = Walk::new(env, &done, &pending);
+            w.floor = env.unit_floor(unit);
             let mut counts = Counts::default();
             for (at, part) in unit_parts(env.defs, unit) {
                 counts.plus(&w.node(part, &at, Ctx::once()));
-            }
-            for (c, at) in std::mem::take(&mut w.cycles) {
-                cycles.push((unit, c, at));
             }
             let found = std::mem::take(&mut w.found);
             pending.remove(&unit);
@@ -1515,7 +1594,19 @@ fn walk_units<'a>(env: &Env<'a>, roots: &[&'a Value]) -> (Units<'a>, Cycles<'a>)
             stack.pop();
         }
     }
-    (done, cycles)
+    (done, edges)
+}
+
+/// The units reachable from `from` by one call or more.
+fn reached<'a>(edges: &Edges<'a>, from: Unit<'a>) -> HashSet<Unit<'a>> {
+    let mut seen: HashSet<Unit<'a>> = HashSet::new();
+    let mut todo: Vec<Unit<'a>> = edges.get(&from).cloned().unwrap_or_default();
+    while let Some(u) = todo.pop() {
+        if seen.insert(u) {
+            todo.extend(edges.get(&u).cloned().unwrap_or_default());
+        }
+    }
+    seen
 }
 
 /// The attention bound of the workflow `name` (`d`, a workflow written
@@ -1534,7 +1625,7 @@ fn bound<'a>(env: &Env<'a>, name: &str, d: Definition<'a>) -> WorkflowBound {
     if let Some((_, h)) = handler {
         roots.push(h);
     }
-    let (units, unit_cycles) = walk_units(env, &roots);
+    let (units, edges) = walk_units(env, &roots);
     let none = HashSet::new();
     let mut w = Walk::new(env, &units, &none);
     let mut counts = w.block(d.body(), &format!("{base}/body"), Ctx::once(), true);
@@ -1570,51 +1661,41 @@ fn bound<'a>(env: &Env<'a>, name: &str, d: Definition<'a>) -> WorkflowBound {
     for q in &mut budget_exceeded {
         q.only = Some(Only::BudgetExceeded);
     }
-    // A call that recurses into what holds a question makes it unbounded.
-    let holds: HashSet<Unit<'a>> = {
-        let mut holds: HashSet<Unit<'a>> = units
-            .iter()
-            .filter(|(_, b)| !b.found.questions.is_empty())
-            .map(|(u, _)| *u)
-            .collect();
-        loop {
-            let before = holds.len();
-            for (from, to, _) in &unit_cycles {
-                if holds.contains(to) {
-                    holds.insert(*from);
-                }
-            }
-            if holds.len() == before {
-                break;
-            }
-        }
-        holds
-    };
-    let recursing: Vec<(Unit<'a>, &str)> = unit_cycles
-        .iter()
-        .filter(|(_, to, _)| holds.contains(to))
-        .map(|(_, to, at)| (*to, at.as_str()))
+    // A unit on a cycle of calls and verifications (a function that calls
+    // itself, or one that verifies against a contract whose `require`
+    // calls it again) runs as often as the recursion goes: every question
+    // of it, or of a unit it reaches, is unbounded, its role's count and
+    // the total too. (The cycle is E0502 as well.)
+    let on_cycle: Vec<Unit<'a>> = edges
+        .keys()
+        .copied()
+        .filter(|u| reached(&edges, *u).contains(u))
         .collect();
-    if !recursing.is_empty() {
-        let in_cycle = |path: &str| {
-            recursing.iter().any(|(u, _)| {
-                let (Unit::Fn(n) | Unit::Contract(n)) = u;
-                path.starts_with(&format!("/defs/{}/", ptr_token(n)))
-            })
-        };
-        for q in &mut found.questions {
-            if in_cycle(&q.path) {
-                q.multiplicity = Count::Unbounded;
-                q.unbounded = Some("recursion");
+    let mut recurring: HashSet<Unit<'a>> = HashSet::new();
+    for u in &on_cycle {
+        recurring.insert(*u);
+        recurring.extend(reached(&edges, *u));
+    }
+    let under = |path: &str| {
+        recurring.iter().any(|u| {
+            let (Unit::Fn(n) | Unit::Contract(n)) = u;
+            path.starts_with(&format!("/defs/{}/", ptr_token(n)))
+        })
+    };
+    for q in found.questions.iter_mut().chain(budget_exceeded.iter_mut()) {
+        if under(&q.path) {
+            q.multiplicity = Count::Unbounded;
+            q.unbounded = Some("recursion");
+            if q.only != Some(Only::BudgetExceeded) {
                 let slot = counts
                     .asks
                     .by_role
                     .entry(q.role.clone())
                     .or_insert(Count::ZERO);
                 *slot = Count::Unbounded;
+                counts.asks.total = Count::Unbounded;
             }
         }
-        counts.asks.total = Count::Unbounded;
     }
     let bounds = workflow_bounds(d.value());
     let declared = budget_asks(bounds.budget);
@@ -1731,6 +1812,7 @@ impl<'a> Checker<'a> {
         let program = self.program;
         let defs: &'a Map = self.defs;
         let claim_envelope = self.claim.and_then(|c| c.envelope);
+        let handed = self.handed_floors();
         let mut found: Vec<WorkflowBound> = Vec::new();
         {
             for (name, d) in program.definitions() {
@@ -1753,6 +1835,7 @@ impl<'a> Checker<'a> {
                     } else {
                         DataClass::Public
                     },
+                    handed: &handed,
                 };
                 found.push(bound(&env, name, d));
             }
@@ -1761,6 +1844,143 @@ impl<'a> Checker<'a> {
             self.asks_diagnostics(b);
         }
         self.bounds = found;
+    }
+
+    /// What every call of each function and every `verify` of each
+    /// contract hands it, through every caller: a unit's floor is what its
+    /// callers hand it, joined with the floors of the callers that are
+    /// units themselves, until nothing rises (a finite lattice: the join
+    /// ends, also on a cycle, which is E0502 besides).
+    fn handed_floors(&self) -> HashMap<String, Handed> {
+        let mut floors: HashMap<String, Handed> = HashMap::new();
+        loop {
+            let mut rose = false;
+            for (caller, callee, h) in &self.handed_calls {
+                let from = floors.get(caller).copied().unwrap_or(Handed::NOTHING);
+                let slot = floors.entry(callee.clone()).or_insert(Handed::NOTHING);
+                let now = slot.join(h.join(from));
+                if now != *slot {
+                    *slot = now;
+                    rose = true;
+                }
+            }
+            if !rose {
+                return floors;
+            }
+        }
+    }
+
+    /// The arguments of a call of a function of the program, typed as
+    /// [`Checker::call_args`] types them and, in 0.7, as what a wait shows,
+    /// and what they hand the function recorded with the caller: a site in
+    /// the function shows at least that (`crate::asks`).
+    pub(crate) fn handed_args(
+        &mut self,
+        e: Expr<'a>,
+        frame: &mut Frame<'a>,
+        path: &str,
+        callee: &str,
+    ) -> Vec<Val> {
+        let mut shown: Vec<(Val, Level)> = Vec::new();
+        let mut args: Vec<Val> = Vec::new();
+        for (i, a) in e.arg_values().iter().enumerate() {
+            let at = sub_i(path, "args", i, "/value");
+            let x = a.get("value").and_then(Expr::of);
+            args.push(self.shown_expr(x, frame, &at, &mut shown));
+        }
+        let h = self.handed_of(&shown);
+        self.handed_calls
+            .push((frame.def.clone(), callee.to_owned(), h));
+        args
+    }
+
+    /// 0.7: what a `verify` at `path` hands its contract `contract`: what
+    /// the typing recorded of its arguments there.
+    pub(crate) fn handed_verify(&mut self, frame: &Frame<'a>, path: &str, contract: &str) {
+        if let Some(a) = self.asked.get(path).copied() {
+            self.handed_calls.push((
+                frame.def.clone(),
+                contract.to_owned(),
+                Handed {
+                    cls: a.cls,
+                    known: a.known,
+                },
+            ));
+        }
+    }
+
+    /// The highest class and the weakest level of `shown` (nothing, when it
+    /// is empty).
+    fn handed_of(&self, shown: &[(Val, Level)]) -> Handed {
+        shown.iter().fold(Handed::NOTHING, |h, (v, floor)| {
+            h.join(Handed {
+                cls: v.cls.max(self.floor),
+                known: weaker(crate::reports::known(&v.ty, self), *floor),
+            })
+        })
+    }
+
+    /// 0.7: E1501 for a role a question names (its `role:`, a review's
+    /// `escalate_to:`, an approval's `distinct_from:`) with a name that
+    /// something in scope binds: a parameter of the definition, or a name
+    /// its body binds. A role is a role definition and nothing a run
+    /// computes, so that the role the facts and the card name is the role
+    /// asked (an approval's role is read in the contract's scope at run
+    /// time, where a parameter of that name would win). `base` is the path
+    /// the arguments `args` are under; `site` names the question.
+    pub(crate) fn role_not_bound(
+        &mut self,
+        args: &[Value],
+        frame: &Frame<'a>,
+        base: &str,
+        site: &str,
+    ) {
+        if !self.at_least(Language::V0_7) {
+            return;
+        }
+        for (i, a) in args.iter().enumerate() {
+            let Some(arg) = a.get("name").and_then(Value::as_str) else {
+                continue;
+            };
+            if !matches!(arg, "role" | "escalate_to" | "distinct_from") {
+                continue;
+            }
+            let Some(name) = a
+                .get("value")
+                .and_then(Expr::of)
+                .filter(|v| v.is(ExprOp::Var))
+                .and_then(Expr::name)
+            else {
+                continue;
+            };
+            if Self::lookup(name, &frame.scope).is_none() {
+                continue;
+            }
+            let parameter = self.def(&frame.def).is_some_and(|d| {
+                d.params()
+                    .iter()
+                    .any(|p| p.get("name").and_then(Value::as_str) == Some(name))
+            });
+            let (by, what) = if parameter {
+                ("parameter", format!("a parameter of {}", frame.def))
+            } else {
+                ("binding", "a name its body binds".to_owned())
+            };
+            self.report(
+                "E1501",
+                format!(
+                    "{site} names the role '{name}' by its {arg}, and '{name}' is also {what}, which a run would read in its place: the role a person is asked as is a role definition, and nothing a run computes. Rename the {by} (spec/attention.md \"What each question records\")."
+                ),
+                &sub_i(base, "args", i, "/value"),
+                Some(
+                    JsObject::new()
+                        .with("role", name)
+                        .with("where", site)
+                        .with("argument", arg)
+                        .with("shadowed_by", by),
+                ),
+            );
+        }
     }
 
     /// E1906 and E1907 of one workflow's bound.

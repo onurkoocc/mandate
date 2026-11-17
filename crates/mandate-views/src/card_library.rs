@@ -22,8 +22,8 @@ use mandate_check::{
     micros_text, own,
 };
 use mandate_ir::{
-    Application, ConnectorDef, Criterion, Definition, Expr, ExprOp, JsObject, JsValue, Map,
-    Program, Value, number_to_string, sort_utf16, unique_in_order, workflow_bounds,
+    Application, ConnectorDef, Criterion, Definition, Expr, ExprOp, JsObject, JsValue, Language,
+    Map, Program, Value, number_to_string, sort_utf16, unique_in_order, workflow_bounds,
 };
 
 use crate::card::{expr_text, limit_of, members_of};
@@ -806,8 +806,14 @@ fn contract_of(name: &str, d: &Value, lock: Option<&Value>) -> CardContract {
 }
 
 /// The library a module belongs to: the one the lock pins with it, else
-/// the built-in `std.patterns`.
-fn library_of(module: &str, lock: Option<&Value>) -> Pin {
+/// the built-in `std.patterns`, of the version a program of `language`
+/// reads without a pin.
+fn library_of(
+    module: &str,
+    lock: Option<&Value>,
+    language: Option<Language>,
+    pin: Option<&mandate_check::library::Version>,
+) -> Pin {
     if let Some(Value::Object(libs)) = lock.and_then(|l| l.get("libraries")) {
         for (lib, pin) in libs.iter() {
             if own(pin.get("modules"), module).is_some() {
@@ -822,7 +828,7 @@ fn library_of(module: &str, lock: Option<&Value>) -> Pin {
         }
     }
     if module == mandate_check::library::STD_PATTERNS
-        && let Some(built_in) = mandate_check::library::std_patterns()
+        && let Some(built_in) = mandate_check::library::std_patterns_for(language, pin)
     {
         return Pin {
             library: Some(built_in.name().to_owned()),
@@ -852,7 +858,18 @@ pub(crate) fn pattern_of(
     orig_wf: &Value,
     lock: Option<&Value>,
     modules: Option<&Modules>,
+    named: Option<&mandate_check::library::Version>,
 ) -> Option<CardPattern> {
+    // 0.7: the version of std.patterns read: the lock's pin, else the one a
+    // caller names, else the one whose module is given, else the version of
+    // the program's language.
+    let pin = mandate_check::library::std_patterns_pin(lock)
+        .or(named.copied())
+        .or_else(|| {
+            mandate_check::library::embedded_version_of(
+                modules.and_then(|m| m.get(mandate_check::library::STD_PATTERNS)),
+            )
+        });
     let a = Application::of_workflow(orig_wf)?;
     let name = a.pattern()?;
     let module = if orig.defs().is_some_and(|d| d.contains_key(name)) {
@@ -863,7 +880,7 @@ pub(crate) fn pattern_of(
             .and_then(|u| u.module())
             .map(str::to_owned)
     };
-    let with_builtin = mandate_check::library::with_builtin(orig, modules);
+    let with_builtin = mandate_check::library::with_builtin(orig, modules, pin.as_ref());
     let all = with_builtin.as_ref().or(modules);
     let home_defs: Option<&Map> = match &module {
         None => orig.defs(),
@@ -879,7 +896,7 @@ pub(crate) fn pattern_of(
         digest,
         pinned,
     } = match &module {
-        Some(m) => library_of(m, lock),
+        Some(m) => library_of(m, lock, orig.language(), pin.as_ref()),
         None => Pin {
             library: None,
             version: None,
@@ -1054,7 +1071,7 @@ pub(crate) fn gather(g: &Gather<'_>) -> CardLibrary {
     }
     let defs = defs_of(g.lp);
     let unexpanded = g.wf.get("unexpanded").filter(|u| u.is_truthy());
-    let pattern = pattern_of(g.program, g.orig_wf, g.lock, g.modules);
+    let pattern = pattern_of(g.program, g.orig_wf, g.lock, g.modules, None);
 
     // The contracts it verifies against: those its body verifies, and those
     // an application names (the stand-in has no body to verify in).

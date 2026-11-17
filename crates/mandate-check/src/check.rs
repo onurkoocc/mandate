@@ -67,6 +67,12 @@ pub struct CheckOptions<'a> {
     /// program of 0.6 that checks. A program of 0.1 to 0.5 is given none,
     /// asked or not.
     pub linked: bool,
+    /// 0.7: the version of `std.patterns` the program reads when the lock
+    /// pins none: what a caller that holds no lock names (a sub-program's
+    /// parent's pin, a package's), an embedded version. The lock's pin wins
+    /// over it, and a door given both that differ refuses them. `None`: the
+    /// version of the program's language, as before.
+    pub std_patterns: Option<mandate_lib::Version>,
 }
 
 /// What [`check`] gives: `CheckResult`, `LoadResult` with `ok` and

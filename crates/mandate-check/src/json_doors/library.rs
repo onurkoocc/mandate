@@ -181,11 +181,15 @@ pub(super) const LIBRARY_ADD: &[&str] = &[
     "libraries",
     "config",
     "now",
+    "language",
 ];
 
 /// `library_add`: `mandate add <library>[@<range>]`.
 ///
-/// Input: `{ library, range?, lock, versions, libraries?, config?, now }`.
+/// Input: `{ library, range?, lock, versions, libraries?, config?, now,
+/// language? }`, `language` (0.7) the language of the program the lock is
+/// for, as `mandate/0.7`: which embedded versions of `std.patterns` may be
+/// pinned, and for 0.7 a lock of format 0.7.
 /// Output: `{ ok, diagnostics, resolution, version?, digest?, signature?,
 /// lock }`, `lock` the lock with the new pin or `null`.
 pub(super) fn library_add(input: &Value) -> Result<JsValue, DoorError> {
@@ -202,6 +206,7 @@ pub(super) fn library_add(input: &Value) -> Result<JsValue, DoorError> {
         libraries: &libraries,
         config: config.as_ref(),
         now: now_of(a)?,
+        language: a.opt_language("language")?,
     };
     Ok(add(&r).to_js())
 }
@@ -217,6 +222,7 @@ pub(super) const LIBRARY_UPGRADE: &[&str] = &[
     "config",
     "now",
     "accept_governance",
+    "language",
 ];
 
 /// `library_upgrade`: `mandate upgrade <library>[@<range>]
@@ -224,7 +230,7 @@ pub(super) const LIBRARY_UPGRADE: &[&str] = &[
 /// pins.
 ///
 /// Input: `{ library, range?, lock, versions, pinned, libraries?, config?,
-/// now, accept_governance? }`.
+/// now, accept_governance?, language? }`.
 /// Output: as [`library_add`], and `governance`, `behavior`, `widenings`
 /// and `before` (the pinned version's signature) when it compared; `lock`
 /// is `null` when the comparison holds a governance change and
@@ -245,6 +251,7 @@ pub(super) fn library_upgrade(input: &Value) -> Result<JsValue, DoorError> {
         libraries: &libraries,
         config: config.as_ref(),
         now: now_of(a)?,
+        language: a.opt_language("language")?,
     };
     Ok(upgrade(&r, &pinned, accept).to_js())
 }

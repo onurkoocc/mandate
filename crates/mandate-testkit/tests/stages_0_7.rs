@@ -530,12 +530,21 @@ struct JsonOutputs {
 fn json_outputs(program: &str, text: &str) -> Result<JsonOutputs, String> {
     let mut out: Vec<(String, JsValue)> = Vec::new();
     let lock_path = outputs::lock_file_of(program);
-    let plain = outputs::checked_text(program, text, false, false)?;
+    // As `language_0_7.rs` relabels it: std.patterns 1.0.0 pinned.
+    let more =
+        common::relabelled_modules(text, kind_of(program), &outputs::library_dirs_of(program));
+    let plain = outputs::checked_text_more(program, text, false, false, more.as_ref())?;
     out.push(("check".to_owned(), plain.to_js()));
-    let linked = outputs::checked_text(program, text, true, false)?;
+    let linked = outputs::checked_text_more(program, text, true, false, more.as_ref())?;
     out.push(("check --module".to_owned(), linked.to_js()));
     let with_lock = match lock_path {
-        Some(_) => Some(outputs::checked_text(program, text, true, true)?),
+        Some(_) => Some(outputs::checked_text_more(
+            program,
+            text,
+            true,
+            true,
+            more.as_ref(),
+        )?),
         None => None,
     };
     if let Some(r) = &with_lock {
@@ -694,8 +703,8 @@ fn compare_with(program: &str, t: &mut Tally, marker: Marker) -> Result<Marks, S
     let op = marker.op();
     // The attention view shows the stages and the reports themselves: what
     // is compared is every other output, and the document without it.
-    let outs_a = outputs::without_attention(outputs::outputs_of_text(program, &unmarked)?);
-    let outs_b = outputs::without_attention(outputs::outputs_of_text(program, &marked)?);
+    let outs_a = outputs::without_attention(outputs::outputs_of_relabelled(program, &unmarked)?);
+    let outs_b = outputs::without_attention(outputs::outputs_of_relabelled(program, &marked)?);
     let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
     if names(&outs_a) != names(&outs_b) {
         return Err(format!(

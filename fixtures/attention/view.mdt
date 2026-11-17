@@ -3,9 +3,11 @@
 // accountant, then the finance lead, a day each), with an `owner` and a
 // `report`, and a workflow that asks one role, pauses, and tells another what
 // it did, whose stage title holds characters a page must not take for markup.
-// Its lock (view.lock.json) is of format 0.7: it gives the accountant a class
-// to be shown and says nothing of the finance lead, who may then be shown
-// `internal`; it asks for the promotion ladder. It checks; the tests of the
+// Its lock (view.lock.json) is of format 0.7: it gives the accountant and the
+// finance lead a class to be shown (confidential, which the escalated review
+// may need) and says nothing of the observer, who may then be shown
+// `internal`, as every role the lock does not name is; it asks for the
+// promotion ladder. It checks; the tests of the
 // view read it. Only the Rust compiler reads it.
 
 mandate @ 0.7
@@ -16,6 +18,7 @@ use std.{human, model}
 
 role accountant   "Accountant"
 role finance_lead "Finance lead"
+role observer     "Observer"
 
 type Item = { key: Text, total: Int }
 
@@ -60,7 +63,7 @@ workflow Settle(items: List<Item>) -> Int
   len(reviewed.accepted)
 }
 
-/// Asks the finance lead whether a name is right, waits for a person to go
+/// Asks the observer whether a name is right, waits for a person to go
 /// on, and tells the accountant. Its stage titles hold characters that a page
 /// must show and not take for markup.
 workflow Notify(name: Text) -> Text
@@ -69,7 +72,7 @@ workflow Notify(name: Text) -> Text
   budget  { time: 5m, steps: 4 }
 {
   stage ask "Ask <b>first</b> | \"quote\" & more"
-  let answer = human.ask("Is {name} right?", role: finance_lead)
+  let answer = human.ask("Is {name} right?", role: observer)
   let held   = pause
 
   stage tell "Tell"

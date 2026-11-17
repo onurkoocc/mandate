@@ -1477,6 +1477,40 @@
       }
     },
     {
+      "name": "E1307f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/owner.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1307",
+            "severity": "error",
+            "message": "Workflow Check applies a pattern, which is the whole of its definition with its caps and its budget; it has an envelope too. Its parameters, result and body are the pattern's (spec/library.md \"Application\").",
+            "at": {
+              "path": "/defs/Check/envelope",
+              "span": [1, 3214, 1, 3310]
+            },
+            "docs": "mandate explain MDT-E1307",
+            "facts": {
+              "workflow": "Check",
+              "problem": "member",
+              "member": "envelope"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1501b",
       "kind": "compile",
       "door": "check_patched",
@@ -1530,6 +1564,41 @@
     },
     {
       "name": "E1501c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1501",
+            "severity": "error",
+            "message": "human.approve names the role 'accountant' by its role, and 'accountant' is also a parameter of Approved, which a run would read in its place: the role a person is asked as is a role definition, and nothing a run computes. Rename the parameter (spec/attention.md \"What each question records\").",
+            "at": {
+              "path": "/defs/Approved/accept/checked/by/call/args/0/value",
+              "span": [1, 2799, 1, 2831]
+            },
+            "docs": "mandate explain MDT-E1501",
+            "facts": {
+              "role": "accountant",
+              "where": "human.approve",
+              "argument": "role",
+              "shadowed_by": "parameter"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1501d",
       "kind": "compile",
       "door": "check_patched",
       "input": {
@@ -1739,6 +1808,199 @@
           }
         },
         "diagnostics": []
+      }
+    },
+    {
+      "name": "E1603b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1609a/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1603",
+            "severity": "error",
+            "message": "Module example.library.types is written in mandate/0.7, and this program is mandate/0.5, which would read its definitions without the rules of mandate/0.7. Write the program in mandate/0.7 or later.",
+            "at": {
+              "path": "/uses/0",
+              "span": [1, 969, 1, 1023]
+            },
+            "docs": "mandate explain MDT-E1603",
+            "facts": {
+              "module": "example.library.types",
+              "module_language": "mandate/0.7",
+              "language": "mandate/0.5"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1609",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/batch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1609",
+            "severity": "error",
+            "message": "The lock pins library std.patterns 2.0.0, which is written in mandate/0.7, and this program is mandate/0.6, which cannot read it. Pin a version written in mandate/0.6 or earlier, or write the program in mandate/0.7 or later.",
+            "at": {
+              "path": "/libraries/std.patterns"
+            },
+            "docs": "mandate explain MDT-E1609",
+            "facts": {
+              "library": "std.patterns",
+              "version": "2.0.0",
+              "library_language": "mandate/0.7",
+              "language": "mandate/0.6"
+            }
+          },
+          {
+            "code": "MDT-E1609",
+            "severity": "error",
+            "message": "Module std.patterns is written in mandate/0.7, a newer language than this program's, mandate/0.6, which cannot read it. Import a version of it written in mandate/0.6 or earlier, or write the program in mandate/0.7 or later.",
+            "at": {
+              "path": "/uses/1",
+              "span": [1, 4686, 1, 4743]
+            },
+            "docs": "mandate explain MDT-E1609",
+            "facts": {
+              "module": "std.patterns",
+              "module_language": "mandate/0.7",
+              "language": "mandate/0.6"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1609a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../E1602/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "types.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1609",
+            "severity": "error",
+            "message": "Module example.library.types is written in mandate/0.7, a newer language than this program's, mandate/0.6, which cannot read it. Import a version of it written in mandate/0.6 or earlier, or write the program in mandate/0.7 or later.",
+            "at": {
+              "path": "/uses/0",
+              "span": [10, 1, 10, 36]
+            },
+            "docs": "mandate explain MDT-E1609",
+            "facts": {
+              "module": "example.library.types",
+              "module_language": "mandate/0.7",
+              "language": "mandate/0.6"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1609b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:098b2d39abccbfa5bb23eadd8a461697a9fa6abbf64e21b5d25bca9bc8d5cb10",
+          "defs": {
+            "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329",
+            "Read": "sha256:b6d9797c3789d6543f7c62e4a7ba128d22d6cd9e1f47205a21c743cd2fc0f059",
+            "Reader": "sha256:82e3cbc308f6b02e84691486417277f9981f5227d492d08c727f54593d03a70b"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E1609c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/attention/batch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:0f43c8467ddd359d743706f90c07e8c787df6f19ab91e2636469e43e84384288",
+          "defs": {
+            "DraftId": "sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c",
+            "ErpDraft": "sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79",
+            "ErpRead": "sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d",
+            "Inbox": "sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6",
+            "Invoice": "sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75",
+            "Match": "sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56",
+            "MatchAll": "sha256:6b3dbda23a8ea4943274f655c577a49805360988bc5c5881cb1c98334eca3e33",
+            "Matched": "sha256:d6b84eac3124e487afdafb0129acfba3006b396f0d9f3ffb213a6bb25f02ddff",
+            "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+            "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+            "Order": "sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555",
+            "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+            "erp": "sha256:ccb2a6a1b83d2ea55454144a444c5976c4be2541d7526dcbe1453b95a74130fd",
+            "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [54, 15, 54, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
       }
     },
     {
@@ -4810,6 +5072,55 @@
       }
     },
     {
+      "name": "E1907b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0502",
+            "severity": "error",
+            "message": "Recursive call cycle C \u2192 again \u2192 C; static node and budget bounds need an acyclic call graph.",
+            "at": {
+              "path": "/defs/C",
+              "span": [23, 1, 26, 2]
+            },
+            "docs": "mandate explain MDT-E0502",
+            "facts": {
+              "cycle": [
+                "C",
+                "again"
+              ]
+            }
+          },
+          {
+            "code": "MDT-E1907",
+            "severity": "error",
+            "message": "V declares asks: 1, and this question (ask) stands in a function that calls itself: the bound cannot count it. Give the loop a max_iter, or ask outside it (spec/attention.md \"The algebra\").",
+            "at": {
+              "path": "/defs/ask/body/0/value",
+              "span": [30, 3, 30, 49]
+            },
+            "docs": "mandate explain MDT-E1907",
+            "facts": {
+              "workflow": "V",
+              "kind": "ask",
+              "why": "recursion",
+              "asks": 1
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1908",
       "kind": "compile",
       "door": "check_patched",
@@ -5172,6 +5483,859 @@
       }
     },
     {
+      "name": "L10",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1607",
+            "severity": "error",
+            "message": "Version 1.1.0 of library acme.reports widens the authority signature of 1.0.0, removes one of its criteria or adds a waiver, and is not a major version above it.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E1607",
+            "facts": {
+              "library": "acme.reports",
+              "problem": "needs_major",
+              "version": "1.1.0",
+              "base": "1.0.0",
+              "widens_authority": true,
+              "removes_criterion": false,
+              "adds_waiver": false
+            }
+          }
+        ],
+        "name": "acme.reports",
+        "version": "1.1.0",
+        "digest": "sha256:d81720067d64778db442131c6846cfa5b9fd1efc6437f3f0f0ab39554d5fafb2",
+        "against": [
+          {
+            "version": "1.0.0",
+            "requires_major": true,
+            "widenings": [
+              {
+                "name": "acme.reports.Count",
+                "what": "report",
+                "text": "+ acme.reports.Count: report \"Keys counted\" to clerk (shows confidential)"
+              }
+            ],
+            "governance": [
+              {
+                "kind": "widened",
+                "at": "acme.reports.Count",
+                "text": "+ acme.reports.Count: report \"Keys counted\" to clerk (shows confidential)"
+              },
+              {
+                "kind": "report_widened",
+                "at": "acme.reports/defs/Count/body",
+                "text": "+ Count: report \"Keys counted\" to clerk (shows confidential)"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "L10a",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "resolution": {
+          "chosen": {
+            "version": "1.1.0",
+            "digest": "sha256:d81720067d64778db442131c6846cfa5b9fd1efc6437f3f0f0ab39554d5fafb2",
+            "published_at": "2026-11-02T09:00:00Z"
+          },
+          "passed_over": [
+            {
+              "version": "1.4.0",
+              "digest": "sha256:62225a493f6601bca7e208500d310606d8d6250cb54372debf3fea95ea1f9785",
+              "published_at": "2026-11-05T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.3.0",
+              "digest": "sha256:6b3be56bc2892f94c0ddf8c21bb0fc3b1ad6cafe47c431442ccd48db4ca4b5c6",
+              "published_at": "2026-11-04T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.2.0",
+              "digest": "sha256:8dfaf91690a572e2b265ef9a39039f55ada156b4920f8c5248e5f506203deaab",
+              "published_at": "2026-11-03T09:00:00Z",
+              "reason": "outside_range"
+            }
+          ],
+          "unpublished": []
+        },
+        "version": "1.1.0",
+        "digest": "sha256:d81720067d64778db442131c6846cfa5b9fd1efc6437f3f0f0ab39554d5fafb2",
+        "signature": {
+          "acme.reports.Count": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.reports.store.list_items\")",
+              "VaultRead = tool.call(vault, list_keys) \u2192 tool.call(\"acme.reports.vault.list_keys\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null,
+            "reports": [
+              {
+                "role": "clerk",
+                "title": "Counted",
+                "class": "internal"
+              },
+              {
+                "role": "clerk",
+                "title": "Keys counted",
+                "class": "confidential"
+              }
+            ]
+          },
+          "acme.reports.Tell": {
+            "kind": "pattern",
+            "shape": "sha256:53301c523b5d7d3d6c7e3d292d1e5b98ddde39efae71986b142cf595158cf24c",
+            "reports": [
+              {
+                "role": "who",
+                "title": "Listed",
+                "class": "applied"
+              }
+            ]
+          },
+          "acme.reports.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "list_items": "read_only"
+            }
+          },
+          "acme.reports.vault": {
+            "kind": "connector",
+            "url": "https://vault.acme.example/mcp",
+            "class": "confidential",
+            "tools": {
+              "list_keys": "read_only"
+            }
+          }
+        },
+        "governance": [
+          {
+            "kind": "widened",
+            "at": "acme.reports.Count",
+            "text": "+ acme.reports.Count: report \"Keys counted\" to clerk (shows confidential)"
+          },
+          {
+            "kind": "report_widened",
+            "at": "acme.reports/defs/Count/body",
+            "text": "+ Count: report \"Keys counted\" to clerk (shows confidential)"
+          }
+        ],
+        "behavior": [
+          {
+            "kind": "behavior",
+            "at": "acme.reports/defs/Count/body",
+            "text": "~ Count: the body changed, with the same steps"
+          }
+        ],
+        "widenings": [
+          {
+            "name": "acme.reports.Count",
+            "what": "report",
+            "text": "+ acme.reports.Count: report \"Keys counted\" to clerk (shows confidential)"
+          }
+        ],
+        "before": {
+          "acme.reports.Count": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.reports.store.list_items\")",
+              "VaultRead = tool.call(vault, list_keys) \u2192 tool.call(\"acme.reports.vault.list_keys\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null,
+            "reports": [
+              {
+                "role": "clerk",
+                "title": "Counted",
+                "class": "internal"
+              }
+            ]
+          },
+          "acme.reports.Tell": {
+            "kind": "pattern",
+            "shape": "sha256:53301c523b5d7d3d6c7e3d292d1e5b98ddde39efae71986b142cf595158cf24c",
+            "reports": [
+              {
+                "role": "who",
+                "title": "Listed",
+                "class": "applied"
+              }
+            ]
+          },
+          "acme.reports.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "list_items": "read_only"
+            }
+          },
+          "acme.reports.vault": {
+            "kind": "connector",
+            "url": "https://vault.acme.example/mcp",
+            "class": "confidential",
+            "tools": {
+              "list_keys": "read_only"
+            }
+          }
+        },
+        "lock": null
+      }
+    },
+    {
+      "name": "L10b",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": "../L10a/mandate.lock.json",
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "resolution": {
+          "chosen": {
+            "version": "1.1.0",
+            "digest": "sha256:d81720067d64778db442131c6846cfa5b9fd1efc6437f3f0f0ab39554d5fafb2",
+            "published_at": "2026-11-02T09:00:00Z"
+          },
+          "passed_over": [
+            {
+              "version": "1.4.0",
+              "digest": "sha256:62225a493f6601bca7e208500d310606d8d6250cb54372debf3fea95ea1f9785",
+              "published_at": "2026-11-05T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.3.0",
+              "digest": "sha256:6b3be56bc2892f94c0ddf8c21bb0fc3b1ad6cafe47c431442ccd48db4ca4b5c6",
+              "published_at": "2026-11-04T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.2.0",
+              "digest": "sha256:8dfaf91690a572e2b265ef9a39039f55ada156b4920f8c5248e5f506203deaab",
+              "published_at": "2026-11-03T09:00:00Z",
+              "reason": "outside_range"
+            }
+          ],
+          "unpublished": []
+        },
+        "version": "1.1.0",
+        "digest": "sha256:d81720067d64778db442131c6846cfa5b9fd1efc6437f3f0f0ab39554d5fafb2",
+        "signature": {
+          "acme.reports.Count": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.reports.store.list_items\")",
+              "VaultRead = tool.call(vault, list_keys) \u2192 tool.call(\"acme.reports.vault.list_keys\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null,
+            "reports": [
+              {
+                "role": "clerk",
+                "title": "Counted",
+                "class": "internal"
+              },
+              {
+                "role": "clerk",
+                "title": "Keys counted",
+                "class": "confidential"
+              }
+            ]
+          },
+          "acme.reports.Tell": {
+            "kind": "pattern",
+            "shape": "sha256:53301c523b5d7d3d6c7e3d292d1e5b98ddde39efae71986b142cf595158cf24c",
+            "reports": [
+              {
+                "role": "who",
+                "title": "Listed",
+                "class": "applied"
+              }
+            ]
+          },
+          "acme.reports.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "list_items": "read_only"
+            }
+          },
+          "acme.reports.vault": {
+            "kind": "connector",
+            "url": "https://vault.acme.example/mcp",
+            "class": "confidential",
+            "tools": {
+              "list_keys": "read_only"
+            }
+          }
+        },
+        "governance": [
+          {
+            "kind": "widened",
+            "at": "acme.reports.Count",
+            "text": "+ acme.reports.Count: report \"Keys counted\" to clerk (shows confidential)"
+          },
+          {
+            "kind": "report_widened",
+            "at": "acme.reports/defs/Count/body",
+            "text": "+ Count: report \"Keys counted\" to clerk (shows confidential)"
+          }
+        ],
+        "behavior": [
+          {
+            "kind": "behavior",
+            "at": "acme.reports/defs/Count/body",
+            "text": "~ Count: the body changed, with the same steps"
+          }
+        ],
+        "widenings": [
+          {
+            "name": "acme.reports.Count",
+            "what": "report",
+            "text": "+ acme.reports.Count: report \"Keys counted\" to clerk (shows confidential)"
+          }
+        ],
+        "before": {
+          "acme.reports.Count": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.reports.store.list_items\")",
+              "VaultRead = tool.call(vault, list_keys) \u2192 tool.call(\"acme.reports.vault.list_keys\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null,
+            "reports": [
+              {
+                "role": "clerk",
+                "title": "Counted",
+                "class": "internal"
+              }
+            ]
+          },
+          "acme.reports.Tell": {
+            "kind": "pattern",
+            "shape": "sha256:53301c523b5d7d3d6c7e3d292d1e5b98ddde39efae71986b142cf595158cf24c",
+            "reports": [
+              {
+                "role": "who",
+                "title": "Listed",
+                "class": "applied"
+              }
+            ]
+          },
+          "acme.reports.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "list_items": "read_only"
+            }
+          },
+          "acme.reports.vault": {
+            "kind": "connector",
+            "url": "https://vault.acme.example/mcp",
+            "class": "confidential",
+            "tools": {
+              "list_keys": "read_only"
+            }
+          }
+        },
+        "lock": {
+          "lock": "mandate/lock/0.7",
+          "modules": {},
+          "libraries": {
+            "acme.reports": {
+              "version": "1.1.0",
+              "digest": "sha256:d81720067d64778db442131c6846cfa5b9fd1efc6437f3f0f0ab39554d5fafb2",
+              "modules": {
+                "acme.reports": "sha256:0c259c6142a0ea1a42a145181ebfc7e3e2b016aafa7faee39f6a80f4d6e93a3a"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "L10c",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1607",
+            "severity": "error",
+            "message": "Version 1.2.0 of library acme.reports widens the authority signature of 1.0.0, removes one of its criteria or adds a waiver, and is not a major version above it.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E1607",
+            "facts": {
+              "library": "acme.reports",
+              "problem": "needs_major",
+              "version": "1.2.0",
+              "base": "1.0.0",
+              "widens_authority": true,
+              "removes_criterion": false,
+              "adds_waiver": false
+            }
+          }
+        ],
+        "name": "acme.reports",
+        "version": "1.2.0",
+        "digest": "sha256:8dfaf91690a572e2b265ef9a39039f55ada156b4920f8c5248e5f506203deaab",
+        "against": [
+          {
+            "version": "1.0.0",
+            "requires_major": true,
+            "widenings": [
+              {
+                "name": "acme.reports.Count",
+                "what": "report",
+                "text": "~ acme.reports.Count: report \"Counted\" to clerk shows internal \u2192 confidential"
+              }
+            ],
+            "governance": [
+              {
+                "kind": "widened",
+                "at": "acme.reports.Count",
+                "text": "~ acme.reports.Count: report \"Counted\" to clerk shows internal \u2192 confidential"
+              },
+              {
+                "kind": "report_widened",
+                "at": "acme.reports/defs/Count/body",
+                "text": "~ Count: report \"Counted\" to clerk shows internal \u2192 confidential"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "L10d",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": "../L10a/mandate.lock.json",
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "resolution": {
+          "chosen": {
+            "version": "1.3.0",
+            "digest": "sha256:6b3be56bc2892f94c0ddf8c21bb0fc3b1ad6cafe47c431442ccd48db4ca4b5c6",
+            "published_at": "2026-11-04T09:00:00Z"
+          },
+          "passed_over": [
+            {
+              "version": "1.4.0",
+              "digest": "sha256:62225a493f6601bca7e208500d310606d8d6250cb54372debf3fea95ea1f9785",
+              "published_at": "2026-11-05T09:00:00Z",
+              "reason": "outside_range"
+            }
+          ],
+          "unpublished": []
+        },
+        "version": "1.3.0",
+        "digest": "sha256:6b3be56bc2892f94c0ddf8c21bb0fc3b1ad6cafe47c431442ccd48db4ca4b5c6",
+        "signature": {
+          "acme.reports.Count": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.reports.store.list_items\")",
+              "VaultRead = tool.call(vault, list_keys) \u2192 tool.call(\"acme.reports.vault.list_keys\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null,
+            "reports": []
+          },
+          "acme.reports.Tell": {
+            "kind": "pattern",
+            "shape": "sha256:53301c523b5d7d3d6c7e3d292d1e5b98ddde39efae71986b142cf595158cf24c",
+            "reports": [
+              {
+                "role": "who",
+                "title": "Listed",
+                "class": "applied"
+              }
+            ]
+          },
+          "acme.reports.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "list_items": "read_only"
+            }
+          },
+          "acme.reports.vault": {
+            "kind": "connector",
+            "url": "https://vault.acme.example/mcp",
+            "class": "confidential",
+            "tools": {
+              "list_keys": "read_only"
+            }
+          }
+        },
+        "governance": [],
+        "behavior": [
+          {
+            "kind": "behavior",
+            "at": "acme.reports/defs/Count/body",
+            "text": "~ Count: the body changed, with the same steps"
+          },
+          {
+            "kind": "behavior",
+            "at": "acme.reports/defs/Count/body",
+            "text": "- Count: report \"Counted\" to clerk removed"
+          }
+        ],
+        "widenings": [],
+        "before": {
+          "acme.reports.Count": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.reports.store.list_items\")",
+              "VaultRead = tool.call(vault, list_keys) \u2192 tool.call(\"acme.reports.vault.list_keys\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null,
+            "reports": [
+              {
+                "role": "clerk",
+                "title": "Counted",
+                "class": "internal"
+              }
+            ]
+          },
+          "acme.reports.Tell": {
+            "kind": "pattern",
+            "shape": "sha256:53301c523b5d7d3d6c7e3d292d1e5b98ddde39efae71986b142cf595158cf24c",
+            "reports": [
+              {
+                "role": "who",
+                "title": "Listed",
+                "class": "applied"
+              }
+            ]
+          },
+          "acme.reports.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "list_items": "read_only"
+            }
+          },
+          "acme.reports.vault": {
+            "kind": "connector",
+            "url": "https://vault.acme.example/mcp",
+            "class": "confidential",
+            "tools": {
+              "list_keys": "read_only"
+            }
+          }
+        },
+        "lock": {
+          "lock": "mandate/lock/0.7",
+          "modules": {},
+          "libraries": {
+            "acme.reports": {
+              "version": "1.3.0",
+              "digest": "sha256:6b3be56bc2892f94c0ddf8c21bb0fc3b1ad6cafe47c431442ccd48db4ca4b5c6",
+              "modules": {
+                "acme.reports": "sha256:848fd621c636f8e37a41384d05d06d379504cd059500c86731818429f7639c4f"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "L10e",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1607",
+            "severity": "error",
+            "message": "Version 1.4.0 of library acme.reports widens the authority signature of 1.0.0, removes one of its criteria or adds a waiver, and is not a major version above it.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E1607",
+            "facts": {
+              "library": "acme.reports",
+              "problem": "needs_major",
+              "version": "1.4.0",
+              "base": "1.0.0",
+              "widens_authority": true,
+              "removes_criterion": false,
+              "adds_waiver": false
+            }
+          }
+        ],
+        "name": "acme.reports",
+        "version": "1.4.0",
+        "digest": "sha256:62225a493f6601bca7e208500d310606d8d6250cb54372debf3fea95ea1f9785",
+        "against": [
+          {
+            "version": "1.0.0",
+            "requires_major": true,
+            "widenings": [
+              {
+                "name": "acme.reports.Tell",
+                "what": "report",
+                "text": "+ acme.reports.Tell: report \"Listed\" to other (shows what the application binds)"
+              },
+              {
+                "name": "acme.reports.Tell",
+                "what": "shape",
+                "text": "~ pattern acme.reports.Tell: another shape"
+              }
+            ],
+            "governance": [
+              {
+                "kind": "widened",
+                "at": "acme.reports.Tell",
+                "text": "+ acme.reports.Tell: report \"Listed\" to other (shows what the application binds)"
+              },
+              {
+                "kind": "widened",
+                "at": "acme.reports.Tell",
+                "text": "~ pattern acme.reports.Tell: another shape"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "L11",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1607",
+            "severity": "error",
+            "message": "Version 1.1.0 of library acme.owners widens the authority signature of 1.0.0, removes one of its criteria, adds a waiver or changes a workflow's owner, and is not a major version above it.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E1607",
+            "facts": {
+              "library": "acme.owners",
+              "problem": "needs_major",
+              "version": "1.1.0",
+              "base": "1.0.0",
+              "widens_authority": false,
+              "removes_criterion": false,
+              "adds_waiver": false,
+              "changes_owner": true
+            }
+          }
+        ],
+        "name": "acme.owners",
+        "version": "1.1.0",
+        "digest": "sha256:c6d104c47bb2da66ff839067caf69ff5795cfcff01cf438acd933412a1930d16",
+        "against": [
+          {
+            "version": "1.0.0",
+            "requires_major": true,
+            "widenings": [],
+            "governance": [
+              {
+                "kind": "owner_changed",
+                "at": "acme.owners/defs/Confirm/owner",
+                "text": "~ Confirm.owner: accountant \u2192 clerk"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "L11a",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1607",
+            "severity": "error",
+            "message": "Version 1.1.0 of library acme.owners widens the authority signature of 1.0.0, removes one of its criteria, adds a waiver or changes a workflow's owner, and is not a major version above it.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E1607",
+            "facts": {
+              "library": "acme.owners",
+              "problem": "needs_major",
+              "version": "1.1.0",
+              "base": "1.0.0",
+              "widens_authority": true,
+              "removes_criterion": false,
+              "adds_waiver": false,
+              "changes_owner": true
+            }
+          }
+        ],
+        "name": "acme.owners",
+        "version": "1.1.0",
+        "digest": "sha256:d01180637551a7ebc7cfc1ce9f2539e7e7a481313d61d628a6190f57e36b909b",
+        "against": [
+          {
+            "version": "1.0.0",
+            "requires_major": true,
+            "widenings": [
+              {
+                "name": "acme.owners.Confirm",
+                "what": "report",
+                "text": "+ acme.owners.Confirm: report \"Note received\" to clerk (shows public)"
+              }
+            ],
+            "governance": [
+              {
+                "kind": "widened",
+                "at": "acme.owners.Confirm",
+                "text": "+ acme.owners.Confirm: report \"Note received\" to clerk (shows public)"
+              },
+              {
+                "kind": "owner_changed",
+                "at": "acme.owners/defs/Confirm/owner",
+                "text": "~ Confirm.owner: accountant \u2192 clerk"
+              },
+              {
+                "kind": "report_widened",
+                "at": "acme.owners/defs/Confirm/body",
+                "text": "+ Confirm: report \"Note received\" to clerk (shows public)"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "name": "S02i",
       "kind": "compile",
       "door": "check",
@@ -5272,6 +6436,41 @@
           }
         },
         "diagnostics": []
+      }
+    },
+    {
+      "name": "S04b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0502",
+            "severity": "error",
+            "message": "Recursive call cycle C \u2192 g \u2192 D \u2192 f \u2192 C; static node and budget bounds need an acyclic call graph.",
+            "at": {
+              "path": "/defs/C",
+              "span": [21, 1, 24, 2]
+            },
+            "docs": "mandate explain MDT-E0502",
+            "facts": {
+              "cycle": [
+                "C",
+                "g",
+                "D",
+                "f"
+              ]
+            }
+          }
+        ]
       }
     }
   ]

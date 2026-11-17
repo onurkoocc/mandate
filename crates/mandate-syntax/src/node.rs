@@ -131,6 +131,11 @@ pub(crate) struct Obj {
     places: Option<HashMap<String, usize>>,
     /// The span `at` gave it: the `WeakMap` entry of the TypeScript object.
     pub(crate) span: Option<Span>,
+    /// 0.7: the spans of members that are no objects, by name, which the
+    /// source map holds at the member's pointer ([`Obj::set_spanned`]). Only
+    /// what 0.7 adds gives one (a workflow's `owner`), so the source map of
+    /// a program of 0.1 to 0.6 is the TypeScript's.
+    member_spans: Vec<(String, Span)>,
 }
 
 /// The numeric value of `key` when it is an array index: the canonical
@@ -275,6 +280,14 @@ impl Obj {
     }
 
     /// The members, taken out in order; the object is left empty.
+    /// [`Obj::set`], and the span of the member's own text, which the
+    /// source map holds at its pointer though it is no object.
+    pub(crate) fn set_spanned(&mut self, key: &str, value: impl Into<Node>, span: Span) {
+        self.set(key, value);
+        self.member_spans.retain(|(k, _)| k != key);
+        self.member_spans.push((key.to_owned(), span));
+    }
+
     fn take_entries(&mut self) -> Vec<(String, Node)> {
         self.places = None;
         self.indexed = 0;
@@ -460,6 +473,7 @@ fn finish_at(node: Node, path: &mut String, spans: &mut SourceMap) -> Value {
             if let Some(span) = o.span {
                 spans.insert(path.clone(), span);
             }
+            let member_spans = std::mem::take(&mut o.member_spans);
             let members: Vec<(String, Value)> = o
                 .take_entries()
                 .into_iter()
@@ -467,6 +481,9 @@ fn finish_at(node: Node, path: &mut String, spans: &mut SourceMap) -> Value {
                     let len = path.len();
                     path.push('/');
                     path.push_str(&ptr_token(&k));
+                    if let Some((_, span)) = member_spans.iter().find(|(m, _)| *m == k) {
+                        spans.insert(path.clone(), *span);
+                    }
                     let v = finish_at(v, path, spans);
                     path.truncate(len);
                     (k, v)

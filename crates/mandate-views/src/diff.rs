@@ -2,7 +2,7 @@
 //! `compiler/src/views/views.ts` (lines 1549-1561 and 1585-1596). The
 //! analysis is [`mandate_check::semantic_diff`]; this is how it is shown.
 
-use mandate_check::{Change, DiffView, Locks, Modules, VIEW_FORMAT, semantic_diff_with};
+use mandate_check::{Change, DiffView, Locks, Modules, VIEW_FORMAT, semantic_diff_pinned};
 use mandate_ir::Value;
 
 use crate::doc::{Block, Cell, Doc};
@@ -56,7 +56,21 @@ pub fn diff_doc_with(
     locks: Option<Locks<'_>>,
     modules: Option<&Modules>,
 ) -> Doc {
-    let v = semantic_diff_with(before, after, locks, modules);
+    diff_doc_pinned(before, after, locks, modules, None)
+}
+
+/// [`diff_doc_with`] where `std.patterns` is read at the version each
+/// program's lock pins, or else at `named` (0.7, a caller that holds no
+/// lock), as [`mandate_check::semantic_diff_pinned`] reads it.
+#[must_use]
+pub fn diff_doc_pinned(
+    before: &Value,
+    after: &Value,
+    locks: Option<Locks<'_>>,
+    modules: Option<&Modules>,
+    named: Option<&mandate_check::library::Version>,
+) -> Doc {
+    let v = semantic_diff_pinned(before, after, locks, modules, named);
     Doc {
         title: format!("{}: {} → {}", v.to.module, v.from.version, v.to.version),
         meta: vec![

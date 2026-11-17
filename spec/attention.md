@@ -16,11 +16,11 @@ best-effort basis.
 |---|---|---|
 | Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | the compiler's part implemented (RL1); the runtime's gates not implemented yet |
 | `stage`: grammar, IR, printer; E1901, E1902 | RL2 | read and checked by the compiler since RL2; the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
-| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3, but for E1705 for `owner`, which is RL5's; the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
+| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3 (E1705 for `owner` since RL5); the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`); the runtime refuses a package that declares `asks` (`unsupported_language`) until its slice B3 |
 | The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
-| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | not implemented yet |
-| `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | not implemented yet |
+| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | the compiler's part implemented but for E1909, which follows: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication. The runtime refuses `owner`, `role_classes` and `promotion` at load (`unsupported_language`) until its slices B4 and B6 |
+| `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented but for the acceptance fixture: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program` (RL6); the acceptance fixture not written yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | not implemented yet |
 | The card of a 0.7 program | RP2 | not implemented yet |
@@ -110,7 +110,13 @@ A file names the version first: `mandate @ 0.7`. Everything on this page is
 read only under that header. Every rule of 0.6 holds for a 0.7 program, and
 a 0.6 program relabelled `mandate @ 0.7` checks as it did, with the same
 diagnostics, but for what this page adds to every 0.7 program (E1509, E1909
-with a lock, and the version of `std.patterns` it resolves).
+with a lock, and the version of `std.patterns` it resolves). A 0.6 program
+that imports `std.patterns` read 1.0.0; relabelled, without a pin it would
+read 2.0.0, with its stages and reports, and so the faithful relabelling
+pins 1.0.0. The gates that relabel do so in one helper on each side
+(`relabelled_modules` in `crates/mandate-testkit/tests/common`,
+`modulesUnder` in `runtime/test/relabel.ts`): a check of the relabelled
+program is given the module of 1.0.0, which stands for a pin of it.
 
 - **Contextual words.** `stage`, `report`, `owner` and `asks` are contextual:
   the list of reserved words does not change. Each is read as a 0.7 word
@@ -420,17 +426,46 @@ Each question site records, beside its count:
 
 | Fact | Holds |
 |---|---|
+| `kind` | Which row of the table above it is: `verify`, `ask`, `escalate`, `pause`, `supervise_escalate`, `effect`, `changeset`, `governance`, `review` or `plan` |
+| `wait` | The wait in its static form (below) |
 | `role` | The role asked, or none |
-| `shown` | The highest data class of what the wait shows: the contract's arguments, the question's text, the review's map outcomes, the effect's parameters |
-| `known` | How what it shows is known: `verified`, `plain`, `model` or `external`, from the level of its type |
+| `shown` | The highest data class of what the wait shows: the contract's arguments, the question's text, the review's map outcomes, the effect's parameters; in a function or a contract, at least the class of what its calls and `verify`s hand it, through every caller |
+| `known` | How what it shows is known: `verified`, `plain`, `model` or `external`, from the level of its type; in a function or a contract, no better than what its calls and `verify`s hand it |
 | `deadline_ms` | Its deadline, when a constant `deadline:` gives one |
 | `on_no_answer` | What happens when nobody answers: `waits`, `unmet`, `escalates { to, deadline_ms }`, `declined` or `refused_to_lead` |
-| `stage` | The stage it stands in, if any |
+| `stage` | The stage it stands in, if any; for a site in a function or a contract, the stage of its calls when they all stand in one |
 | `multiplicity` | How many times it can be asked |
 
 A review with `escalate_to` records `escalates` for its first role and
 `declined` for the role it escalates to, and one without `escalate_to`
 records `declined`; a lead's amendment request records `refused_to_lead`.
+
+The role a question names is a role definition, and nothing a run computes:
+in 0.7, a `role:` of `human.ask`, `human.approve`, `human(…)` or `supervise
+escalate`, a review's `role:` or `escalate_to:`, or an approval's
+`distinct_from:` whose name a parameter or a binding in scope also has is
+E1501 (`shadowed_by`), since a run would read that name's value instead.
+
+**The static form of a wait.** `wait` is the site's IR path in the running
+program and the part the runtime adds for the wait it opens there:
+`/contract/<group>/<criterion>[/all/i]/call` after a `verify` for an
+approval, `/escalate` after a delegation, `/authorize` after an effect or a
+change set's member (`…/members/<m>/authorize`) or a change set,
+`/governance` for an owner's gate that comes before another role's
+authorization (one that takes the place of a policy is at `/authorize`),
+nothing for `human.ask`, `escalate`, `pause` and a review. `kind` and
+`wait` name one site, but for a review and its `only: on_escalation` row,
+which share the review's wait. A run's command id is not this text: it adds
+a loop's iteration (`@i`), a restarted branch's round (`#allN`), a map's
+item (`[i]`) and a delegation's attempt (`#k`, before `/escalate`); a
+function's site stands under its call (`<call>>f/…` for `/defs/f/…`), a
+contract's under its `verify` (`<verify>/contract/require/i/…` and
+`<verify>/contract/<group>/<criterion>/…` for `/defs/C/require/i/…` and
+`/defs/C/<group>/<criterion>/by/…`), a handler's under its episode
+(`/defs/W/on/i@n/…`), and a sub-program's under its command
+(`<plan>/program/<n>…`). The runtime tags each wait it opens with its static
+site, its kind and its static wait, and the facts are the list those tags
+are held to.
 
 ### Sub-programs and amendments
 
@@ -601,6 +636,22 @@ reported at the lock's root, since the older schemas close their objects.
   is E1803, which refuses a lock's `isolation` and `egress` for a program
   before 0.5 rather than drop them silently (INV-11); the check refuses
   these two fields for a program older than 0.7 the same way, with E1911.
+- **The diff.** `mandate view --against` (with `--against-lock`) compares
+  the two locks' `role_classes` and `promotion` after what they ask of the
+  host and the sandboxes ([`boundary.md`](boundary.md#lock-05)). A role's
+  class is compared as it is in effect, its entry or else `internal`, so an
+  entry `internal` added or taken away is no change:
+
+  | Change | Kind | Line |
+  |---|---|---|
+  | A role's class raised in effect: an entry added above `internal`, changed upward, or taken away from below `internal` | governance (counts as authority added) | `~ the data class role r may be shown, in effect: internal → confidential (raised)` |
+  | A role's class lowered in effect | behavior | `~ the data class role r may be shown, in effect: confidential → internal (lowered)` |
+  | `promotion: "required"` taken away | governance (counts as authority added: a run of `read_only` or `live` may start without the owner's signature) | `- promotion: required (a run of read_only or live needs no promotion)` |
+  | `promotion: "required"` added | behavior | `+ promotion: required (a run of read_only or live needs a promotion)` |
+
+  A change of a workflow's `owner` is the governance change `owner_changed`
+  ([`views.md`](views.md)), and a library version that makes one needs a
+  major version (E1607, `changes_owner`).
 
 ## `std.patterns` 2.0.0
 
@@ -640,25 +691,114 @@ The compiler embeds two versions of `std.patterns`:
 ```
 
 That is `BatchWithExceptions` 2.0.0's body. `FanOutMerge` 2.0.0 gains the
-stages `work` and `merge`, and `MakerChecker` 2.0.0 the stages `make` and
-`check`; neither has a report.
+stages `work` ("Work on each part", before its map) and `merge` ("Merge the
+results", before its merge), and `MakerChecker` 2.0.0 the stages `make`
+("Make the result") and `check` ("Check the result", before the check and
+its verification); neither has a report. The type parameters, slots, run
+parameters and results of the three, and the type `Batch`, are 1.0.0's, a
+test holds byte for byte (`crates/mandate-check/tests/patterns_0_7.rs`); so
+are their bodies with the stages and reports taken away. A test holds the
+digest of each version as a literal: 1.0.0's is the one every lock of 0.6 in
+the repository pins.
 
 - **Which version.** The version the lock pins. Without a pin, 2.0.0 for a
-  0.7 program and 1.0.0 for a 0.6 one. `mandate add std.patterns` pins the
-  newest embedded version whose language is not newer than the program's.
+  0.7 program and 1.0.0 for a 0.6 one. One function of the compiler chooses
+  (`std_patterns_for`, from the program's language and the pinned version),
+  and every place that reaches the built-in goes through it: the check, the
+  views, the card, a sub-program's and an amendment's check, and `add`,
+  `upgrade` and `publish`. A pin of a version the compiler does not embed,
+  or of another digest, is refused as before (E1605, `version_differs` or
+  `digest_differs`, against the version of the program's language). A 0.7
+  program whose lock pins 1.0.0 reads 1.0.0 (a module of 0.6 is read by 0.7),
+  and its expansion has no stage. A check given a module named
+  `std.patterns` that is one of the embedded versions' (by its program hash)
+  reads that version when its lock pins none: the given module stands for a
+  pin, so that a caller that holds the version a check read (a sub-program's
+  parent's, a relabelled program's) can hand it on; any other module of that
+  name is compared with the built-in as before (E1605, `given_differs`).
+- **Doors given no lock (`std_patterns`).** Every door that reads
+  `std.patterns` and is given no lock takes one optional input,
+  `std_patterns`, a version such as `"1.0.0"`: the version the lock of the
+  program (or of a sub-program's parent) pins. They are the checks of a
+  sub-program and of an amendment (`i.std_patterns`), `subprogram_linked`,
+  `attention_facts` (`opts.std_patterns`), the views `architecture`,
+  `authority` and `cost`, `program_doc`, `semantic_diff` and `diff_doc`. It
+  is read by `std_patterns_for` alone. A version the compiler does not embed,
+  or one that is not a version, is refused by the door (`bad_input`: `"3.0.0"
+  is not a version of std.patterns this compiler embeds (1.0.0, 2.0.0): a pin
+  of std.patterns is one of them`), never read as the default. A door given a
+  lock reads the lock's pin, and refuses a `std_patterns` that names another
+  (`the lock pins std.patterns 1.0.0, and std_patterns names 2.0.0: give the
+  one the lock pins, or none`). Without it, a door answers as before: the
+  version of the program's language, or the lock's pin where it is given a
+  lock (the views and the diff now read it too, as the card did). What a
+  document says it was generated from does not change with it. The runtime
+  hands the pin of the package's own lock to the check and the facts of a
+  lead's sub-program of a 0.7 package, so that what runs and what is shown is
+  the version the lock pins.
+- **`mandate add`.** `mandate add std.patterns` pins the newest embedded
+  version whose language is not newer than the program's, and for a 0.7
+  program writes a lock of format `mandate/lock/0.7` (a new lock, or an
+  older one lifted to 0.7, whose fields are those of 0.6 and two more it
+  need not have). The program is the one `--program FILE` names (`add` and
+  `upgrade`, in both executables; a program that does not load is reported
+  against its file, exit status 1); without it the program is taken to be
+  of 0.6, and `add` writes exactly what it wrote before 0.7. The door takes
+  it as `language` (`mandate/0.7`). A range can still pin 1.0.0 for a 0.7
+  program (`std.patterns@^1.0`); for a 0.6 one, `^2.0` finds nothing
+  (E1606, `no_version`).
 - **A newer module (E1609).** A program of 0.6 or later that imports a
   module, or whose lock pins a library, of a language newer than its own is
   E1609: a 0.6 program cannot read 2.0.0, and a 0.6 program's lock that pins
-  it is refused. A program of 0.1 to 0.5 that imports a 0.6 or a 0.7 module
-  stays E1603.
+  it is refused. A library's language is the newest of its modules'. The
+  `use` is refused at `/uses/<i>` (facts `module`, `module_language`,
+  `language`), whatever gave the module (the check's modules, a library, the
+  built-in), and the pin at `/libraries/<name>` (facts `library`, `version`,
+  `library_language`, `language`): a 0.6 program whose lock pins 2.0.0 and
+  imports it has both. A module of a library that imports a module of a
+  newer language does not check (E1601, `module_does_not_check`). A program
+  of 0.1 to 0.5 that imports a 0.6 or a 0.7 module stays E1603. E1609 is a
+  code of 0.7 whose cases are programs of 0.6: no program of 0.7 can meet it.
 - **Reports are governance.** In 0.7 a library's [authority
   signature](library.md#the-authority-signature) records, for each workflow
-  and pattern, the reports it makes: each report's role or role slot and the
-  highest class of its fields. The semantic diff records them too. A report
-  added, or one whose highest class rises, is a governance change: `mandate
+  and pattern of a module of 0.7, the reports it makes: each report's role
+  or role slot, its title, and the highest class of its fields (`reports:
+  [{ role, title, class }]`, in the order of the body; `[]` for one that
+  makes none). The signature of a module of 0.6 records none and does not
+  change by a byte. A report added (by its role and title, or one more of
+  one) or one whose highest class rises widens the signature (`what:
+  "report"`), a governance change by the rule of every widening: `mandate
   upgrade` writes it into the lock only with `--accept-governance`, and
   `mandate publish` refuses it in a version that is not a major one (E1607).
-  What a person is shown is part of what they approved.
+  A report taken away, or one whose class falls, is not. A report addressed
+  to another role slot is another report: one added. What a person is shown
+  is part of what they approved.
+- **A class that depends on the application.** A workflow's field is typed
+  by the static checks, as the attention facts are, and its class is its
+  value's. A pattern is not typed on its own: what a field holds comes from
+  what the application binds (`len(items)` keeps the class of what it
+  counts, and `items` is what the application's `source` gives, of
+  `List<Item>`), so its class is known only in each workflow's expansion.
+  The signature of a pattern records a field that names anything (a slot, a
+  run parameter, a name a statement bound, a constant) as `applied`, "what
+  the application binds", which ranks above every data class, and a field
+  of literals alone as `public`, a literal's class. This is conservative (a
+  field records the most it could show, so no application can make it rise
+  unseen), deterministic (it reads the field's expression, not a typing of
+  some application) and readable ("shows what the application binds" in the
+  diff). A pattern whose body changed has another shape too, a widening of
+  its own. A workflow's field the typing does not reach is recorded
+  `applied` as well: what is not known is never read as low. Both
+  `BatchWithExceptions` 2.0.0 reports record `{ role: "reviewer", class:
+  "applied" }`; a workflow that applies it records the bound role and the
+  class of its expansion (`accountant`, `confidential` in the invoice flow).
+- **The semantic diff.** The diff of two programs of 0.7 records, for a
+  workflow written out in both, what its reports show, by the same record
+  and comparison: a report added or raised is the governance change
+  `report_widened` ([`views.md`](views.md)), one taken away or lowered a
+  behavior change. A workflow that applies a pattern changes by its
+  application (`application_changed`), and a new workflow by its
+  capabilities, as before.
 
 ## Run time
 
@@ -1060,6 +1200,9 @@ tools:
 - `check` takes `libraries`, and finds the embedded `std.patterns` by
   default;
 - `project` offers the card and the attention view, and takes `lock` and `libraries`;
+- `caps_of` takes `lock` and `libraries`, as `check` takes them, so that
+  the authority of a program that applies a pattern of a pinned library can
+  be read;
 - `spec` takes two more values of its existing `section` parameter,
   `patterns` and `attention`;
 - the tool list of 0.7 is data from one door of the Rust compiler,

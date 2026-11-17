@@ -624,3 +624,260 @@ fn the_typing_leaves_each_report_field_s_role_and_each_question_s() {
     assert_eq!(q.role.as_deref(), Some("accountant"));
     assert_eq!(q.kind.as_str(), "ask");
 }
+
+/// What the diff of the fixture with itself gives with `before` and
+/// `after` as its locks: its governance lines, its behavior lines, and
+/// whether it says no authority was added.
+fn lock_changes(before: &Value, after: &Value) -> (Vec<String>, Vec<String>, bool) {
+    let p = load(&text(), SourceKind::Mdt).program.unwrap();
+    let d = mandate_check::semantic_diff(
+        &p,
+        &p,
+        Some(mandate_check::Locks {
+            before: Some(before),
+            after: Some(after),
+        }),
+    );
+    let lines = |c: &[mandate_check::Change]| {
+        c.iter()
+            .map(|c| format!("{} {}", c.path, c.text))
+            .collect::<Vec<_>>()
+    };
+    (
+        lines(&d.governance),
+        lines(&d.behavior),
+        d.unchanged.iter().any(|u| u == "no authority added"),
+    )
+}
+
+/// The one line of a diff, as text.
+fn line(s: &str) -> Vec<String> {
+    vec![s.to_owned()]
+}
+
+#[test]
+fn the_diff_of_two_locks_reads_their_role_classes_and_promotion() {
+    let l = lock();
+    let classes = |c: &str| lock_with("role_classes", Some(c));
+    let none: Vec<String> = Vec::new();
+    // The same lock: nothing.
+    assert_eq!(lock_changes(&l, &l), (none.clone(), none.clone(), true));
+    // A class raised: governance, and authority added.
+    let raised = classes(r#"{"accountant":"restricted","finance_lead":"confidential"}"#);
+    assert_eq!(
+        lock_changes(&l, &raised),
+        (
+            line(
+                "/role_classes/accountant ~ the data class role accountant may be shown, in effect: confidential → restricted (raised)"
+            ),
+            none.clone(),
+            false
+        )
+    );
+    // Lowered: behavior.
+    assert_eq!(
+        lock_changes(&raised, &l),
+        (
+            none.clone(),
+            line(
+                "/role_classes/accountant ~ the data class role accountant may be shown, in effect: restricted → confidential (lowered)"
+            ),
+            true
+        )
+    );
+    // An entry taken away is read as `internal`: from above it, lowered;
+    // from below it, raised.
+    let without = classes(r#"{"finance_lead":"confidential"}"#);
+    assert_eq!(
+        lock_changes(&l, &without).1,
+        line(
+            "/role_classes/accountant ~ the data class role accountant may be shown, in effect: confidential → internal (lowered)"
+        )
+    );
+    let public = classes(r#"{"accountant":"public","finance_lead":"confidential"}"#);
+    assert_eq!(
+        lock_changes(&public, &without).0,
+        line(
+            "/role_classes/accountant ~ the data class role accountant may be shown, in effect: public → internal (raised)"
+        )
+    );
+    // An entry added below `internal` lowers; one added above raises.
+    assert_eq!(
+        lock_changes(&without, &public).1,
+        line(
+            "/role_classes/accountant ~ the data class role accountant may be shown, in effect: internal → public (lowered)"
+        )
+    );
+    assert_eq!(
+        lock_changes(&without, &l).0,
+        line(
+            "/role_classes/accountant ~ the data class role accountant may be shown, in effect: internal → confidential (raised)"
+        )
+    );
+    // An entry `internal` added or taken away leaves the class in effect as
+    // it was: no change; nor is a whole `role_classes` taken away whose
+    // entries were all `internal`.
+    let internal = classes(r#"{"accountant":"internal","finance_lead":"confidential"}"#);
+    assert_eq!(
+        lock_changes(&without, &internal),
+        (none.clone(), none.clone(), true)
+    );
+    assert_eq!(
+        lock_changes(&internal, &without),
+        (none.clone(), none.clone(), true)
+    );
+    let all_internal = classes(r#"{"accountant":"internal"}"#);
+    assert_eq!(
+        lock_changes(&all_internal, &lock_with("role_classes", None)),
+        (none.clone(), none.clone(), true)
+    );
+    // `promotion` taken away: governance, and authority added (a run may
+    // start without the owner's signature); added: behavior.
+    let no_ladder = lock_with("promotion", None);
+    assert_eq!(
+        lock_changes(&l, &no_ladder),
+        (
+            line(
+                "/promotion - promotion: required (a run of read_only or live needs no promotion)"
+            ),
+            none.clone(),
+            false
+        )
+    );
+    assert_eq!(
+        lock_changes(&no_ladder, &l),
+        (
+            none.clone(),
+            line("/promotion + promotion: required (a run of read_only or live needs a promotion)"),
+            true
+        )
+    );
+    // Both at once, in that order: the classes, then the ladder.
+    let mut both = no_ladder.as_object().cloned().unwrap();
+    both.insert(
+        "role_classes",
+        json(r#"{"accountant":"restricted","finance_lead":"confidential"}"#),
+    );
+    assert_eq!(
+        lock_changes(&l, &Value::Object(both)).0,
+        [
+            "/role_classes/accountant ~ the data class role accountant may be shown, in effect: confidential → restricted (raised)",
+            "/promotion - promotion: required (a run of read_only or live needs no promotion)"
+        ]
+    );
+}
+
+/// `l` as a lock of 0.7 with the accountant `confidential` and the ladder.
+fn as_lock_0_7(l: &Value) -> Value {
+    let mut m = l.as_object().cloned().unwrap();
+    m.insert("lock", "mandate/lock/0.7");
+    m.insert("role_classes", json(r#"{"accountant":"confidential"}"#));
+    m.insert("promotion", "required");
+    Value::Object(m)
+}
+
+#[test]
+fn the_diff_of_two_older_locks_is_what_it_was() {
+    // Two locks of 0.6 that differ in what 0.6 has: what they ask of the
+    // host, and nothing of 0.7.
+    let older = |extra: &str| {
+        json(&format!(
+            r#"{{"lock":"mandate/lock/0.6","modules":{{}},"members":{{"ana":{{"keys":["sha256:{}"]}}}},"roles":{{"accountant":["ana"]}}{extra}}}"#,
+            "6".repeat(64)
+        ))
+    };
+    let none: Vec<String> = Vec::new();
+    let (b, a) = (older(""), older(r#","host":{"node":"22"}"#));
+    assert_eq!(
+        lock_changes(&b, &a),
+        (
+            none.clone(),
+            line("/host/node ~ host.node: no minimum → 22 (raised)"),
+            true
+        )
+    );
+    assert_eq!(
+        lock_changes(&a, &b).0,
+        line("/host/node ~ host.node: 22 → no minimum (lowered)")
+    );
+    assert_eq!(lock_changes(&b, &b), (none.clone(), none, true));
+    // A lock of 0.6 against one of 0.7 that adds the two fields: what they
+    // add, read as from nothing (every role `internal`, no ladder).
+    let (g, beh, _) = lock_changes(&b, &as_lock_0_7(&b));
+    assert_eq!(
+        g,
+        line(
+            "/role_classes/accountant ~ the data class role accountant may be shown, in effect: internal → confidential (raised)"
+        )
+    );
+    assert_eq!(
+        beh,
+        line("/promotion + promotion: required (a run of read_only or live needs a promotion)")
+    );
+}
+
+#[test]
+fn an_application_with_an_envelope_is_told_it_has_one_not_that_its_owner_does() {
+    let t = text().replace(
+        "  owner   finance_lead\n  caps    ModelStd\n  budget  { time: 10m, steps: 6 }",
+        "  owner   finance_lead\n  envelope {\n    owner  finance_lead\n    caps   ModelStd\n    budget { steps: 6, agents: 1 }\n  }",
+    );
+    assert_ne!(t, text());
+    let r = checked(&t, None);
+    assert_eq!(found(&r), ["MDT-E1307 at /defs/Check/envelope"]);
+}
+
+#[test]
+fn a_diagnostic_at_the_owner_points_at_the_role_s_name() {
+    let t = text().replace("owner   accountant", "owner   acountant");
+    let r = checked(&t, None);
+    let d = r
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "MDT-E1501")
+        .unwrap();
+    let span = d.at.span.unwrap();
+    let line = t
+        .lines()
+        .position(|l| l.contains("owner   acountant"))
+        .unwrap();
+    let line = line + 1;
+    assert_eq!((span.start_line, span.end_line), (line, line));
+    assert_eq!((span.start_col, span.end_col), (11, 20));
+    // The source map has it at the owner's pointer; an envelope's owner
+    // keeps the envelope's span, as before.
+    let l = load(&text(), SourceKind::Mdt);
+    assert!(l.spans.contains_key("/defs/Describe/owner"));
+    assert!(l.spans.contains_key("/defs/Check/owner"));
+    let e = load(ENVELOPED, SourceKind::Mdt);
+    assert!(!e.spans.contains_key("/defs/W/envelope/owner"));
+    assert!(e.spans.contains_key("/defs/W/envelope"));
+}
+
+/// An owner names a role outside every scope (`/defs/<W>/owner` is no
+/// expression, and a run reads it from the definition, never from the
+/// body): a parameter or a binding of the role's name does not stand in its
+/// place, so neither is refused, unlike a question's `role:` (E1501 with
+/// `shadowed_by`).
+#[test]
+fn nothing_a_workflow_binds_stands_in_for_its_owner() {
+    let t = text()
+        .replace(
+            "workflow Describe(name: Text) -> Inferred<Text>",
+            "workflow Describe(name: Text, accountant: Text) -> Inferred<Text>",
+        )
+        .replace(
+            "  let line = delegate Writer.write(Item { name })",
+            "  let finance_lead = name\n  let line = delegate Writer.write(Item { name })",
+        );
+    let r = checked(&t, Some(&lock()));
+    assert_eq!(found(&r), Vec::<String>::new(), "{t}");
+    let p = r.program.as_ref().unwrap();
+    assert_eq!(
+        p.get("defs")
+            .and_then(|d| d.get("Describe"))
+            .and_then(|d| d.get("owner"))
+            .and_then(Value::as_str),
+        Some("accountant")
+    );
+}

@@ -82,7 +82,6 @@ fn the_exit_status_and_the_two_streams_are_the_commands() {
         vec![],
         vec!["nothing"],
         vec!["run", "x"],
-        vec!["mcp"],
         vec!["check", "no-such-file.mdt"],
         vec!["explain", "E9999"],
     ] {

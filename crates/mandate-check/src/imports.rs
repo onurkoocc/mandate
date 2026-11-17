@@ -25,6 +25,14 @@
 //! E1603, for a module of 0.6 given to its check, which no stored result of
 //! such a program has (no TypeScript loads a module of 0.6).
 //!
+//! **A newer module (0.7, E1609).** A program of 0.6 or later that imports
+//! a module written in a newer language than its own (a program of 0.6 and
+//! a module of 0.7: one given to the check, one of a library, or the
+//! built-in `std.patterns` 2.0.0 that its lock pins) is E1609 at the `use`;
+//! a lock that pins such a library is E1609 at the pin too
+//! (`crate::library`). A program of 0.1 to 0.5 keeps E1603 for any module
+//! of 0.6 or later.
+//!
 //! **What a check knows.** [`KnownModules`] is the one answer to "is this
 //! module known to this check". It knows `std` itself and `std.decision`
 //! (the standard library the compiler describes), the modules the check
@@ -231,6 +239,16 @@ pub fn import_checks_known(
             ));
             continue;
         }
+        // 0.7: a module written in a language newer than the program's
+        // (E1609), whether it was given to the check or is a library's, the
+        // built-in std.patterns among them.
+        if let (Some(m), Some(language)) = (given, language)
+            && let Some(module_language) = m.get("language").and_then(Language::from_value)
+            && !language.at_least(module_language)
+        {
+            out.push(newer_module(program, module, module_language, &path, spans));
+            continue;
+        }
         let Some(m) = given.filter(|_| own != Some(module)) else {
             continue;
         };
@@ -242,6 +260,37 @@ pub fn import_checks_known(
         }
     }
     out
+}
+
+/// The E1609 of a program of 0.6 or later that imports `module`, written in
+/// `module_language`, a newer language than its own, at `path`
+/// (spec/attention.md "A newer module (E1609)").
+fn newer_module(
+    program: Program<'_>,
+    module: &str,
+    module_language: Language,
+    path: &str,
+    spans: Option<&Spans>,
+) -> Diagnostic {
+    let language = program
+        .members()
+        .get("language")
+        .and_then(Value::as_str)
+        .unwrap_or("mandate/0.1");
+    let ml = module_language.as_str();
+    Diagnostic::new(
+        "E1609",
+        format!(
+            "Module {module} is written in {ml}, a newer language than this program's, {language}, which cannot read it. Import a version of it written in {language} or earlier, or write the program in {ml} or later."
+        ),
+        Location::path_span(path, nearest_span(spans, path)),
+        Some(
+            JsObject::new()
+                .with("module", module)
+                .with("module_language", ml)
+                .with("language", language),
+        ),
+    )
 }
 
 /// The E1603 of a program of 0.1 to 0.5 that imports `module`, of

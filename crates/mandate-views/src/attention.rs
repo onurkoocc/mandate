@@ -25,7 +25,7 @@
 //!   "workflow": "W",
 //!   "stages": [ { "name", "title" } ],
 //!   "lock": true,
-//!   "bound": { "total", "asks", "declared", "unbounded_because", "leaves_out_plans", "text" },
+//!   "bound": { "total", "asks", "left", "declared", "unbounded_because", "leaves_out_plans", "text" },
 //!   "owner": { "role", "members", "from", "promotion", "text" } | null,
 //!   "configuration": "…",
 //!   "uncounted_effects": [ { "effect", "at_most" } ],
@@ -104,6 +104,9 @@ pub struct ViewBound {
     /// Whether the workflow has a `plan`, whose lead's sub-programs and
     /// amendment requests the total leaves out.
     pub leaves_out_plans: bool,
+    /// What is left of the declared `asks` after the workflow's own steps:
+    /// `asks` less the total, for a finite total under a declared `asks`.
+    pub left: Option<u64>,
     /// The bound as a sentence.
     pub text: String,
 }
@@ -345,7 +348,9 @@ pub fn if_no_answer(on: &OnNoAnswer) -> String {
             ),
             None => format!("It goes to {to}, who has no deadline of their own"),
         },
-        OnNoAnswer::Declined => "Every open item is declined, by nobody".to_owned(),
+        OnNoAnswer::Declined => {
+            "Every open item is declined, by nobody, and the run goes on with the items that were accepted".to_owned()
+        }
         OnNoAnswer::RefusedToLead => "The request is refused to the lead".to_owned(),
     }
 }
@@ -681,17 +686,31 @@ fn bound_of(facts: &AttentionFacts, because: Vec<String>) -> ViewBound {
     let b = &facts.bound;
     let total = b.asks.total;
     let plans = !b.plans.is_empty();
+    let left = match (b.declared, total) {
+        (Some(n), Count::Finite(t)) => Some(u64::try_from(n).unwrap_or(0).saturating_sub(t)),
+        _ => None,
+    };
     let text = match (b.declared, total) {
-        (Some(n), Count::Finite(t)) => {
-            let leave = if plans {
-                ", not counting what the lead's sub-programs and amendment requests ask, which comes out of what is left of asks"
-            } else {
-                ""
+        (Some(n), Count::Finite(t)) if plans => {
+            // `asks` bounds everything: the workflow's own steps are
+            // reserved first, and what is left is what the lead's
+            // sub-programs and amendment requests can use.
+            let left = left.unwrap_or(0);
+            let rest = match left {
+                0 => "which leaves nothing: a sub-program that asks, and a request to amend the envelope, are refused".to_owned(),
+                1 => "what the lead's sub-programs and amendment requests ask comes out of the 1 that is left".to_owned(),
+                k => format!(
+                    "what the lead's sub-programs and amendment requests ask comes out of the {k} that are left"
+                ),
             };
+            let sep = if left == 0 { ", " } else { "; " };
             format!(
-                "At most {} in all (asks: {n}){leave}.",
-                plural(t, "question")
+                "At most {} in all (asks: {n}). Its own steps ask at most {t}{sep}{rest}.",
+                plural(u64::try_from(n).unwrap_or(0), "question")
             )
+        }
+        (Some(n), Count::Finite(t)) => {
+            format!("At most {} in all (asks: {n}).", plural(t, "question"))
         }
         (Some(n), Count::Unbounded) => format!(
             "The questions are unbounded{} although asks is {n}.",
@@ -719,6 +738,7 @@ fn bound_of(facts: &AttentionFacts, because: Vec<String>) -> ViewBound {
         asks: b.declared,
         unbounded_because: because,
         leaves_out_plans: plans,
+        left,
         text,
     }
 }
@@ -847,6 +867,12 @@ impl AttentionView {
                 "asks",
                 self.bound
                     .asks
+                    .map_or(JsValue::Null, |n| JsValue::Number(n as f64)),
+            )
+            .with(
+                "left",
+                self.bound
+                    .left
                     .map_or(JsValue::Null, |n| JsValue::Number(n as f64)),
             )
             .with("declared", self.bound.asks.is_some())

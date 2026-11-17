@@ -5,8 +5,10 @@
 //! of it and signs its promotions, for a workflow without an envelope; a
 //! workflow with an envelope has its envelope's `owner` in that place. So:
 //!
-//! - [`owner_checks`]: an `owner` on a workflow that has an envelope is
-//!   E1910 at the `owner` (`problem: "with_envelope"`), whatever the lock;
+//! - [`owner_checks`]: an `owner` on a workflow written out that has an
+//!   envelope is E1910 at the `owner` (`problem: "with_envelope"`), whatever
+//!   the lock; a workflow that applies a pattern may have no envelope at all,
+//!   and is told so (E1307), not this;
 //! - [`promotion_checks`]: with a lock whose `promotion` is `"required"`, a
 //!   workflow of the program's own with neither an `owner` nor an envelope
 //!   is E1910 at the workflow (`problem: "no_owner"`): nobody could promote
@@ -56,7 +58,10 @@ pub fn owner_checks(program: Program<'_>, spans: Option<&Spans>) -> Vec<Diagnost
         let Some(owner) = d.value().get("owner") else {
             continue;
         };
-        if !has_envelope(d) {
+        // A workflow that applies a pattern may have no envelope at all
+        // (E1307, at the envelope): that is what it is told, not that its
+        // owner has the envelope's place.
+        if !has_envelope(d) || d.value().get("apply").is_some() {
             continue;
         }
         let path = format!("{}/owner", ptr(&[&"defs", &name]));

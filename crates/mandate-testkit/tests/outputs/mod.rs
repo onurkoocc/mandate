@@ -117,12 +117,26 @@ pub fn checked_text(
     with_modules: bool,
     with_lock: bool,
 ) -> Result<CheckResult, String> {
+    checked_text_more(program, text, with_modules, with_lock, None)
+}
+
+/// [`checked_text`] with `more` given besides the program's modules, with
+/// or without them: what a relabelled program is given
+/// ([`crate::common::relabelled_modules`]).
+pub fn checked_text_more(
+    program: &str,
+    text: &str,
+    with_modules: bool,
+    with_lock: bool,
+    more: Option<&mandate_check::Modules>,
+) -> Result<CheckResult, String> {
     let files = module_files_of(program);
     let modules = if with_modules {
         Some(modules_of(&files, &files)?)
     } else {
         None
     };
+    let modules = crate::common::with_more(modules.as_ref(), more).or(modules);
     let lock = if with_lock {
         Some(lock_file_of(program).ok_or("the program has no lock")?)
     } else {
@@ -170,14 +184,35 @@ pub fn outputs_of(program: &str) -> Result<Vec<(String, String)>, String> {
 ///
 /// As [`outputs_of`].
 pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)>, String> {
+    outputs_of_text_more(program, text, None)
+}
+
+/// [`outputs_of_text`] of a program of 0.6 relabelled 0.7: its checks and
+/// those of its sub-programs given what
+/// [`crate::common::relabelled_modules`] says a relabelled program is
+/// given, its views what they were given.
+///
+/// # Errors
+///
+/// As [`outputs_of`].
+pub fn outputs_of_relabelled(program: &str, text: &str) -> Result<Vec<(String, String)>, String> {
+    let more = crate::common::relabelled_modules(text, kind_of(program), &library_dirs_of(program));
+    outputs_of_text_more(program, text, more.as_ref())
+}
+
+fn outputs_of_text_more(
+    program: &str,
+    text: &str,
+    more: Option<&mandate_check::Modules>,
+) -> Result<Vec<(String, String)>, String> {
     let mut out: Vec<(String, String)> = Vec::new();
     let lock_path = lock_file_of(program);
-    let plain = checked_text(program, text, false, false)?;
+    let plain = checked_text_more(program, text, false, false, more)?;
     out.push(("check".to_owned(), check_text(&plain)));
-    let linked = checked_text(program, text, true, false)?;
+    let linked = checked_text_more(program, text, true, false, more)?;
     out.push(("check --module".to_owned(), check_text(&linked)));
     let with_lock = match lock_path {
-        Some(_) => Some(checked_text(program, text, true, true)?),
+        Some(_) => Some(checked_text_more(program, text, true, true, more)?),
         None => None,
     };
     if let Some(r) = &with_lock {
@@ -223,18 +258,20 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
         // A program of 0.7 has its attention view in the document; the check
         // that makes it is given the program's own modules and libraries.
         let own_modules = modules_of(&files, &files)?;
+        let own_modules = crate::common::with_more(Some(&own_modules), more).unwrap_or(own_modules);
         let libraries = crate::common::libraries_of(&library_dirs_of(program))?;
         let check_with = CheckOptions {
             modules: Some(&own_modules),
             libraries: (!libraries.is_empty()).then_some(libraries.as_slice()),
             ..CheckOptions::default()
         };
-        let doc = program_doc_given(p, lock.as_ref(), Some(&modules), &check_with);
+        let doc = program_doc_given(p, lock.as_ref(), Some(&modules), None, &check_with);
         out.push(("view --format md".to_owned(), to_markdown(&doc)));
         out.push(("view --format html".to_owned(), to_html(&doc)));
         // 0.7: `view --attention --format json|md|html`: the attention view
-        // of each workflow, as `mandate view` writes it (one workflow: its
-        // view; several: one document, one object).
+        // of each workflow, as `mandate view` writes it (the JSON: one object
+        // with every workflow; the text: the document of the one workflow, or
+        // of all of them).
         if has_attention(p) && !workflow_names(p).is_empty() {
             let opts = CheckOptions {
                 lock: lock.as_ref(),
@@ -247,19 +284,18 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
                         .ok_or_else(|| format!("{program}: {name} has no attention view"))?,
                 );
             }
-            let (json, md, html) = match views.as_slice() {
+            let first = views
+                .first()
+                .ok_or_else(|| format!("{program}: no workflow has an attention view"))?;
+            let json = attention_views_js(&first.program, &views);
+            let (md, html) = match views.as_slice() {
                 [only] => (
-                    only.to_js(),
                     to_markdown(&attention_doc(only)),
                     to_html(&attention_doc(only)),
                 ),
                 all => {
                     let doc = attention_program_doc(all);
-                    let first = all
-                        .first()
-                        .ok_or_else(|| format!("{program}: no workflow has an attention view"))?;
                     (
-                        attention_views_js(&first.program, all),
                         doc.as_ref().map(to_markdown).unwrap_or_default(),
                         doc.as_ref().map(to_html).unwrap_or_default(),
                     )
@@ -302,7 +338,9 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
                 r#"{{"workflow":"{workflow}","number":{number},"defs":{{"file":"{file}","kind":"mdt"}},"room":{{"left":{{"tokens":50000000,"steps":1000,"agents":100,"spend:USD":100000000}},"time_left_ms":18000000}}}}"#
             ).as_bytes())?;
             let case = subprogram_case("fixtures/library", &s, p)?;
-            let r = run_subprogram(&case, p, &modules)?;
+            let given =
+                crate::common::with_more(Some(&modules), more).unwrap_or_else(|| modules.clone());
+            let r = run_subprogram(&case, p, &given)?;
             out.push((format!("check_subprogram {file}"), r.text));
         }
     }

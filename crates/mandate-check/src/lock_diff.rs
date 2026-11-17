@@ -15,7 +15,7 @@ use mandate_ir::{Map, Value, ptr_token, sort_utf16, unique_in_order};
 
 use crate::diff::Change;
 use crate::sandbox::{CoTenancy, IsolationLevel, co_tenancy_for, floor_for};
-use crate::stdlib::DATA_CLASSES;
+use crate::stdlib::{DATA_CLASSES, DataClass};
 use crate::view_shared::js_text;
 
 /// A member of a lock that is an object: `lock?.members`.
@@ -211,7 +211,9 @@ fn least(
 /// requests, added or changed; an isolation floor lowered or taken away; a
 /// sandbox that may now share its host; a least host version lowered or taken
 /// away. The opposite of each is a behavior change.
-/// `lockLimitsDiff(before, after)`.
+/// `lockLimitsDiff(before, after)`; and, after what the TypeScript compares,
+/// the connectors of 0.6 and the role classes and the promotion ladder of
+/// 0.7, which no lock it reads has.
 #[must_use]
 pub fn lock_limits_diff(before: Option<&Value>, after: Option<&Value>) -> LockLimitsDiff {
     let mut out = LockLimitsDiff::default();
@@ -319,7 +321,61 @@ pub fn lock_limits_diff(before: Option<&Value>, after: Option<&Value>) -> LockLi
         }
     }
     connector_changes(&mut out, before, after);
+    attention_changes(&mut out, before, after);
     out
+}
+
+/// 0.7: what changed in the lock's `role_classes` and `promotion`
+/// (spec/attention.md "Lock 0.7"). Each role's class is compared as it is
+/// in effect, its entry or else `internal`: a class raised (an entry added
+/// above `internal`, changed upward, or taken away from below `internal`)
+/// shows the role more data, a governance change, and one lowered is a
+/// behavior change; an entry that leaves the class in effect as it was (an
+/// `internal` added or taken away) is no change. `promotion: "required"`
+/// taken away lets a run of `read_only` or `live` start with nobody's
+/// promotion, a governance change; added, a behavior change. A lock older
+/// than 0.7 has neither, so nothing here applies to it.
+fn attention_changes(out: &mut LockLimitsDiff, before: Option<&Value>, after: Option<&Value>) {
+    let bc = object(before, "role_classes");
+    let ac = object(after, "role_classes");
+    let in_effect = |c: Option<&Map>, role: &str| {
+        text_at(c, role)
+            .and_then(DataClass::from_name)
+            .unwrap_or(DataClass::Internal)
+    };
+    for role in names(bc, ac) {
+        let (was, now) = (in_effect(bc, &role), in_effect(ac, &role));
+        if was == now {
+            continue;
+        }
+        let raised = now > was;
+        let change = Change::new(
+            format!("/role_classes/{}", ptr_token(&role)),
+            format!(
+                "~ the data class role {role} may be shown, in effect: {was} → {now} ({})",
+                if raised { "raised" } else { "lowered" }
+            ),
+        );
+        if raised {
+            out.governance.push(change);
+        } else {
+            out.behavior.push(change);
+        }
+    }
+    let required = |l: Option<&Value>| {
+        l.and_then(|l| l.get("promotion")).and_then(Value::as_str) == Some("required")
+    };
+    match (required(before), required(after)) {
+        (true, false) => out.governance.push(Change::new(
+            "/promotion",
+            "- promotion: required (a run of read_only or live needs no promotion)",
+        )),
+        (false, true) => out.behavior.push(Change::new(
+            "/promotion",
+            "+ promotion: required (a run of read_only or live needs a promotion)",
+        )),
+        _ => {}
+    }
 }
 
 /// 0.6: what changed in the lock's `connectors`, the credential each

@@ -142,7 +142,16 @@ function specText(section: unknown): string {
   if (section === undefined) return text;
   const want = String(section).trim();
   const lines = text.split("\n");
-  const start = lines.findIndex((l) => new RegExp(`^#{2,3} ${want.replace(/\./g, "\\.")}\\.? `).test(l));
+  // The section is matched as the text it is, with no regular expression made of it (the reference compiler's server
+  // makes one, escaping only `.`, so that there `(` is an error, `4+` or `\d` another section, and a section of more
+  // than 32 765 characters too large an expression): a heading of two or three `#`, a space, the section, and then a
+  // space, or a `.` and a space.
+  const heads = (l: string): boolean => {
+    const n = l.match(/^#*/)![0].length;
+    const after = n + 1 + want.length;
+    return (n === 2 || n === 3) && l.startsWith(` ${want}`, n) && (l.startsWith(" ", after) || l.startsWith(". ", after));
+  };
+  const start = lines.findIndex(heads);
   if (start < 0) throw new ToolError(`no section ${want} in the core specification`);
   const depth = lines[start]!.match(/^#+/)![0].length;
   const end = lines.findIndex((l, i) => i > start && /^#+ /.test(l) && l.match(/^#+/)![0].length <= depth);

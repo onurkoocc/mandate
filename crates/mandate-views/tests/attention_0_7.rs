@@ -169,7 +169,7 @@ fn the_invoice_flow_reads_as_the_spec_says() {
     );
     assert_eq!(
         line(&text, "| finance\\_lead | ben "),
-        "| finance\\_lead | ben | up to confidential | Decide on the exceptions, only after the accountant's deadline | The same decision | 1 decision | 1 day from the escalation, which comes at the first tick after the accountant's deadline | Every open item is declined, by nobody |"
+        "| finance\\_lead | ben | up to confidential | Decide on the exceptions, only after the accountant's deadline | The same decision | 1 decision | 1 day from the escalation, which comes at the first tick after the accountant's deadline | Every open item is declined, by nobody, and the run goes on with the items that were accepted |"
     );
     assert!(text.contains("What it tells whom:"));
     assert_eq!(
@@ -217,8 +217,10 @@ fn a_declared_bound_an_owner_and_the_ladder_are_said() {
         text.contains("At most 2 questions in all (asks: 2). Its card is approved, and it is promoted, by accountant (ana)."),
         "{text}"
     );
-    // The finance lead is not in `role_classes`: internal, as the spec says.
-    assert!(line(&text, "| finance\\_lead | ben | up to internal |").contains("1 decision"));
+    assert!(line(&text, "| finance\\_lead | ben | up to confidential |").contains("1 decision"));
+    // The observer is not in `role_classes`: internal, as the spec says.
+    let notify = md(VIEW, "Notify", Some(VIEW_LOCK));
+    assert!(line(&notify, "| observer | cai | up to internal |").contains("Answer a question"));
     assert!(line(&text, "| accountant | ana | up to confidential |").contains("1 decision"));
 }
 
@@ -281,8 +283,20 @@ fn a_plan_without_asks_has_no_bound_and_with_asks_comes_out_of_what_is_left() {
     // Declared: "at most", and the plan's row.
     let text = md(ASKS, "Planning", None);
     assert!(
-        text.contains("At most 5 questions in all (asks: 5), not counting what the lead's sub-programs and amendment requests ask, which comes out of what is left of asks."),
+        text.contains("At most 5 questions in all (asks: 5). Its own steps ask at most 5, which leaves nothing: a sub-program that asks, and a request to amend the envelope, are refused."),
         "{text}"
+    );
+    // With room left: both numbers.
+    let more = read_text(ASKS).unwrap().replace(
+        "budget  { steps: 40, agents: 4, asks: 5 }",
+        "budget  { steps: 40, agents: 4, asks: 7 }",
+    );
+    let v = view_of_text(&more, "Planning", None);
+    assert_eq!(v.bound.left, Some(2));
+    let t = to_markdown(&attention_doc(&v));
+    assert!(
+        t.contains("At most 7 questions in all (asks: 7). Its own steps ask at most 5; what the lead's sub-programs and amendment requests ask comes out of the 2 that are left."),
+        "{t}"
     );
     let row = line(&text, "| platform\\_lead |");
     assert!(row.contains("out of what is left of asks"));
@@ -432,6 +446,7 @@ fn the_structure_has_its_members_in_order() {
         [
             "total",
             "asks",
+            "left",
             "declared",
             "unbounded_because",
             "leaves_out_plans",

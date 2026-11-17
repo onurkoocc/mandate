@@ -21,9 +21,15 @@
 //! (`"library"`), which has no program to relabel, and a case of 0.6 whose
 //! program declares another version (an unknown one, E0103; one of 0.5 that
 //! meets what 0.6 adds), which is no program of 0.6. Each list is printed
-//! and its length held. The rules of 0.7 that every 0.7 program meets
-//! (E1909 with a lock, the version of `std.patterns` it resolves) are not in
-//! the language yet; the slice that adds one adds its rule here. E1509 is, and
+//! and its length held. Of the rules of 0.7 that every 0.7 program meets,
+//! the version of `std.patterns` it resolves is in the language (RL6): a
+//! program of 0.7 without a pin reads 2.0.0, with its stages and reports,
+//! where the same program of 0.6 read 1.0.0. The relabelling of a program
+//! of 0.6 that imports `std.patterns` pins 1.0.0, its faithful translation:
+//! its checks, and the checks of its sub-programs, are given the module of
+//! 1.0.0 (`common::relabelled_modules`, the one helper of the Rust gates
+//! that says so), and both gates print what it touched. E1909 with a lock is
+//! not in the language yet; its slice adds its rule here. E1509 is, and
 //! no program or case of 0.6 above has a criterion it refuses, so none is
 //! left out for it (`crates/mandate-check/tests/reserved_methods.rs` holds
 //! the 0.6 program that has one, clean).
@@ -187,6 +193,7 @@ fn every_0_6_fixture_under_the_0_7_header_gives_what_it_gives_as_0_6() {
     let n = programs.len();
     let mut renamed_total: usize = 0;
     let mut std_patterns: Vec<String> = Vec::new();
+    let mut pinned_1_0_0: Vec<String> = Vec::new();
     let mut problems: Vec<String> = Vec::new();
     let items = programs.iter().map(|p| (p.clone(), p.clone()));
     let gate = run_gate("0.6 fixtures as 0.7", &[], items, |p| {
@@ -196,9 +203,12 @@ fn every_0_6_fixture_under_the_0_7_header_gives_what_it_gives_as_0_6() {
         if text.contains("std.patterns") {
             std_patterns.push(p.clone());
         }
+        if common::relabelled_modules(&rewritten, kind, &outputs::library_dirs_of(p)).is_some() {
+            pinned_1_0_0.push(p.clone());
+        }
         let as_0_6 = outputs::outputs_of(p)?;
         // The attention view is new in 0.7: the old views are compared.
-        let as_0_7 = outputs::without_attention(outputs::outputs_of_text(p, &rewritten)?);
+        let as_0_7 = outputs::without_attention(outputs::outputs_of_relabelled(p, &rewritten)?);
         let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
         if names(&as_0_6) != names(&as_0_7) {
             return Err(format!(
@@ -231,6 +241,11 @@ fn every_0_6_fixture_under_the_0_7_header_gives_what_it_gives_as_0_6() {
         "0.6 fixtures as 0.7: {n} programs, {renamed_total} hashes renamed; {} import std.patterns 1.0.0, a module of 0.6: {}",
         std_patterns.len(),
         std_patterns.join(", ")
+    );
+    println!(
+        "0.6 fixtures as 0.7: {} relabelled with std.patterns 1.0.0 pinned (common::relabelled_modules): {}",
+        pinned_1_0_0.len(),
+        pinned_1_0_0.join(", ")
     );
     assert!(problems.is_empty(), "{}", problems.join("\n"));
     assert!(n >= 10, "only {n} programs of 0.6 among the fixtures");
@@ -267,6 +282,7 @@ fn every_0_6_conformance_case_under_the_0_7_header_gives_what_it_gives_as_0_6() 
     let n = items.len();
     let mut kinds: BTreeMap<String, Kind> = BTreeMap::new();
     let mut by_door: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut pinned_1_0_0: Vec<String> = Vec::new();
     let gate = run_gate("0.6 cases as 0.7", &[], items, |id| {
         let case = read_json(&format!("conformance/{id}/case.json"))?;
         let door = rust_diagnostics::door_of(&case);
@@ -277,13 +293,18 @@ fn every_0_6_conformance_case_under_the_0_7_header_gives_what_it_gives_as_0_6() 
         let as_0_6 =
             rust_diagnostics::result_of_text(id, &case, door, &rust_diagnostics::as_it_is)?
                 .ok_or("no result")?;
-        let Some(as_0_7) = rust_diagnostics::result_of_text(id, &case, door, &as_0_7)? else {
+        let Some((as_0_7, pinned)) =
+            rust_diagnostics::result_of_relabelled(id, &case, door, &as_0_7)?
+        else {
             kinds.insert(id.clone(), Kind::NotOf06);
             return Ok(());
         };
         let text = |v: &JsValue| stringify(v).unwrap_or_default();
         let mut renamed = Renamed::default();
         same_but_relabelled(&text(&as_0_6), &text(&as_0_7), &mut renamed)?;
+        if pinned {
+            pinned_1_0_0.push(id.clone());
+        }
         kinds.insert(id.clone(), Kind::Compared);
         *by_door.entry(door).or_default() += 1;
         Ok(())
@@ -308,6 +329,11 @@ fn every_0_6_conformance_case_under_the_0_7_header_gives_what_it_gives_as_0_6() 
         library.join(", "),
         not_of_0_6.len(),
         not_of_0_6.join(", ")
+    );
+    println!(
+        "0.6 cases as 0.7: {} relabelled with std.patterns 1.0.0 pinned (common::relabelled_modules): {}",
+        pinned_1_0_0.len(),
+        pinned_1_0_0.join(", ")
     );
     assert_eq!(library, LIBRARY_CASES, "the library cases");
     assert_eq!(not_of_0_6, NOT_OF_0_6, "the cases of 0.6 of no 0.6 program");

@@ -101,6 +101,84 @@ which holds what the `explain` door answers for it. The `codes` door gives the
 whole table, so its stored call is compared without these rows (`rust_only`,
 "What they do not reach" below).
 
+## mcp/
+
+What the Node MCP server (`serveStdio` of `bridge/src/mcp.ts`, the server of
+the Node command line's `mandate mcp`) writes on its standard output for each
+of a set of recorded conversations, byte for byte, so that the native server
+(`mandate mcp` of `crates/mandate-cli`, spec/attention.md "The MCP server") is
+held to it. Each file is one conversation, `{ "format":
+"mandate/vectors/mcp/0.1", name, about, args, input, output, tools_list }`:
+
+- `args`: the arguments after `mandate`, the modules the server is started
+  with among them (`--module <file>`, a path from the repository root);
+- `input`: the bytes of standard input as parts, each `{ line }` (a text and a
+  line feed), `{ text }`, `{ hex }` (bytes, for those that are not UTF-8) or `{
+  repeat, count }` (a text that many times, for a line too long to write out);
+- `output`: what the server wrote, one element a line without its line feed;
+  a line longer than 64 KiB is `{ sha256, bytes }`, `sha256:` and the hex
+  SHA-256 of its UTF-8, and its length;
+- `tools_list`: the index of each output line that answers `tools/list`.
+
+They are written by `node scripts/mcp-vectors.mjs` from the built bridge
+(CI runs every `scripts/*-vectors.mjs` and fails when the tree changes) and
+read by `crates/mandate-cli/tests/mcp.rs` (in memory, whole and in reads of
+one byte or 4093) and `crates/mandate-cli/tests/mcp_process.rs` (through the
+executable). The conversations cover both protocol eras, every tool with a
+passing and a failing program of 0.5, 0.6 and 0.7, each view of 0.6, each
+message limit, how lines are split and skipped, what `JSON.parse` and
+`JSON.stringify` do to numbers, names given twice, array-index names and lone
+surrogates, `String` of an object with its own `toString` (which throws), lines
+of long names above many values (`long-names`, answered in time proportional
+to the line), a call's module of a server module's name, and the failures of a
+door in the bridge's words.
+
+The lines of `tools_list` are the one place the two servers differ until slice
+B9 moves the Node server to the door `mcp_tools`: the Node server serves the
+frozen tool list, the native one the list of 0.7. There the native line must be
+the Node line with the list of 0.7 (the door's `tools` for `mandate/0.7`, as it
+writes them) in the place of the frozen list (the door's for `mandate/0.6`),
+which is so only when the Node server's list is the door's frozen list. What
+0.7 adds to the tools (`libraries` of `check`, `project` and `caps_of`, the
+`lock` of `caps_of`, the card, the attention view, the sections `patterns` and
+`attention`, the message for a view that is not one, which names the views of
+0.7, and the version of `std.patterns` the lock pins, which the native
+`project` hands each view it renders and `caps_of` its authority view as
+`std_patterns` (slice RL6: a program of 0.7 whose lock pins 1.0.0 is shown
+with 1.0.0's expansion), which the Node server must match when its slice
+comes) has no Node answer yet and is not here; `tests/mcp.rs` holds it. No
+recorded conversation holds a program of 0.7 that imports `std.patterns`, so
+the pin changes none of them.
+
+The `section` of `mandate.spec` is found as the text it is: the bridge's server
+compares it with each heading, and makes no regular expression of it. The
+reference compiler's server, frozen, makes one and escapes only `.`, so that
+there `(` is an Internal error, `\d` or `4+` another section, and a section of
+more than 32 765 UTF-16 code units an expression too large; `bridge/test/mcp.test.ts`
+holds the bridge's server to the reference compiler's everywhere else, and to
+the text here.
+
+What the native server does not do as the Node server does, stated:
+
+- The Node server runs the compiler in a WebAssembly module with a ceiling of
+  256 MiB of memory: a call that needs more is the Internal error
+  `the Rust compiler failed on <door> (out_of_memory): …`. The native server
+  has no such ceiling, and answers the call. A check of a 1 MB JSON source of
+  500 000 numbers nested 60 deep is one (its table of spans, a pointer for each
+  number, passes the ceiling). It is not among the conversations.
+- The host also stops an answer of more than 64 MiB
+  (`output_too_large`); the native server counts the answer the module would
+  write and fails the same way (`tools.rs`, `answer_cap`), but no call is known
+  that reaches 64 MiB of answer before 256 MiB of memory.
+- A native stack overflow or allocation failure ends the process, where the
+  module's is the Internal error `stack_exhausted` or `out_of_memory`; a panic
+  of a door is caught and answered as the module's trap, and says nothing on
+  standard error (a panic of the server's own code is not caught, and says
+  where it is).
+- No conversation holds a real panic of a door or an answer of more than 64
+  MiB: no call is known that makes either. Their answers are held by the unit
+  tests of `crates/mandate-cli/src/mcp/` alone.
+
 ## authority/
 
 `authority/cases.json` is `{ "format": "mandate/vectors/authority/0.1",
@@ -1194,7 +1272,7 @@ held by what a person writes and by what the Rust writes:
   `diagnostic-vectors.test.ts`, `diff-vectors.test.ts`) skip them, and each checks
   that what it skipped is exactly the directories whose `case.json` names 0.6, read
   as plain JSON, and that there are `RUST_ONLY_CASES` of them
-  (`compiler/test/cases-runner.ts`, 343 today, of 0.6 and 0.7): a case of 0.6 added or taken away
+  (`compiler/test/cases-runner.ts`, 388 today, of 0.6 and 0.7): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
   version, `mandate/0.8`, E0103, whose list has 0.6 and 0.7), `E0140` (a 0.5 lock that carries `libraries`),
@@ -1254,26 +1332,29 @@ same way, by gates of its own beside those of 0.6:
 - **Conformance cases of 0.7**, `"language": "mandate/0.7"`, written by hand and
   skipped and counted by the TypeScript runners as those of 0.6 are
   (`RUST_ONLY_LANGUAGES` is `mandate/0.6` and `mandate/0.7`, and `RUST_ONLY_CASES`
-  counts both, 374 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
+  counts both, 388 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
   unknown field of a 0.7 program, E0104), `S02k` and `S02l` (a 0.7 program with a lock
   of format 0.6, and of 0.7), `E0140d` (an unknown field of a 0.7 lock, E0140), `E1509` to `E1509b`
   (slice RL7), the stages (slice RL2): `A01` to `A01b`, `E0101h`, `E0104h` to `E0104j`, `E1901` to
   `E1901b` and `E1902` to `E1902g`, and the reports (slice RL3): `A02` to `A02b`, `A03`, `E0101i`,
   `E0104k` to `E0104o`, `E0121g`, `E1501b`, `E1502a`, `E1705b`, `E1705c`, `E1903` to `E1903e`, `E1904`
-  to `E1904v` and `E1905` to `E1905g`, and the attention bound (slice RL4): `E1906` to `E1906p`,
-  `E1907`, `E1907a`, `E1908` to `E1908e`, `E1706c` to `E1706e` and `E1709e` to `E1709g`, and the
-  owner and the lock of 0.7 (slice RL5): `A04`, `E1910` to `E1910b`, `E1911`, `E1911a`, `E1705d`,
-  `E1501c`, `E1502b` and `E0140e` to `E0140h`
+  to `E1904v` and `E1905` to `E1905g`, `std.patterns` 2.0.0 (slice RL6): `E1609` to `E1609c`,
+  `E1603b` and `L10` to `L10e`, the attention bound (slice RL4): `E1906` to `E1906p`,
+  `E1907` to `E1907b`, `E1908` to `E1908e`, `E1706c` to `E1706e`, `E1709e` to `E1709g`, `E1501c` and `S04b`,
+  and the owner and the lock of 0.7 (slice RL5): `A04`, `E1910` to `E1910b`, `E1911`, `E1911a`, `E1705d`,
+  `E1501d`, `E1502b`, `E0140e` to `E0140h`, `E1307f`, `L11` and `L11a`
   (`conformance/README.md`, "Cases of 0.7").
-- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (seven today,
-  `asks.mdt`, `minimal.mdt`, `owner.mdt` (with its lock of 0.7), `reports.mdt`, `shapes.mdt`, `stages.mdt` and `view.mdt` (with its lock), 106 outputs), the digest of each output text, made
+- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (ten today,
+  `asks.mdt`, `minimal.mdt`, `owner.mdt` (with its lock of 0.7, which gives role classes and asks for the
+  promotion ladder), `reports.mdt`, `shapes.mdt`, `stages.mdt`, `view.mdt` (with its lock), and `batch.mdt`, `fan-out.mdt` and `maker-checker.mdt`,
+  which apply the patterns of `std.patterns` 2.0.0 with their locks; 160 outputs), the digest of each output text, made
   by the code of `golden/0.6.json` (`crates/mandate-testkit/tests/golden_0_7.rs`).
 - **`diagnostics-0.7/`**: the whole result of every compile case of 0.7 and of the
   checks and `load` of every 0.7 program, in the layout of `diagnostics-0.6/`
   (`crates/mandate-testkit/tests/diagnostics_0_7.rs`; the code is shared with
   `diagnostics_0_6.rs`, `tests/rust_diagnostics/`).
 - **`attention-0.7/facts.json`**: the attention facts of every workflow of every 0.7
-  program of `fixtures/attention/` (19 workflows today), and of a sub-program, as the door `attention_facts`
+  program of `fixtures/attention/` (22 workflows today), and of a sub-program, as the door `attention_facts`
   gives them with the program's modules, `{ "<program>": { "<workflow>": <facts> } }`
   (`crates/mandate-testkit/tests/attention_0_7.rs`, which also holds the door to the
   function, `mandate_check::attention_facts`). Their shape is below ("The attention facts").
@@ -1283,10 +1364,23 @@ same way, by gates of its own beside those of 0.6:
   `mandate-views`, `RUST_DOORS`) gives it with the program's modules and its lock (the
   `<name>.lock.json` beside it), `{ "<program>": { "<workflow>": { "json", "md", "html" } } }`
   (`crates/mandate-testkit/tests/attention_view_0_7.rs`). **What the Node server must match
-  (slice B9):** `view --attention` and the MCP `project` tool with `view: "attention"` give
-  these three texts for one workflow, and the golden digests of `golden/0.7.json`
-  (`view --attention --format json|md|html`, which for a program with several workflows is
-  one object `{ format, kind, program, workflows }` or one document) for the command.
+  (slice B9):**
+  - the command `view <program> --attention --workflow W --format json|md|html` gives these
+    texts for that workflow (the JSON as the door gives it, pretty-printed; the Markdown and the
+    HTML are the document `# Attention: W`);
+  - without `--workflow`, the JSON is one object `{ format, kind, program, workflows: [view] }`
+    (also for a program of one workflow), and the Markdown and the HTML are one document, the
+    program's title and a `## Attention: W` heading for each workflow (for a program of one
+    workflow, the document of that workflow); the digests of these are in `golden/0.7.json`
+    (`view --attention --format json|md|html`);
+  - the MCP `project` tool with `view: "attention"` answers in JSON, as the other views of
+    `project` do (the content text is the view pretty-printed): with `workflow` the view of
+    that workflow (`"<w> is not a workflow of this program"` for another name), without it the
+    object of every workflow, the very text the command prints with `--format json`; it takes
+    `lock` and `libraries` (the lock's `std.patterns` pin is read) and answers a program
+    before 0.7 with `"view attention is of a program of language 0.7 or later"`. No stored
+    conversation of `mcp/` asks for this view (the Node server has none until B9), so none
+    changed; `crates/mandate-cli/tests/mcp.rs` holds the native answer to the command's output.
 
 The four are written by the Rust with `MANDATE_UPDATE_0_7=1` (passed on by
 `scripts/wasi-test.mjs`) and compared on every other run. Beside them,
@@ -1298,8 +1392,8 @@ program of another version), with the whole result of its door; only the version
 text may differ, and the hashes, each only as a renaming. It also checks that every
 code 0.7 adds (`CODES_0_7`: E1509, E1901 to E1908) has a case of 0.7 that expects it.
 `crates/mandate-testkit/tests/asks_0_7.rs` holds the attention bound on generated
-programs (240 programs, 843 counts): a body of the constructs of the table of sites,
-`if`, `loop max_iter n`, `par` and calls, against the generator's own count, role by
+programs (240 programs, 908 counts): a body of the constructs of the table of sites,
+`if`, `switch`, `loop max_iter n`, `par` (`restart_all` nested through calls), `on error`, a contract's `require`, a map's body and calls, against the generator's own count, role by
 role; the body in a loop of k rounds is k times it, an `if` of two bodies the larger,
 a body moved into a function called twice twice it.
 `crates/mandate-testkit/tests/stages_0_7.rs` checks that a stage changes nothing but
@@ -1427,10 +1521,11 @@ second review row and the governance row shortened):
 }
 ```
 
-- `questions`: one row for each place and stage a run can ask, in the order of a
-  depth-first walk; a site of a function or a contract is at its own path in the
-  definition (`/defs/f/body/…`, `/defs/C/require/…`), once, with the times every call of
-  it can reach it in all and the stage of the call. `kind` is one of a **closed list**,
+- `questions`: one row for each place a run can ask, in the order of a depth-first
+  walk; a site of a function or a contract is at its own path in the definition
+  (`/defs/f/body/…`, `/defs/C/require/…`), once, with the times every call of it can
+  reach it in all, the stage of its calls when they all stand in one (else `null`), and
+  the highest class and the weakest level of every call. `kind` is one of a **closed list**,
   one name for each row of the table of sites, which the runtime tags every wait it
   opens with: `verify` (a `human.approve` of a criterion, `accept` or `invariant`, of the
   contract a `verify` checks against), `ask` (`human.ask`), `escalate`, `pause` (without
@@ -1442,14 +1537,21 @@ second review row and the governance row shortened):
   member but a connector's write tool and a batch commit step, marked `only:
   "governance_file"`, since only the action's `prepare` says which files it carries),
   `review` (and its escalation, `only: "on_escalation"`), `plan` (a lead's amendment
-  request, in `plans`). `wait` is the path the runtime gives the wait without the
-  iterations it adds (`@i`, `#allN`, `[i]`): the construct's, or with the part the
-  runtime adds (`/contract/<group>/<criterion>[/all/i]/call`, `/authorize`,
-  `/governance`, `/escalate` after a delegation's attempt `#k`). `role` the role asked,
-  or `null`; `shown` the highest data class of what it shows (the contract's arguments,
-  the question's text, the review's map outcomes, the effect's parameters, at least the
-  lead's class in a sub-program) and `known` how that is known, both as the static
-  checks' typing gave them, with the floor of a report's field; `deadline_ms` from a
+  request, in `plans`). `wait` is the wait in its **static** form: the site's IR path
+  and the part the runtime adds for the wait (`/contract/<group>/<criterion>[/all/i]/call`,
+  `/authorize`, `/governance`, `/escalate`), or nothing; with `kind` it names one row (a
+  review and its `only: "on_escalation"` row share the review's wait), and the runtime
+  tags each wait it opens with this static site. A run's command id is not this text
+  (spec/attention.md "What each question records"): it adds iterations (`@i`, `#allN`,
+  `[i]`, a delegation's attempt `#k` before `/escalate`), a function's site stands under
+  its call (`<call>>f/…`), a contract's under its `verify` (`<verify>/contract/…`), a
+  handler's under its episode (`/defs/W/on/i@n/…`), and a sub-program's under its command
+  (`<plan>/program/<n>…`). `role` the role asked, or `null`; `shown` the highest data
+  class of what it shows (the contract's arguments, the question's text, the review's
+  map outcomes, the effect's parameters, at least the lead's class in a sub-program, and
+  in a function or a contract at least what its calls and `verify`s hand it, through
+  every caller) and `known` how that is known, both as the static checks' typing gave
+  them, with the floor of a report's field; `deadline_ms` from a
   constant `deadline:`; `on_no_answer` one of `waits`, `unmet` (an approval with a
   deadline), `escalates` (with `escalates: { to, deadline_ms }`, the escalated deadline
   counted from the escalation), `declined`, `refused_to_lead`; `multiplicity` as a
@@ -1501,7 +1603,7 @@ the compiler's order. The gates that do this:
 | diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
 | diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
 | corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 | `crates/mandate-testkit/tests/corpus.rs` |
-| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 499: the TypeScript's 125, and 265 of language 0.6 and 109 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
+| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 513: the TypeScript's 125, and 265 of language 0.6 and 123 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
 | tool schema digests | the digest `schemaDigest` of `runtime/src/mcp-client.ts` (built to `runtime/dist`) gives for 34 MCP tools written as JSON text (no `outputSchema`, `outputSchema` empty or null, member order, nested and deep schemas, non-ASCII and astral names and strings, members sorted by UTF-16, lone surrogates, numbers JSON writes differently from their text, empty objects, a member given twice), with the canonical text it hashes, and 29 texts the door must refuse; written by `scripts/tool-digest-vectors.mjs` (found by the `scripts/*-vectors.mjs` loop of CI and `docker/run-job.sh`) | 34 tools, 29 refused | `crates/mandate-check/tests/connector_doors.rs` (door `tool_schema_digest`) |

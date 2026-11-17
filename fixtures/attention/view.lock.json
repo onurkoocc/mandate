@@ -20,6 +20,11 @@
       "keys": [
         "sha256:7777777777777777777777777777777777777777777777777777777777777777"
       ]
+    },
+    "cai": {
+      "keys": [
+        "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+      ]
     }
   },
   "roles": {
@@ -28,10 +33,14 @@
     ],
     "finance_lead": [
       "ben"
+    ],
+    "observer": [
+      "cai"
     ]
   },
   "role_classes": {
-    "accountant": "confidential"
+    "accountant": "confidential",
+    "finance_lead": "confidential"
   },
   "promotion": "required",
   "tariffs": {

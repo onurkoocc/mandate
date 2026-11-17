@@ -18,7 +18,7 @@
     missing_docs
 )]
 
-use mandate_check::asks::{OnNoAnswer, OpSite, SiteKind, site_of, statement_asks};
+use mandate_check::asks::{OnNoAnswer, OpSite, SiteKind, StmtSite, site_of, statement_site};
 use mandate_check::attention::RESTART_ALL_ROUNDS;
 use mandate_check::doors::{SubprogramInput, check_subprogram};
 use mandate_check::json_doors::library_door;
@@ -491,6 +491,7 @@ fn admit(parent: &Value, file: &str, room: &str) -> mandate_check::doors::Subpro
         ops: &ops,
         lead: mandate_check::stdlib::DataClass::Public,
         room: &room,
+        std_patterns: None,
     })
     .unwrap()
 }
@@ -704,13 +705,24 @@ fn the_parent_of_the_sub_program_checks_alone() {
 // ── The proof that no site is missed ──────────────────────────────────────
 //
 // Every operation of the IR, through a `match` with no arm for the rest,
-// has the samples of what it can write (`op_samples`); each sample is put in
-// a map's body, where the static checks refuse whatever they hold to wait
-// for a person (E1708, `kind: "person"`: `Checker::waits`, `Checker::person`,
-// a function that holds one, every `human.*` step), and in a workflow's
-// body, where the bound must count it. An operation added to the IR does not
-// build until it has its samples here and its class in `site_of`; a kind
-// added to `SiteKind` does not build until it has its sample (`kind_sample`).
+// has the samples of what it can write (`op_samples`), each with the
+// questions a person counting them by hand finds in it: its total and its
+// kinds. In a workflow's body the bound must give exactly those. Each sample
+// is also put in a map's body, where the static checks refuse what they
+// hold to wait for a person (E1708, `kind: "person"`); every sample they
+// refuse must be one the hand count says asks, but the one exception the
+// runtime does not wait on. An operation added to the IR does not build
+// until it has its samples here and its class in `site_of`; a kind added to
+// `SiteKind` does not build until it has its sample (`kind_sample`), and a
+// statement added to the IR until it has its class in `statement_site` and
+// its sample (`stmt_sample`).
+//
+// What this does not prove: that the runtime opens no wait these samples do
+// not show. The places the runtime opens a wait are held to the kinds of
+// the facts in the runtime's own slice (spec/attention.md "`asks` at run
+// time": every wait it opens carries its static site). The effects, the
+// change sets, a review and a `plan` are counted by hand on the fixture,
+// which has the system model and an envelope.
 
 /// A program of 0.7 whose workflow `W` has `body`, with what every sample
 /// needs.
@@ -766,58 +778,147 @@ workflow W(notes: List<Note>, n: Note, t: Text) -> Text
     )
 }
 
+/// One sample: its text, the total a hand count gives, and the kinds of its
+/// questions in the order of the body.
+type Sample = (&'static str, u64, &'static [SiteKind]);
+
 /// The statements that write an expression of `op`, each the form of it
-/// that waits for a person when it has one; none for one no program that
-/// checks can hold here (`spawn`, `await`), or that needs what the fixture
-/// has (a change set, a `plan`).
-fn op_samples(op: ExprOp) -> &'static [&'static str] {
+/// that waits for a person when it has one, with the hand count; none for
+/// one no program that checks can hold here (`spawn`, `await`), or that
+/// needs what the fixture has (a change set, a `plan`).
+fn op_samples(op: ExprOp) -> &'static [Sample] {
+    use SiteKind::{Ask, Escalate, Governance, Pause, SuperviseEscalate, Verify};
     match op {
-        ExprOp::Int => &["  let x = 1"],
-        ExprOp::Dec => &["  let x = 1.5"],
-        ExprOp::Text => &["  let x = \"a\""],
-        ExprOp::Bool => &["  let x = true"],
-        ExprOp::Money => &["  let x = 2 USD"],
-        ExprOp::Duration => &["  let x = 1d"],
-        ExprOp::List => &["  let x = [1, 2]"],
-        ExprOp::Set => &["  let x = {}"],
-        ExprOp::Template => &["  let x = \"a {t}\""],
-        ExprOp::Prompt => &["  let x = prompt\"Say {quote(t)}\""],
-        ExprOp::Var => &["  let x = t"],
-        ExprOp::Field => &["  let x = n.text"],
+        ExprOp::Int => &[("  let x = 1", 0, &[])],
+        ExprOp::Dec => &[("  let x = 1.5", 0, &[])],
+        ExprOp::Text => &[("  let x = \"a\"", 0, &[])],
+        ExprOp::Bool => &[("  let x = true", 0, &[])],
+        ExprOp::Money => &[("  let x = 2 USD", 0, &[])],
+        ExprOp::Duration => &[("  let x = 1d", 0, &[])],
+        ExprOp::List => &[("  let x = [1, 2]", 0, &[])],
+        ExprOp::Set => &[("  let x = {}", 0, &[])],
+        ExprOp::Template => &[("  let x = \"a {t}\"", 0, &[])],
+        ExprOp::Prompt => &[("  let x = prompt\"Say {quote(t)}\"", 0, &[])],
+        ExprOp::Var => &[("  let x = t", 0, &[])],
+        ExprOp::Field => &[("  let x = n.text", 0, &[])],
         ExprOp::Call => &[
-            "  let x = human.ask(\"Go on?\", role: accountant)",
-            "  let x = confirm(t)",
-            "  let x = len(t)",
+            (
+                "  let x = human.ask(\"Go on?\", role: accountant)",
+                1,
+                &[Ask],
+            ),
+            // confirm asks once, at each call.
+            ("  let x = confirm(t)", 1, &[Ask]),
+            ("  let x = len(t)", 0, &[]),
             // Not a wait: the runtime hands it to the host's read adapter
             // (`STD_FNS` in `runtime/src/interp.ts`).
-            "  let x = human.approve(role: accountant)",
+            ("  let x = human.approve(role: accountant)", 0, &[]),
         ],
-        ExprOp::Unary => &["  let x = not true"],
-        ExprOp::Binary => &["  let x = 1 + 2"],
-        ExprOp::Range => &["  let x = 1 in 1..3"],
-        ExprOp::Record => &["  let x = Note { text: t }"],
-        ExprOp::Infer => &["  let x = infer Text from t using ModelStd"],
+        ExprOp::Unary => &[("  let x = not true", 0, &[])],
+        ExprOp::Binary => &[("  let x = 1 + 2", 0, &[])],
+        ExprOp::Range => &[("  let x = 1 in 1..3", 0, &[])],
+        ExprOp::Record => &[("  let x = Note { text: t }", 0, &[])],
+        ExprOp::Infer => &[("  let x = infer Text from t using ModelStd", 0, &[])],
         ExprOp::Delegate => &[
-            "  let x = delegate Writer.write(t) supervise escalate(human, role: accountant)",
-            "  let x = delegate Writer.write(t)",
+            (
+                "  let x = delegate Writer.write(t) supervise escalate(human, role: accountant)",
+                5,
+                &[SuperviseEscalate],
+            ),
+            ("  let x = delegate Writer.write(t)", 0, &[]),
         ],
         ExprOp::Spawn | ExprOp::Await | ExprOp::Changeset | ExprOp::Plan => &[],
         ExprOp::Verify => &[
-            "  let x = verify n against Approved(n)",
-            "  let x = verify n against Kept(n)",
-            "  let x = verify n against Short(n)",
+            ("  let x = verify n against Approved(n)", 1, &[Verify]),
+            // The invariant's approval: E1708 reads `accept` alone.
+            ("  let x = verify n against Kept(n)", 1, &[Verify]),
+            ("  let x = verify n against Short(n)", 0, &[]),
         ],
-        ExprOp::Effect => &["  let x = effect git.comment(t, \"note\") idempotent_by t"],
+        // Critical and not irreversible: authorized by policy, so its owner's
+        // gate alone.
+        ExprOp::Effect => &[(
+            "  let x = effect git.comment(t, \"note\") idempotent_by t",
+            1,
+            &[Governance],
+        )],
         ExprOp::Escalate => &[
-            "  let x = escalate human(\"Look\", role: accountant)",
-            "  let x = escalate human(\"Look\")",
+            (
+                "  let x = escalate human(\"Look\", role: accountant)",
+                1,
+                &[Escalate],
+            ),
+            ("  let x = escalate human(\"Look\")", 1, &[Escalate]),
         ],
-        ExprOp::Pause => &["  let x = pause", "  let x = pause and t"],
-        ExprOp::Switch => &["  let x = switch t { _ => 1 }"],
-        ExprOp::Try => &["  let x = t?"],
-        ExprOp::Block => &["  let x = switch t { _ => { t } }"],
-        ExprOp::Map => &["  let x = map it in notes max 2 { it.text }"],
+        ExprOp::Pause => &[
+            ("  let x = pause", 1, &[Pause]),
+            ("  let x = pause and t", 0, &[]),
+        ],
+        ExprOp::Switch => &[("  let x = switch t { _ => 1 }", 0, &[])],
+        ExprOp::Try => &[("  let x = t?", 0, &[])],
+        ExprOp::Block => &[("  let x = switch t { _ => { t } }", 0, &[])],
+        ExprOp::Map => &[("  let x = map it in notes max 2 { it.text }", 0, &[])],
     }
+}
+
+/// A statement of each kind, holding one question where it can hold one,
+/// with the hand count of `T` and of `R`; none for `run`, which stands in a
+/// test and in no workflow's body.
+fn stmt_sample(op: StmtOp) -> Option<(&'static str, u64, u64)> {
+    match op {
+        StmtOp::Let => Some(("  let x = human.ask(\"Go on?\", role: accountant)", 1, 0)),
+        StmtOp::Expr => Some(("  human.ask(\"Go on?\", role: accountant)", 1, 0)),
+        StmtOp::If => Some((
+            "  if len(t) > 1 {\n    human.ask(\"Go on?\", role: accountant)\n  }",
+            1,
+            0,
+        )),
+        StmtOp::Loop => Some((
+            "  loop max_iter 3 {\n    human.ask(\"Go on?\", role: accountant)\n  }",
+            3,
+            0,
+        )),
+        StmtOp::Par => Some((
+            "  par {\n    a = human.ask(\"Go on?\", role: accountant)\n    b = human.ask(\"And?\", role: finance_lead)\n  }",
+            2,
+            0,
+        )),
+        StmtOp::OnError => Some((
+            "  let w = delegate Writer.write(t)\n  on error(_) => human.ask(\"It failed; now?\", role: accountant)",
+            1,
+            0,
+        )),
+        StmtOp::Report => Some(("  report to accountant \"Done\" { n: len(t) }", 0, 1)),
+        StmtOp::Stage => Some(("  stage s \"A stage\"\n  let x = 1", 0, 0)),
+        // `return` in a workflow's body ends it: its value is what `W` gives.
+        StmtOp::Return => Some(("  return human.ask(\"Go on?\", role: accountant)", 1, 0)),
+        StmtOp::Run => None,
+    }
+}
+
+#[test]
+fn every_statement_holds_what_the_bound_counts() {
+    let mut seen = 0;
+    for op in StmtOp::ALL {
+        let site = statement_site(*op);
+        let Some((body, questions, reports)) = stmt_sample(*op) else {
+            assert_eq!(*op, StmtOp::Run);
+            continue;
+        };
+        let text = sites_program(body).replace("-> Text\n", "-> Untrusted<Text>\n");
+        let f = attention_facts(&text, SourceKind::Mdt, &CheckOptions::default(), "W")
+            .unwrap_or_else(|| panic!("{body}: does not check: {:?}", shown(&checked(&text))));
+        assert_eq!(f.bound.asks.total, Count::Finite(questions), "{body}");
+        assert_eq!(f.bound.reports.total, Count::Finite(reports), "{body}");
+        // A report is counted in R, a stage holds nothing, every other
+        // statement what it holds.
+        match site {
+            StmtSite::Report => assert_eq!(reports, 1, "{op}"),
+            StmtSite::Marker => assert_eq!(questions + reports, 0, "{op}"),
+            StmtSite::Holds => assert!(questions > 0, "{op}"),
+        }
+        seen += 1;
+    }
+    assert_eq!(seen + 1, StmtOp::ALL.len());
 }
 
 /// The kinds of the questions the bound counts of `body`, in `W`, and the
@@ -854,12 +955,15 @@ fn waits_in_a_map(body: &str) -> bool {
 fn whatever_the_checks_hold_to_wait_for_a_person_is_a_site_of_the_bound() {
     let (mut samples, mut waits) = (0, 0);
     for op in ExprOp::ALL {
-        for body in op_samples(*op) {
+        for (body, total, kinds) in op_samples(*op) {
             samples += 1;
-            let (kinds, total) = counted(body);
-            // What the bound counts of a sample is a kind of its operation's
-            // class (a function's sites are a call's).
-            for k in &kinds {
+            let (got, got_total) = counted(body);
+            // Exactly the hand count.
+            assert_eq!(got_total, Count::Finite(*total), "{body}");
+            assert_eq!(got.as_slice(), *kinds, "{body}");
+            // Of the kinds its operation's class names (a function's sites
+            // are a call's).
+            for k in &got {
                 assert!(
                     site_of(*op).kinds().contains(k) || *op == ExprOp::Call,
                     "{body}: {} is not a kind of {op}",
@@ -868,37 +972,24 @@ fn whatever_the_checks_hold_to_wait_for_a_person_is_a_site_of_the_bound() {
             }
             if waits_in_a_map(body) {
                 waits += 1;
-                if body.contains("human.approve(") {
-                    // The one exception, which opens no wait at run time.
-                    assert_eq!(total, Count::ZERO, "{body}");
-                } else {
-                    assert!(
-                        total != Count::ZERO,
-                        "{body}: the checks hold it to wait for a person, and the bound counts nothing"
-                    );
-                }
+                // What the checks hold to wait asks, by the hand count: but
+                // the one exception, which opens no wait at run time.
+                assert!(
+                    *total > 0 || body.contains("human.approve("),
+                    "{body}: the checks hold it to wait for a person, and the hand count is 0"
+                );
             }
         }
     }
     // A verify against a contract whose invariant a person approves waits
     // (the runtime runs `accept` and `invariant` alike), though E1708 reads
-    // `accept` alone: the bound counts it.
-    assert_eq!(counted("  let x = verify n against Kept(n)").1, Count::ONE);
+    // `accept` alone.
     assert!(!waits_in_a_map("  let x = verify n against Kept(n)"));
-    // What is no wait counts nothing.
-    for body in [
-        "  let x = pause and t",
-        "  let x = delegate Writer.write(t)",
-        "  let x = verify n against Short(n)",
-    ] {
-        assert_eq!(counted(body).1, Count::ZERO, "{body}");
-        assert!(!waits_in_a_map(body), "{body}");
-    }
     println!(
-        "sites: {} operations, {samples} samples, {waits} held to wait for a person in a map's body, each counted",
+        "sites: {} operations, {samples} samples counted as by hand, {waits} held to wait for a person in a map's body",
         ExprOp::ALL.len()
     );
-    assert!(waits >= 7, "{waits}");
+    assert_eq!(waits, 8, "the samples E1708 refuses in a map's body");
 }
 
 /// The sample of each kind of site, as a body of `W`; for a change set and a
@@ -956,10 +1047,6 @@ fn every_kind_of_site_has_a_construct_the_bound_counts() {
         );
         assert_eq!(SiteKind::from_tag(kind.as_str()), Some(*kind));
     }
-    // No statement asks by itself: what it holds does.
-    for op in StmtOp::ALL {
-        assert!(!statement_asks(*op), "{op}");
-    }
     let names: Vec<&str> = SiteKind::ALL.iter().map(|k| k.as_str()).collect();
     assert_eq!(
         names,
@@ -977,4 +1064,520 @@ fn every_kind_of_site_has_a_construct_the_bound_counts() {
         ]
     );
     let _ = OpSite::None;
+}
+
+// ── F1: a role is a role definition ───────────────────────────────────────
+
+/// `code at path` of each diagnostic but W0310.
+fn codes(r: &CheckResult) -> Vec<String> {
+    r.diagnostics
+        .iter()
+        .filter(|d| d.code != "MDT-W0310")
+        .map(|d| format!("{} at {}", d.code, d.at.path.as_deref().unwrap_or("")))
+        .collect()
+}
+
+/// The fact `key` of the first diagnostic of `code`.
+fn fact(r: &CheckResult, code: &str, key: &str) -> Option<String> {
+    r.diagnostics
+        .iter()
+        .find(|d| d.code == code)
+        .and_then(|d| d.facts.as_ref())
+        .and_then(|f| f.get(key))
+        .and_then(JsValue::as_str)
+        .map(str::to_owned)
+}
+
+#[test]
+fn a_role_a_question_names_is_no_name_the_scope_binds() {
+    // The probe: a contract's parameter has the role's name, and the
+    // runtime reads the approval's role in the contract's scope.
+    let contract = sites_program("  let x = verify n against C(n, \"finance_lead\")").replace(
+        "fn confirm(",
+        "contract C(n: Note, accountant: Text) {\n  accept ok \"approved\" by human.approve(role: accountant)\n}\n\nfn confirm(",
+    );
+    let r = checked(&contract);
+    assert_eq!(
+        codes(&r),
+        ["MDT-E1501 at /defs/C/accept/ok/by/call/args/0/value"]
+    );
+    assert_eq!(
+        fact(&r, "MDT-E1501", "shadowed_by").as_deref(),
+        Some("parameter")
+    );
+    assert_eq!(
+        fact(&r, "MDT-E1501", "where").as_deref(),
+        Some("human.approve")
+    );
+    // Every kind of question that names a role: by a parameter of the
+    // workflow, or by a name its body binds.
+    let with_param = |body: &str| {
+        sites_program(body).replace(
+            "workflow W(notes: List<Note>, n: Note, t: Text)",
+            "workflow W(notes: List<Note>, n: Note, t: Text, accountant: Text)",
+        )
+    };
+    let cases: [(String, &str, &str, &str); 3] = [
+        (
+            with_param("  let x = human.ask(\"Go on?\", role: accountant)"),
+            "/defs/W/body/0/value/args/1/value",
+            "human.ask",
+            "parameter",
+        ),
+        (
+            sites_program(
+                "  let accountant = \"finance_lead\"\n  let x = escalate human(\"Look\", role: accountant)",
+            ),
+            "/defs/W/body/1/value/to/args/1/value",
+            "escalate human(…)",
+            "binding",
+        ),
+        (
+            sites_program(
+                "  let accountant = t\n  let x = delegate Writer.write(t) supervise escalate(human, role: accountant)",
+            ),
+            "/defs/W/body/1/value/supervise/args/1/value",
+            "supervise escalate",
+            "binding",
+        ),
+    ];
+    for (text, path, site, by) in &cases {
+        let r = checked(text);
+        assert_eq!(codes(&r), [format!("MDT-E1501 at {path}")], "{site}");
+        assert_eq!(fact(&r, "MDT-E1501", "where").as_deref(), Some(*site));
+        assert_eq!(fact(&r, "MDT-E1501", "shadowed_by").as_deref(), Some(*by));
+    }
+    // An approval's `distinct_from:` too: here a parameter has the name of
+    // the role of the approval before it, and both are refused.
+    let two = sites_program("  let x = verify n against Two(n, t)").replace(
+        "fn confirm(",
+        "contract Two(n: Note, accountant: Text) {\n  accept ok \"two\" by human.approve(role: accountant) and human.approve(role: finance_lead, distinct_from: accountant)\n}\n\nfn confirm(",
+    );
+    let r = checked(&two);
+    assert_eq!(
+        codes(&r),
+        [
+            "MDT-E1501 at /defs/Two/accept/ok/by/all/0/call/args/0/value",
+            "MDT-E1501 at /defs/Two/accept/ok/by/all/1/call/args/1/value"
+        ]
+    );
+    let arguments: Vec<Option<&str>> = r
+        .diagnostics
+        .iter()
+        .filter_map(|d| d.facts.as_ref())
+        .map(|f| f.get("argument").and_then(JsValue::as_str))
+        .collect();
+    assert_eq!(arguments, [Some("role"), Some("distinct_from")]);
+    // A review's `role:` and `escalate_to:` are held to name role
+    // definitions by the review's own rule (E1507), in 0.6 already: a name
+    // in scope is refused there, and once.
+    for (text, path) in [
+        (
+            with_param(
+                "  let c = map it in notes max 2 {\n    verify it against Short(it)\n  }\n  let x = human.review(c, role: accountant, deadline: 1d)",
+            ),
+            "/defs/W/body/1/value/args/1/value",
+        ),
+        (
+            sites_program(
+                "  let finance_lead = t\n  let c = map it in notes max 2 {\n    verify it against Short(it)\n  }\n  let x = human.review(c, role: accountant, deadline: 1d, escalate_to: finance_lead)",
+            ),
+            "/defs/W/body/2/value/args/3/value",
+        ),
+    ] {
+        assert_eq!(codes(&checked(&text)), [format!("MDT-E1507 at {path}")]);
+    }
+    // A name the scope does not bind is the role definition: no diagnostic.
+    for body in [
+        "  let x = human.ask(\"Go on?\", role: accountant)",
+        "  let y = t\n  let x = escalate human(\"Look\", role: accountant)",
+    ] {
+        assert_eq!(
+            codes(&checked(&sites_program(body))),
+            Vec::<String>::new(),
+            "{body}"
+        );
+    }
+    // In 0.6 the rule is not read: the diagnostics of 0.6 do not change.
+    let older = with_param("  let x = human.ask(\"Go on?\", role: accountant)")
+        .replace("mandate @ 0.7", "mandate @ 0.6");
+    assert!(
+        !codes(&checked(&older))
+            .iter()
+            .any(|c| c.starts_with("MDT-E1501")),
+        "{:?}",
+        codes(&checked(&older))
+    );
+}
+
+// ── F2: recursion through a contract ──────────────────────────────────────
+
+/// The probe of the review: a function that asks, verifies against a
+/// contract whose `require` calls it again.
+const THROUGH_A_CONTRACT: &str = "mandate @ 0.7\n\nmodule example.recursion @ 0.1\n\nuse std.{human, model}\n\nrole accountant \"Accountant\"\n\ncapability ModelStd = model.infer(tier: standard, max_class: internal)\n\ntype Note = { text: Text }\n\nagent Writer {\n  role   \"Writes.\"\n  caps   ModelStd\n  budget { time: 2m, steps: 2 }\n  skill write(t: Text) -> Inferred<Text> ! {Model}\n}\n\ncontract C(n: Note) {\n  require again(n)\n  accept ok \"ok\" by static true\n}\n\nfn ask(n: Note) -> Untrusted<Text> ! {Human} {\n  human.ask(\"Again {n.text}?\", role: accountant)\n}\n\nfn again(n: Note) -> Bool ! {Human} {\n  let a = ask(n)\n  let v = verify n against C(n)\n  true\n}\n\nworkflow V(n: Note) -> Bool\n  caps   ModelStd\n  budget { steps: 2 }\n{\n  let w = delegate Writer.write(n.text)\n  again(n)\n}\n";
+
+/// The second probe: the cycle f → C → g → D → f, the question in g.
+const TWO_CONTRACTS: &str = "mandate @ 0.7\n\nmodule example.recursion @ 0.1\n\nuse std.{human, model}\n\nrole accountant \"Accountant\"\n\ncapability ModelStd = model.infer(tier: standard, max_class: internal)\n\ntype Note = { text: Text }\n\nagent Writer {\n  role   \"Writes.\"\n  caps   ModelStd\n  budget { time: 2m, steps: 2 }\n  skill write(t: Text) -> Inferred<Text> ! {Model}\n}\n\ncontract C(n: Note) {\n  require g(n)\n  accept ok \"ok\" by static true\n}\n\ncontract D(n: Note) {\n  require f(n)\n  accept ok \"ok\" by static true\n}\n\nfn f(n: Note) -> Bool ! {Human} {\n  let v = verify n against C(n)\n  true\n}\n\nfn g(n: Note) -> Bool ! {Human} {\n  let a = human.ask(\"Again {n.text}?\", role: accountant)\n  let v = verify n against D(n)\n  true\n}\n\nworkflow V(n: Note) -> Bool\n  caps   ModelStd\n  budget { steps: 2 }\n{\n  let w = delegate Writer.write(n.text)\n  f(n)\n}\n";
+
+/// The bound of `workflow` of `text` from the one pass, also when the
+/// program does not check (E0502), and the pass's diagnostics.
+fn bound_of(text: &str, workflow: &str) -> (mandate_check::WorkflowBound, Vec<String>) {
+    let ir = load(text, SourceKind::Mdt).program.unwrap();
+    let p = mandate_ir::Program::of(&ir).unwrap();
+    let (d, typing) = mandate_check::static_check_shown(p, None, None, None);
+    let b = typing
+        .bounds
+        .into_iter()
+        .find(|b| b.workflow == workflow)
+        .unwrap();
+    let d = d
+        .iter()
+        .filter(|d| d.code != "MDT-W0310")
+        .map(|d| format!("{} at {}", d.code, d.at.path.as_deref().unwrap_or("")))
+        .collect();
+    (b, d)
+}
+
+#[test]
+fn recursion_through_a_contract_is_refused_and_unbounded() {
+    for (text, site, cycle) in [
+        (
+            THROUGH_A_CONTRACT,
+            "/defs/ask/body/0/value",
+            "C → again → C",
+        ),
+        (TWO_CONTRACTS, "/defs/g/body/0/value", "C → g → D → f → C"),
+    ] {
+        let (b, d) = bound_of(text, "V");
+        // E0502, as a cycle of calls is.
+        let r = checked(text);
+        let e0502: Vec<&str> = r
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "MDT-E0502")
+            .map(|d| d.message.as_str())
+            .collect();
+        assert_eq!(e0502.len(), 1, "{d:?}");
+        assert!(e0502[0].contains(cycle), "{}", e0502[0]);
+        // The question the cycle reaches is unbounded, its role's count and
+        // the total too.
+        let q = b.questions.iter().find(|q| q.path == site).unwrap();
+        assert_eq!(q.multiplicity, Count::Unbounded);
+        assert_eq!(q.unbounded, Some("recursion"));
+        assert_eq!(b.asks.of(Some("accountant")), Count::Unbounded);
+        assert_eq!(b.asks.total, Count::Unbounded);
+        // With asks, E1907 at the question, for the recursion.
+        let declared = text.replace("budget { steps: 2 }\n{", "budget { steps: 2, asks: 1 }\n{");
+        let r = checked(&declared);
+        let e1907 = r
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "MDT-E1907")
+            .unwrap();
+        assert_eq!(e1907.at.path.as_deref(), Some(site));
+        assert_eq!(fact(&r, "MDT-E1907", "why").as_deref(), Some("recursion"));
+        // Before 0.7 a cycle through a contract is no E0502: 0.6 is as it was.
+        let older = text.replace("mandate @ 0.7", "mandate @ 0.6");
+        assert!(
+            !checked(&older)
+                .diagnostics
+                .iter()
+                .any(|d| d.code == "MDT-E0502"),
+            "0.6"
+        );
+    }
+}
+
+// ── F3: one row for each kind and wait ────────────────────────────────────
+
+#[test]
+fn a_kind_and_a_wait_name_one_row() {
+    let mut rows = 0;
+    for file in [
+        ASKS,
+        SHAPES,
+        "fixtures/attention/reports.mdt",
+        "fixtures/attention/stages.mdt",
+        "fixtures/attention/minimal.mdt",
+    ] {
+        let text = read_text(file).unwrap();
+        let ir = load(&text, SourceKind::Mdt).program.unwrap();
+        for (w, d) in ir.get("defs").and_then(Value::as_object).unwrap().iter() {
+            if d.get("kind").and_then(Value::as_str) != Some("workflow") {
+                continue;
+            }
+            let f = facts(&text, w);
+            for list in [&f.bound.questions, &f.bound.budget_exceeded] {
+                let mut seen: Vec<(SiteKind, &str, bool)> = Vec::new();
+                for q in list {
+                    let key = (
+                        q.kind,
+                        q.wait.as_str(),
+                        q.only == Some(mandate_check::asks::Only::OnEscalation),
+                    );
+                    assert!(
+                        !seen.contains(&key),
+                        "{file} {w}: {} {} twice",
+                        q.kind.as_str(),
+                        q.wait
+                    );
+                    seen.push(key);
+                    rows += 1;
+                }
+            }
+        }
+    }
+    // A function called from two stages: one row, its stage none, both calls
+    // counted.
+    let text = sites_program(
+        "  stage a \"One\"\n  let x = confirm(t)\n  stage b \"Two\"\n  let y = confirm(t)",
+    );
+    let f = facts(&text, "W");
+    assert_eq!(f.bound.questions.len(), 1);
+    assert_eq!(f.bound.questions[0].stage, None);
+    assert_eq!(f.bound.questions[0].multiplicity, Count::Finite(2));
+    println!("waits: {rows} rows of the fixtures, each one kind and wait");
+}
+
+// ── F4: a function's site shows what its calls hand it ────────────────────
+
+#[test]
+fn a_site_in_a_function_or_a_contract_shows_what_its_calls_hand_it() {
+    let program = |body: &str, extra: &str| {
+        format!(
+            "mandate @ 0.7\n\nmodule example.handed @ 0.1\n\nuse std.{{human, model, tool}}\n\nrole accountant \"Accountant\"\n\ntype Note = {{ text: Text }}\n\nconnector erp = mcp(\"https://erp.example.com/mcp\")\n  version \"1.0\"\n  class   confidential\n{{\n  tool vendor_name(vendor_id: Text) -> Untrusted<Text>\n    read_only\n}}\n\ncapability ErpVendor = tool.call(erp, vendor_name)\ncapability ModelStd  = model.infer(tier: standard, max_class: confidential)\n\nagent Writer {{\n  role   \"Writes.\"\n  caps   ModelStd\n  budget {{ time: 2m, steps: 2 }}\n  skill write(t: Text) -> Inferred<Text> ! {{Model}}\n}}\n\nfn confirm(t: Untrusted<Text>) -> Untrusted<Text> ! {{Human}} {{\n  human.ask(\"Is {{t}} right?\", role: accountant)\n}}\n\nfn relay(t: Untrusted<Text>) -> Untrusted<Text> ! {{Human}} {{\n  confirm(t)\n}}\n\nfn plainly(t: Text) -> Untrusted<Text> ! {{Human}} {{\n  human.ask(\"Is {{t}} right?\", role: accountant)\n}}\n{extra}\nworkflow V(id: Text) -> Untrusted<Text>\n  caps   ErpVendor, ModelStd\n  budget {{ steps: 4 }}\n{{\n{body}\n}}\n"
+        )
+    };
+    let site = |text: &str, path: &str| {
+        let r = checked(text);
+        assert!(r.ok, "{:?}", shown(&r));
+        let f = facts(text, "V");
+        let q = f
+            .bound
+            .questions
+            .iter()
+            .find(|q| q.path == path)
+            .unwrap_or_else(|| panic!("no site at {path}"))
+            .clone();
+        (
+            q.shown.as_str().to_owned(),
+            mandate_check::reports::known_name(q.known).to_owned(),
+        )
+    };
+    // The probe: a confidential value handed to a function whose parameter
+    // is of a type of no class.
+    let direct = program(
+        "  let v = erp.vendor_name(id)\n  let w = delegate Writer.write(id)\n  confirm(v)",
+        "",
+    );
+    assert_eq!(
+        site(&direct, "/defs/confirm/body/0/value"),
+        ("confidential".to_owned(), "external".to_owned())
+    );
+    // Through another function, which hands its own parameter on.
+    let through = program(
+        "  let v = erp.vendor_name(id)\n  let w = delegate Writer.write(id)\n  relay(v)",
+        "",
+    );
+    assert_eq!(
+        site(&through, "/defs/confirm/body/0/value").0,
+        "confidential"
+    );
+    // A text made of a model's output is typed Text, and is a model's output:
+    // the parameter's type would say `plain`, too well known.
+    let model = program(
+        "  let w = delegate Writer.write(id)\n  plainly(\"{w}\")",
+        "",
+    );
+    assert_eq!(site(&model, "/defs/plainly/body/0/value").1, "model");
+    // Called with a constant only: what its type says.
+    let constant = program(
+        "  let w = delegate Writer.write(id)\n  plainly(\"vendor\")",
+        "",
+    );
+    assert_eq!(
+        site(&constant, "/defs/plainly/body/0/value"),
+        ("public".to_owned(), "plain".to_owned())
+    );
+    // A contract's own question shows at least what its verify hands it.
+    let contract = program(
+        "  let v = erp.vendor_name(id)\n  let w = delegate Writer.write(id)\n  let n = verify Note { text: id } against Asked(v, Note { text: id })\n  v",
+        "\ncontract Asked(v: Untrusted<Text>, n: Note) {\n  require len(human.ask(\"Is {v} right?\", role: accountant)) > 0\n  accept ok \"ok\" by static true\n}\n",
+    );
+    assert_eq!(
+        site(&contract, "/defs/Asked/require/0/left/args/0/value").0,
+        "confidential"
+    );
+}
+
+// ── F5: an amendment that raises the bound ────────────────────────────────
+
+#[test]
+fn an_amendment_that_raises_the_bound_above_asks_is_refused() {
+    // The envelope allows two questions; the body asks one, and a comment on
+    // a pull request asks its owner's gate. An amendment that hands the
+    // comment to the code owner raises the bound to three.
+    let parent_text = "mandate @ 0.7\n\nmodule example.amend @ 0.1\n\nuse std.{human, model, git}\n\nrole platform_lead \"Platform lead\"\nrole accountant \"Accountant\"\nrole code_owner \"Code owner\"\n\ncapability ModelStd = model.infer(tier: standard, max_class: internal)\ncapability Pr       = git.pr(\"example/api\")\n\nagent Writer {\n  role   \"Writes.\"\n  caps   ModelStd\n  budget { time: 2m, steps: 2 }\n  skill write(t: Text) -> Inferred<Text> ! {Model}\n}\n\nworkflow W(t: Text) -> Inferred<Text>\n  envelope {\n    owner   platform_lead\n    caps    ModelStd, Pr\n    budget  { steps: 10, agents: 2, asks: 2 }\n  }\n{\n  let a = human.ask(\"Start {t}?\", role: accountant)\n  let c = effect git.comment(t, \"started\") idempotent_by t\n  delegate Writer.write(t)\n}\n";
+    let r = checked(parent_text);
+    assert!(r.ok && r.diagnostics.is_empty(), "{:?}", shown(&r));
+    let parent = load(parent_text, SourceKind::Mdt).program.unwrap();
+    let mut envelope = parent
+        .get("defs")
+        .and_then(|d| d.get("W"))
+        .and_then(|w| w.get("envelope"))
+        .and_then(Value::as_object)
+        .unwrap()
+        .clone();
+    let mut approve = mandate_ir::Map::new();
+    approve.insert("git.comment", "code_owner");
+    envelope.insert("approve", Value::Object(approve));
+    let envelope = Value::Object(envelope);
+    let a = mandate_check::check_amendment(&mandate_check::AmendmentInput {
+        parent: &parent,
+        modules: None,
+        workflow: "W",
+        envelope: Some(&envelope),
+        std_patterns: None,
+    })
+    .unwrap();
+    assert!(!a.ok);
+    let d: Vec<String> = a
+        .diagnostics
+        .iter()
+        .map(|d| format!("{} at {}", d.code, d.at.path.as_deref().unwrap_or("")))
+        .collect();
+    assert_eq!(d, ["MDT-E1906 at /defs/W/envelope/budget/asks"]);
+}
+
+// ── F7: each part of the algebra, counted by hand ─────────────────────────
+
+/// The total and each role's count of `W` in `text`.
+fn totals(text: &str) -> (Count, Vec<String>) {
+    let r = checked(text);
+    assert!(r.ok, "{:?}", shown(&r));
+    let f = facts(text, "W");
+    (f.bound.asks.total, roles(&f))
+}
+
+/// `sites_program` with `extra` definitions before the workflow.
+fn sites_with(body: &str, extra: &str) -> String {
+    sites_program(body).replace("fn confirm(", &format!("{extra}\nfn confirm("))
+}
+
+#[test]
+fn each_part_of_the_algebra_counts_as_a_hand_count_does() {
+    let n = Count::Finite;
+    // A map's body by its `max`: an invariant approval in each of 3 items.
+    let by_max =
+        sites_program("  let m = map it in notes max 3 {\n    verify it against Kept(it)\n  }");
+    assert_eq!(totals(&by_max), (n(3), vec!["accountant: 3".to_owned()]));
+    // By the envelope's `agents` when it has no `max`: 4 items.
+    let by_agents = sites_program(
+        "  let m = map it in notes {\n    let w = delegate Writer.write(it.text)\n    verify it against Kept(it)\n  }",
+    )
+    .replace(
+        "  caps   ModelStd, Pr\n  budget {{ steps: 9 }}".replace("{{", "{").replace("}}", "}").as_str(),
+        "  envelope {\n    owner   accountant\n    caps    ModelStd, Pr\n    budget  { steps: 9, agents: 4 }\n  }",
+    );
+    assert_eq!(totals(&by_agents), (n(4), vec!["accountant: 4".to_owned()]));
+    // A non-critical effect in a map's body is no batch commit step: its
+    // owner's gate, in each of 2 items.
+    let effect = sites_with(
+        "  let m = map it in notes max 2 {\n    effect note(it.text)\n  }",
+        "effect note(t: Text) -> Text\n  requires caps git.pr(\"example/api\")\n",
+    );
+    assert_eq!(totals(&effect), (n(2), vec!["owner: 2".to_owned()]));
+    // A switch: the larger case.
+    let switch = sites_with(
+        "  let x = switch m {\n    Fast => human.ask(\"Fast?\", role: accountant)\n    Slow => {\n      let a = human.ask(\"Slow?\", role: finance_lead)\n      human.ask(\"Sure?\", role: finance_lead)\n    }\n  }",
+        "type Mode = Fast | Slow\n",
+    )
+    .replace("t: Text) -> Text", "t: Text, m: Mode) -> Text");
+    assert_eq!(
+        totals(&switch),
+        (
+            n(2),
+            vec!["accountant: 1".to_owned(), "finance_lead: 2".to_owned()]
+        )
+    );
+    // A loop's condition, at each of its rounds (IR: max_iter and until).
+    let looped = sites_program("  loop max_iter 3 {\n    let x = 1\n  }");
+    let mut ir = load(&looped, SourceKind::Mdt).program.unwrap();
+    let until = parse(
+        r#"{"op":"binary","bop":">","left":{"op":"call","callee":{"op":"var","name":"len"},"args":[{"value":{"op":"call","callee":{"op":"field","of":{"op":"var","name":"human"},"name":"ask"},"args":[{"value":{"op":"text","value":"Done?"}},{"name":"role","value":{"op":"var","name":"accountant"}}]}}]},"right":{"op":"int","value":0}}"#,
+    )
+    .unwrap()
+    .value;
+    set_in(&mut ir, &["defs", "W", "body", "0"], "until", until);
+    let ir_text = stringify(&JsValue::from(&ir)).unwrap();
+    let f = attention_facts(&ir_text, SourceKind::Json, &CheckOptions::default(), "W").unwrap();
+    assert_eq!(f.bound.asks.total, n(3));
+    // `ensures`, once at the end of the run.
+    let ensures = sites_program("  let x = 1").replace(
+        "  budget { steps: 9 }\n{",
+        "  budget { steps: 9 }\n  ensures len(human.ask(\"Fine?\", role: accountant)) > 0\n{",
+    );
+    assert_eq!(totals(&ensures), (n(1), vec!["accountant: 1".to_owned()]));
+    // A question in a contract's `require`, and in a verifier's arguments,
+    // at each verify.
+    let require = sites_with(
+        "  let a = verify n against Asked(n)\n  let b = verify n against Asked(n)",
+        "contract Asked(n: Note) {\n  require len(human.ask(\"Is {n.text} right?\", role: finance_lead)) > 0\n  accept ok \"approved\" by human.approve(role: accountant, note: human.ask(\"Why?\", role: finance_lead))\n}\n",
+    );
+    assert_eq!(
+        totals(&require),
+        (
+            n(6),
+            vec!["accountant: 2".to_owned(), "finance_lead: 4".to_owned()]
+        )
+    );
+    // restart_all nested through a function: twice twice.
+    let nested = sites_with(
+        "  par supervise restart_all {\n    a = again(t)\n  }",
+        "fn again(t: Text) -> Text ! {Human} {\n  par supervise restart_all {\n    b = human.ask(\"Again?\", role: accountant)\n  }\n  t\n}\n",
+    );
+    assert_eq!(totals(&nested), (n(4), vec!["accountant: 4".to_owned()]));
+    // The envelope's `approve`, and without it an irreversible effect goes to
+    // `owner`; its owner's gate either way.
+    let text = read_text(ASKS).unwrap();
+    let planning = facts(&text, "Planning");
+    let merge = planning
+        .bound
+        .questions
+        .iter()
+        .find(|q| q.kind == SiteKind::Effect)
+        .unwrap();
+    assert_eq!(merge.role.as_deref(), Some("release_manager"));
+    let unapproved = text.replace("    approve git.merge by release_manager\n", "");
+    let planning = facts(&unapproved, "Planning");
+    let merge = planning
+        .bound
+        .questions
+        .iter()
+        .find(|q| q.kind == SiteKind::Effect)
+        .unwrap();
+    assert_eq!(merge.role.as_deref(), Some("owner"));
+    assert_eq!(planning.bound.asks.total, n(5));
+    // A plan is a row of its own: the total without it is the same.
+    let without_plan = text.replace(
+        "  stage finish \"Plan the rest\"\n  plan Lead.finish(t) within envelope\n",
+        "  stage finish \"Plan the rest\"\n  delegate Writer.write(t)\n",
+    );
+    let planning = facts(&without_plan, "Planning");
+    assert!(planning.bound.plans.is_empty());
+    assert_eq!(planning.bound.asks.total, n(5));
+}
+
+/// `v` at `path` gets the member `key`.
+fn set_in(v: &mut Value, path: &[&str], key: &str, value: Value) {
+    let mut at = v;
+    for t in path {
+        at = match at {
+            Value::Array(a) => &mut a[t.parse::<usize>().unwrap()],
+            Value::Object(m) => m.get_mut(t).unwrap(),
+            _ => panic!("{t}"),
+        };
+    }
+    let Value::Object(m) = at else { panic!() };
+    m.insert(key, value);
 }

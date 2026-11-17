@@ -1,0 +1,22 @@
+// conformance/E1602/types.mdt under the header of language 0.7, and
+// nothing else changed: a module of a newer language than 0.6 and 0.5,
+// which a program of either cannot read (E1609a, E1603b;
+// spec/attention.md "A newer module (E1609)").
+
+mandate @ 0.7
+
+module example.library.types @ 1.0
+
+/// An invoice as the mailbox holds it.
+pub type Invoice = { invoice_no: Text, total_cents: Int }
+
+/// A note this module keeps to itself.
+type Note = { text: Text }
+
+/// The most invoices one run reads.
+pub let LIMIT: Int = 100
+
+let SECRET: Int = 7
+
+/// The most invoices one batch holds; a lower-case name.
+pub let most: Int = 50

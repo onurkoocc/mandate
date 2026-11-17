@@ -1,0 +1,33 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1609a",
+  "kind": "compile",
+  "title": "A program of 0.6 that imports a module given to the check written in 0.7 (the module of E1602 under the header of 0.7) is refused at the use, and not E1602 besides.",
+  "spec": [
+    "spec/attention.md#stdpatterns-200",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../E1602/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "types.mdt"
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1609",
+        "path": "/uses/0",
+        "facts": {
+          "module": "example.library.types",
+          "module_language": "mandate/0.7",
+          "language": "mandate/0.6"
+        }
+      }
+    ]
+  }
+}

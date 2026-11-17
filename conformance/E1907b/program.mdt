@@ -1,0 +1,46 @@
+// A function that asks, then verifies against a contract whose require calls
+// it again: a recursion through a contract (spec/attention.md "The algebra").
+mandate @ 0.7
+
+module example.recursion @ 0.1
+
+use std.{human, model}
+
+role accountant "Accountant"
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+type Note = { text: Text }
+
+agent Writer {
+  role   "Writes."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill write(t: Text) -> Inferred<Text> ! {Model}
+}
+
+/// Holds when again holds, which verifies against it again.
+contract C(n: Note) {
+  require again(n)
+  accept ok "ok" by static true
+}
+
+/// Asks the accountant about a note.
+fn ask(n: Note) -> Untrusted<Text> ! {Human} {
+  human.ask("Again {n.text}?", role: accountant)
+}
+
+/// Asks, then verifies the note against C.
+fn again(n: Note) -> Bool ! {Human} {
+  let a = ask(n)
+  let v = verify n against C(n)
+  true
+}
+
+workflow V(n: Note) -> Bool
+  caps   ModelStd
+  budget { steps: 2, asks: 1 }
+{
+  let w = delegate Writer.write(n.text)
+  again(n)
+}

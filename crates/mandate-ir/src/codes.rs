@@ -793,6 +793,12 @@ pub const CODES: &[CodeRow] = &[
         reference: Reference::Rust,
     },
     CodeRow {
+        code: "MDT-E1609",
+        title: "Module of a newer language",
+        explain: "A program of 0.6 or later reads no module written in a newer language than its own: a `use` of such a module (one given to the check, one of a library, or the built-in `std.patterns` 2.0.0, which is of 0.7) is refused at the `use`, and a lock that pins a library written in a newer language (a 0.6 program's lock that pins `std.patterns` 2.0.0) is refused at the pin. Pin a version of the program's language, or write the program in the newer one. A program of 0.1 to 0.5 that imports a module of 0.6 or later is E1603 (spec/attention.md \"A newer module (E1609)\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
         code: "MDT-E1906",
         title: "Attention above asks",
         explain: "A workflow of 0.7 whose budget, or whose envelope's, declares `asks: n` can put no more than n questions to people in one run, as the compiler counts them before any run (the attention bound): an approval a contract's criterion asks, `human.ask`, every `escalate`, a `pause` without `then`, the five escalations of `supervise escalate`, an effect the program hands to a person, each member and the approver of a change set, the owner's gate of an action that may carry a governance-class file, a review and its escalation. A sequence and the branches of a `par` add up, `if` and `switch` take the larger branch, a loop multiplies by its `max_iter`, a function's questions count at each call. The diagnostic is at the `asks`, with the workflow, the declared `asks`, the total and each role's count; a workflow that applies a pattern is counted on its expansion (spec/attention.md \"The attention bound\").",
@@ -801,7 +807,7 @@ pub const CODES: &[CodeRow] = &[
     CodeRow {
         code: "MDT-E1907",
         title: "Attention without a bound",
-        explain: "A workflow of 0.7 that declares `asks` has every question where the bound can count it: not in a loop without `max_iter`, and not in a function that calls itself (also E0502). The diagnostic is at the question, with the workflow, its kind and why it cannot be counted (`why`: `loop`, `recursion`, `overflow`). A workflow that declares no `asks` may ask without a bound; its attention facts say the total is unbounded (spec/attention.md \"The algebra\").",
+        explain: "A workflow of 0.7 that declares `asks` has every question where the bound can count it: not in a loop without `max_iter`, and not in what a cycle of calls reaches, through a function that calls itself or through a contract whose `require`, criteria or verifiers' arguments call a function that verifies against it again (also E0502). The diagnostic is at the question, with the workflow, its kind and why it cannot be counted (`why`: `loop`, `recursion`, `overflow`). A workflow that declares no `asks` may ask without a bound; its attention facts say the total is unbounded (spec/attention.md \"The algebra\").",
         reference: Reference::Rust,
     },
     CodeRow {
@@ -813,7 +819,7 @@ pub const CODES: &[CodeRow] = &[
     CodeRow {
         code: "MDT-E1910",
         title: "Owner misplaced or missing",
-        explain: "`owner r` (0.7) names the role that approves the card of a workflow without an envelope and signs its promotions. A workflow with an envelope writes none, since its envelope's `owner` has that place: one written beside an envelope is refused at the `owner` (`problem: \"with_envelope\"`). With a lock whose `promotion` is `\"required\"`, every workflow of the program has an `owner` or an envelope, since nobody could promote one with neither: such a workflow is refused at itself (`problem: \"no_owner\"`). Facts: `workflow`, `problem`, and beside an envelope the role the `owner` names (`owner`) (spec/attention.md \"`owner`\").",
+        explain: "`owner r` (0.7) names the role that approves the card of a workflow without an envelope and signs its promotions. A workflow written out with an envelope writes none, since its envelope's `owner` has that place: one written beside an envelope is refused at the `owner` (`problem: \"with_envelope\"`); a workflow that applies a pattern has no envelope at all (E1307). With a lock whose `promotion` is `\"required\"`, every workflow of the program has an `owner` or an envelope, since nobody could promote one with neither: such a workflow is refused at itself (`problem: \"no_owner\"`). Facts: `workflow`, `problem`, and beside an envelope the role the `owner` names (`owner`) (spec/attention.md \"`owner`\").",
         reference: Reference::Rust,
     },
     CodeRow {
@@ -847,6 +853,7 @@ pub const CODES_0_7: &[&str] = &[
     "MDT-E1903",
     "MDT-E1904",
     "MDT-E1905",
+    "MDT-E1609",
     "MDT-E1906",
     "MDT-E1907",
     "MDT-E1908",

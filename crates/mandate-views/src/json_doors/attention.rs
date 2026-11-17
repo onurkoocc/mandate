@@ -19,8 +19,9 @@ pub(super) const ATTENTION: &[&str] = &["text", "kind", "opts", "workflow", "for
 ///
 /// Input: `{ text, kind, opts?, workflow, format? }`: `text`, `kind`, `opts`
 /// and `workflow` as the door `attention_facts` takes them (`opts`: `lock`,
-/// `modules`, `claim`, `libraries`, `config`, and `linked`, which is read and
-/// does not matter), and `format`, `json` (the default), `md` or `html`.
+/// `modules`, `claim`, `libraries`, `config`, `linked`, which is read and
+/// does not matter, and `std_patterns`, a version of `std.patterns` the compiler
+/// embeds, for a caller that holds no lock: with a lock it must be the lock's pin), and `format`, `json` (the default), `md` or `html`.
 ///
 /// Output: `null` when the program does not check, is older than 0.7, or
 /// defines no workflow of that name (the cases in which `attention_facts`
@@ -30,7 +31,7 @@ pub(super) const ATTENTION: &[&str] = &["text", "kind", "opts", "workflow", "for
 /// ```json
 /// { "format": "mandate/view/0.1", "kind": "attention", "program": "sha256:…", "workflow": "W",
 ///   "stages": [ { "name", "title" } ], "lock": true,
-///   "bound": { "total", "asks", "declared", "unbounded_because", "leaves_out_plans", "text" },
+///   "bound": { "total", "asks", "left", "declared", "unbounded_because", "leaves_out_plans", "text" },
 ///   "owner": { "role", "members", "from", "promotion", "text" },
 ///   "configuration": "…", "uncounted_effects": [ { "effect", "at_most" } ],
 ///   "questions": [ { "kind", "role", "members", "notified", "class", "shown", "known", "stage",
@@ -65,6 +66,13 @@ pub(super) fn attention(input: &Value) -> Result<JsValue, DoorError> {
         libraries = sources_of(o, "libraries")?;
         config = config_of(o)?;
         o.opt_bool("linked")?;
+        // 0.7: the version of std.patterns a caller that holds no lock
+        // names; with a lock it must be the lock's pin (the lock wins, a
+        // version that contradicts it is refused), as for the other views.
+        let named = o.opt_std_patterns("std_patterns")?;
+        opts.std_patterns = mandate_check::library::pin_of(opts.lock, named.as_ref())
+            .map_err(|e| DoorError::bad_input(format!("`opts.std_patterns`: {e}")))?
+            .filter(|_| named.is_some());
     }
     if !libraries.is_empty() {
         opts.libraries = Some(&libraries);
