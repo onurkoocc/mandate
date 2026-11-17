@@ -25,11 +25,15 @@
 //! mandate explain <code> [--json]
 //! mandate view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]…
 //! mandate view <file> --card [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]…
+//! mandate mcp [--module <file>]…
 //! ```
 //!
-//! `mcp` and the commands that control a run (`run`, `status`, `approve`, …)
-//! are the Node command line's alone: this executable says so and exits
-//! with 2.
+//! `mcp` is the compiler as an MCP server on the standard streams, the
+//! native one beside `bridge/src/mcp.ts`, which answers the same bytes to
+//! the same conversation and serves the tools of language 0.7 (`mcp`).
+//!
+//! The commands that control a run (`run`, `status`, `approve`, …) are the
+//! Node command line's alone: this executable says so and exits with 2.
 //!
 //! # Libraries (language 0.6)
 //!
@@ -58,6 +62,7 @@
 mod args;
 mod commands;
 mod libraries;
+mod mcp;
 mod memory;
 
 pub use memory::MemoryIo;
@@ -146,8 +151,27 @@ pub trait Io {
     /// When it cannot be read.
     fn read_input(&mut self) -> Result<Vec<u8>, IoError>;
 
+    /// Reads the next bytes of standard input into `buf`, waiting for some
+    /// when none has come yet: how many, 0 at the end of the input. What
+    /// `mandate mcp` reads its lines with, so that it never holds more of
+    /// the input than the line it is reading.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot be read.
+    fn read_input_part(&mut self, buf: &mut [u8]) -> Result<usize, IoError>;
+
     /// Writes `text` to standard output.
     fn write_out(&mut self, text: &str);
+
+    /// Writes `text` to standard output, and says whether it was: what
+    /// `mandate mcp` writes an answer with, so that it stops when no one
+    /// reads its answers any more.
+    ///
+    /// # Errors
+    ///
+    /// When it cannot be written (the reader went away).
+    fn write_out_part(&mut self, text: &str) -> Result<(), IoError>;
 
     /// Writes `text` to standard error.
     fn write_err(&mut self, text: &str);

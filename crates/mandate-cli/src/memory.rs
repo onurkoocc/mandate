@@ -17,6 +17,14 @@ pub struct MemoryIo {
     pub denied: BTreeSet<String>,
     /// Standard input.
     pub input: Vec<u8>,
+    /// How much of standard input [`Io::read_input_part`] has read.
+    pub input_read: usize,
+    /// The most bytes one [`Io::read_input_part`] gives, so that a test can
+    /// cut the input where it likes; 0 is no limit but the buffer's.
+    pub input_part: usize,
+    /// Whether standard output is closed, so that [`Io::write_out_part`]
+    /// fails.
+    pub out_closed: bool,
     /// What was written to standard output.
     pub out: String,
     /// What was written to standard error.
@@ -115,8 +123,32 @@ impl Io for MemoryIo {
         Ok(self.input.clone())
     }
 
+    fn read_input_part(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
+        let rest = self.input.get(self.input_read..).unwrap_or_default();
+        let most = if self.input_part == 0 {
+            buf.len()
+        } else {
+            buf.len().min(self.input_part)
+        };
+        let n = rest.len().min(most);
+        let (Some(to), Some(from)) = (buf.get_mut(..n), rest.get(..n)) else {
+            return Ok(0);
+        };
+        to.copy_from_slice(from);
+        self.input_read = self.input_read.saturating_add(n);
+        Ok(n)
+    }
+
     fn write_out(&mut self, text: &str) {
         self.out.push_str(text);
+    }
+
+    fn write_out_part(&mut self, text: &str) -> Result<(), IoError> {
+        if self.out_closed {
+            return Err(IoError::new(IoErrorKind::Other, "broken pipe"));
+        }
+        self.out.push_str(text);
+        Ok(())
     }
 
     fn write_err(&mut self, text: &str) {
