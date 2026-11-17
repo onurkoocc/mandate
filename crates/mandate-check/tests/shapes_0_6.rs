@@ -115,6 +115,7 @@ fn sub_check(parent: &Value, workflow: &str, number: f64, text: &str) -> Subprog
         ops: &ops_of(text),
         lead: DataClass::Public,
         room: &room(),
+        std_patterns: None,
     })
     .unwrap()
 }
@@ -348,6 +349,7 @@ fn amendment(parent: &Value, envelope: &Value) -> Vec<String> {
         modules: None,
         workflow: "Run",
         envelope: Some(envelope),
+        std_patterns: None,
     })
     .unwrap();
     assert_eq!(r.ok, r.diagnostics.is_empty());

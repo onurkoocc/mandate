@@ -13,7 +13,7 @@ use mandate_ir::{
 };
 use mandate_syntax::{kind_of, load, print_program};
 use mandate_views::{
-    acs_target, architecture_with_lock, authority_with, card, card_doc, cost_with, diff_doc_with,
+    acs_target, architecture_pinned, authority_pinned, card, card_doc, cost_with, diff_doc_with,
     envelope_workflows, program_doc, to_html, to_markdown,
 };
 
@@ -681,14 +681,24 @@ impl<'a> Cli<'a> {
             self.out(&text);
         } else {
             let m = view_modules(&all, &[&program]);
+            // 0.7: every view reads std.patterns at the version the lock pins.
+            let pin = mandate_check::library::std_patterns_pin(lock.as_ref());
             let text = if format == "json" {
                 let views = JsObject::new()
                     .with(
                         "architecture",
-                        architecture_with_lock(&program, lock.as_ref().filter(|_| m.is_some()), m)
-                            .to_js(),
+                        architecture_pinned(
+                            &program,
+                            lock.as_ref().filter(|_| m.is_some()),
+                            m,
+                            pin.as_ref(),
+                        )
+                        .to_js(),
                     )
-                    .with("authority", authority_with(&program, m).to_js())
+                    .with(
+                        "authority",
+                        authority_pinned(&program, m, pin.as_ref()).to_js(),
+                    )
                     .with("cost", cost_with(&program, lock.as_ref(), m).to_js());
                 pretty(&JsValue::Object(views))
             } else {

@@ -227,6 +227,7 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
                     ops: &ops,
                     lead,
                     room: &room,
+                    std_patterns: None,
                 }) {
                     Ok(r) => Actual::Result(render_check_subprogram(
                         r.ok,
@@ -252,6 +253,7 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
                     modules: modules.as_ref(),
                     workflow,
                     envelope: *envelope,
+                    std_patterns: None,
                 }) {
                     Ok(r) => Actual::Result(render_check_amendment(
                         r.ok,

@@ -236,17 +236,25 @@ pub(super) fn skeleton(input: &Value) -> Result<JsValue, DoorError> {
 }
 
 /// The parameters of [`subprogram_linked`].
-pub(super) const SUBPROGRAM_LINKED: &[&str] = &["sub", "parent", "modules"];
+pub(super) const SUBPROGRAM_LINKED: &[&str] = &["sub", "parent", "modules", "std_patterns"];
 
 /// `subprogramLinked(sub, parent, modules)`, `compiler/src/check.ts`: a
 /// sub-program with every definition it sees, for the interpreter.
 ///
-/// Input: `{ sub: program, parent: program, modules?: { <name>: program } }`.
+/// Input: `{ sub: program, parent: program, modules?: { <name>: program },
+/// std_patterns?: version }`, `std_patterns` (0.7) the version of
+/// `std.patterns` the parent's lock pins, as `check_subprogram` takes it.
 /// Output: the program.
 pub(super) fn subprogram_linked(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, SUBPROGRAM_LINKED)?;
     let sub = a.program("sub")?;
     let parent = a.program("parent")?;
     let modules = a.opt_modules("modules")?;
-    Ok(ir(&crate::doors::subprogram_linked(sub, parent, modules)))
+    let pin = a.opt_std_patterns("std_patterns")?;
+    Ok(ir(&crate::doors::subprogram_linked_pinned(
+        sub,
+        parent,
+        modules,
+        pin.as_ref(),
+    )))
 }

@@ -40,7 +40,7 @@
 
 pub mod ops;
 
-pub use mandate_lib::{Digest, LibrariesConfig, Timestamp, read_libraries_config};
+pub use mandate_lib::{Digest, LibrariesConfig, Timestamp, Version, read_libraries_config};
 pub mod signature;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -50,7 +50,7 @@ use mandate_ir::{
     has_errors, hash_program,
 };
 use mandate_lib::{
-    FoundLibrary, LockLibrary, Manifest, Version, check_requires, compare_pin, is_reserved_name,
+    FoundLibrary, LockLibrary, Manifest, check_requires, compare_pin, is_reserved_name,
     library_digest, modules_pinned_twice, read_lock_libraries, read_manifest,
 };
 use mandate_syntax::{kind_of, load};
@@ -186,6 +186,51 @@ pub fn embedded_version_of(module: Option<&Value>) -> Option<Version> {
             .is_some_and(|h| h.as_str() == hash);
         same.then_some(*l.manifest.version())
     })
+}
+
+/// The version of `std.patterns` a caller that holds no lock names for a
+/// door (`std_patterns`, 0.7: the version the lock of a parent or of a
+/// package pins), read: one of the embedded versions, `MAJOR.MINOR.PATCH`.
+///
+/// # Errors
+///
+/// The door's fixed message when `text` is not a version, or is one the
+/// compiler does not embed: a pin is never read as another version.
+pub fn embedded_pin(text: &str) -> Result<Version, String> {
+    let known: Vec<&str> = STD_PATTERNS_EMBEDDED.iter().map(|e| e.version).collect();
+    Version::parse(text)
+        .ok()
+        .filter(|v| {
+            STD_PATTERNS_EMBEDDED
+                .iter()
+                .any(|e| Version::parse(e.version).is_ok_and(|x| x == *v))
+        })
+        .ok_or_else(|| {
+            format!(
+                "{text:?} is not a version of std.patterns this compiler embeds ({}): a pin of std.patterns is one of them",
+                known.join(", ")
+            )
+        })
+}
+
+/// The version of `std.patterns` the views and the doors read when they are
+/// given `lock` and, besides, the version a caller names (`named`, 0.7): the
+/// lock's pin, else the one named, else none (the version of the program's
+/// language, [`std_patterns_for`]).
+///
+/// # Errors
+///
+/// A fixed message when both are given and they are not the same version:
+/// which one the program reads is not guessed.
+pub fn pin_of(lock: Option<&Value>, named: Option<&Version>) -> Result<Option<Version>, String> {
+    let locked = std_patterns_pin(lock);
+    match (locked, named) {
+        (Some(l), Some(n)) if l != *n => Err(format!(
+            "the lock pins std.patterns {l}, and std_patterns names {n}: give the one the lock pins, or none"
+        )),
+        (Some(l), _) => Ok(Some(l)),
+        (None, n) => Ok(n.copied()),
+    }
 }
 
 /// The version of `std.patterns` a lock pins, when it pins one that reads.
@@ -596,7 +641,8 @@ pub fn for_check(program: Program<'_>, opts: &CheckOptions<'_>) -> Option<ForChe
             .any(|l| l.manifest.requires().contains_key(STD_PATTERNS));
     let mut builtin: Option<LoadedLibrary> = None;
     if wants_std {
-        // The version the lock pins; without a pin, the version whose
+        // The version the lock pins; without a pin, the one the caller
+        // names (`std_patterns`, a caller that holds no lock), else the version whose
         // module the check was given as `std.patterns`, when it is one the
         // compiler embeds (a caller that holds the version a parent's check
         // read hands it so); else the one of the program's language (0.7:
@@ -605,6 +651,7 @@ pub fn for_check(program: Program<'_>, opts: &CheckOptions<'_>) -> Option<ForChe
             .as_ref()
             .and_then(|p| p.get(STD_PATTERNS))
             .map(|p| *p.version())
+            .or(opts.std_patterns)
             .or_else(|| embedded_version_of(opts.modules.and_then(|m| m.get(STD_PATTERNS))));
         builtin = std_patterns_for(program.language(), pinned.as_ref());
     }

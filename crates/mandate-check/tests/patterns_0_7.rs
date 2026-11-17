@@ -753,6 +753,7 @@ fn the_facts_of_a_sub_program_of_a_parent_that_pins_2_0_0() {
         ops: &ops,
         lead: DataClass::Public,
         room: &room,
+        std_patterns: None,
     };
     let sub = check_subprogram(&input).unwrap();
     assert!(
@@ -999,4 +1000,260 @@ fn a_report_added_or_raised_is_a_governance_change_and_one_removed_is_not() {
             "{v}: {back:#?}"
         );
     }
+}
+
+// ---------------------------------------------------------------- the doors given no lock: `std_patterns`
+
+/// The parent of the sub-program tests, checked with its lock pinning
+/// `version` (in a lock of format 0.7), and that lock.
+fn pinned_parent(version: &str) -> (Value, Value) {
+    let mut lock = pinning(&read_json(BATCH_LOCK).unwrap(), version, "mandate/lock/0.7");
+    if let Value::Object(m) = &mut lock
+        && let Some(Value::Object(c)) = m.get_mut("connectors")
+        && let Some(entry) = c.remove("example.attention.batch.erp")
+    {
+        c.insert("example.attention.shaped.erp", entry);
+    }
+    let r = checked(&parent_text(), Some(&lock), None);
+    assert!(r.ok, "{version}: {:#?}", errors(&r.diagnostics));
+    (r.program.unwrap(), lock)
+}
+
+/// A door's input as JSON.
+fn input_of(text: &str) -> Value {
+    parse(text).unwrap().value
+}
+
+/// The input of the door `check_subprogram` for the parent of
+/// [`pinned_parent`], with `pin` as `i.std_patterns` when given.
+fn subprogram_door_input(parent: &Value, pin: Option<&str>) -> Value {
+    let base = hash_program(&skeleton(
+        "example.attention.shaped",
+        1.0,
+        mandate_check::language_of(parent),
+    ))
+    .program;
+    let ops: Vec<JsValue> = sub_ops()
+        .iter()
+        .map(|o| {
+            mandate_ir::JsObject::new()
+                .with("op", o.op.as_str())
+                .with("path", o.path.as_str())
+                .with("value", JsValue::from(o.value.as_ref().unwrap()))
+                .into()
+        })
+        .collect();
+    let mut i = mandate_ir::JsObject::new()
+        .with("parent", JsValue::from(parent))
+        .with("workflow", "Run")
+        .with("number", 1)
+        .with("base", base.as_str())
+        .with("ops", ops)
+        .with("lead", "public")
+        .with(
+            "room",
+            JsValue::from(&input_of(
+                r#"{"left":{"tokens":50000000,"steps":1000,"agents":100,"spend:USD":100000000},"time_left_ms":18000000,"writes":[]}"#,
+            )),
+        );
+    if let Some(p) = pin {
+        i.insert("std_patterns", p);
+    }
+    input_of(&stringify(&JsValue::Object(mandate_ir::JsObject::new().with("i", i))).unwrap())
+}
+
+/// The ops of the running program of a door's answer that are stages or
+/// reports.
+fn attention_ops(running: Option<&JsValue>) -> Vec<String> {
+    let text = running.map(|r| stringify(r).unwrap()).unwrap_or_default();
+    let v = input_of(&text);
+    let mut out = Vec::new();
+    for (_, d) in v.get("defs").and_then(Value::as_object).unwrap().iter() {
+        for s in d.get("body").and_then(Value::as_array).unwrap_or_default() {
+            if let Some(op) = s
+                .get("op")
+                .and_then(Value::as_str)
+                .filter(|o| matches!(*o, "stage" | "report"))
+            {
+                out.push(op.to_owned());
+            }
+        }
+    }
+    out
+}
+
+/// A parent of 0.7 whose lock pins 1.0.0: the doors given no lock read the
+/// version `std_patterns` names (no stage, no report), and without it the
+/// version of the parent's language (2.0.0, as before).
+#[test]
+fn a_sub_program_of_a_parent_that_pins_1_0_0_reads_1_0_0_when_it_is_named() {
+    let (parent, _) = pinned_parent("1.0.0");
+    let door = mandate_check::json_doors::door("check_subprogram").unwrap();
+    let with = (door.call)(&subprogram_door_input(&parent, Some("1.0.0"))).unwrap();
+    assert_eq!(with.get("ok"), Some(&JsValue::Bool(true)), "{with:?}");
+    assert!(attention_ops(with.get("running")).is_empty());
+    // Without it, 2.0.0: the workflow's expansion and the pattern it holds.
+    let without = (door.call)(&subprogram_door_input(&parent, None)).unwrap();
+    assert_eq!(
+        attention_ops(without.get("running")),
+        ["stage", "report", "stage", "stage", "stage", "report"].repeat(2),
+    );
+    // The facts of the sub-program, as the runtime asks them, with the pin.
+    let sub = with.get("program").unwrap();
+    let workflow = with.get("workflow").and_then(JsValue::as_str).unwrap();
+    let mut view = input_of(&stringify(sub).unwrap())
+        .as_object()
+        .cloned()
+        .unwrap();
+    let mut uses: Vec<Value> = parent
+        .get("uses")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .to_vec();
+    let mut names: Vec<String> = parent
+        .get("defs")
+        .and_then(Value::as_object)
+        .unwrap()
+        .keys()
+        .map(str::to_owned)
+        .collect();
+    names.sort();
+    let mut u = Map::new();
+    u.insert("module", "example.attention.shaped");
+    u.insert(
+        "names",
+        Value::Array(names.into_iter().map(Value::from).collect()),
+    );
+    uses.push(Value::Object(u));
+    view.insert("uses", Value::Array(uses));
+    let envelope = parent
+        .get("defs")
+        .and_then(|d| d.get("Run"))
+        .and_then(|w| w.get("envelope"))
+        .unwrap();
+    let facts_input = |pin: Option<&str>, lock: Option<&Value>| {
+        let mut opts = mandate_ir::JsObject::new()
+            .with(
+                "modules",
+                mandate_ir::JsObject::new()
+                    .with("example.attention.shaped", JsValue::from(&parent)),
+            )
+            .with(
+                "claim",
+                mandate_ir::JsObject::new()
+                    .with("envelope", JsValue::from(envelope))
+                    .with("lead", "public"),
+            );
+        if let Some(p) = pin {
+            opts.insert("std_patterns", p);
+        }
+        if let Some(l) = lock {
+            opts.insert("lock", JsValue::from(l));
+        }
+        input_of(
+            &stringify(&JsValue::Object(
+                mandate_ir::JsObject::new()
+                    .with("text", canonicalize(&Value::Object(view.clone())))
+                    .with("kind", "json")
+                    .with("opts", opts)
+                    .with("workflow", workflow),
+            ))
+            .unwrap(),
+        )
+    };
+    let facts = mandate_check::json_doors::library_door("attention_facts").unwrap();
+    let one = (facts.call)(&facts_input(Some("1.0.0"), None)).unwrap();
+    let count = |f: &JsValue, k: &str| f.get(k).and_then(JsValue::as_array).map(<[JsValue]>::len);
+    assert_eq!(
+        (count(&one, "stages"), count(&one, "reports")),
+        (Some(0), Some(0))
+    );
+    let two = (facts.call)(&facts_input(None, None)).unwrap();
+    assert_eq!(
+        (count(&two, "stages"), count(&two, "reports")),
+        (Some(4), Some(2))
+    );
+    // A lock given with it must pin the version named.
+    let (_, lock_two) = pinned_parent("2.0.0");
+    let e = (facts.call)(&facts_input(Some("1.0.0"), Some(&lock_two))).unwrap_err();
+    assert_eq!(
+        e.message,
+        "`opts.std_patterns`: the lock pins std.patterns 2.0.0, and std_patterns names 1.0.0: give the one the lock pins, or none"
+    );
+    // subprogram_linked: the definitions it links are 1.0.0's.
+    let linked = mandate_check::json_doors::door("subprogram_linked").unwrap();
+    let li = |pin: Option<&str>| {
+        let mut o = mandate_ir::JsObject::new()
+            .with("sub", JsValue::from(&input_of(&stringify(sub).unwrap())))
+            .with("parent", JsValue::from(&parent));
+        if let Some(p) = pin {
+            o.insert("std_patterns", p);
+        }
+        input_of(&stringify(&JsValue::Object(o)).unwrap())
+    };
+    let body_of = |v: &JsValue| {
+        let v = input_of(&stringify(v).unwrap());
+        canonicalize(
+            v.get("defs")
+                .and_then(|d| d.get("BatchWithExceptions"))
+                .and_then(|p| p.get("body"))
+                .unwrap(),
+        )
+    };
+    let l1 = (linked.call)(&li(Some("1.0.0"))).unwrap();
+    let l2 = (linked.call)(&li(None)).unwrap();
+    assert!(!body_of(&l1).contains("\"stage\""));
+    assert!(body_of(&l2).contains("\"stage\""));
+}
+
+#[test]
+fn a_pin_the_compiler_does_not_embed_is_refused_by_every_door_that_takes_one() {
+    let (parent, _) = pinned_parent("1.0.0");
+    let door = mandate_check::json_doors::door("check_subprogram").unwrap();
+    for (pin, said) in [
+        ("3.0.0", "\"3.0.0\""),
+        ("1.0", "\"1.0\""),
+        ("latest", "\"latest\""),
+    ] {
+        let e = (door.call)(&subprogram_door_input(&parent, Some(pin))).unwrap_err();
+        assert_eq!(e.kind.as_str(), "bad_input");
+        assert_eq!(
+            e.message,
+            format!(
+                "`i.std_patterns`: {said} is not a version of std.patterns this compiler embeds (1.0.0, 2.0.0): a pin of std.patterns is one of them"
+            )
+        );
+    }
+    // Not a string at all.
+    let mut bad = subprogram_door_input(&parent, None);
+    if let Value::Object(m) = &mut bad
+        && let Some(Value::Object(i)) = m.get_mut("i")
+    {
+        i.insert("std_patterns", Value::Bool(true));
+    }
+    assert!((door.call)(&bad).is_err());
+    // The amendment's door and subprogram_linked refuse it as well.
+    let amend = mandate_check::json_doors::door("check_amendment").unwrap();
+    let input = input_of(&format!(
+        r#"{{"i":{{"parent":{},"workflow":"Run","envelope":{{}},"std_patterns":"9.9.9"}}}}"#,
+        stringify(&JsValue::from(&parent)).unwrap()
+    ));
+    let e = (amend.call)(&input).unwrap_err();
+    assert!(
+        e.message
+            .starts_with("`i.std_patterns`: \"9.9.9\" is not a version"),
+        "{}",
+        e.message
+    );
+    let linked = mandate_check::json_doors::door("subprogram_linked").unwrap();
+    let input = input_of(&format!(
+        r#"{{"sub":{p},"parent":{p},"std_patterns":"2"}}"#,
+        p = stringify(&JsValue::from(&parent)).unwrap()
+    ));
+    assert!(
+        (linked.call)(&input)
+            .unwrap_err()
+            .message
+            .starts_with("`std_patterns`: \"2\"")
+    );
 }
