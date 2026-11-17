@@ -31,6 +31,6 @@ describe("the bridge", () => {
 
   it("exports the four authority decisions, and nothing else of its own but the names of 0.6", () => {
     expect(Object.keys(authority).sort()).toEqual(["grant", "inFlightOverlap", "mapScopes", "narrow"]);
-    expect(own06.sort()).toEqual(["atLeast", "authoritySignature", "BRIDGE_LANGUAGE_VERSIONS", "callableConnectors", "isProgram06OrLater", "isProgram07OrLater", "LANGUAGE_06", "LANGUAGE_07", "librariesConfigProblems", "LIBRARY_FORMAT", "libraryAdd", "libraryPublish", "libraryUpgrade", "libraryVerify", "LOCK_FORMAT_06", "LOCK_FORMAT_07", "toolSchemaDigest"].sort());
+    expect(own06.sort()).toEqual(["atLeast", "attentionFacts", "authoritySignature", "BRIDGE_LANGUAGE_VERSIONS", "callableConnectors", "isProgram06OrLater", "isProgram07OrLater", "LANGUAGE_06", "LANGUAGE_07", "librariesConfigProblems", "LIBRARY_FORMAT", "libraryAdd", "libraryPublish", "libraryUpgrade", "libraryVerify", "LOCK_FORMAT_06", "LOCK_FORMAT_07", "toolSchemaDigest"].sort());
   });
 });
