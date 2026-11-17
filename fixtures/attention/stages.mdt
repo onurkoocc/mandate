@@ -1,0 +1,141 @@
+// A program of language 0.7 with stages (spec/attention.md "`stage`"): a
+// workflow written out in two stages, and a pattern in four, applied by a
+// workflow whose expansion has the pattern's stages. A stage names the
+// statements after it, up to the next one; it changes nothing the program
+// computes, costs or may do. It checks (A01); the cases of the rules of
+// stages (E1901 to E1902f, E0104i, E0104j) are one change of it each. Only
+// the Rust compiler reads it.
+
+mandate @ 0.7
+
+module example.attention.stages @ 0.1
+
+use std.{human, model, tool}
+
+role accountant   "Accountant"
+role finance_lead "Finance lead"
+
+type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }
+type Order   = { order_no: Text, vendor_id: Text, total_cents: Int }
+type Match   = { invoice_no: Text, order: Order }
+type DraftId = { draft_id: Text }
+
+/// The result of a batch: each commit's outcome, what was declined, and the
+/// indices of the items whose work failed.
+type Batch<Out, R> = {
+  posted:   List<Outcome<Receipt<R>>>,
+  declined: List<Declined<Out>>,
+  failed:   List<Int>
+}
+
+/// The ERP: lists the invoices and the open orders, posts draft invoices.
+connector erp = mcp("https://erp.example.com/mcp")
+  version "1.0"
+  class   confidential
+{
+  tool list_invoices() -> Untrusted<List<Invoice>>
+    read_only
+
+  tool list_orders(vendor_id: Text) -> Untrusted<List<Order>>
+    read_only
+
+  tool find_draft(key: Text) -> Untrusted<Option<DraftId>>
+    read_only
+
+  tool post_draft(m: Verified<Match>, key: Text) -> Receipt<DraftId>
+    critical
+    idempotency key key
+    retry_class reconcilable
+    reconcile by find_draft
+}
+
+capability Inbox    = tool.call(erp, list_invoices)
+capability ErpRead  = tool.call(erp, list_orders)
+capability ErpDraft = tool.call(erp, post_draft)
+capability ModelStd = model.infer(tier: standard, max_class: confidential)
+
+/// Whether `a` is within `pct` percent of `b`.
+fn near(a: Int, b: Int, pct: Int) -> Bool ! {} {
+  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)
+}
+
+/// A match names its invoice's vendor; its total may be off by more than 2%
+/// when the accountant or the finance lead waives it.
+contract Matched(inv: Invoice, m: Match) {
+  accept vendor "The invoice's vendor is the order's vendor"
+    by static inv.vendor_id == m.order.vendor_id
+  accept totals "The total is within 2% of the order's"
+    by static near(inv.total_cents, m.order.total_cents, 2)
+    waive by accountant, finance_lead
+}
+
+agent Matcher {
+  role   "Matches one invoice to an open order of its vendor. Writes nothing."
+  caps   ErpRead, ModelStd
+  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }
+  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}
+}
+
+agent Greeter {
+  role   "Writes one line of greeting."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill greet(name: Text) -> Inferred<Text> ! {Model}
+}
+
+/// Works on every item of a list. What passes goes on; what does not is
+/// asked about once, as one list.
+pattern BatchWithExceptions<Item, Out, R>(
+  source:      tool() -> Untrusted<List<Item>>,
+  work:        skill(Untrusted<Item>) -> Inferred<Out>,
+  accepted:    contract(Item, Out),
+  reviewer:    role,
+  escalate_to: role,
+  commit:      effect(Verified<Out, accepted>) -> Receipt<R>,
+  key:         field(Out),
+  max_items:   const Int,
+  concurrency: const Int,
+  deadline:    const Duration
+) -> Batch<Out, R>
+{
+  stage collect "Collect the items"
+  let items    = source()
+
+  stage work "Work on each item and check it"
+  let checked  = map it in items max max_items par concurrency {
+    let out = delegate work(it)
+    verify out against accepted(it, out)
+  }
+
+  stage review "Ask once about what failed"
+  let reviewed = human.review(checked, role: reviewer, deadline: deadline, escalate_to: escalate_to)
+
+  stage post "Post what was accepted"
+  let posted   = map v in reviewed.accepted max max_items {
+    effect commit(v) idempotent_by v.key
+  }
+  Batch { posted, declined: reviewed.declined, failed: reviewed.failed }
+}
+
+/// Matches every invoice, asks the accountant once about those that failed
+/// only what may be waived, and posts each accepted match as a draft. Its
+/// expansion has the four stages of the pattern.
+workflow MatchAll = BatchWithExceptions<Invoice, Match, DraftId>(
+    source: erp.list_invoices, work: Matcher.match, accepted: Matched,
+    reviewer: accountant, escalate_to: finance_lead,
+    commit: erp.post_draft, key: invoice_no,
+    max_items: 60, concurrency: 6, deadline: 1d)
+  caps   Inbox, ErpRead, ErpDraft, ModelStd
+  budget { spend: 20 USD, time: 2h }
+
+/// Writes a greeting, then gives it back: two stages.
+workflow Greet(name: Text) -> Inferred<Text>
+  caps   ModelStd
+  budget { time: 5m, steps: 4 }
+{
+  stage draft "Write the greeting"
+  let line = delegate Greeter.greet(name)
+
+  stage give "Give it back"
+  line
+}

@@ -308,6 +308,9 @@ impl<'a> Parser<'a> {
         if self.in_test && self.is_w("run") {
             return self.run_stmt(start);
         }
+        if self.at_stage() {
+            return self.stage_stmt(start);
+        }
         let value = self.expr(false)?;
         Ok(self.at(obj().with("op", "expr").with("value", value), start))
     }
@@ -397,6 +400,37 @@ impl<'a> Parser<'a> {
             .with("op", "on_error")
             .with("pattern", pattern)
             .with("then", then);
+        Ok(self.at(s, start))
+    }
+
+    /// 0.7 (spec/attention.md "`stage`"): whether a `stage` statement starts
+    /// here, in a program that reads 0.7: the word `stage`, then on the same
+    /// line a name (an identifier that is not reserved) and a string.
+    /// Anywhere else, and in every program of 0.1 to 0.6, `stage` is an
+    /// ordinary name.
+    fn at_stage(&self) -> bool {
+        if !self.reads_0_7() || !self.is_w("stage") {
+            return false;
+        }
+        let (name, title) = (self.la(1), self.la(2));
+        name.kind == TokKind::Ident
+            && !name.nl
+            && !is_reserved(&name.text)
+            && title.kind == TokKind::String
+            && !title.nl
+    }
+
+    /// `stage <name> "<title>"`: a marker with no body. Where it may stand
+    /// is the check's (E1901), and its title's rules too (E1902); the title
+    /// is a string without interpolation, as every such text is read.
+    fn stage_stmt(&mut self, start: &Token) -> Res<O> {
+        self.bump();
+        let name = self.ident("a stage name")?;
+        let title = self.string("a stage title")?;
+        let s = obj()
+            .with("op", "stage")
+            .with("name", name)
+            .with("title", title);
         Ok(self.at(s, start))
     }
 

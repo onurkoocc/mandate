@@ -4,6 +4,261 @@
   "parts": 1,
   "cases": [
     {
+      "name": "A01",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:e128e710b149a13805d73a0d31b798ef78d86d9871868ceff1a88c8583d43e9f",
+          "defs": {
+            "Batch": "sha256:efe9cf7981843738936cff8f323c6f910bdab62aa81f88fdbd0cf640a25a9173",
+            "BatchWithExceptions": "sha256:af9139346703b557a2ea2450a461dbadba0a9eae688f8d2193856d20642f6eee",
+            "DraftId": "sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c",
+            "ErpDraft": "sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79",
+            "ErpRead": "sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d",
+            "Greet": "sha256:1442d0ed0f3a3c5c697828ed7c4c46ec8a1fabfc872a7e055245b91504ab8ee5",
+            "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+            "Inbox": "sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6",
+            "Invoice": "sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75",
+            "Match": "sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56",
+            "MatchAll": "sha256:12f40742b3982125bfaaf1740c89c3c0acee536932b66f160e58a03f1fe05824",
+            "Matched": "sha256:06c260687ff67cade4bb6131eceae313721f8d637c69737bccd220b8cd07d0db",
+            "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+            "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+            "Order": "sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555",
+            "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+            "erp": "sha256:ccb2a6a1b83d2ea55454144a444c5976c4be2541d7526dcbe1453b95a74130fd",
+            "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+            "near": "sha256:86f822ac6b931c08609cd06ac1c5ea71f98095b7184b563c2b257bfc18195026"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [68, 15, 68, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [66, 15, 66, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "A01a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:1bb87490792cf7d8d29fb56aec12e2c6482ddc062d4aa91e225dcfb7fb13dbd4",
+          "defs": {
+            "Step": "sha256:9b66d97c18844ae4e0b81167d69dd74c0e678e0409dba90b85d9eb029b13546e",
+            "next": "sha256:111fca5ba8ac02de838607e1670e5d7442a90e6982d7c1cb513c1d5602856074",
+            "title_of": "sha256:7c036b59ad63fecba17e453319218d15551ffe4c1f597279e3377b173299af3c"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "A01b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown name 'stage'.",
+            "at": {
+              "path": "/defs/next/body/0/value",
+              "span": [6, 3, 6, 8]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "stage",
+              "expected": "value"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown name 'collect'.",
+            "at": {
+              "path": "/defs/next/body/1/value",
+              "span": [6, 9, 6, 16]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "collect",
+              "expected": "value"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0101h",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0101",
+            "severity": "error",
+            "message": "Interpolation is not allowed in a stage title.",
+            "at": {
+              "span": [20, 15, 20, 44]
+            },
+            "docs": "mandate explain MDT-E0101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104h",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown or missing tag: value of tag \"op\" must be in oneOf.",
+            "at": {
+              "path": "/defs/Greet/body/0",
+              "span": [1, 815, 1, 873]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "discriminator",
+              "schema_path": "#/discriminator"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104i",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Schema violation: must NOT have more than 80 characters.",
+            "at": {
+              "path": "/defs/Greet/body/2/title",
+              "span": [1, 9868, 1, 9951]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "maxLength",
+              "schema_path": "#/oneOf/8/properties/title/maxLength"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104j",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Schema violation: must NOT have fewer than 1 characters.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/0/title",
+              "span": [1, 6424, 1, 6426]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "minLength",
+              "schema_path": "#/oneOf/8/properties/title/minLength"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0140d",
       "kind": "compile",
       "door": "check",
@@ -124,6 +379,345 @@
           }
         },
         "diagnostics": []
+      }
+    },
+    {
+      "name": "E1901",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1901",
+            "severity": "error",
+            "message": "Stage 'post' stands inside a statement or a member of pattern BatchWithExceptions, not at the top level of its body; a stage marks only the top level of a workflow's or a pattern's body.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/6/value/body/0",
+              "span": [1, 7607, 1, 7668]
+            },
+            "docs": "mandate explain MDT-E1901",
+            "facts": {
+              "stage": "post",
+              "place": "nested"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1901a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1901",
+            "severity": "error",
+            "message": "Stage 'compare' stands in fn near; a stage marks only the top level of a workflow's or a pattern's body.",
+            "at": {
+              "path": "/defs/near/body/0",
+              "span": [1, 3026, 1, 3086]
+            },
+            "docs": "mandate explain MDT-E1901",
+            "facts": {
+              "stage": "compare",
+              "place": "fn"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1901b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1901",
+            "severity": "error",
+            "message": "Stage 'nameless' stands inside a statement or a member of workflow Greet, not at the top level of its body; a stage marks only the top level of a workflow's or a pattern's body.",
+            "at": {
+              "path": "/defs/Greet/body/0/then/0",
+              "span": [21, 5, 21, 50]
+            },
+            "docs": "mandate explain MDT-E1901",
+            "facts": {
+              "stage": "nameless",
+              "place": "nested"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1902",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1902",
+            "severity": "error",
+            "message": "Stage 'collect' is named twice in the body of pattern BatchWithExceptions; the stages of one body have names of their own.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/6/name",
+              "span": [1, 7485, 1, 7494]
+            },
+            "docs": "mandate explain MDT-E1902",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "stage": "collect",
+              "problem": "duplicate"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1902a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1902",
+            "severity": "error",
+            "message": "The body of workflow Greet has stages and does not start with one: the statements before stage 'give' are in no stage. A body with stages starts with one.",
+            "at": {
+              "path": "/defs/Greet/body/0",
+              "span": [1, 9640, 1, 9772]
+            },
+            "docs": "mandate explain MDT-E1902",
+            "facts": {
+              "workflow": "Greet",
+              "stage": "give",
+              "problem": "before_first"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1902b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1902",
+            "severity": "error",
+            "message": "Stage 'draft' of workflow Greet is directly followed by another stage and marks no statement; each stage is followed by at least one.",
+            "at": {
+              "path": "/defs/Greet/body/0",
+              "span": [1, 9640, 1, 9698]
+            },
+            "docs": "mandate explain MDT-E1902",
+            "facts": {
+              "workflow": "Greet",
+              "stage": "draft",
+              "problem": "empty"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1902c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1902",
+            "severity": "error",
+            "message": "Stage 'done' ends the body of workflow Greet and marks no statement; each stage is followed by at least one.",
+            "at": {
+              "path": "/defs/Greet/body/4",
+              "span": [1, 9933, 1, 9976]
+            },
+            "docs": "mandate explain MDT-E1902",
+            "facts": {
+              "workflow": "Greet",
+              "stage": "done",
+              "problem": "empty"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1902d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1902",
+            "severity": "error",
+            "message": "Stage 'draft' of workflow Greet is directly followed by an on error, which handles the statement before the stage; a stage stands before the statement whose handler follows it.",
+            "at": {
+              "path": "/defs/Greet/body/0",
+              "span": [1, 9640, 1, 9698]
+            },
+            "docs": "mandate explain MDT-E1902",
+            "facts": {
+              "workflow": "Greet",
+              "stage": "draft",
+              "problem": "on_error"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1902e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1902",
+            "severity": "error",
+            "message": "The title of stage 'give' of workflow Greet holds the control character U+0007; a title is constant text of 1 to 80 characters with no control, format or bidirectional character, since a person reads it on an approval card.",
+            "at": {
+              "path": "/defs/Greet/body/2/title",
+              "span": [1, 9868, 1, 9888]
+            },
+            "docs": "mandate explain MDT-E1902",
+            "facts": {
+              "workflow": "Greet",
+              "stage": "give",
+              "problem": "title",
+              "rule": "control",
+              "char": "U+0007"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1902f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/stages.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1902",
+            "severity": "error",
+            "message": "The title of stage 'post' of pattern BatchWithExceptions holds the format or bidirectional character U+202E; a title is constant text of 1 to 80 characters with no control, format or bidirectional character, since a person reads it on an approval card.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/6/title",
+              "span": [1, 7500, 1, 7525]
+            },
+            "docs": "mandate explain MDT-E1902",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "stage": "post",
+              "problem": "title",
+              "rule": "format",
+              "char": "U+202E"
+            }
+          }
+        ]
       }
     },
     {

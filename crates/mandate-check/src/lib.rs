@@ -19,7 +19,10 @@
 //!
 //! A program of language 0.7 (spec/attention.md) is checked as the same
 //! program of 0.6 is: every rule of 0.6 holds for it (`at_least`), and what
-//! 0.7 adds is checked by the slices that add it.
+//! 0.7 adds is checked by the slices that add it: so far its stages
+//! ([`stages`], E1901 and E1902). A stage is a statement every walker of the
+//! compiler names, and none but [`stages`] reads it as more than nothing: it
+//! adds no cost, node, value, scope, role or authority.
 //!
 //! It holds the front door, the stages before the static checks, the static
 //! checks, and the lock and the sandbox requirements that stand on them:
@@ -52,6 +55,8 @@
 //! - [`expand`]: patterns and their expansion from 0.6 on
 //!   ([`expand::expand`], [`expand::Expansion`], [`expand::for_views`]):
 //!   E1301 to E1307. Rust only.
+//! - [`stages`]: the stages of a program of 0.7 ([`stage_checks`]): E1901
+//!   and E1902. Rust only.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
 //!   `compiler/src/check/roles.ts`.
 //! - [`lock`]: the lock, `compiler/src/lock.ts`: [`Lock`], [`validate_lock`],
@@ -177,6 +182,7 @@ pub mod resolve;
 pub mod roles;
 pub mod sandbox;
 pub mod shapes;
+pub mod stages;
 pub mod statics;
 pub mod stdlib;
 pub mod subprogram;
@@ -186,7 +192,8 @@ pub mod walk;
 
 pub use amendment::narrowings;
 pub use cost::{CostPart, StaticCost, micros_text, static_cost};
-pub use statics::{lead_classes, static_check};
+pub use stages::stage_checks;
+pub use statics::{lead_classes, static_check, workflow_nodes};
 pub use walk::reads_var;
 
 pub use check::{
