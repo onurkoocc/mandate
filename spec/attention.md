@@ -916,8 +916,11 @@ on does not change what that run shows, masks or counts.
 - **At the start**, when a limit applies, the bound under the runtime's
   configuration ([above](#effects-and-the-runtimes-configuration)) is compared
   with it, and a bound above it, or an unbounded one, refuses the start
-  (`attention_above_asks`) before anything is written. An effect site is
-  handed to a person by the configuration when `StartRun`'s `authorize` names
+  (`attention_above_asks`) before anything is written. Such a run is not
+  started with less than its bound reserved: a caller's `--limit asks=N`
+  below the bound refuses the start, and does not cut the run's questions
+  short (the questions a card promises are all asked, or the run does not
+  start). An effect site is handed to a person by the configuration when `StartRun`'s `authorize` names
   its effect `by: human`, its facts' row says `counted: false`, and it is no
   batch commit step; the configuration is fixed at the start and stored with
   the run, so this is known before the run, and holds inside its
@@ -978,7 +981,13 @@ on does not change what that run shows, masks or counts.
   configuration hands to a person that its static total does not count, out
   of what is left (`program_admitted`'s `reservation.asks`); one that does not
   fit, or whose count is unbounded, is refused as E1706 with dimension
-  `asks`. Without a limit, nothing. Every sub-program of a parent of 0.7 has
+  `asks`. The compiler's E1706 in the lead's check holds only the declared
+  `asks` or the static total to `room.left.asks`: it does not see what the
+  runtime's configuration adds. So a sub-program the lead's check passed can
+  still be refused at its admission, by the runtime, as E1706 with dimension
+  `asks` (at `/defs/<workflow>/budget`, `asked` the reservation under the
+  configuration, `left` what is left), and nothing of it runs. Without a
+  limit, nothing. Every sub-program of a parent of 0.7 has
   its facts stored at its admission. Its reservation is released when it ends,
   succeeded or failed, with what it did not use. The admission is one
   transaction: a crash before it commits admits nothing, and one after it
@@ -1382,7 +1391,7 @@ ERP and mailbox, in Docker and in CI:
 | `design` → `read_only` → `live` | Signed promotions; a `live` start without one is `unpromoted`; the shadow diff's digest is checked |
 | It finishes seeing only S0 to S2 | The people read only `watchRun` for their role, `listWaits({ member })` and the HTML pages, and decide with `mandate decide` |
 | Notifications carry only S0 and S1 | The file adapter's lines |
-| `asks` holds | At most 2 questions settled; with `--limit asks=1` the escalation is `asks_exhausted` and the items are declined |
+| `asks` holds | At most 2 questions settled; with `--limit asks=1` the invoice run is refused at start with `attention_above_asks`; `asks_exhausted` is shown through the test hook when the facts under-report |
 | A missed deadline escalates | The simulated clock passes one day, `mandate tick`, `review_escalated`, and `finance_lead` decides; in a second run both deadlines pass |
 | Replay gives the same result | `replayRun` equals the live result |
 | A mutation for every new rule | Every 0.7 code has a case; each run-time refusal has a test (`asks_exhausted`, `unpromoted`, `facts_mismatch`, a forged `promote` or one from the wrong role, `bad_notification_channel`) |

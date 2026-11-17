@@ -21,7 +21,7 @@
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { attentionFacts, hashProgram, linkedProgram, load, type AttentionFacts, type AttentionFactsInput, type Json, type Program } from "@mandate/bridge";
+import { attentionFacts, check, hashProgram, linkedProgram, load, type AttentionFacts, type AttentionFactsInput, type Json, type Program } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ASKS, SITE_KINDS, SUPERVISE_ESCALATIONS } from "../src/asks.js";
 import type { PreparedFile } from "../src/adapters.js";
@@ -34,7 +34,7 @@ import type { Obj, Value } from "../src/values.js";
 import { baseOf, type WorkerChecker } from "../src/plan.js";
 import { Interpreter } from "../src/interp.js";
 import { Runtime } from "../src/runtime.js";
-import { Suspend, Violation } from "../src/signals.js";
+import { Crash, Suspend, Violation } from "../src/signals.js";
 import { toolUse } from "../src/sim.js";
 import { tickPass } from "../src/tick.js";
 import { closeAll, planChecker, world, type World } from "./helpers.js";
@@ -393,6 +393,47 @@ describe("counting", () => {
     expect(opened.map((d) => [d["command"], d["site"]])).toEqual([["/defs/Handling/on/0@0/then/then", { kind: "ask", path: "/defs/Handling/on/0/then/then", wait: "/defs/Handling/on/0/then/then", only: "budget_exceeded" }]]);
     expect(await asksRow(w, "h")).toEqual({ limit: 1, settled: 0, reserved: 1 });
   });
+
+  it("counts a question once across a crash: inside the transaction that counts it nothing stays, after it the resume counts nothing", async () => {
+    const w = await aworld(ASKS_MDT, { fails: true });
+    const journal = w.rt.journal;
+    // A crash between the count and the wait's event, in the one transaction that holds both: it is rolled back whole.
+    const event = journal.event.bind(journal);
+    let inside = true;
+    journal.event = (async (tx, runId, type, data) => {
+      if (type === "wait_opened" && inside) {
+        inside = false;
+        throw new Crash("between_count_and_wait_opened");
+      }
+      return event(tx, runId, type, data);
+    }) as typeof journal.event;
+    await expect(w.rt.startRun({ pkg: w.pkg, workflow: "Asking", runId: "k", input: { note: "long note" } })).rejects.toBeInstanceOf(Crash);
+    expect(await asksRow(w, "k")).toEqual({ limit: 9, settled: 0, reserved: 9 });
+    expect(await journal.command("k", "/defs/Asking/body/1/value")).toBeUndefined();
+    expect(await eventsOf(w, "k", "wait_opened")).toEqual([]);
+    // The resume asks it, and counts it once.
+    let r = await w.rt.resume("k");
+    expect(r.state, state(r)).toBe("waiting");
+    expect(await asksRow(w, "k")).toEqual({ limit: 9, settled: 1, reserved: 8 });
+    // A crash after the transaction committed, before the driver goes on: the next driver finds the wait, and counts
+    // nothing again.
+    const open = journal.openWait.bind(journal);
+    let after = true;
+    journal.openWait = (async (...args: Parameters<typeof journal.openWait>) => {
+      const row = await open(...args);
+      if (after && args[2].id === "/defs/Asking/body/2/value") {
+        after = false;
+        throw new Crash("after_wait_opened");
+      }
+      return row;
+    }) as typeof journal.openWait;
+    await expect(answer(w, "k")).rejects.toBeInstanceOf(Crash);
+    expect(await asksRow(w, "k")).toEqual({ limit: 9, settled: 2, reserved: 7 });
+    r = await w.rt.resume("k");
+    expect(r.state, state(r)).toBe("waiting");
+    expect(await asksRow(w, "k")).toEqual({ limit: 9, settled: 2, reserved: 7 });
+    expect((await eventsOf(w, "k", "wait_opened")).map((d) => d["command"])).toEqual(["/defs/Asking/body/1/value", "/defs/Asking/body/2/value"]);
+  });
 });
 
 // ── when asks is exhausted ──────────────────────────────────────────────
@@ -549,6 +590,46 @@ describe("a review past asks", () => {
     expect(await eventsOf(w, "rc", "review_escalated")).toHaveLength(1);
     expect(await asksRow(w, "rc")).toEqual({ limit: 2, settled: 2, reserved: 0 });
   });
+
+  it("counts its escalation once across a crash in the transaction that makes it", async () => {
+    const w = await reviewing();
+    expect((await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "rk" })).state).toBe("waiting");
+    const journal = w.rt.journal;
+    const event = journal.event.bind(journal);
+    let crash = true;
+    journal.event = (async (tx, runId, type, data) => {
+      if (type === "review_escalated" && crash) {
+        crash = false;
+        throw new Crash("between_count_and_review_escalated");
+      }
+      return event(tx, runId, type, data);
+    }) as typeof journal.event;
+    w.clock.advance(DAY);
+    await expect(w.rt.tick("rk")).rejects.toBeInstanceOf(Crash);
+    // Rolled back with the escalation: nothing counted, nothing escalated.
+    expect(await asksRow(w, "rk")).toEqual({ limit: 2, settled: 1, reserved: 1 });
+    expect(await eventsOf(w, "rk", "review_escalated")).toEqual([]);
+    await w.rt.tick("rk");
+    await w.rt.tick("rk");
+    expect(await eventsOf(w, "rk", "review_escalated")).toHaveLength(1);
+    expect(await asksRow(w, "rk")).toEqual({ limit: 2, settled: 2, reserved: 0 });
+  });
+
+  it("with --limit asks=1 the invoice run is refused at start (attention_above_asks); asks_exhausted shows only when the facts under-report", async () => {
+    // The review of the invoices and its escalation are 2 questions, and a limit of 1 is below them: the run does not
+    // start, and nothing is written. That a review's escalation past asks is not made, and its items are declined, is
+    // shown with facts that under-report the bound (above: "past asks at its escalation").
+    const w = await reviewing();
+    await expect(w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "one", limits: { asks: 1 } })).rejects.toThrow(
+      /attention_above_asks: The run can ask 2 questions under the runtime's configuration \(2 in the program, and 0 the configuration hands to a person\), above its asks limit of 1/,
+    );
+    const rows = await w.db.query<{ n: unknown }>("select count(*) as n from runs where run_id = $1", ["one"]);
+    expect(Number(rows[0]!.n)).toBe(0);
+    // With the declared 2 alone it starts, and asks at most 2.
+    const r = await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "two" });
+    expect(r.state, state(r)).toBe("waiting");
+    expect(await asksRow(w, "two")).toEqual({ limit: 2, settled: 1, reserved: 1 });
+  });
 });
 
 // ── sub-programs and amendments ─────────────────────────────────────────
@@ -653,7 +734,62 @@ describe("sub-programs and amendments under a run's asks", () => {
       }
     }
   });
+
+  it("holds an amendment that raises the run's bound to the limit: it moves the run's own reservation when it fits, and is refused to the lead as a start would be when it does not (D6)", async () => {
+    // The envelope leaves the pull request to policy (its bound counts the pause and the owner's gate a governance
+    // file would bring: 2); the amendment hands it to the release manager: one question more, 3.
+    const raising = (asks: number, approve?: string): string =>
+      program({ budget: `{ tokens: 200k, steps: 400, agents: 12, asks: ${asks} }`, ...(approve ? { approve } : {}), body: OPENED })
+        .replace("mandate @ 0.4", "mandate @ 0.7")
+        .replace("type Item = { name: Text }", `type Item = { name: Text }\ntype Change = { files: List<Text> }\n\ncontract Listed(c: Change) {\n  accept listed "The change names its files" by static true\n}`);
+    const PR_AT = "/defs/W/body/3/value";
+    for (const [asks, caller] of [
+      [5, undefined],
+      [3, undefined],
+      [5, 2],
+    ] as const) {
+      const amended = (load(raising(asks, "git.open_pr by release_manager"), "mdt").program!.defs["W"] as unknown as { envelope: Value }).envelope;
+      const pr = new SimTool("git.open_pr");
+      const w = await planned(checker, [[toolUse("a1", "request_amendment", { envelope: amended, reason: "a person for the pull request" })], finish("asked")], { src: raising(asks), tools: [pr] });
+      const runId = `raise${asks}-${String(caller)}`;
+      let r = await w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { items: ITEMS }, runId, ...(caller !== undefined ? { limits: { asks: caller } } : {}) });
+      expect(r.state, state(r)).toBe("waiting");
+      expect((await w.rt.storedFacts(await w.rt.getRun(runId)))!.totals!.questions).toBe(2);
+      expect(await asksRow(w, runId)).toEqual({ limit: caller ?? asks, settled: 1, reserved: 1 });
+      r = await answerAlice(w, runId);
+      const id = `${PLAN_AT}/step/0/tool/0/amendment`;
+      if (asks === 5 && caller === undefined) {
+        // It fits: the request is asked out of what is left (settled 2), and once approved the run's own reservation
+        // grows by the one question the amended program adds, out of what is left.
+        expect(r.state, state(r)).toBe("waiting");
+        expect(await asksRow(w, runId)).toEqual({ limit: 5, settled: 2, reserved: 1 });
+        const done = await w.rt.decideAmendment(runId, msg(), signDecision(w.alice, await w.rt.shown(runId, "wait"), { kind: "amend", member: "alice", at: new Date(w.adapters.clock.now()) }));
+        expect(done.state, state(done)).toBe("waiting");
+        expect((await w.rt.storedFacts(await w.rt.getRun(runId)))!.totals!.questions).toBe(3);
+        // The pull request now asks the release manager, counted out of that reservation.
+        expect((await eventsOf(w, runId, "wait_opened")).at(-1)).toMatchObject({ command: `${PR_AT}/authorize`, site: { kind: "effect", path: PR_AT, wait: `${PR_AT}/authorize` } });
+        expect(await asksRow(w, runId)).toEqual({ limit: 5, settled: 3, reserved: 1 });
+        expect(pr.executions).toEqual([]);
+      } else {
+        // asks: 3 leaves 1, which the request itself would take: the growth does not fit. The caller's limit of 2 is
+        // below the amended bound of 3 (which the compiler holds to the declared 5 alone). Either way the lead is refused as a start would be, and nobody is asked.
+        expect(r.state, state(r)).not.toBe("failed");
+        expect(refusals(w.told[0])).toEqual([["attention_above_asks", null, { dimension: "asks" }]]);
+        expect(await eventsOf(w, runId, "amendment_requested")).toEqual([]);
+        expect((await eventsOf(w, runId, "wait_opened")).map((d) => d["command"])).not.toContain(id);
+        expect(await eventsOf(w, runId, "package_amended")).toEqual([]);
+        expect((await asksRow(w, runId))!.settled).toBe(1);
+      }
+    }
+  });
 });
+
+/** The body of the plan program the D6 test amends: its own pause, the lead, then a pull request after it. */
+const OPENED = `  let first = pause
+  let done = plan Lead.finish(items) within envelope
+  let c = verify Change { files: ["a.ts"] } against Listed(Change { files: ["a.ts"] })
+  let pr = effect git.open_pr(c) idempotent_by "pr"
+  done`;
 
 /** A pull request whose prepared change carries a governance-class file: the owner's gate applies. */
 class GovernedTool extends SimTool {
@@ -666,15 +802,34 @@ class GovernedTool extends SimTool {
 // ── the role of an approval (D2) ────────────────────────────────────────
 
 describe("the role an approval asks is the one the program names (D2)", () => {
+  /**
+   * Runs workflow W of `program`, linked with `modules`, by an interpreter of its own over the world's journal, as IR
+   * no check has seen: the role its first wait asks, the error it stopped with, or "no wait".
+   */
+  const directly = async (w: World, program: Program, runId: string, modules: Record<string, Program> = {}): Promise<unknown> => {
+    await w.db.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict do nothing", [`sha256:${"5".repeat(64)}`, JSON.stringify(program), JSON.stringify({ modules: {} }), "{}"]);
+    await w.db.tx((tx) => w.rt.journal.createRun(tx, { runId, tenant: "default", packageHash: `sha256:${"5".repeat(64)}`, workflow: "W", input: {}, policy: { tenant: "default" }, limits: {}, manifest: {}, manifestHash: `sha256:${"6".repeat(64)}` }));
+    const { fence } = await w.rt.journal.acquire(runId);
+    const interp = new Interpreter({ journal: w.rt.journal, adapters: w.adapters, program: linkedProgram(program, modules as never), packageHash: `sha256:${"5".repeat(64)}`, runId, fence, policy: { tenant: "default" }, faults: w.faults, artifacts: w.rt.artifacts, signer: w.rt.signer, trusted: w.rt.trusted, replay: false });
+    try {
+      await interp.runWorkflow("W", { n: { text: "x" } });
+    } catch (e) {
+      if (e instanceof Suspend) return ((await eventsOf(w, runId, "wait_opened"))[0]!["request"] as Obj)["role"];
+      return e;
+    }
+    return "no wait";
+  };
+
   it("asks the role definition a contract's parameter of the same name shadows, in a contract of an imported module of 0.6", async () => {
     const lib = load(LIB_06, "mdt").program!;
     const lock = { ...(LOCK as object), modules: { "example.lib": hashOf(lib) } } as never;
-    const w = await world(IMP_07, { lock, modules: { "example.lib": lib }, decisions: { keys: new TrustedKeys([ana.publicKey]) } });
-    const r = await w.rt.startRun({ pkg: w.pkg, workflow: "W", runId: "d2", input: { n: { text: "x" } } });
-    expect(r.state, state(r)).toBe("waiting");
-    const opened = await eventsOf(w, "d2", "wait_opened");
-    expect((opened[0]!["request"] as Obj)["role"]).toBe("accountant");
-    // The same program of 0.6 asks what it always asked: the parameter's value.
+    // The check of 0.7 refuses the program where its verify reaches the contract (E1501, in C of example.lib): its IR,
+    // handed to the interpreter directly, asks the role definition.
+    const checked = check(IMP_07, "mdt", { modules: { "example.lib": lib } });
+    expect(checked.diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.message.includes("of the module example.lib")])).toEqual([["MDT-E1501", true]]);
+    const w = await aworld();
+    expect(await directly(w, load(IMP_07, "mdt").program!, "d2", { "example.lib": lib })).toBe("accountant");
+    // The same program of 0.6 is checked as before, and asks what it always asked: the parameter's value.
     const six = await world(IMP_07.replace("mandate @ 0.7", "mandate @ 0.6"), { lock, modules: { "example.lib": lib }, decisions: { keys: new TrustedKeys([ana.publicKey]) } });
     const s = await six.rt.startRun({ pkg: six.pkg, workflow: "W", runId: "d6", input: { n: { text: "x" } } });
     expect(s.state, state(s)).toBe("waiting");
@@ -688,19 +843,7 @@ describe("the role an approval asks is the one the program names (D2)", () => {
     // as IR alone, linked, and run by an interpreter of its own over the world's journal.
     const p5 = load(P5, "mdt").program!;
     const w = await aworld();
-    const asked = async (program: Program, runId: string): Promise<unknown> => {
-      await w.db.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict do nothing", [`sha256:${"5".repeat(64)}`, JSON.stringify(program), JSON.stringify({ modules: {} }), "{}"]);
-      await w.db.tx((tx) => w.rt.journal.createRun(tx, { runId, tenant: "default", packageHash: `sha256:${"5".repeat(64)}`, workflow: "W", input: {}, policy: { tenant: "default" }, limits: {}, manifest: {}, manifestHash: `sha256:${"6".repeat(64)}` }));
-      const { fence } = await w.rt.journal.acquire(runId);
-      const interp = new Interpreter({ journal: w.rt.journal, adapters: w.adapters, program: linkedProgram(program, {}), packageHash: `sha256:${"5".repeat(64)}`, runId, fence, policy: { tenant: "default" }, faults: w.faults, artifacts: w.rt.artifacts, signer: w.rt.signer, trusted: w.rt.trusted, replay: false });
-      try {
-        await interp.runWorkflow("W", { n: { text: "x" } });
-      } catch (e) {
-        if (e instanceof Suspend) return ((await eventsOf(w, runId, "wait_opened"))[0]!["request"] as Obj)["role"];
-        return e;
-      }
-      return "no wait";
-    };
+    const asked = (program: Program, runId: string): Promise<unknown> => directly(w, program, runId);
     expect(await asked(p5, "p5")).toBe("accountant");
     // Before 0.7 the parameter's value decided, as it always did.
     expect(await asked({ ...p5, language: "mandate/0.6" } as unknown as Program, "p5six")).toBe("finance_lead");

@@ -127,9 +127,9 @@ export type Row = { table: "questions"; row: AttentionQuestion } | { table: "eff
  * - the owner's gate of an effect (`governance`): the governance row of the effect's static path, whichever suffix
  *   its wait has;
  * - an authorization by a role (`effect`, `changeset`: a member's or the set's): the question row of its static path
- *   when the static total counts it, else its `effects` row, `counted: false`, which the configuration must hand to a
- *   person (`authorize`);
- * - a lead's amendment request (`plan`): the row of its `plan`;
+ *   when the static total counts it, else its `effects` row (an effect's, or a change set member's), `counted: false`,
+ *   which the configuration must hand to a person (`authorize`); a change set's own approval is always counted;
+ * - a lead's amendment request (`plan`): the row of its `plan`, by its path and, where the row gives it, its wait;
  * - any other: the row of its kind and static wait.
  *
  * A wait of the `on budget_exceeded` handler is found among the handler's rows by the same rules.
@@ -150,7 +150,6 @@ export function rowOf(facts: AttentionFacts, tag: SiteTag, o: { escalation?: boo
     case "changeset": {
       const counted = qs.find((q) => q.kind === tag.kind && q.path === tag.path);
       if (counted) return of(counted);
-      if (tag.kind !== "effect") return undefined;
       // An effect the static total does not count asks a person only when the configuration hands it to one. The
       // handler's rows hold no effect sites of their own: there, only a counted row names it.
       const e = handler ? undefined : (facts.effects ?? []).find((x) => x.path === tag.path && !x.counted && !x.batch);
@@ -158,7 +157,7 @@ export function rowOf(facts: AttentionFacts, tag: SiteTag, o: { escalation?: boo
       return undefined;
     }
     case "plan": {
-      const p = (facts.plans ?? []).find((x) => x.path === tag.path);
+      const p = (facts.plans ?? []).find((x) => x.path === tag.path && (typeof x["wait"] !== "string" || x["wait"] === tag.wait));
       return p ? { table: "plans", row: p } : undefined;
     }
     default:
