@@ -85,14 +85,16 @@ pub fn check_with(
 /// module of 1.0.0 as `std.patterns`, which stands for a pin of 1.0.0 when
 /// its lock has none and is the module its lock pins when it has one (a lock
 /// of 0.6 that the program checks with pins 1.0.0, or the check is E1605 as
-/// it was). `None` for a text that does not load or imports no
-/// `std.patterns`: it reads no version of it, and is given nothing more.
+/// it was). So is one whose check reads the built-in for a library it is
+/// handed (in the repository directories `libraries`) that requires it.
+/// `None` for a text that does not load and for one whose check reads no
+/// version of it: it is given nothing more.
 ///
 /// What it does not touch: the views, which are given the modules they were
 /// given (a view adds the built-in itself, and is compared as it is: a gate
 /// finds a view that shows the two versions apart), and nothing else of
 /// the program or its lock.
-pub fn relabelled_modules(text: &str, kind: SourceKind) -> Option<Modules> {
+pub fn relabelled_modules(text: &str, kind: SourceKind, libraries: &[String]) -> Option<Modules> {
     let program = mandate_syntax::load(text, kind).program?;
     let imports = program
         .get("uses")
@@ -100,7 +102,12 @@ pub fn relabelled_modules(text: &str, kind: SourceKind) -> Option<Modules> {
         .unwrap_or_default()
         .iter()
         .any(|u| u.get("module").and_then(Value::as_str) == Some("std.patterns"));
-    if !imports {
+    let required = libraries_of(libraries)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|l| mandate_check::library::load_library(l, false, "a library").ok())
+        .any(|l| l.manifest.requires().contains_key("std.patterns"));
+    if !imports && !required {
         return None;
     }
     let one = mandate_check::library::STD_PATTERNS_EMBEDDED

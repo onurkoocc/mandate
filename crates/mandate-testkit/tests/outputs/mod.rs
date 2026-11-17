@@ -193,7 +193,7 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
 ///
 /// As [`outputs_of`].
 pub fn outputs_of_relabelled(program: &str, text: &str) -> Result<Vec<(String, String)>, String> {
-    let more = crate::common::relabelled_modules(text, kind_of(program));
+    let more = crate::common::relabelled_modules(text, kind_of(program), &library_dirs_of(program));
     outputs_of_text_more(program, text, more.as_ref())
 }
 

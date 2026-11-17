@@ -16,6 +16,11 @@
 //!   another formula: a pattern whose shape changed widens.
 //! - **A connector**: its server's URL, its class, and each tool with its
 //!   class, `read_only` or `write` and its retry class.
+//! - **0.7, a workflow and a pattern of a module of 0.7**: the reports it
+//!   makes, each with its role (a pattern's role slot), its title and the
+//!   highest class of its fields ([`crate::report_sig`]; in a pattern,
+//!   `applied` for a field that names what the application binds). A module
+//!   of 0.6 records none, and its signature is what it was before 0.7.
 //!
 //! A new version widens a definition's signature ([`widenings`]) when it
 //! needs a capability no capability of the old one covers
@@ -24,10 +29,11 @@
 //! ([`crate::diff::budget_changes`]), waits for a role the old one did not,
 //! lets a model receive a higher class, has another pattern shape, another
 //! connector URL or a higher connector class, a tool it did not have, a
-//! read-only tool that writes or a write tool with another retry class, or
-//! is another kind of definition; and a `pub` workflow, pattern, connector
-//! or agent the old version did not have widens it too. A `doc` line is not
-//! part of any of these.
+//! read-only tool that writes or a write tool with another retry class,
+//! makes a report the old one did not or one whose highest class rose
+//! (0.7), or is another kind of definition; and a `pub` workflow, pattern,
+//! connector or agent the old version did not have widens it too. A `doc`
+//! line is not part of any of these.
 
 use std::collections::{BTreeMap, BTreeSet};
 

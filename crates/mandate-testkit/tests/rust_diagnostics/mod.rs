@@ -122,16 +122,18 @@ fn result_of_text_given(
     text_of: TextOf<'_>,
     relabelled: Option<&std::cell::Cell<bool>>,
 ) -> Result<Option<JsValue>, String> {
+    let dir = format!("conformance/{id}");
     // What the program checked is given besides its modules, when it is a
     // relabelled one.
     let more = |text: &str, kind: SourceKind| {
-        let more = relabelled.and_then(|_| crate::common::relabelled_modules(text, kind));
+        let more = relabelled.and_then(|_| {
+            crate::common::relabelled_modules(text, kind, &case_libraries(&dir, case))
+        });
         if let (Some(given), true) = (relabelled, more.is_some()) {
             given.set(true);
         }
         more
     };
-    let dir = format!("conformance/{id}");
     if door == "library" {
         let r = run_library_case(&dir, case)?;
         return parse_json(r.text.as_bytes()).map(|v| Some(JsValue::from(&v)));

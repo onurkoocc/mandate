@@ -203,7 +203,7 @@ fn every_0_6_fixture_under_the_0_7_header_gives_what_it_gives_as_0_6() {
         if text.contains("std.patterns") {
             std_patterns.push(p.clone());
         }
-        if common::relabelled_modules(&rewritten, kind).is_some() {
+        if common::relabelled_modules(&rewritten, kind, &outputs::library_dirs_of(p)).is_some() {
             pinned_1_0_0.push(p.clone());
         }
         let as_0_6 = outputs::outputs_of(p)?;

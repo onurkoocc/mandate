@@ -531,7 +531,8 @@ fn json_outputs(program: &str, text: &str) -> Result<JsonOutputs, String> {
     let mut out: Vec<(String, JsValue)> = Vec::new();
     let lock_path = outputs::lock_file_of(program);
     // As `language_0_7.rs` relabels it: std.patterns 1.0.0 pinned.
-    let more = common::relabelled_modules(text, kind_of(program));
+    let more =
+        common::relabelled_modules(text, kind_of(program), &outputs::library_dirs_of(program));
     let plain = outputs::checked_text_more(program, text, false, false, more.as_ref())?;
     out.push(("check".to_owned(), plain.to_js()));
     let linked = outputs::checked_text_more(program, text, true, false, more.as_ref())?;

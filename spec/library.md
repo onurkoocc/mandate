@@ -809,7 +809,7 @@ pub pattern BatchWithExceptions<Item, Out, R>(
   decision for `escalate_to`; then the result.
 
 `stage` and `report` are 0.7; the body has neither. Version 2.0.0 of
-`std.patterns` (0.7, not implemented yet) adds them, beside this version,
+`std.patterns` (0.7, `lib/std.patterns@2/`) adds them, beside this version,
 which does not change ([below](#07-stdpatterns-200-e1609-and-reports)).
 
 ### `FanOutMerge`
@@ -2033,7 +2033,7 @@ The three acceptance criteria of 0.6:
 ## 0.7: `std.patterns` 2.0.0, E1609 and reports
 
 *Added 2026-11-17. Specified in
-[`attention.md`](attention.md#stdpatterns-200); 0.7, not implemented yet.
+[`attention.md`](attention.md#stdpatterns-200); 0.7, implemented (RL6).
 Everything above holds as it is for 0.6.*
 
 - **Two embedded versions.** `std.patterns` 1.0.0 stays in
@@ -2048,14 +2048,20 @@ Everything above holds as it is for 0.6.*
   lock that pins `std.patterns` 2.0.0 is refused. A program of 0.1 to 0.5
   that imports a 0.6 or a 0.7 module stays E1603. `mandate add std.patterns`
   pins the newest embedded version whose language is not newer than the
-  program's.
+  program's: the program `--program FILE` names (`add`, `upgrade`); without
+  it, a program of 0.6, and the lock written is what it was before 0.7. For
+  a program of 0.7 the lock written is of format `mandate/lock/0.7`.
 - **Reports in the authority signature.** In 0.7 the [authority
-  signature](#the-authority-signature) of a workflow and a pattern, and the
-  semantic diff, record the reports it makes: each one's role or role slot,
-  and the highest data class of its fields. A report added, or one whose
-  highest class rises, widens the signature: it is a governance change, which
+  signature](#the-authority-signature) of a workflow and a pattern of a
+  module of 0.7, and the semantic diff, record the reports it makes: each
+  one's role or role slot, its title, and the highest data class of its
+  fields (`reports`; in a pattern, `applied` for a field whose class is what
+  the application binds). A report added, or one whose highest class rises,
+  widens the signature (`what: "report"`): it is a governance change, which
   `mandate upgrade` writes only with `--accept-governance`, and which
-  `mandate publish` refuses in a version that is not a major one (E1607).
+  `mandate publish` refuses in a version that is not a major one (E1607). The
+  signature of a module of 0.6 is as it was. The rules in full are
+  [`attention.md`](attention.md#stdpatterns-200)'s.
 
 ## Not in 0.6
 
