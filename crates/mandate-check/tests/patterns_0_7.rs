@@ -346,12 +346,11 @@ fn the_facts_of_batch_with_exceptions_2_0_0_are_the_invoice_flows() {
             "Commit what was accepted"
         ]
     );
-    let reports: Vec<(
-        String,
-        String,
-        Option<String>,
-        Vec<(String, String, String, String)>,
-    )> = f
+    // A field as `(name, type, class, known)`, a report as `(role, title,
+    // stage, fields)`.
+    type Field = (String, String, String, String);
+    type Row = (String, String, Option<String>, Vec<Field>);
+    let reports: Vec<Row> = f
         .reports
         .iter()
         .map(|r| {

@@ -317,14 +317,14 @@ mod tests {
         let a = r("reviewer", "A", internal);
         let b = r("reviewer", "B", confidential);
         assert_eq!(
-            compare_reports("W", &[a.clone()], &[a.clone(), b.clone()]),
+            compare_reports("W", std::slice::from_ref(&a), &[a.clone(), b.clone()]),
             (
                 vec!["+ W: report \"B\" to reviewer (shows confidential)".to_owned()],
                 vec![]
             )
         );
         assert_eq!(
-            compare_reports("W", &[a.clone(), b.clone()], &[a.clone()]),
+            compare_reports("W", &[a.clone(), b.clone()], std::slice::from_ref(&a)),
             (
                 vec![],
                 vec!["- W: report \"B\" to reviewer removed".to_owned()]
@@ -332,24 +332,27 @@ mod tests {
         );
         let raised = r("reviewer", "A", ShownClass::Applied);
         assert_eq!(
-            compare_reports("P", &[a.clone()], &[raised.clone()]).0,
+            compare_reports("P", std::slice::from_ref(&a), std::slice::from_ref(&raised)).0,
             ["~ P: report \"A\" to reviewer shows internal → what the application binds"]
         );
         assert_eq!(
-            compare_reports("P", &[raised], &[a.clone()]).1,
+            compare_reports("P", &[raised], std::slice::from_ref(&a)).1,
             ["~ P: report \"A\" to reviewer shows what the application binds → internal"]
         );
         // Another role is another report: one added, one removed.
         let other = r("escalate_to", "A", internal);
-        let (up, down) = compare_reports("P", &[a.clone()], &[other]);
+        let (up, down) = compare_reports("P", std::slice::from_ref(&a), &[other]);
         assert_eq!(up.len(), 1);
         assert_eq!(down.len(), 1);
         // One more of the same.
         assert_eq!(
-            compare_reports("W", &[a.clone()], &[a.clone(), a.clone()]).0,
+            compare_reports("W", std::slice::from_ref(&a), &[a.clone(), a.clone()]).0,
             ["+ W: report \"A\" to reviewer, 2 where there were 1"]
         );
-        assert_eq!(compare_reports("W", &[a.clone()], &[a]), (vec![], vec![]));
+        assert_eq!(
+            compare_reports("W", std::slice::from_ref(&a), std::slice::from_ref(&a)),
+            (vec![], vec![])
+        );
         assert!(ShownClass::Applied > ShownClass::Class(DataClass::Restricted));
     }
 }
