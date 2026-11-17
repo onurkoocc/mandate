@@ -19,7 +19,7 @@
 //! [`crate::doors`].
 
 use mandate_ir::{
-    Diagnostic, JsObject, JsValue, Location, Map, Program, ProgramHashes, Spans, Value, has_errors,
+    Diagnostic, JsObject, JsValue, Location, Program, ProgramHashes, Spans, Value, has_errors,
     hash_program,
 };
 use mandate_syntax::{SourceKind, load};
@@ -430,15 +430,9 @@ pub(crate) fn check_shown(
     // Static checks assume every name resolves.
     if !has_errors(&diagnostics) {
         diagnostics.extend(
-            static_check(
-                target,
-                &loaded.spans,
-                &target_linked.defs,
-                opts.claim,
-                shown,
-            )
-            .into_iter()
-            .map(back),
+            static_check(target, &loaded.spans, target_linked, opts.claim, shown)
+                .into_iter()
+                .map(back),
         );
     }
     // `opts.lock && !hasErrors(diagnostics)`: a lock that is falsy is none.
@@ -569,19 +563,21 @@ fn lock_stage(
 fn static_check(
     program: Program<'_>,
     spans: &Spans,
-    defs: &Map,
+    linked: &crate::modules::Linked,
     claim: Option<&Value>,
     shown: Option<&mut crate::statics::Typing>,
 ) -> Vec<Diagnostic> {
-    match shown {
-        None => crate::statics::static_check(program, Some(spans), Some(defs), claim),
-        Some(into) => {
-            let (found, typed) =
-                crate::statics::static_check_shown(program, Some(spans), Some(defs), claim);
-            *into = typed;
-            found
-        }
+    let (found, typed) = crate::statics::static_check_from(
+        program,
+        Some(spans),
+        Some(&linked.defs),
+        claim,
+        &linked.origin,
+    );
+    if let Some(into) = shown {
+        *into = typed;
     }
+    found
 }
 
 /// What a check reads of the libraries (`crate::library::for_check`), and

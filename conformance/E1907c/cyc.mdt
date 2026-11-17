@@ -1,0 +1,27 @@
+// A module of 0.6 whose contract C requires again, which verifies against
+// C: a cycle through a contract, which 0.6 does not refuse. D has none.
+mandate @ 0.6
+
+module example.cyc @ 0.1
+
+use std.{human}
+
+pub role accountant "Accountant"
+
+pub type Note = { text: Text }
+
+pub contract C(n: Note) {
+  require again(n)
+  accept ok "ok" by static true
+}
+
+pub contract D(n: Note) {
+  accept ok "ok" by static true
+}
+
+/// Asks, then verifies against C again.
+pub fn again(n: Note) -> Bool ! {Human} {
+  let a = human.ask("Again {n.text}?", role: accountant)
+  let v = verify n against C(n)
+  true
+}

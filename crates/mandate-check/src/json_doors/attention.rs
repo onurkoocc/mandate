@@ -44,14 +44,24 @@ pub(super) const ATTENTION_FACTS: &[&str] = &["text", "kind", "opts", "workflow"
 ///
 /// ```json
 /// { "questions": [ { "path", "wait", "kind", "role", "shown", "known", "deadline_ms",
-///                    "on_no_answer", "escalates"?, "stage", "multiplicity", "only" } ],
+///                    "on_no_answer", "escalates"?, "stage", "multiplicity", "only",
+///                    "contract"?, "criterion"?, "items"?, "waivable"? } ],
 ///   "effects":   [ { "path", "effect", "multiplicity", "counted", "role", "batch", "stage" } ],
 ///   "totals":    { "questions", "by_role": [ { "role", "questions" } ], "reports": [ { "role", "reports" } ] },
 ///   "asks":      2,
 ///   "budget_exceeded": [ <a question, "only": "budget_exceeded"> ],
-///   "plans":     [ { "path", "kind": "plan", "role", "shown", "known", "on_no_answer", "stage",
-///                    "multiplicity", "from": "asks_left" } ] }
+///   "plans":     [ { "path", "wait", "kind": "plan", "role", "shown", "known", "on_no_answer",
+///                    "stage", "multiplicity", "from": "asks_left" } ] }
 /// ```
+///
+/// A `verify` row alone has `contract` and `criterion`, the names of the
+/// contract and the criterion whose approval it is, as the program writes
+/// them; a review's rows alone have `items`, the most items its one decision
+/// is about (the bound of the map it reviews: its `max`, else the envelope's
+/// `agents`; or `"unbounded"`), and `waivable`, the criteria its roles may
+/// waive as `Contract.criterion`, in the order of the program. A `plans`
+/// row's `wait` is `<plan>/amendment`, the static form of its amendment
+/// request (a run's id is `<plan>/step/<n>/tool/<k>/amendment`).
 ///
 /// `kind` is one of a closed list, one name for each row of the table of
 /// sites ([`crate::asks::SiteKind`]), which the runtime tags every wait it
@@ -64,7 +74,11 @@ pub(super) const ATTENTION_FACTS: &[&str] = &["text", "kind", "opts", "workflow"
 /// function's site under its call (`<call>>f/…`), a contract's under its
 /// `verify` (`<verify>/contract/…`) and a sub-program's under its command
 /// (`<plan>/program/<n>…`); `kind` and `wait` name one row (a review and its
-/// `only: on_escalation` row share the review's wait). `on_no_answer` is
+/// `only: on_escalation` row share the review's wait). Under the runtime's
+/// configuration an authorization's suffix does not name its row: the
+/// owner's gate is the `governance` row of the effect's path, and an
+/// authorization by a role the effect's `questions` row, else its `effects`
+/// row (spec/attention.md "The static form of a wait"). `on_no_answer` is
 /// one of `waits`, `unmet`, `escalates` (with `escalates: { to,
 /// deadline_ms }`), `declined`, `refused_to_lead`; `only` is `null`,
 /// `on_escalation`, `governance_file` or `budget_exceeded`. A count is an

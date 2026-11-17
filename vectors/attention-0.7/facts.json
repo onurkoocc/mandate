@@ -184,7 +184,9 @@
           "on_no_answer": "waits",
           "stage": null,
           "multiplicity": 1,
-          "only": null
+          "only": null,
+          "contract": "Approved",
+          "criterion": "both"
         },
         {
           "path": "/defs/Approving/body/4/value",
@@ -197,7 +199,9 @@
           "on_no_answer": "waits",
           "stage": null,
           "multiplicity": 1,
-          "only": null
+          "only": null,
+          "contract": "Approved",
+          "criterion": "both"
         },
         {
           "path": "/defs/Approving/body/4/value",
@@ -210,7 +214,9 @@
           "on_no_answer": "unmet",
           "stage": null,
           "multiplicity": 1,
-          "only": null
+          "only": null,
+          "contract": "Approved",
+          "criterion": "checked"
         },
         {
           "path": "/defs/Approving/body/4/value",
@@ -223,7 +229,9 @@
           "on_no_answer": "waits",
           "stage": null,
           "multiplicity": 1,
-          "only": null
+          "only": null,
+          "contract": "Approved",
+          "criterion": "kept"
         }
       ],
       "effects": [],
@@ -285,7 +293,9 @@
           "on_no_answer": "waits",
           "stage": null,
           "multiplicity": 1,
-          "only": null
+          "only": null,
+          "contract": "Ready",
+          "criterion": "owned"
         },
         {
           "path": "/defs/Releasing/body/1/value",
@@ -616,7 +626,11 @@
           },
           "stage": "review",
           "multiplicity": 1,
-          "only": null
+          "only": null,
+          "items": 4,
+          "waivable": [
+            "Short.short"
+          ]
         },
         {
           "path": "/defs/Planning/body/2/value",
@@ -629,7 +643,11 @@
           "on_no_answer": "declined",
           "stage": "review",
           "multiplicity": 1,
-          "only": "on_escalation"
+          "only": "on_escalation",
+          "items": 4,
+          "waivable": [
+            "Short.short"
+          ]
         },
         {
           "path": "/defs/Planning/body/4/value",
@@ -642,7 +660,9 @@
           "on_no_answer": "waits",
           "stage": "merge",
           "multiplicity": 1,
-          "only": null
+          "only": null,
+          "contract": "Ready",
+          "criterion": "owned"
         },
         {
           "path": "/defs/Planning/body/5/value",
@@ -727,6 +747,7 @@
       "plans": [
         {
           "path": "/defs/Planning/body/7/value",
+          "wait": "/defs/Planning/body/7/value/amendment",
           "kind": "plan",
           "role": "platform_lead",
           "shown": "public",
@@ -980,7 +1001,11 @@
           },
           "stage": "exceptions",
           "multiplicity": 1,
-          "only": null
+          "only": null,
+          "items": 60,
+          "waivable": [
+            "Matched.vendor"
+          ]
         },
         {
           "path": "/defs/MatchAll/body/6/value",
@@ -993,7 +1018,11 @@
           "on_no_answer": "declined",
           "stage": "exceptions",
           "multiplicity": 1,
-          "only": "on_escalation"
+          "only": "on_escalation",
+          "items": 60,
+          "waivable": [
+            "Matched.vendor"
+          ]
         }
       ],
       "effects": [
@@ -1280,7 +1309,11 @@
           },
           "stage": "exceptions",
           "multiplicity": 1,
-          "only": null
+          "only": null,
+          "items": 60,
+          "waivable": [
+            "Matched.totals"
+          ]
         },
         {
           "path": "/defs/MatchAll/body/6/value",
@@ -1293,7 +1326,11 @@
           "on_no_answer": "declined",
           "stage": "exceptions",
           "multiplicity": 1,
-          "only": "on_escalation"
+          "only": "on_escalation",
+          "items": 60,
+          "waivable": [
+            "Matched.totals"
+          ]
         }
       ],
       "effects": [
@@ -1528,6 +1565,7 @@
       "plans": [
         {
           "path": "/defs/Planning/body/0/value",
+          "wait": "/defs/Planning/body/0/value/amendment",
           "kind": "plan",
           "role": "platform_lead",
           "shown": "public",
@@ -1588,7 +1626,11 @@
           },
           "stage": "review",
           "multiplicity": 1,
-          "only": null
+          "only": null,
+          "items": 60,
+          "waivable": [
+            "Matched.totals"
+          ]
         },
         {
           "path": "/defs/MatchAll/body/5/value",
@@ -1601,7 +1643,11 @@
           "on_no_answer": "declined",
           "stage": "review",
           "multiplicity": 1,
-          "only": "on_escalation"
+          "only": "on_escalation",
+          "items": 60,
+          "waivable": [
+            "Matched.totals"
+          ]
         }
       ],
       "effects": [

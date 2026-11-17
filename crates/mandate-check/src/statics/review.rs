@@ -658,6 +658,7 @@ impl<'a> Checker<'a> {
                 item: item.clone(),
                 untrusted: *level == Level::Untrusted,
                 level: *level,
+                items: e.get("max").and_then(Value::as_i64),
             }),
             None => LetMap::NotVerifying,
         }
@@ -692,7 +693,8 @@ impl<'a> Checker<'a> {
         // class of what it is given, each open item known as its value was
         // before it was verified (`crate::asks`).
         if self.at_least(Language::V0_7) {
-            self.asked_review(path, of.cls, &src);
+            let agents = frame.envelope.and_then(|b| b.agents());
+            self.asked_review(path, of.cls, &src, agents);
         }
         let item = if src.untrusted {
             named("Untrusted", vec![src.item.clone()])
@@ -704,6 +706,7 @@ impl<'a> Checker<'a> {
             cls: of.cls,
             waivable: self.waivable_contract(&src.contract),
             silent: of.silent,
+            made: of.made,
         }
     }
 

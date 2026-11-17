@@ -266,6 +266,14 @@ pub fn join_level(a: Level, b: Level) -> Level {
         .unwrap_or(Level::Plain)
 }
 
+/// The weaker of two levels, `Verified` the strongest: what a value made of
+/// both is known as (0.7, the attention facts). Unlike [`join_level`], two
+/// verified levels stay verified.
+#[must_use]
+pub fn weaker_level(a: Level, b: Level) -> Level {
+    if level_rank(a) > level_rank(b) { a } else { b }
+}
+
 /// A type as messages show it: `show(ty)`.
 #[must_use]
 pub fn show(ty: &Ty) -> String {
