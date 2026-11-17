@@ -1,4 +1,17 @@
 {
+  "fixtures/attention/asks.mdt": {
+    "check": "sha256:8235abb421838f014533221603fc73b2c1e0a7f63012215f88c6f44954a3bafe",
+    "check --module": "sha256:8235abb421838f014533221603fc73b2c1e0a7f63012215f88c6f44954a3bafe",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:b9c771743179b8ba61b4c6150c06e6b3752b5ab7bb148c4fcbd85062ad97774c",
+    "fmt": "sha256:3e531cce9630d8e086aad57e3308d3a95db72c41f57ae96bda49cb204d2594d0",
+    "hash": "sha256:a9ca3cb7b3a3ff512952f05398aa47a8482855b3763ded3cceda0fe04d3d0a48",
+    "view --format json": "sha256:bc005d168da6c1076f721419f1eed267b7fbb821e76faf670ed981068ebb0ea0",
+    "view --format md": "sha256:d16a8eafeab52f6c104bd41c57e4e6c54d653e50901181721e543c9fa447e9e8",
+    "view --format html": "sha256:63310f6457d5a81826cdfaf03dc46069dfd847f44f82742d4ba4fe08415eee4f",
+    "view --against itself": "sha256:9d007ff2189f67bc8979a00fb505a3cadba14348bdd0153c20c416328748b00a",
+    "sandbox": "sha256:5d1f48def97fc0643698706a2d150e22c69521319dd0e520c5997cfaa0f555b6"
+  },
   "fixtures/attention/minimal.mdt": {
     "check": "sha256:3a042d103225a768981a698f1c2fde31f8028b085036e0b0cd18c967f7c0483c",
     "check --module": "sha256:3a042d103225a768981a698f1c2fde31f8028b085036e0b0cd18c967f7c0483c",

@@ -2,9 +2,10 @@
 // person (spec/attention.md "The attention bound"), each workflow declaring
 // in its budget, or its envelope's, the most questions a run of it may ask
 // (`asks`): exactly the bound the compiler computes for it, so that one
-// question more is E1906. It checks; the cases of E1906 to E1908, of E1706
-// and E1709 with `asks`, and the mutations of every kind of site are one
-// change of it each. Only the Rust compiler reads it.
+// question more is E1906 (but Spare, which leaves one to spare, and Endless
+// and Open, which declare none). It checks; the cases of E1906 to E1908, of
+// E1706 and E1709 with `asks`, and the mutations of every kind of site are
+// one change of it each. Only the Rust compiler reads it.
 
 mandate @ 0.7
 
@@ -76,24 +77,24 @@ contract Approved(n: Note) {
 
 /// The code owner approves a change that names its files.
 contract Ready(c: Change) {
-  accept listed "The change names its files" by static len(c.files) >= 1
+  accept listed "The change names its files" by static true
   accept owned "The code owner approves the change" by human.approve(role: code_owner)
 }
 
 /// A change names its files.
 contract Listed(c: Change) {
-  accept listed "The change names its files" by static len(c.files) >= 1
+  accept listed "The change names its files" by static true
 }
 
 /// A plan says what changes.
 contract Planned(p: Plan) {
-  accept summarized "The plan says what changes" by static len(p.summary) >= 1
+  accept summarized "The plan says what changes" by static true
 }
 
 /// A short note; a longer one when the accountant or the finance lead
 /// waives it.
 contract Short(n: Note) {
-  accept short "The note is short" by static len(n.text) <= 80
+  accept short "The note is short" by static true
     waive by accountant, finance_lead
 }
 
@@ -129,6 +130,7 @@ workflow Approving(n: Note) -> Verified<Note, Approved>
   caps   ModelStd
   budget { steps: 4, asks: 8 }
 {
+  let w = delegate Writer.write(n.text)
   let x = confirm(n.text)
   let y = confirm(n.text)
   loop max_iter 2 {
@@ -174,7 +176,8 @@ workflow Handling(note: Text) -> Untrusted<Text>
   caps   ModelStd
   budget { steps: 2, asks: 1 }
 {
-  human.ask("Go on with {note}?", role: accountant)
+  let w = delegate Writer.write(note)
+  human.ask("Go on with {w}?", role: accountant)
 }
 
 on budget_exceeded in Handling => pause and human.ask("The budget ran out. Raise it?", role: finance_lead)
@@ -202,4 +205,42 @@ workflow Planning(notes: List<Note>, t: Text) -> Inferred<Text>
 
   stage finish "Plan the rest"
   plan Lead.finish(t) within envelope
+}
+
+/// A question in a loop nobody bounds: without a declared asks the bound is
+/// unbounded, which is no error; the attention facts say so.
+workflow Endless(note: Text) -> Text
+  caps   ModelStd
+  budget { steps: 10 }
+{
+  let w = delegate Writer.write(note)
+  loop until len(note) > 0 {
+    human.ask("Is {note} done?", role: accountant)
+  }
+  "done"
+}
+
+/// An envelope that does not limit asks: an amendment adds no such limit.
+workflow Open(t: Text) -> Inferred<Text>
+  envelope {
+    owner   platform_lead
+    caps    ModelStd
+    budget  { steps: 10, agents: 2 }
+  }
+{
+  let a = human.ask("Start {t}?", role: accountant)
+  delegate Writer.write(t)
+}
+
+/// An envelope whose asks leaves one question to spare: an amendment neither
+/// lowers it nor leaves it out.
+workflow Spare(t: Text) -> Inferred<Text>
+  envelope {
+    owner   platform_lead
+    caps    ModelStd
+    budget  { steps: 10, agents: 2, asks: 2 }
+  }
+{
+  let a = human.ask("Start {t}?", role: accountant)
+  delegate Writer.write(t)
 }

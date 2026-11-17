@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1709g",
+  "kind": "compile",
+  "title": "An amendment that adds asks to an envelope that has none is refused: an amendment adds no limit.",
+  "spec": [
+    "spec/attention.md#sub-programs-and-amendments",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "amendment": {
+    "workflow": "Open",
+    "patch": [
+      {
+        "op": "add",
+        "path": "/budget/asks",
+        "value": 1
+      }
+    ]
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1709",
+        "path": "/defs/Open/envelope/budget/asks",
+        "facts": {
+          "dimension": "asks",
+          "was": null,
+          "asked": 1
+        }
+      }
+    ]
+  }
+}

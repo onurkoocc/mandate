@@ -1557,6 +1557,205 @@
       }
     },
     {
+      "name": "E1706c",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1706",
+            "severity": "error",
+            "message": "Finish can ask 1 questions, and the run has 0 left of its asks (spec/attention.md \"Sub-programs and amendments\").",
+            "at": {
+              "path": "/defs/Finish"
+            },
+            "docs": "mandate explain MDT-E1706",
+            "facts": {
+              "dimension": "asks",
+              "asked": 1,
+              "left": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1706d",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1706",
+            "severity": "error",
+            "message": "Finish declares asks 3 questions, and the run has 2 left of its asks (spec/attention.md \"Sub-programs and amendments\").",
+            "at": {
+              "path": "/defs/Finish/budget/asks"
+            },
+            "docs": "mandate explain MDT-E1706",
+            "facts": {
+              "dimension": "asks",
+              "asked": 3,
+              "left": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1706e",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1706",
+            "severity": "error",
+            "message": "Finish declares no asks, and the questions it can ask are more than the bound can count (a question in a loop without max_iter, or a recursion). Under an envelope that limits asks, a sub-program's questions come out of what is left of the run's: declare asks, or bound the loop (spec/attention.md \"Sub-programs and amendments\").",
+            "at": {
+              "path": "/defs/Finish/budget"
+            },
+            "docs": "mandate explain MDT-E1706",
+            "facts": {
+              "dimension": "asks",
+              "asked": null,
+              "total": "unbounded",
+              "left": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1709e",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1709",
+            "severity": "error",
+            "message": "The amendment gives 1 asks, and the envelope gives 2. An amendment only raises a budget.",
+            "at": {
+              "path": "/defs/Spare/envelope/budget/asks"
+            },
+            "docs": "mandate explain MDT-E1709",
+            "facts": {
+              "dimension": "asks",
+              "was": 2,
+              "asked": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1709f",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1709",
+            "severity": "error",
+            "message": "The amendment's budget names no asks, and the envelope gives 2. An amendment names every dimension the envelope names.",
+            "at": {
+              "path": "/defs/Spare/envelope/budget"
+            },
+            "docs": "mandate explain MDT-E1709",
+            "facts": {
+              "dimension": "asks",
+              "was": 2,
+              "asked": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1709g",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1709",
+            "severity": "error",
+            "message": "The amendment limits asks to 1, and the envelope does not limit it. An amendment adds no limit.",
+            "at": {
+              "path": "/defs/Open/envelope/budget/asks"
+            },
+            "docs": "mandate explain MDT-E1709",
+            "facts": {
+              "dimension": "asks",
+              "was": null,
+              "asked": 1
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1901",
       "kind": "compile",
       "door": "check_patched",
@@ -3375,6 +3574,1153 @@
               "role": "accountant",
               "title": "Moved",
               "place": "before_on_error"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Asking can put 9 questions to people in one run, and its budget allows 8 (asks: 8). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Asking/budget/asks",
+              "span": [1, 7338, 1, 7339]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Asking",
+              "asks": 8,
+              "total": 9,
+              "roles": [
+                {
+                  "role": null,
+                  "questions": 1
+                },
+                {
+                  "role": "accountant",
+                  "questions": 2
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 5
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 2
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Asking can put 10 questions to people in one run, and its budget allows 9 (asks: 9). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Asking/budget/asks",
+              "span": [1, 7554, 1, 7555]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Asking",
+              "asks": 9,
+              "total": 10,
+              "roles": [
+                {
+                  "role": null,
+                  "questions": 1
+                },
+                {
+                  "role": "accountant",
+                  "questions": 3
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 5
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 2
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Asking can put 10 questions to people in one run, and its budget allows 9 (asks: 9). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Asking/budget/asks",
+              "span": [1, 7488, 1, 7489]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Asking",
+              "asks": 9,
+              "total": 10,
+              "roles": [
+                {
+                  "role": null,
+                  "questions": 2
+                },
+                {
+                  "role": "accountant",
+                  "questions": 2
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 5
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 2
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Asking can put 10 questions to people in one run, and its budget allows 9 (asks: 9). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Asking/budget/asks",
+              "span": [1, 7375, 1, 7376]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Asking",
+              "asks": 9,
+              "total": 10,
+              "roles": [
+                {
+                  "role": null,
+                  "questions": 2
+                },
+                {
+                  "role": "accountant",
+                  "questions": 2
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 5
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 2
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Handling can put 6 questions to people in one run, and its budget allows 1 (asks: 1). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Handling/budget/asks",
+              "span": [1, 12139, 1, 12140]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Handling",
+              "asks": 1,
+              "total": 6,
+              "roles": [
+                {
+                  "role": null,
+                  "questions": 5
+                },
+                {
+                  "role": "accountant",
+                  "questions": 1
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Approving can put 9 questions to people in one run, and its budget allows 8 (asks: 8). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Approving/budget/asks",
+              "span": [1, 8903, 1, 8904]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Approving",
+              "asks": 8,
+              "total": 9,
+              "roles": [
+                {
+                  "role": "accountant",
+                  "questions": 6
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 1
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 1
+                },
+                {
+                  "role": "release_manager",
+                  "questions": 1
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Releasing can put 7 questions to people in one run, and its budget allows 5 (asks: 5). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Releasing/budget/asks",
+              "span": [1, 9736, 1, 9737]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Releasing",
+              "asks": 5,
+              "total": 7,
+              "roles": [
+                {
+                  "role": "code_owner",
+                  "questions": 1
+                },
+                {
+                  "role": "owner",
+                  "questions": 4
+                },
+                {
+                  "role": "release_manager",
+                  "questions": 2
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906g",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Landing can put 10 questions to people in one run, and its budget allows 5 (asks: 5). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Landing/budget/asks",
+              "span": [1, 11538, 1, 11539]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Landing",
+              "asks": 5,
+              "total": 10,
+              "roles": [
+                {
+                  "role": "api_owner",
+                  "questions": 4
+                },
+                {
+                  "role": "architect",
+                  "questions": 2
+                },
+                {
+                  "role": "web_owner",
+                  "questions": 4
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906h",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Releasing can put 6 questions to people in one run, and its budget allows 5 (asks: 5). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Releasing/budget/asks",
+              "span": [1, 9746, 1, 9747]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Releasing",
+              "asks": 5,
+              "total": 6,
+              "roles": [
+                {
+                  "role": "code_owner",
+                  "questions": 1
+                },
+                {
+                  "role": "owner",
+                  "questions": 4
+                },
+                {
+                  "role": "release_manager",
+                  "questions": 1
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906i",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Planning can put 6 questions to people in one run, and its budget allows 5 (asks: 5). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Planning/envelope/budget/asks",
+              "span": [1, 14288, 1, 14289]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Planning",
+              "asks": 5,
+              "total": 6,
+              "roles": [
+                {
+                  "role": "accountant",
+                  "questions": 1
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 1
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 2
+                },
+                {
+                  "role": "owner",
+                  "questions": 1
+                },
+                {
+                  "role": "release_manager",
+                  "questions": 1
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906j",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Planning can put 5 questions to people in one run, and its budget allows 4 (asks: 4). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Planning/envelope/budget/asks",
+              "span": [1, 13997, 1, 13998]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Planning",
+              "asks": 4,
+              "total": 5,
+              "roles": [
+                {
+                  "role": "accountant",
+                  "questions": 1
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 1
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 1
+                },
+                {
+                  "role": "owner",
+                  "questions": 1
+                },
+                {
+                  "role": "release_manager",
+                  "questions": 1
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906k",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Approving can put 9 questions to people in one run, and its budget allows 8 (asks: 8). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Approving/budget/asks",
+              "span": [1, 8676, 1, 8677]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Approving",
+              "asks": 8,
+              "total": 9,
+              "roles": [
+                {
+                  "role": "accountant",
+                  "questions": 6
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 1
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 1
+                },
+                {
+                  "role": "release_manager",
+                  "questions": 1
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906l",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Approving can put 9 questions to people in one run, and its budget allows 8 (asks: 8). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Approving/budget/asks",
+              "span": [1, 8838, 1, 8839]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Approving",
+              "asks": 8,
+              "total": 9,
+              "roles": [
+                {
+                  "role": "accountant",
+                  "questions": 6
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 1
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 1
+                },
+                {
+                  "role": "release_manager",
+                  "questions": 1
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906m",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Asking can put 10 questions to people in one run, and its budget allows 9 (asks: 9). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Asking/budget/asks",
+              "span": [1, 7554, 1, 7555]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Asking",
+              "asks": 9,
+              "total": 10,
+              "roles": [
+                {
+                  "role": null,
+                  "questions": 1
+                },
+                {
+                  "role": "accountant",
+                  "questions": 2
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 5
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 3
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906n",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Asking can put 11 questions to people in one run, and its budget allows 9 (asks: 9). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Asking/budget/asks",
+              "span": [1, 7593, 1, 7594]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Asking",
+              "asks": 9,
+              "total": 11,
+              "roles": [
+                {
+                  "role": null,
+                  "questions": 1
+                },
+                {
+                  "role": "accountant",
+                  "questions": 4
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 5
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 2
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906o",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Approving can put 9 questions to people in one run, and its budget allows 8 (asks: 8). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Approving/budget/asks",
+              "span": [1, 8830, 1, 8831]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Approving",
+              "asks": 8,
+              "total": 9,
+              "roles": [
+                {
+                  "role": null,
+                  "questions": 1
+                },
+                {
+                  "role": "accountant",
+                  "questions": 5
+                },
+                {
+                  "role": "code_owner",
+                  "questions": 1
+                },
+                {
+                  "role": "finance_lead",
+                  "questions": 1
+                },
+                {
+                  "role": "release_manager",
+                  "questions": 1
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1906p",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1906",
+            "severity": "error",
+            "message": "Handling can put 2 questions to people in one run, and its budget allows 1 (asks: 1). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \"The attention bound\").",
+            "at": {
+              "path": "/defs/Handling/budget/asks",
+              "span": [1, 12184, 1, 12185]
+            },
+            "docs": "mandate explain MDT-E1906",
+            "facts": {
+              "workflow": "Handling",
+              "asks": 1,
+              "total": 2,
+              "roles": [
+                {
+                  "role": "accountant",
+                  "questions": 2
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1907",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1907",
+            "severity": "error",
+            "message": "Asking declares asks: 9, and this question (ask) stands in a loop without max_iter: the bound cannot count it. Give the loop a max_iter, or ask outside it (spec/attention.md \"The algebra\").",
+            "at": {
+              "path": "/defs/Asking/body/1/body/0/value",
+              "span": [1, 5655, 1, 5851]
+            },
+            "docs": "mandate explain MDT-E1907",
+            "facts": {
+              "workflow": "Asking",
+              "kind": "ask",
+              "why": "loop",
+              "asks": 9
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1907a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0502",
+            "severity": "error",
+            "message": "Recursive call cycle confirm \u2192 confirm; static node and budget bounds need an acyclic call graph.",
+            "at": {
+              "path": "/defs/confirm",
+              "span": [1, 4882, 1, 5452]
+            },
+            "docs": "mandate explain MDT-E0502",
+            "facts": {
+              "cycle": [
+                "confirm"
+              ]
+            }
+          },
+          {
+            "code": "MDT-E1907",
+            "severity": "error",
+            "message": "Approving declares asks: 8, and this question (ask) stands in a function that calls itself: the bound cannot count it. Give the loop a max_iter, or ask outside it (spec/attention.md \"The algebra\").",
+            "at": {
+              "path": "/defs/confirm/body/0/value",
+              "span": [1, 5034, 1, 5228]
+            },
+            "docs": "mandate explain MDT-E1907",
+            "facts": {
+              "workflow": "Approving",
+              "kind": "ask",
+              "why": "recursion",
+              "asks": 8
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1908",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1908",
+            "severity": "error",
+            "message": "asks bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: this one is in Writer's agent budget (spec/attention.md \"asks\").",
+            "at": {
+              "path": "/defs/Writer/budget/asks",
+              "span": [1, 2170, 1, 2171]
+            },
+            "docs": "mandate explain MDT-E1908",
+            "facts": {
+              "def": "Writer",
+              "place": "agent"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1908a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1908",
+            "severity": "error",
+            "message": "asks bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: this one is in Approving's delegate budget (spec/attention.md \"asks\").",
+            "at": {
+              "path": "/defs/Approving/body/0/value/budget/asks",
+              "span": [1, 7865, 1, 7866]
+            },
+            "docs": "mandate explain MDT-E1908",
+            "facts": {
+              "def": "Approving",
+              "place": "delegate"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1908b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1908",
+            "severity": "error",
+            "message": "asks bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: this one is in Planning's map budget (spec/attention.md \"asks\").",
+            "at": {
+              "path": "/defs/Planning/body/1/value/budget/asks",
+              "span": [1, 12853, 1, 12854]
+            },
+            "docs": "mandate explain MDT-E1908",
+            "facts": {
+              "def": "Planning",
+              "place": "map"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1908c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1908",
+            "severity": "error",
+            "message": "asks bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: this one is in Planning's plan budget (spec/attention.md \"asks\").",
+            "at": {
+              "path": "/defs/Planning/body/7/value/budget/asks",
+              "span": [1, 13881, 1, 13882]
+            },
+            "docs": "mandate explain MDT-E1908",
+            "facts": {
+              "def": "Planning",
+              "place": "plan"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1908d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1908",
+            "severity": "error",
+            "message": "asks bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: this one is in Writer's skill budget (spec/attention.md \"asks\").",
+            "at": {
+              "path": "/defs/Writer/skills/write/budget/asks",
+              "span": [1, 2121, 1, 2122]
+            },
+            "docs": "mandate explain MDT-E1908",
+            "facts": {
+              "def": "Writer",
+              "place": "skill"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1908e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/asks.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1908",
+            "severity": "error",
+            "message": "asks bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: this one is in confirm's fn budget (spec/attention.md \"asks\").",
+            "at": {
+              "path": "/defs/confirm/budget/asks",
+              "span": [1, 5397, 1, 5398]
+            },
+            "docs": "mandate explain MDT-E1908",
+            "facts": {
+              "def": "confirm",
+              "place": "fn"
             }
           }
         ]

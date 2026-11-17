@@ -4,6 +4,106 @@
   "parts": 1,
   "programs": [
     {
+      "program": "fixtures/attention/asks.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+            "defs": {
+              "Approved": "sha256:e68f69ce4469eb15191ea7fa9ad09c71927fd295cd6692aa7a2c9ccf2c588db7",
+              "Approving": "sha256:c5ea50e1bdcf71d72766457b381bc8194ebdd1095ddd46306b7633a4c47b7918",
+              "Asking": "sha256:422a1073e74e1015eb44066e5aeee2d9a2d121e712fe842571bc89efec873a39",
+              "Change": "sha256:2b6ee8c7524584586f6da6a10d6a78c63df641b9ae555ec6778119b69bfb6615",
+              "Endless": "sha256:7426f7296191e8d9744d8ab5c867d454d148955af785785f111dfa060a894398",
+              "Handling": "sha256:e5c60ab9e7798f067ee0289119fbdbb0cc8e09d947db8f6be41d963242f2da22",
+              "Landing": "sha256:d3270e71899fa0fae78098f301de28865cbae695c933858d6f37531c243bf1c7",
+              "Lead": "sha256:cb22b96cd54733fed70a873c8d479ee5a8d0597fe4ed4a30cdbde3b17df86e8b",
+              "Listed": "sha256:ef7a8fd26c3c5762f8a1c71bc755c9cd1c281df5e0b788d0242c718cffb56506",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329",
+              "Note": "sha256:56fe94c6239f378e1c9fe4280626893ffebbb160ab9c3234580aaeb5cf9d2eff",
+              "Open": "sha256:556cea3af3839f12a3ab183b370e50468f1017210f34a688752e5d689821883c",
+              "Plan": "sha256:2d42388eb2406eafde8df4fa36be870b9a3e51f6ecf098ec4b8b2e2c73a564c2",
+              "Planned": "sha256:225b5db3ab435995761345699aa2fa94d003e764382cd96bbdafc68e2f5d9875",
+              "Planning": "sha256:c092e99870e6978672c399c9af879ab9d3c428da70b3aa113d5a8cd46c6b7763",
+              "Pr": "sha256:8a1e6405479ce48d2909d2a29f0a072c89a2edbdcf031445670bde295d421903",
+              "Ready": "sha256:52d8d9d367e6f3787736a0f0ce68c5d1ec80a80765f6ab10a8461c38ee032dc6",
+              "Releasing": "sha256:698130292d63401fa3e1e7da8772887613d87cf5b91b86d6e04114da6453c39e",
+              "Repos": "sha256:9184712afb168a4cd19c5a9be2c411cd716319f03f11d885a2848656f5cf12d2",
+              "Ship": "sha256:8c2fea0b3b55f2e470b8e8ab9b0d572ebf7182a5345abc652e8713913fe87cd8",
+              "Short": "sha256:b170aa3099188f0a11d3765621e37e18542e475a5808a7e57970a45a0ce218b2",
+              "Spare": "sha256:62ed3ea6d2de92fe01a94ac7bed9a2954c0f1b433f530252f0e47ca937a97e72",
+              "Writer": "sha256:77852bc892b8e3f2dd9849ce9b014885cf9481d337c242c4ea0bdfdedd586895",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "api": "sha256:aa9e4fff5d3a19497e14c188f146316282a5d877195f9ec1508faa8f770eb8e0",
+              "api_owner": "sha256:7c5ce79e76097ba593487889a68a6e9c80b8857ef21bbd151a5c6c031b9216e7",
+              "architect": "sha256:4afa119a761d7acf20a17c5aec161abc5d9f29051c82b181ccd7eecb3a2fd785",
+              "code_owner": "sha256:03f95197de2a620c9b60f2e3aee291feb28e4c42c6a411fe771a447ecf09963e",
+              "confirm": "sha256:0f3debf2da99e88634c5de0944117350cf3bfb9974ef297b9c71c486c0c37442",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7",
+              "prod": "sha256:b1c46007c9a83ab2bb4612d4717adf38e1d63bad0e096abd08de14e9ffebad28",
+              "release_manager": "sha256:f3ae7ba9b6b8237b27f377bb9a3fe0e7f5205f289bcbf5ef7cdae8eb257f7fb3",
+              "web": "sha256:6b306d10a02ddd55c4cfc6cc5ae86ad30396e0d1281493fe0d7d79b9d50e696f",
+              "web_owner": "sha256:29e130100848d0b7784cffed4ba99add7cbd64bdb2579cf1479038bf1942beea"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+            "defs": {
+              "Approved": "sha256:e68f69ce4469eb15191ea7fa9ad09c71927fd295cd6692aa7a2c9ccf2c588db7",
+              "Approving": "sha256:c5ea50e1bdcf71d72766457b381bc8194ebdd1095ddd46306b7633a4c47b7918",
+              "Asking": "sha256:422a1073e74e1015eb44066e5aeee2d9a2d121e712fe842571bc89efec873a39",
+              "Change": "sha256:2b6ee8c7524584586f6da6a10d6a78c63df641b9ae555ec6778119b69bfb6615",
+              "Endless": "sha256:7426f7296191e8d9744d8ab5c867d454d148955af785785f111dfa060a894398",
+              "Handling": "sha256:e5c60ab9e7798f067ee0289119fbdbb0cc8e09d947db8f6be41d963242f2da22",
+              "Landing": "sha256:d3270e71899fa0fae78098f301de28865cbae695c933858d6f37531c243bf1c7",
+              "Lead": "sha256:cb22b96cd54733fed70a873c8d479ee5a8d0597fe4ed4a30cdbde3b17df86e8b",
+              "Listed": "sha256:ef7a8fd26c3c5762f8a1c71bc755c9cd1c281df5e0b788d0242c718cffb56506",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329",
+              "Note": "sha256:56fe94c6239f378e1c9fe4280626893ffebbb160ab9c3234580aaeb5cf9d2eff",
+              "Open": "sha256:556cea3af3839f12a3ab183b370e50468f1017210f34a688752e5d689821883c",
+              "Plan": "sha256:2d42388eb2406eafde8df4fa36be870b9a3e51f6ecf098ec4b8b2e2c73a564c2",
+              "Planned": "sha256:225b5db3ab435995761345699aa2fa94d003e764382cd96bbdafc68e2f5d9875",
+              "Planning": "sha256:c092e99870e6978672c399c9af879ab9d3c428da70b3aa113d5a8cd46c6b7763",
+              "Pr": "sha256:8a1e6405479ce48d2909d2a29f0a072c89a2edbdcf031445670bde295d421903",
+              "Ready": "sha256:52d8d9d367e6f3787736a0f0ce68c5d1ec80a80765f6ab10a8461c38ee032dc6",
+              "Releasing": "sha256:698130292d63401fa3e1e7da8772887613d87cf5b91b86d6e04114da6453c39e",
+              "Repos": "sha256:9184712afb168a4cd19c5a9be2c411cd716319f03f11d885a2848656f5cf12d2",
+              "Ship": "sha256:8c2fea0b3b55f2e470b8e8ab9b0d572ebf7182a5345abc652e8713913fe87cd8",
+              "Short": "sha256:b170aa3099188f0a11d3765621e37e18542e475a5808a7e57970a45a0ce218b2",
+              "Spare": "sha256:62ed3ea6d2de92fe01a94ac7bed9a2954c0f1b433f530252f0e47ca937a97e72",
+              "Writer": "sha256:77852bc892b8e3f2dd9849ce9b014885cf9481d337c242c4ea0bdfdedd586895",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "api": "sha256:aa9e4fff5d3a19497e14c188f146316282a5d877195f9ec1508faa8f770eb8e0",
+              "api_owner": "sha256:7c5ce79e76097ba593487889a68a6e9c80b8857ef21bbd151a5c6c031b9216e7",
+              "architect": "sha256:4afa119a761d7acf20a17c5aec161abc5d9f29051c82b181ccd7eecb3a2fd785",
+              "code_owner": "sha256:03f95197de2a620c9b60f2e3aee291feb28e4c42c6a411fe771a447ecf09963e",
+              "confirm": "sha256:0f3debf2da99e88634c5de0944117350cf3bfb9974ef297b9c71c486c0c37442",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7",
+              "prod": "sha256:b1c46007c9a83ab2bb4612d4717adf38e1d63bad0e096abd08de14e9ffebad28",
+              "release_manager": "sha256:f3ae7ba9b6b8237b27f377bb9a3fe0e7f5205f289bcbf5ef7cdae8eb257f7fb3",
+              "web": "sha256:6b306d10a02ddd55c4cfc6cc5ae86ad30396e0d1281493fe0d7d79b9d50e696f",
+              "web_owner": "sha256:29e130100848d0b7784cffed4ba99add7cbd64bdb2579cf1479038bf1942beea"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
       "program": "fixtures/attention/minimal.mdt",
       "modules": [
         "fixtures/system/acme.system.mdt",

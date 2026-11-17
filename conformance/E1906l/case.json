@@ -1,0 +1,59 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906l",
+  "kind": "compile",
+  "title": "A function's questions count at each call (a mutation: Approving calls confirm a third time).",
+  "spec": [
+    "spec/attention.md#the-algebra",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Approving/body/3",
+      "value": {
+        "op": "let",
+        "name": "z",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "var",
+            "name": "confirm"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "n"
+                },
+                "name": "text"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Approving/budget/asks",
+        "facts": {
+          "workflow": "Approving",
+          "asks": 8,
+          "total": 9
+        }
+      }
+    ]
+  }
+}

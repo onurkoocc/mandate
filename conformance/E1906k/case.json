@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906k",
+  "kind": "compile",
+  "title": "A loop with max_iter multiplies what it holds (a mutation: Approving's loop of 2 rounds runs 3).",
+  "spec": [
+    "spec/attention.md#the-algebra",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Approving/body/3/max_iter",
+      "value": 3
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Approving/budget/asks",
+        "facts": {
+          "workflow": "Approving",
+          "asks": 8,
+          "total": 9
+        }
+      }
+    ]
+  }
+}

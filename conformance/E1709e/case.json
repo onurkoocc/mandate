@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1709e",
+  "kind": "compile",
+  "title": "An amendment that lowers the envelope's asks is refused.",
+  "spec": [
+    "spec/attention.md#sub-programs-and-amendments",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "amendment": {
+    "workflow": "Spare",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/budget/asks",
+        "value": 1
+      }
+    ]
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1709",
+        "path": "/defs/Spare/envelope/budget/asks",
+        "facts": {
+          "dimension": "asks",
+          "was": 2,
+          "asked": 1
+        }
+      }
+    ]
+  }
+}

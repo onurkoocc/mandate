@@ -792,6 +792,24 @@ pub const CODES: &[CodeRow] = &[
         explain: "A `report` (0.7) stands in the body of a workflow or of a pattern, where what it shows is shown a known number of times: not in a map's body, a loop without `max_iter`, a function, an `on error`, `on unmet` or `on budget_exceeded` handler, a test or any other place, and not directly before an `on error`, which would handle the statement before the report. The fact `place` says where it stands. A `report` or a `stage` written in a lead's sub-program is E1705 instead, with the fact `construct`; a sub-program that applies a shape its envelope lists has the pattern's (spec/attention.md \"`report`\", \"Sub-programs and amendments\").",
         reference: Reference::Rust,
     },
+    CodeRow {
+        code: "MDT-E1906",
+        title: "Attention above asks",
+        explain: "A workflow of 0.7 whose budget, or whose envelope's, declares `asks: n` can put no more than n questions to people in one run, as the compiler counts them before any run (the attention bound): an approval a contract's criterion asks, `human.ask`, every `escalate`, a `pause` without `then`, the five escalations of `supervise escalate`, an effect the program hands to a person, each member and the approver of a change set, the owner's gate of an action that may carry a governance-class file, a review and its escalation. A sequence and the branches of a `par` add up, `if` and `switch` take the larger branch, a loop multiplies by its `max_iter`, a function's questions count at each call. The diagnostic is at the `asks`, with the workflow, the declared `asks`, the total and each role's count; a workflow that applies a pattern is counted on its expansion (spec/attention.md \"The attention bound\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1907",
+        title: "Attention without a bound",
+        explain: "A workflow of 0.7 that declares `asks` has every question where the bound can count it: not in a loop without `max_iter`, and not in a function that calls itself (also E0502). The diagnostic is at the question, with the workflow, its kind and why it cannot be counted (`why`: `loop`, `recursion`, `overflow`). A workflow that declares no `asks` may ask without a bound; its attention facts say the total is unbounded (spec/attention.md \"The algebra\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1908",
+        title: "asks out of place",
+        explain: "`asks` (0.7) bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: one in an agent's, a skill's, a function's, a delegation's, a map's or a plan's budget is refused at the field, with the definition and the place (`place`: `agent`, `skill`, `fn`, `delegate`, `map`, `plan`, …). A sub-program's questions come out of what is left of the run's `asks`, which its admission reserves (E1706) (spec/attention.md \"`asks`\").",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.
@@ -817,6 +835,9 @@ pub const CODES_0_7: &[&str] = &[
     "MDT-E1903",
     "MDT-E1904",
     "MDT-E1905",
+    "MDT-E1906",
+    "MDT-E1907",
+    "MDT-E1908",
 ];
 
 impl CodeRow {

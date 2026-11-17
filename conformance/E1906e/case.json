@@ -1,0 +1,61 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906e",
+  "kind": "compile",
+  "title": "A verify counts 1 for each human.approve its contract's criteria hold (a mutation: one more criterion a person approves in Approved, which Approving verifies against).",
+  "spec": [
+    "spec/attention.md#what-counts-as-a-question",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Approved/accept/again",
+      "value": {
+        "description": "The accountant approves it again",
+        "by": {
+          "call": {
+            "op": "call",
+            "callee": {
+              "op": "field",
+              "of": {
+                "op": "var",
+                "name": "human"
+              },
+              "name": "approve"
+            },
+            "args": [
+              {
+                "name": "role",
+                "value": {
+                  "op": "var",
+                  "name": "accountant"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Approving/budget/asks",
+        "facts": {
+          "workflow": "Approving",
+          "asks": 8,
+          "total": 9
+        }
+      }
+    ]
+  }
+}

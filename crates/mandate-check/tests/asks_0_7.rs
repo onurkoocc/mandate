@@ -19,6 +19,13 @@ const ASKS: &str = "fixtures/attention/asks.mdt";
 #[test]
 fn scratch() {
     let text = read_text(ASKS).unwrap();
+    let ir = mandate_syntax::load(&text, SourceKind::Mdt)
+        .program
+        .unwrap();
+    println!(
+        "IR {}",
+        mandate_ir::stringify(&mandate_ir::JsValue::from(&ir)).unwrap()
+    );
     let r = check(&text, SourceKind::Mdt, &CheckOptions::default());
     for d in &r.diagnostics {
         println!(

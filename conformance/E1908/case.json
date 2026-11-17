@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1908",
+  "kind": "compile",
+  "title": "asks in an agent's budget is refused: it bounds a whole run's questions, so it is a field of a workflow's budget or of an envelope's (a mutation: asks in Writer's budget).",
+  "spec": [
+    "spec/attention.md#asks",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Writer/budget/asks",
+      "value": 1
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1908",
+        "path": "/defs/Writer/budget/asks",
+        "facts": {
+          "def": "Writer",
+          "place": "agent"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906a",
+  "kind": "compile",
+  "title": "human.ask counts 1, to its role (a mutation: one question more in Asking, whose asks is its exact bound, 9).",
+  "spec": [
+    "spec/attention.md#what-counts-as-a-question",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Asking/body/7",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "human"
+            },
+            "name": "ask"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "One more?"
+              }
+            },
+            {
+              "name": "role",
+              "value": {
+                "op": "var",
+                "name": "accountant"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Asking/budget/asks",
+        "facts": {
+          "workflow": "Asking",
+          "asks": 9,
+          "total": 10
+        }
+      }
+    ]
+  }
+}

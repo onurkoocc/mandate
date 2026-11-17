@@ -1,0 +1,57 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906o",
+  "kind": "compile",
+  "title": "A verify with on unmet counts its own and its handler's questions (a mutation: Approving's verify escalates to a person when it is unmet).",
+  "spec": [
+    "spec/attention.md#the-algebra",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Approving/body/4/value/on_unmet",
+      "value": {
+        "bind": "u",
+        "then": {
+          "op": "escalate",
+          "to": {
+            "op": "call",
+            "callee": {
+              "op": "var",
+              "name": "human"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "text",
+                  "value": "Unmet"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Approving/budget/asks",
+        "facts": {
+          "workflow": "Approving",
+          "asks": 8,
+          "total": 9
+        }
+      }
+    ]
+  }
+}

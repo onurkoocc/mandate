@@ -1,0 +1,45 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1706e",
+  "kind": "compile",
+  "title": "Under an envelope that limits asks, a sub-program whose bound is unbounded and that declares no asks is not admitted.",
+  "spec": [
+    "spec/attention.md#sub-programs-and-amendments",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "subprogram": {
+    "workflow": "Planning",
+    "defs": {
+      "file": "sub.mdt",
+      "kind": "mdt"
+    },
+    "room": {
+      "left": {
+        "steps": 40,
+        "agents": 4,
+        "asks": 2
+      }
+    }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1706",
+        "path": "/defs/Finish/budget",
+        "facts": {
+          "dimension": "asks",
+          "asked": null,
+          "total": "unbounded",
+          "left": 2
+        }
+      }
+    ]
+  }
+}
