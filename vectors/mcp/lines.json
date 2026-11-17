@@ -55,6 +55,69 @@
    "line": "\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
   },
   {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"a"
+  },
+  {
+   "hex": "c080"
+  },
+  {
+   "line": "b\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":13,\"method\":\"a"
+  },
+  {
+   "hex": "eda080"
+  },
+  {
+   "line": "b\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":14,\"method\":\"a"
+  },
+  {
+   "hex": "f4908080"
+  },
+  {
+   "line": "b\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":15,\"method\":\"a"
+  },
+  {
+   "hex": "f09f98"
+  },
+  {
+   "line": "b\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":16,\"method\":\"a"
+  },
+  {
+   "hex": "80"
+  },
+  {
+   "line": "b\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":17,\"method\":\"a"
+  },
+  {
+   "hex": "e2"
+  },
+  {
+   "line": "b\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":18,\"method\":\"a"
+  },
+  {
+   "hex": "f0"
+  },
+  {
+   "line": "b\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
    "hex": "ff"
   },
   {
@@ -77,6 +140,13 @@
   "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}",
   "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32601,\"message\":\"Method not found: no/\ufffdsuch\"}}",
   "{\"jsonrpc\":\"2.0\",\"id\":8,\"error\":{\"code\":-32601,\"message\":\"Method not found: x\ufffd\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":12,\"error\":{\"code\":-32601,\"message\":\"Method not found: a\ufffd\ufffdb\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":13,\"error\":{\"code\":-32601,\"message\":\"Method not found: a\ufffd\ufffd\ufffdb\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":14,\"error\":{\"code\":-32601,\"message\":\"Method not found: a\ufffd\ufffd\ufffd\ufffdb\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":15,\"error\":{\"code\":-32601,\"message\":\"Method not found: a\ufffdb\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":16,\"error\":{\"code\":-32601,\"message\":\"Method not found: a\ufffdb\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":17,\"error\":{\"code\":-32601,\"message\":\"Method not found: a\ufffdb\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":18,\"error\":{\"code\":-32601,\"message\":\"Method not found: a\ufffdb\"}}",
   "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}",
   "{\"jsonrpc\":\"2.0\",\"id\":10,\"error\":{\"code\":-32601,\"message\":\"Method not found: \u00e9\u20ac\ud83d\ude00\"}}",
   "{\"jsonrpc\":\"2.0\",\"id\":11,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}"

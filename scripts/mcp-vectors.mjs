@@ -337,6 +337,13 @@ const CONVERSATIONS = [
       { text: '{"jsonrpc":"2.0","id":8,"method":"x' },
       { hex: "e282" },
       { line: `","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}` },
+      // Each ill-formed sequence is U+FFFD as Node's decoder makes it (its maximal subparts): an overlong form, a
+      // surrogate, a code point past U+10FFFF, a sequence cut short, a byte that only continues one.
+      ...["c080", "eda080", "f4908080", "f09f98", "80", "e2", "f0"].flatMap((bytes, i) => [
+        { text: `{"jsonrpc":"2.0","id":${12 + i},"method":"a` },
+        { hex: bytes },
+        { line: `b","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}` },
+      ]),
       { hex: "ff" },
       { line: JSON.stringify(modern(9, "ping")) },
       { text: '{"jsonrpc":"2.0","id":10,"method":"\u00e9\u20ac\ud83d\ude00","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}\n' },
