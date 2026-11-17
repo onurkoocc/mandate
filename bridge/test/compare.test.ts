@@ -34,6 +34,9 @@ describe("the input of a language only the Rust reads, 0.6 or later", () => {
       ["skeleton", ["m", 1, "mandate/0.7"]],
       ["checkSubprogram", [{ parent: p07 }]],
       ["requirementFor", [{ agent: "a", def: "d" }, [], null, { language: "mandate/0.7" }]],
+      // Definitions with a statement only 0.7 has (a report is a role site).
+      ["rolesNamed", [{ W: { kind: "workflow", body: [{ op: "if", then: [{ op: "report", role: "r", title: "T", fields: [] }] }] } }]],
+      ["rolesNamed", [{ W: { kind: "workflow", body: [{ op: "stage", name: "s", title: "S" }] } }]],
       ["check", ["// a comment\nmandate @ 0.6\nmodule m", "mdt"]],
       ["check", [JSON.stringify(p06), "json"]],
       ["check", ["mandate @ 0.5\nmodule m", "mdt", { lock: lock06 }]],
@@ -65,6 +68,8 @@ describe("the input of a language only the Rust reads, 0.6 or later", () => {
       ["check", [JSON.stringify(p05), "json"]],
       ["hashProgram", [p05]],
       ["toMarkdown", [{ title: "mandate @ 0.6", meta: [], blocks: [] }]],
+      // A text or a name that says `report` is no statement.
+      ["rolesNamed", [{ W: { kind: "workflow", body: [{ op: "expr", value: { op: "text", value: "report" } }] } }]],
       ["grant", [{ context: { bounds: [{ ...tool, ctor: "fs.read" }], given: [], handed: [] }, delegation: null }]],
     ];
     for (const [fn, args] of no) expect(RUST_ONLY_INPUT[fn](args), `${fn} ${JSON.stringify(args).slice(0, 80)}`).toBe(false);
