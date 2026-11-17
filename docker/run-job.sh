@@ -313,7 +313,7 @@ job_selfcheck() {
   done
 
   if [ -e /git ]; then bad "/git exists: a git directory of the host is mounted"; else ok "no /git: the host's git directory is not mounted"; fi
-  if [ "$(git -C /ci/repo rev-list --count HEAD)" = 1 ]; then ok "the clone has one commit, made from the archive of $sha"; else bad "the clone does not have exactly one commit"; fi
+  if [ "$(git -C /ci/repo rev-parse HEAD)" = "$sha" ] && [ -f /ci/repo/.git/shallow ] && [ "$(git -C /ci/repo rev-list --count HEAD)" = 1 ]; then ok "HEAD is the tested commit $sha, a depth-1 checkout of its own objects"; else bad "HEAD is not the tested commit, or the checkout is not shallow"; fi
   if [ -z "$(git -C /ci/repo status --porcelain)" ]; then ok "the clone has no change and no untracked file"; else bad "the clone is not clean"; fi
   setuid="$(find / -xdev \( -perm -4000 -o -perm -2000 \) -type f 2>/dev/null | head -n 5 || true)"
   if [ -z "$setuid" ]; then ok "no setuid or setgid file in the image"; else bad "setuid or setgid files: $setuid"; fi
