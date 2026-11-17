@@ -220,6 +220,10 @@ create table if not exists notify_cursors (
   retry_at bigint,
   primary key (channel, run_id)
 );
+create table if not exists notify_channels (
+  channel text primary key,
+  at bigint not null
+);
 create table if not exists notify_dead (
   channel text not null,
   run_id text not null,

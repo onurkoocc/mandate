@@ -136,9 +136,14 @@ export const CARRIED = {
 
 const hex32 = (v: string): string => createHash("sha256").update(v, "utf8").digest("hex").slice(0, 32);
 
-/** `value` when it has the form `pattern` allows; otherwise `digest:` and 32 hex digits of its SHA-256, in its place. */
+/**
+ * `value` when it has the form `pattern` allows; otherwise `digest:` and the first 32 hex digits of the SHA-256 of its
+ * UTF-8 bytes, in its place. A value that itself begins with `digest:` is replaced too, so that none can pass for
+ * another's digest. An operator finds the run a digest stands for in the database, e.g. `select run_id from runs where
+ * left(encode(sha256(convert_to(run_id, 'UTF8')), 'hex'), 32) = '<32 hex>'` (and `tenant` alike).
+ */
 export function carried(value: string, pattern: RegExp): string {
-  return pattern.test(value) ? value : `digest:${hex32(value)}`;
+  return pattern.test(value) && !value.startsWith("digest:") ? value : `digest:${hex32(value)}`;
 }
 
 /**
@@ -291,8 +296,9 @@ function linkTemplate(link: unknown, bad: (m: string) => never): void {
   if (other) bad(`notifications.link may hold {run}, {role} and {command} only, and holds ${JSON.stringify(other[0])}`);
   const s = link as string;
   const end = s.slice(s.indexOf("//") + 2).search(/[/?#]/);
+  // A link with no path is a link; a placeholder before the path, the query or the fragment would choose where it points.
   const authority = end < 0 ? s : s.slice(0, s.indexOf("//") + 2 + end);
-  if (authority.includes("{") || end < 0) bad(`notifications.link has its placeholders after the host, in the path or the query: ${JSON.stringify(authority)} is where it points`);
+  if (authority.includes("{")) bad(`notifications.link has its placeholders after the host, in the path or the query: ${JSON.stringify(authority)} is where it points`);
   try {
     new URL(s.replace(/\{(run|role|command)\}/g, "x"));
   } catch {
@@ -578,17 +584,18 @@ export function notificationOf(channel: string, e: Seen, pair: Seen | undefined,
 }
 
 /**
- * The questions still open of a run that a channel meets for the first time: for each wait still waiting, the latest
- * S0 event that tells it (an escalation, rather than the request it escalated). Given the S0 events in order.
+ * What a channel that is new is told of a run that was there before it: for each wait still waiting, the latest S0
+ * event that tells it (an escalation, rather than the request it escalated), and, of a run that needs a person now,
+ * its last `run_attention_required`. Given the S0 events in order.
  */
-function stillOpen(s0: Seen[], open: ReadonlySet<string>): Set<number> {
+function toldAtMeeting(s0: Seen[], open: ReadonlySet<string>, attention: number | null): Set<number> {
   const bySeq = new Map(s0.map((e) => [e.seq, e]));
   const latest = new Map<string, number>();
   for (const e of s0) {
     const q = questionOf(e, bySeq.get(e.seq + 1));
     if (q?.command && open.has(q.command)) latest.set(q.command, e.seq);
   }
-  return new Set(latest.values());
+  return new Set([...latest.values(), ...(attention === null ? [] : [attention])]);
 }
 
 // ── the pump ──────────────────────────────────────────────────────────
@@ -659,17 +666,35 @@ const cursorOf = (r: Row): Cursor | undefined =>
     ? undefined
     : { seq: Number(r["seq"]), start: Number(r["start_seq"] ?? 0), pending: r["pending"] === null || r["pending"] === undefined ? null : Number(r["pending"]), attempts: Number(r["attempts"] ?? 0), retryAt: r["retry_at"] === null || r["retry_at"] === undefined ? null : Number(r["retry_at"]) };
 
+/** The advisory lock key under which a channel's first pass is made, once, whatever pumps race for it. */
+const MEET_LOCK = 1835297107;
+
 /**
- * One notification pass. For each channel a role names (the channels side by side), for each run of 0.7 with something
- * new past the channel's cursor (one run after another), in the run's order:
+ * How long a pump holds the attempt it claimed before another may take it: a request's limit and a second. A claim
+ * further ahead of now than this and the largest backoff together was made by a clock that has stepped back since,
+ * and is taken as due.
+ */
+const claimMs = (timeoutMs: number): number => timeoutMs + 1_000;
+const aheadMs = (timeoutMs: number): number => Math.max(backoffMs(NOTIFY_ATTEMPTS - 1), claimMs(timeoutMs));
+
+/**
+ * One notification pass. For each channel a role names (the channels side by side):
  *
- * - a run in a halted scope (its tenant, or every tenant) is skipped, and nothing of it moves;
- * - a channel that meets a run for the first time is told only of its waits still open, and its cursor starts there;
- * - an event addressed to none of the channel's roles moves the cursor past it;
- * - an event addressed to one of them is sent once in the pass: delivered, the cursor moves past it; failed, it waits
- *   for a later pass, with the cursor before it and the run's later events behind it, or, failed for the sixth time or
- *   for good, it is given up (`notify_dead`) and the cursor moves past it. A failed attempt ends the channel's pass:
- *   its receiver does not answer as it should, and is not asked again until the next pass.
+ * - **A channel that is new** (no row of it in `notify_channels`) is met once, in one transaction, before anything is
+ *   sent on it: every run of 0.7 there is gets the channel's cursor at the run's end, but for the waits still open and
+ *   the runs that need a person now, whose latest question (or `run_attention_required`) it is told; then the channel
+ *   is recorded as in use. From then on a run without a cursor for the channel is one that began after the channel
+ *   was in use, and it is told from its first event, however short it lived. A run created while the meeting goes on
+ *   is not in it, has no cursor when it is done, and so is new.
+ * - Then for each run of 0.7 with something new past the channel's cursor (one run after another), in the run's
+ *   order: a run in a halted scope (its tenant, or every tenant) is skipped, and nothing of it moves, the halt asked
+ *   again before each send; an event addressed to none of the channel's roles moves the cursor past it; one addressed
+ *   to one of them is sent once in the pass, by the pump that claimed its attempt: delivered, the cursor moves past
+ *   it; failed, it waits for a later pass with the cursor before it and the run's later events behind it, or, failed
+ *   for the sixth time or for good, it is given up (`notify_dead`) and the cursor moves past it. A failed attempt ends
+ *   the channel's pass: its receiver does not answer as it should, and is not asked again until the next pass.
+ *
+ * A channel removed from the configuration and given again under the same name goes on from its cursors.
  */
 export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport> {
   const report: NotifyReport = { sent: 0, failed: 0, dead: 0, pending: 0, failures: [] };
@@ -683,21 +708,73 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
   const transport = o.transport?.();
   const now = o.now ?? Date.now;
   const batch = Math.max(2, o.batch ?? 500);
-  const halts = new Map<string, Promise<boolean>>();
-  const halted = (tenant: string): Promise<boolean> => {
-    let h = halts.get(tenant);
-    // As a start or a resume asks (journal.ts `openHalt`): a halt of this tenant, or of every tenant, not lifted.
-    if (!h) halts.set(tenant, (h = db.query<Row>("select 1 as halted from halts where lifted_at is null and (tenant is null or tenant = $1) limit 1", [tenant]).then((r) => r.length > 0)));
-    return h;
-  };
-  const ownerOf = async (hash: string, workflow: string): Promise<string | null> => {
+  const timeoutMs = o.timeoutMs ?? NOTIFY_TIMEOUT_MS;
+  /** As a start or a resume asks (journal.ts `openHalt`): a halt of this tenant, or of every tenant, not lifted. */
+  const halted = async (tenant: string): Promise<boolean> => (await db.query<Row>("select 1 as halted from halts where lifted_at is null and (tenant is null or tenant = $1) limit 1", [tenant])).length > 0;
+  const ownerOf = async (q: Pick<Db, "query">, hash: string, workflow: string): Promise<string | null> => {
     const key = JSON.stringify([hash, workflow]);
     if (!owners.has(key)) {
-      const [d] = await db.query<Row>("select program->'defs'->$2::text as def from packages where package_hash = $1", [hash, workflow]);
+      const [d] = await q.query<Row>("select program->'defs'->$2::text as def from packages where package_hash = $1", [hash, workflow]);
       const def = (d?.["def"] ?? null) as Value;
       owners.set(key, ownerRole(isObj(def) ? { owner: def["owner"], envelope: isObj(def["envelope"] ?? null) ? { owner: (def["envelope"] as Obj)["owner"] } : undefined } : null));
     }
     return owners.get(key) ?? null;
+  };
+  const s0Of = async (q: Pick<Db, "query">, run: string, after: number, upTo: number): Promise<Seen[]> =>
+    (await q.query<Row>(`select seq, type, at, ${FACTS} as facts from events where run_id = $1 and seq > $2 and seq <= $3 and type = any($4::text[]) order by seq`, [run, after, upTo, [...S0_TYPES]])).map(seenOf);
+  /** What a run still asks, as the meeting of a channel tells it: its open waits, and the attention it needs now. */
+  const asksNow = async (q: Pick<Db, "query">, run: string, upTo: number): Promise<Set<number>> => {
+    const open = new Set((await q.query<Row>("select command_id from commands where run_id = $1 and state = 'waiting'", [run])).map((x) => String(x["command_id"])));
+    const [att] = await q.query<Row>(
+      "select (select max(seq) from events e where e.run_id = r.run_id and e.type = 'run_attention_required' and e.seq <= $2) as seq from runs r where r.run_id = $1 and r.state = 'attention_required'",
+      [run, upTo],
+    );
+    const attention = att && att["seq"] !== null && att["seq"] !== undefined ? Number(att["seq"]) : null;
+    return toldAtMeeting(await s0Of(q, run, 0, upTo), open, attention);
+  };
+
+  /**
+   * The first pass of a new channel (see above), made once: under an advisory lock of the channel, the row in
+   * `notify_channels` is looked for again, so of two pumps that race for it one meets the channel and the other finds
+   * it met.
+   */
+  const meet = async (channel: string): Promise<void> => {
+    if ((await db.query<Row>("select 1 as met from notify_channels where channel = $1", [channel])).length) return;
+    await db.tx(async (tx) => {
+      await tx.query(`select pg_advisory_xact_lock(${MEET_LOCK}, hashtext($1))`, [channel]);
+      if ((await tx.query<Row>("select 1 as met from notify_channels where channel = $1", [channel])).length) return;
+      // Every run there is now, at its end, in one statement: a run it does not see began after it.
+      const placed = await tx.query<Row>(
+        `insert into notify_cursors (channel, run_id, seq, at, start_seq)
+         select $1, r.run_id, coalesce(m.last, 0), $3, coalesce(m.last, 0)
+           from runs r cross join lateral (select max(seq) as last from events e where e.run_id = r.run_id) m
+          where r.package_hash = any($2::text[])
+         on conflict (channel, run_id) do nothing
+         returning run_id, seq`,
+        [channel, hashes, now()],
+      );
+      const at = new Map(placed.map((p) => [String(p["run_id"]), Number(p["seq"])]));
+      // Of those, the ones that still ask something: they are told it, from just before it.
+      const asking = at.size
+        ? await tx.query<Row>(
+            "select run_id, tenant, workflow, package_hash, revision from runs r where r.run_id = any($1::text[]) and (r.state = 'attention_required' or exists (select 1 from commands c where c.run_id = r.run_id and c.state = 'waiting'))",
+            [[...at.keys()]],
+          )
+        : [];
+      for (const r of asking) {
+        const run: Run07 = { run: String(r["run_id"]), tenant: String(r["tenant"]), workflow: String(r["workflow"]), package: String(r["package_hash"]), owner: null };
+        run.owner = await ownerOf(tx, run.package, run.workflow);
+        const end = at.get(run.run)!;
+        const keep = await asksNow(tx, run.run, end);
+        if (!keep.size) continue;
+        const seen = (await tx.query<Row>(`select seq, type, at, ${FACTS} as facts from events where run_id = $1 and seq = any($2::int[]) order by seq`, [run.run, [...keep, ...[...keep].map((s) => s + 1)]])).map(seenOf);
+        const bySeq = new Map(seen.map((e) => [e.seq, e]));
+        const asOf = { revision: Number(r["revision"]), event: end };
+        const mine = [...keep].filter((s) => bySeq.has(s) && notificationOf(channel, bySeq.get(s)!, bySeq.get(s + 1), run, asOf, o.config) !== undefined);
+        if (mine.length) await tx.query("update notify_cursors set seq = $3 where channel = $1 and run_id = $2", [channel, run.run, Math.min(...mine) - 1]);
+      }
+      await tx.query("insert into notify_channels (channel, at) values ($1, $2) on conflict (channel) do nothing", [channel, now()]);
+    });
   };
   /** Moves the cursor past `seq`, and forgets a notification waiting for its next attempt at or before it. */
   const cursorTo = async (channel: string, run: string, seq: number): Promise<void> => {
@@ -725,49 +802,48 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
             },
             o.timeoutMs,
           );
-    // The runs with something new past the cursor, or that the channel has not met yet, and none whose notification
-    // waits for its next attempt: chosen by the database, not read one by one.
+    await meet(channel);
+    // The runs with something new past the cursor, or no cursor (begun since the channel is in use), and none whose
+    // notification waits for its next attempt: chosen by the database, not read one by one.
     const runs = await db.query<Row>(
       `select r.run_id, r.tenant, r.workflow, r.package_hash, c.seq, c.start_seq, c.pending, c.attempts, c.retry_at
          from runs r left join notify_cursors c on c.channel = $1 and c.run_id = r.run_id
         where r.package_hash = any($2::text[])
-          and (c.run_id is null or ((c.retry_at is null or c.retry_at <= $3) and exists (select 1 from events e where e.run_id = r.run_id and e.seq > c.seq)))
+          and (c.run_id is null or ((c.retry_at is null or c.retry_at <= $3 or c.retry_at > $3 + $4) and exists (select 1 from events e where e.run_id = r.run_id and e.seq > c.seq)))
         order by r.created_at, r.run_id`,
-      [channel, hashes, now()],
+      [channel, hashes, now(), aheadMs(timeoutMs)],
     );
-    // A tenant whose way out is not there is left for the next pass; the channel's other tenants go on.
-    const unavailable = new Set<string>();
+    // A tenant whose way out is not there, or that is halted, is left for the next pass; the other tenants go on.
+    const skipped = new Set<string>();
     for (const r of runs) {
       if (o.signal?.aborted) return;
       const run: Run07 = { run: String(r["run_id"]), tenant: String(r["tenant"]), workflow: String(r["workflow"]), package: String(r["package_hash"]), owner: null };
-      if (unavailable.has(run.tenant) || (await halted(run.tenant))) continue;
-      run.owner = await ownerOf(run.package, run.workflow);
+      if (skipped.has(run.tenant)) continue;
+      if (await halted(run.tenant)) {
+        skipped.add(run.tenant);
+        continue;
+      }
+      run.owner = await ownerOf(db, run.package, run.workflow);
       // Where the run stands, read at one moment: its revision and its last event.
       const [snap] = await db.query<Row>("select r.revision, (select max(seq) from events e where e.run_id = r.run_id) as last from runs r where r.run_id = $1", [run.run]);
       const asOf = { revision: Number(snap?.["revision"] ?? 0), event: Number(snap?.["last"] ?? 0) };
       const last = asOf.event;
-      const open = async (): Promise<Set<string>> => new Set((await db.query<Row>("select command_id from commands where run_id = $1 and state = 'waiting'", [run.run])).map((x) => String(x["command_id"])));
-      const s0 = async (after: number): Promise<Seen[]> =>
-        (await db.query<Row>(`select seq, type, at, ${FACTS} as facts from events where run_id = $1 and seq > $2 and seq <= $3 and type = any($4::text[]) order by seq`, [run.run, after, last, [...S0_TYPES]])).map(seenOf);
       const admitted = (await db.query<Row>("select data->>'command' as c from events where run_id = $1 and type = 'program_admitted'", [run.run])).flatMap((x) => (typeof x["c"] === "string" ? [x["c"]] : []));
       let cur = cursorOf(r);
       if (!cur) {
-        // First met: what is still asked is told, and nothing else of the past; the cursor starts at the run's end.
-        const all = await s0(0);
-        const keep = stillOpen(all, await open());
-        const bySeq = new Map(all.map((e) => [e.seq, e]));
-        const mine = all.filter((e) => keep.has(e.seq) && notificationOf(channel, e, bySeq.get(e.seq + 1), run, asOf, o.config) !== undefined).map((e) => e.seq);
-        const from = mine.length ? Math.min(...mine) - 1 : last;
-        await db.query("insert into notify_cursors (channel, run_id, seq, at, start_seq) values ($1, $2, $3, $4, $5) on conflict (channel, run_id) do nothing", [channel, run.run, from, now(), last]);
+        // A run begun since the channel is in use: told from its first event.
+        await db.query("insert into notify_cursors (channel, run_id, seq, at, start_seq) values ($1, $2, 0, $3, 0) on conflict (channel, run_id) do nothing", [channel, run.run, now()]);
         const [again] = await db.query<Row>("select seq, start_seq, pending, attempts, retry_at from notify_cursors where channel = $1 and run_id = $2", [channel, run.run]);
         cur = again ? cursorOf(again) : undefined;
         if (!cur) continue;
       }
       if (cur.seq >= last) continue;
-      // Of what came before the channel met the run, only the questions still open are told.
-      const keep = cur.start > cur.seq ? stillOpen(await s0(cur.seq), await open()) : new Set<number>();
+      // Of what came before the channel was met, only what the run still asks is told.
+      const start = cur.start;
+      const keep = start > cur.seq ? await asksNow(db, run.run, start) : new Set<number>();
       let cursor = cur.seq;
       let moved = cursor;
+      let claimed: number | undefined;
       try {
         pages: while (cursor < last) {
           const page = (await db.query<Row>(`select seq, type, at, ${FACTS} as facts from events where run_id = $1 and seq > $2 and seq <= $3 order by seq limit $4`, [run.run, moved, last, batch])).map(seenOf);
@@ -779,29 +855,39 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
               const [next] = await db.query<Row>(`select seq, type, at, ${FACTS} as facts from events where run_id = $1 and seq = $2`, [run.run, e.seq + 1]);
               pair = next ? seenOf(next) : undefined;
             }
-            const n = e.seq <= cur.start && !keep.has(e.seq) ? undefined : notificationOf(channel, e, pair, run, asOf, o.config, admitted);
+            const n = e.seq <= start && !keep.has(e.seq) ? undefined : notificationOf(channel, e, pair, run, asOf, o.config, admitted);
             if (!n) {
               moved = e.seq;
               continue;
             }
-            if (cur.pending === e.seq && cur.retryAt !== null && cur.retryAt > now()) break pages;
             // What came before it is done: the cursor stands before it while it is tried.
             if (moved > cursor) await cursorTo(channel, run.run, moved);
             cursor = moved;
+            // A halt committed since the pass began stops its sends for the tenant.
+            if (await halted(run.tenant)) {
+              skipped.add(run.tenant);
+              break pages;
+            }
+            // The attempt is claimed first, by one pump alone: the one whose conditional update returns the row.
+            const [claim] = await db.query<Row>(
+              `update notify_cursors set pending = $3, attempts = case when pending = $3 then attempts else 0 end, retry_at = $4 + $5, at = $4
+                where channel = $1 and run_id = $2 and seq < $3 and (retry_at is null or retry_at <= $4 or retry_at > $4 + $6)
+                returning attempts`,
+              [channel, run.run, e.seq, now(), claimMs(timeoutMs), aheadMs(timeoutMs)],
+            );
+            if (!claim) break pages;
+            claimed = e.seq;
             const failure = await attempt(notifier, n);
             if (failure === undefined) {
               report.sent++;
               o.onSent?.(channel, n);
             } else {
-              const [kept] = await db.query<Row>(
-                "update notify_cursors set pending = $3, attempts = case when pending = $3 then attempts + 1 else 1 end, at = $4 where channel = $1 and run_id = $2 and seq < $3 returning attempts",
-                [channel, run.run, e.seq, now()],
-              );
-              // Another pump moved the cursor past it meanwhile: it is that one's.
+              const [kept] = await db.query<Row>("update notify_cursors set attempts = attempts + 1, at = $4 where channel = $1 and run_id = $2 and pending = $3 returning attempts", [channel, run.run, e.seq, now()]);
               if (!kept) break pages;
               const attempts = Number(kept["attempts"]);
               if (failure.retryable && attempts < NOTIFY_ATTEMPTS) {
                 await db.query("update notify_cursors set retry_at = $4 where channel = $1 and run_id = $2 and pending = $3", [channel, run.run, e.seq, now() + backoffMs(attempts)]);
+                claimed = undefined;
                 report.failed++;
                 // The receiver does not answer as it should: the channel is not asked again in this pass.
                 return;
@@ -818,16 +904,21 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
               o.onDead?.({ channel, run: run.run, seq: e.seq, id: n.id, attempts, reason: failure.reason });
             }
             await cursorTo(channel, run.run, e.seq);
+            claimed = undefined;
             cursor = moved = e.seq;
           }
           if (moved > cursor) await cursorTo(channel, run.run, moved);
           cursor = moved;
         }
       } catch (e) {
-        // The cursor stands before the notification that was being sent: it is tried again by the next pass.
+        // The cursor stands before the notification that was being sent, and its claim is given back, no attempt
+        // counted: it is tried again by the next pass.
+        if (claimed !== undefined) {
+          await db.query("update notify_cursors set retry_at = null, pending = case when attempts = 0 then null else pending end where channel = $1 and run_id = $2 and pending = $3", [channel, run.run, claimed]);
+        }
         if (e instanceof Stopped) return;
         if (!(e instanceof NotifyUnavailable)) throw e;
-        unavailable.add(run.tenant);
+        skipped.add(run.tenant);
         report.failures.push({ channel, message: e.message });
         o.onFailure?.(channel, e.message);
       }

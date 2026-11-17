@@ -12,6 +12,7 @@
 //   own package, then the notification pass (notify.ts). `driveLoop` makes one pass, or with `follow` one pass every
 //   interval until its signal aborts.
 
+import { isProgram07OrLater } from "@mandate/bridge";
 import type { Db, Row, Tx } from "./db.js";
 import type { RunRow } from "./journal.js";
 import type { Journal } from "./journal.js";
@@ -191,23 +192,51 @@ export interface PassReport {
 }
 
 /**
- * Whether a waiting run may have something for `tick` to do now, read without a runtime: the deadline of the wait
- * `runs.waiting` names (a decision's, an amendment's, a review's, a timer's) or of any other open wait has passed, or
- * the wait it names was decided and the run has not moved for `STALE_DRIVE_MS`. It may say yes where `tick` then does
- * nothing (an open wait of a run of 0.6 other than the one it names, a decision of 0.6 decided and not driven on),
- * never no where `tick` would act.
+ * Whether a waiting run has something for `tick` to do now, read without a runtime, by the rules `tick` itself
+ * follows for the run's language:
+ *
+ * - a run of 0.7 (`tickOpenWaits`): the deadline of an open wait has passed, its timer is due, or the wait
+ *   `runs.waiting` names was decided and the run has not moved for `STALE_DRIVE_MS`;
+ * - a run of 0.1 to 0.6 (runtime.ts `tick`, as before): its review is past its deadline or was decided, or the
+ *   deadline of its decision, its amendment or its timer has passed.
  */
-async function dueNow(db: Db, runId: string, now: number): Promise<boolean> {
-  const [run] = await db.query<Row>("select waiting from runs where run_id = $1 and state = 'waiting'", [runId]);
+async function dueNow(db: Db, runId: string, now: number, is07: (hash: string) => Promise<boolean>): Promise<boolean> {
+  const [run] = await db.query<Row>("select waiting, package_hash from runs where run_id = $1 and state = 'waiting'", [runId]);
   if (!run) return false;
-  const w = isObj((run["waiting"] ?? null) as Value) ? (run["waiting"] as Obj) : {};
-  const req = isObj(w["request"] ?? null) ? (w["request"] as Obj) : {};
-  if (typeof req["deadline"] === "number" && now >= req["deadline"]) return true;
+  const w = isObj((run["waiting"] ?? null) as Value) ? (run["waiting"] as Obj) : undefined;
+  const req = w && isObj(w["request"] ?? null) ? (w["request"] as Obj) : {};
+  const passed = typeof req["deadline"] === "number" && now >= req["deadline"];
+  if (!(await is07(String(run["package_hash"])))) {
+    if (!w) return false;
+    if (w["kind"] === REVIEW) {
+      if (passed) return true;
+      const [row] = await db.query<Row>("select state from commands where run_id = $1 and command_id = $2", [runId, String(w["command"])]);
+      return !!row && row["state"] !== "waiting";
+    }
+    return passed && (w["kind"] === "timer" || w["kind"] === "decision" || w["kind"] === "amendment");
+  }
   const open = await openWaits(db, runId);
   if (open.some((o) => EXPIRING.has(o.kind) && typeof o.request["deadline"] === "number" && now >= o.request["deadline"])) return true;
-  if (w["kind"] === "timer" || typeof w["command"] !== "string" || open.some((o) => o.command === w["command"])) return false;
+  if (!w) return false;
+  if (w["kind"] === "timer") return passed;
+  if (typeof w["command"] !== "string" || open.some((o) => o.command === w["command"])) return false;
   const [row] = await db.query<Row>("select kind, state from commands where run_id = $1 and command_id = $2", [runId, w["command"]]);
   return !!row && WAIT_KINDS.has(String(row["kind"])) && row["state"] !== "waiting" && now - (await lastMoved(db, runId)) >= STALE_DRIVE_MS;
+}
+
+/** Whether the package of hash `hash` is of 0.7 or later (package.ts `isPackage07OrLater`), read from the database once. */
+function packageIs07(db: Db): (hash: string) => Promise<boolean> {
+  const known = new Map<string, Promise<boolean>>();
+  return (hash) => {
+    let k = known.get(hash);
+    if (!k) {
+      k = db
+        .query<Row>("select program->'language' as language, (select coalesce(jsonb_agg(m.value->'language'), '[]'::jsonb) from jsonb_each(coalesce(p.modules, '{}'::jsonb)) m) as modules from packages p where package_hash = $1", [hash])
+        .then(([p]) => !!p && [p["language"], ...(Array.isArray(p["modules"]) ? (p["modules"] as Value[]) : [])].some((language) => isProgram07OrLater({ language })));
+      known.set(hash, k);
+    }
+    return k;
+  };
 }
 
 /**
@@ -220,11 +249,12 @@ export async function tickPass(db: Db, o: PassOptions, signal?: AbortSignal): Pr
   const runs = (await db.query<Row>("select run_id from runs where state = 'waiting' order by created_at, run_id")).map((r) => String(r["run_id"]));
   const report: PassReport = { waiting: runs.length, due: 0, moved: 0, failed: 0 };
   const now = o.now ?? Date.now;
+  const is07 = packageIs07(db);
   for (const runId of runs) {
     if (signal?.aborted) break;
     let made: Awaited<ReturnType<PassOptions["runtimeFor"]>> | undefined;
     try {
-      if (!(await dueNow(db, runId, now()))) continue;
+      if (!(await dueNow(db, runId, now(), is07))) continue;
       report.due++;
       const [row] = await db.query<Row>("select state, revision from runs where run_id = $1", [runId]);
       made = await o.runtimeFor(runId);
