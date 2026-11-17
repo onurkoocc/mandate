@@ -12,7 +12,7 @@ import { basename, dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as reference from "../src/ts.js";
 import * as rust from "../src/rust.js";
-import { compareOutcomes, CompilerDivergence, LANGUAGE_06, takeDivergences, type Outcome } from "./compare.js";
+import { compareOutcomes, CompilerDivergence, RUST_ONLY_INPUT, takeDivergences, type Outcome } from "./compare.js";
 import { DOOR_BACKED, type DoorBacked } from "../src/doors.js";
 import { CompilerFailure } from "../src/wasm/errors.js";
 import { modulePath } from "../src/wasm/module.js";
@@ -33,7 +33,7 @@ const wrong: string[] = [];
 
 /**
  * One call of `fn` on both sides, compared as test/compare.ts compares (by `difference`, under the named rules of
- * vectors/README.md, and with an input of 0.6 the Rust's alone); what differs is kept in `wrong`, with
+ * vectors/README.md, and with an input of 0.6 or later the Rust's alone); what differs is kept in `wrong`, with
  * `label`. Gives the Rust's value.
  */
 function both(label: string, fn: DoorBacked, args: unknown[]): unknown {
@@ -49,7 +49,7 @@ function both(label: string, fn: DoorBacked, args: unknown[]): unknown {
     wrong.push(`${label}: ${fn}: ${b.threw.message}`);
     return undefined;
   }
-  if (LANGUAGE_06[fn](args)) {
+  if (RUST_ONLY_INPUT[fn](args)) {
     sixes++;
     return "value" in b ? b.value : undefined;
   }
@@ -79,7 +79,7 @@ interface Source {
 /** The programs of fixtures/ (each with the modules of its directory and its lock) and of compiler/test/fixtures/syntax. */
 function fixtures(): Source[] {
   const out: Source[] = [];
-  const dirs = ["fixtures/boundary", "fixtures/envelope", "fixtures/fixbug", "fixtures/fixbug-target", "fixtures/library", "fixtures/system", "compiler/test/fixtures/syntax"];
+  const dirs = ["fixtures/boundary", "fixtures/envelope", "fixtures/fixbug", "fixtures/fixbug-target", "fixtures/library", "fixtures/attention", "fixtures/system", "compiler/test/fixtures/syntax"];
   for (const dir of dirs) {
     const files = readdirSync(join(repoRoot, dir)).filter((f) => f.endsWith(".mdt") || f.endsWith(".ir.json"));
     // The modules a program of the directory may import: the others, loaded.

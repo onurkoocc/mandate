@@ -15,6 +15,7 @@ import { withCompiler } from "../src/mode.js";
 import { rustCall } from "../src/wasm/call.js";
 import { CompilerFailure } from "../src/wasm/errors.js";
 import { modulePath } from "../src/wasm/module.js";
+import { RUST_ONLY_LANGUAGES } from "./compare.js";
 import { repoRoot } from "./tree.js";
 import { MODULES } from "./wasm-bytes.js";
 
@@ -139,11 +140,13 @@ needs("the facade on the Rust compiler", () => {
       if (ours !== JSON.stringify(tables[n])) differ.push(n);
     }
     // KNOWN_VERSIONS and NEWEST_VERSION of crates/mandate-testkit/src/rust_only.rs (vectors/README.md, "The versions
-    // only the Rust compiler reads"): the Rust's list has mandate/0.6 and mandate/0.7 at its end, and its newest
-    // version is 0.7.
+    // only the Rust compiler reads"): the Rust's list has the versions only it reads (mandate/0.6 and mandate/0.7,
+    // test/compare.ts's RUST_ONLY_LANGUAGES, which this holds to the Rust's) at its end, and its newest version is the
+    // last of them, 0.7.
     expect(differ).toEqual(["LANGUAGE_VERSION", "LANGUAGE_VERSIONS"]);
-    expect(tables["LANGUAGE_VERSIONS"]).toEqual([...compiler.LANGUAGE_VERSIONS, "mandate/0.6", "mandate/0.7"]);
-    expect([compiler.LANGUAGE_VERSION, tables["LANGUAGE_VERSION"]]).toEqual(["mandate/0.5", "mandate/0.7"]);
+    expect(RUST_ONLY_LANGUAGES).toEqual(["mandate/0.6", "mandate/0.7"]);
+    expect(tables["LANGUAGE_VERSIONS"]).toEqual([...compiler.LANGUAGE_VERSIONS, ...RUST_ONLY_LANGUAGES]);
+    expect([compiler.LANGUAGE_VERSION, tables["LANGUAGE_VERSION"]]).toEqual(["mandate/0.5", RUST_ONLY_LANGUAGES.at(-1)]);
   });
 
   it("CODES is the Rust's table of codes, which has every row of the TypeScript's", () => {

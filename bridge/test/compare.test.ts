@@ -1,24 +1,39 @@
 // How the Rust compiler's answers are held to the reference compiler's in the bridge's tests (test/compare.ts, which
-// test/roundtrip.test.ts uses): what "the input is of language 0.6" means, and the named exemptions, each standing on
-// an entry of vectors/README.md. Nothing of this is in the bridge itself: one compiler, the Rust's, answers.
+// test/roundtrip.test.ts uses): what "the input is of a language only the Rust reads" (0.6 or later) means, and the
+// named exemptions, each standing on an entry of vectors/README.md. Nothing of this is in the bridge itself: one
+// compiler, the Rust's, answers.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { compareOutcomes, CompilerDivergence, EXEMPTIONS, exemptionCounts, LANGUAGE_06, takeDivergences, type Outcome } from "./compare.js";
+import { compareOutcomes, CompilerDivergence, EXEMPTIONS, exemptionCounts, RUST_ONLY_INPUT, takeDivergences, type Outcome } from "./compare.js";
 import { DOOR_BACKED, type DoorBacked } from "../src/doors.js";
 import { repoRoot } from "./tree.js";
 
 const read = (p: string): string => readFileSync(join(repoRoot, p), "utf8");
 
-describe("the input of language 0.6", () => {
+describe("the input of a language only the Rust reads, 0.6 or later", () => {
   const p05 = { language: "mandate/0.5", module: "m", version: "0.1", defs: {} };
   const p06 = { ...p05, language: "mandate/0.6" };
+  const p07 = { ...p05, language: "mandate/0.7" };
   const lock06 = { lock: "mandate/lock/0.6", modules: {} };
+  const lock07 = { lock: "mandate/lock/0.7", modules: {} };
   const tool = { ctor: "tool.call", effect: "Tool", write: false };
 
   it("is told by a program's language, a text's header, a lock's format or 0.6 members, a language parameter, a 0.6 constructor", () => {
     const yes: Array<[DoorBacked, unknown[]]> = [
+      // 0.7, as 0.6.
+      ["check", ["// a comment\nmandate @ 0.7\nmodule m", "mdt"]],
+      ["check", [JSON.stringify(p07), "json"]],
+      ["check", ["mandate @ 0.5\nmodule m", "mdt", { lock: lock07 }]],
+      ["load", ["mandate @ 0.7", undefined]],
+      ["hashProgram", [p07]],
+      ["link", [p05, { x: p07 }]],
+      ["validateLock", [lock07]],
+      ["domainHash", ["program", {}, "0.7"]],
+      ["skeleton", ["m", 1, "mandate/0.7"]],
+      ["checkSubprogram", [{ parent: p07 }]],
+      ["requirementFor", [{ agent: "a", def: "d" }, [], null, { language: "mandate/0.7" }]],
       ["check", ["// a comment\nmandate @ 0.6\nmodule m", "mdt"]],
       ["check", [JSON.stringify(p06), "json"]],
       ["check", ["mandate @ 0.5\nmodule m", "mdt", { lock: lock06 }]],
@@ -36,20 +51,27 @@ describe("the input of language 0.6", () => {
       ["requirementFor", [{ agent: "a", def: "d" }, [], null, { language: "mandate/0.6" }]],
       ["cardDoc", [p05, "W", { lock: lock06 }]],
     ];
-    for (const [fn, args] of yes) expect(LANGUAGE_06[fn](args), `${fn} ${JSON.stringify(args).slice(0, 80)}`).toBe(true);
+    for (const [fn, args] of yes) expect(RUST_ONLY_INPUT[fn](args), `${fn} ${JSON.stringify(args).slice(0, 80)}`).toBe(true);
     const no: Array<[DoorBacked, unknown[]]> = [
       ["check", ["mandate @ 0.5\nmodule m", "mdt"]],
       ["check", ["mandate @ 0.60\nmodule m", "mdt"]],
+      ["check", ["mandate @ 0.70\nmodule m", "mdt"]],
+      // A version no compiler reads is asked of both: each gives its E0103.
+      ["check", ["mandate @ 0.8\nmodule m", "mdt"]],
+      ["check", [JSON.stringify({ ...p05, language: "mandate/0.8" }), "json"]],
+      ["validateLock", [{ lock: "mandate/lock/0.8", modules: {} }]],
+      ["skeleton", ["m", 1, "mandate/0.5"]],
+      ["domainHash", ["program", {}, "0.5"]],
       ["check", [JSON.stringify(p05), "json"]],
       ["hashProgram", [p05]],
       ["toMarkdown", [{ title: "mandate @ 0.6", meta: [], blocks: [] }]],
       ["grant", [{ context: { bounds: [{ ...tool, ctor: "fs.read" }], given: [], handed: [] }, delegation: null }]],
     ];
-    for (const [fn, args] of no) expect(LANGUAGE_06[fn](args), `${fn} ${JSON.stringify(args).slice(0, 80)}`).toBe(false);
+    for (const [fn, args] of no) expect(RUST_ONLY_INPUT[fn](args), `${fn} ${JSON.stringify(args).slice(0, 80)}`).toBe(false);
   });
 
   it("has a rule for every door-backed function", () => {
-    expect(Object.keys(LANGUAGE_06).sort()).toEqual(Object.keys(DOOR_BACKED).sort());
+    expect(Object.keys(RUST_ONLY_INPUT).sort()).toEqual(Object.keys(DOOR_BACKED).sort());
   });
 });
 
@@ -80,10 +102,13 @@ describe("the named exemptions", () => {
     for (const e of EXEMPTIONS) expect(list, e.name).toContain(titles[e.name]!);
   });
 
-  it("versions-only-rust-reads: an E0103 that lists mandate/0.6, in its message and its facts, and only that", () => {
+  it("versions-only-rust-reads: an E0103 that lists mandate/0.6 and mandate/0.7, in its message and its facts, and only that", () => {
     const ts = { ok: false, diagnostics: [{ code: "MDT-E0103", message: `this compiler reads "mandate/0.4" or "mandate/0.5".`, facts: { expected: ["mandate/0.4", "mandate/0.5"], found: "mandate/0.9" } }] };
-    const rust = { ok: false, diagnostics: [{ code: "MDT-E0103", message: `this compiler reads "mandate/0.4" or "mandate/0.5" or "mandate/0.6".`, facts: { expected: ["mandate/0.4", "mandate/0.5", "mandate/0.6"], found: "mandate/0.9" } }] };
+    const rust = { ok: false, diagnostics: [{ code: "MDT-E0103", message: `this compiler reads "mandate/0.4" or "mandate/0.5" or "mandate/0.6" or "mandate/0.7".`, facts: { expected: ["mandate/0.4", "mandate/0.5", "mandate/0.6", "mandate/0.7"], found: "mandate/0.9" } }] };
     expect(counted("versions-only-rust-reads", () => compareOutcomes("check", [], value(ts), value(rust)))).toBe(1);
+    // The parser's form, with single quotes.
+    const quoted = (vs: string[]): unknown => ({ ok: false, diagnostics: [{ code: "MDT-E0103", message: `this compiler reads ${vs.map((v) => `'${v}'`).join(" or ")}.` }] });
+    expect(counted("versions-only-rust-reads", () => compareOutcomes("load", [], value(quoted(["mandate/0.5"])), value(quoted(["mandate/0.5", "mandate/0.6", "mandate/0.7"]))))).toBe(1);
     const other = structuredClone(rust);
     other.diagnostics[0]!.facts.found = "mandate/0.8";
     expect(() => compareOutcomes("check", [], value(ts), value(other))).toThrow(CompilerDivergence);
