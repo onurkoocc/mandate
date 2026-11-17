@@ -3,27 +3,34 @@
 //
 // - The configuration (`notifications` in mandate.runtime.json) is refused by name, `bad_notification_channel`, for
 //   each way it cannot be used, one case each.
-// - The pump: in order per channel and run; a notification being retried keeps the cursor before it; six attempts and
-//   it is given up (`notify_dead`) and the cursor moves past it; at least once, a repeat with the same id; two pumps
-//   racing; a way out that is not there is no attempt.
-// - The webhook: through the proxy and nowhere else, a redirect is an error and is not followed, a URL that is not
-//   https never reaches the network, the credential's secret is in no reason, report or row; the session it is sent
-//   in is scoped to the tenant and `notify:<channel>`.
-// - The leak test: a run whose inputs, steps, results, errors and questions hold markers; no marker is in anything
-//   either adapter emits, in either webhook format, and every payload has exactly the fixed members.
+// - What a notification may carry: a run's id, a tenant, a workflow, a command and a package in their safe forms, the
+//   names a lead chose inside a sub-program as a digest, a link that points where its template points.
+// - The pump: one attempt per notification per pass, the attempts and the next try kept beside the cursor, which stays
+//   before the notification meanwhile; the sixth attempt gives it up (`notify_dead`); at least once, a repeat with the
+//   same id; two pumps racing; a way out that is not there is no attempt; a stop cuts a request in flight; halts; a
+//   channel that meets a run for the first time; only runs with something new are visited.
+// - The webhook: through the proxy's session and nowhere else, a redirect is an error and is not followed, a URL that
+//   is not https never reaches the network, the credential's secret is in no reason, report or row; the session it is
+//   sent in is scoped to the tenant and `notify:<channel>`; the proxy's denial of a request is a failed attempt.
+// - The leak test: runs whose inputs, steps, results, errors, questions, an amendment's reason, a budget's and an
+//   attention's details and a sub-program's names hold markers; no marker is in anything either adapter emits, in
+//   either webhook format, and every payload has exactly the fixed members.
 //
-// The proxy is the egress tests' in-process one, with an in-process upstream and no network. Every secret is a made-up
-// word.
+// The proxy is the egress tests' in-process one, with an in-process upstream and no network. The clock is the
+// runtime's simulated one. Every secret is a made-up word.
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readConfig } from "../src/control.js";
-import type { Db } from "../src/db.js";
+import type { Db, Row } from "../src/db.js";
 import { EVENT_CLASSES } from "../src/classes.js";
 import { payloadOf } from "../src/decisions.js";
 import {
   backoffMs,
+  carried,
+  CARRIED,
+  commandShown,
   egressTransport,
   linkOf,
   NOTIFICATION_FORMAT,
@@ -44,8 +51,8 @@ import { Violation } from "../src/signals.js";
 import { tickPass } from "../src/tick.js";
 import { digest, type Obj } from "../src/values.js";
 import { seenHeader, world as egressWorld, type World as EgressWorld } from "./egress-world.js";
-import { closeAll } from "./helpers.js";
-import { answer, approveCard, count, DAY, inv, lines, msg, nworld, OWNED, REVIEW, scratch, sign, type NWorld } from "./notify-world.js";
+import { closeAll, until } from "./helpers.js";
+import { answer, append, approveCard, count, DAY, followed, inv, lines, msg, nworld, OWNED, REVIEW, REVIEW_AT, scratch, sign, BATCH, type NWorld } from "./notify-world.js";
 
 const dirs: string[] = [];
 afterAll(async () => {
@@ -60,20 +67,25 @@ function dir(): string {
 
 const HOOK_SECRET = "made-up-hook-word";
 const HOOK = "https://hooks.acme.example/in";
+const M = "LEAKMARK";
 
 /** A configuration as the operator writes it, read as the runtime reads it. */
 function config(raw: unknown, where = dir()): NotificationsConfig {
   return readNotifications(raw, { file: join(where, "mandate.runtime.json"), at: (p) => join(where, p), egress: true });
 }
 
-/** A run of OWNED that asked the platform lead (no role), then the reviewer, and succeeded: three notifications to `hook`. */
-async function ownedRun(): Promise<NWorld> {
-  const w = await nworld(OWNED, "0.7");
-  await approveCard(w);
-  await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "o1" });
-  await answer(w, "o1", w.who.pat, "because");
-  await answer(w, "o1", w.who.rex, "yes");
-  expect((await w.rt.getRun("o1")).state).toBe("succeeded");
+/**
+ * A run of OWNED that asked the platform lead (no role), then the reviewer, and succeeded: three notifications to
+ * `hook`, which has followed the run from its start.
+ */
+async function ownedRun(runId = "o1", tenant?: string, w0?: NWorld): Promise<NWorld> {
+  const w = w0 ?? (await nworld(OWNED, "0.7"));
+  if (!w0) await approveCard(w);
+  await followed(w, ["hook"], runId);
+  await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId, ...(tenant ? { tenant } : {}) });
+  await answer(w, runId, w.who.pat, "because");
+  await answer(w, runId, w.who.rex, "yes");
+  expect((await w.rt.getRun(runId)).state).toBe("succeeded");
   return w;
 }
 
@@ -81,26 +93,29 @@ const HOOK_CONFIG = { channels: { hook: { webhook: { url: HOOK, credential: "acm
 
 interface Call {
   url: string;
+  tenant: string;
   headers: Record<string, string>;
   body: string;
 }
 
+type Answer = (id: string, nth: number, signal: AbortSignal | undefined) => Response | Error | Promise<Response>;
+
 /** A webhook's way out that answers as `answer` says, by the notification's id and how often it was sent; it records each request. */
-function fakeWay(answer: (id: string, nth: number) => Response | Error = () => new Response("ok")) {
+function fakeWay(answer: Answer = () => new Response("ok")) {
   const calls: Call[] = [];
   const opened: string[] = [];
-  let ready: () => Promise<void> = async () => undefined;
+  let ready: (tenant: string) => Promise<void> = async () => undefined;
   const transport = (): WebhookTransport => ({
     open: (channel, _spec, tenant) => {
       opened.push(`${channel} ${tenant}`);
       return {
-        ready: () => ready(),
+        ready: () => ready(tenant),
         fetch: (async (url: string, init?: RequestInit) => {
           const headers: Record<string, string> = {};
           new Headers(init?.headers).forEach((v, k) => (headers[k] = v));
-          calls.push({ url: String(url), headers, body: String(init?.body) });
+          calls.push({ url: String(url), tenant, headers, body: String(init?.body) });
           const id = headers[NOTIFICATION_HEADER]!;
-          const a = answer(id, calls.filter((c) => c.headers[NOTIFICATION_HEADER] === id).length);
+          const a = await answer(id, calls.filter((c) => c.headers[NOTIFICATION_HEADER] === id).length, init?.signal ?? undefined);
           if (a instanceof Error) throw a;
           return a;
         }) as typeof fetch,
@@ -108,15 +123,27 @@ function fakeWay(answer: (id: string, nth: number) => Response | Error = () => n
     },
     close: async () => undefined,
   });
-  return { calls, opened, transport, setReady: (f: () => Promise<void>) => (ready = f) };
+  return { calls, opened, transport, setReady: (f: (tenant: string) => Promise<void>) => (ready = f) };
 }
+
+/** An answer that never comes: it ends when the request is stopped. */
+const never = (_id: string, _nth: number, signal: AbortSignal | undefined): Promise<Response> => new Promise((_, fail) => signal?.addEventListener("abort", () => fail(new Error("stopped"))));
 
 const ids = (calls: Call[]): string[] => calls.map((c) => c.headers[NOTIFICATION_HEADER]!);
 const bodies = (calls: Call[]): Notification[] => calls.map((c) => JSON.parse(c.body) as Notification);
-const cursor = async (db: Db, channel: string, run: string): Promise<number | null> => {
-  const [c] = await db.query<{ seq: unknown }>("select seq from notify_cursors where channel = $1 and run_id = $2", [channel, run]);
-  return c ? Number(c.seq) : null;
-};
+
+/** The channel's cursor for the run, with what waits for its next attempt. */
+async function cursorRow(db: Db, channel: string, run: string): Promise<{ seq: number; pending: number | null; attempts: number; retry_at: number | null } | null> {
+  const [c] = await db.query<Row>("select seq, pending, attempts, retry_at from notify_cursors where channel = $1 and run_id = $2", [channel, run]);
+  if (!c) return null;
+  const n = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+  return { seq: Number(c["seq"]), pending: n(c["pending"]), attempts: Number(c["attempts"]), retry_at: n(c["retry_at"]) };
+}
+
+/** A pass of the pump over the world's database, by the world's clock. */
+const pass = (w: NWorld, c: NotificationsConfig, o: Partial<NotifyOptions> = {}) => notifyPass(w.db, { config: c, now: () => w.clock.now(), ...o });
+
+const lastSeq = async (w: NWorld, run: string): Promise<number> => (await w.rt.journal.events(run)).at(-1)!.seq;
 
 // ── the configuration ───────────────────────────────────────────────────
 
@@ -141,6 +168,8 @@ describe("the notifications configuration", () => {
     // A webhook's header and template default to a connector's; its format to the notification as JSON.
     expect(config({ channels: { h: { webhook: { url: HOOK, credential: "c" } } } }).channels["h"]).toEqual({ webhook: { url: HOOK, host: "hooks.acme.example", credential: "c", header: "authorization", template: "Bearer {secret}", format: "mandate" } });
     expect(config({}).roles).toEqual({});
+    // Placeholders after the host: in the path, the query or the fragment.
+    for (const link of ["https://m.example/{run}", "https://m.example/r?run={run}&role={role}", "http://localhost:8080/runs/{run}#{command}", "https://m.example?r={run}"]) expect(config({ link }).link).toBe(link);
   });
 
   const hook = (w: Record<string, unknown>): unknown => ({ ...ok, channels: { ...ok.channels, acct: { webhook: { ...ok.channels.acct.webhook, ...w } } } });
@@ -169,6 +198,7 @@ describe("the notifications configuration", () => {
     ["a webhook URL whose host a parser would fold", hook({ url: "https://hooks%2eacme.example/in" }), /as written/],
     ["a webhook URL with an IPv6 host", hook({ url: "https://[::1]/in" }), /as written|no port/],
     ["a webhook URL that is not text", hook({ url: 443 }), /https:\/\/ URL/],
+    ["a webhook URL longer than 2048 characters", hook({ url: `https://hooks.acme.example/${"a".repeat(2048)}` }), /at most 2048 characters/],
     ["a webhook with no credential's name", without("credential"), /credential is required/],
     ["a credential's name that is not a name", hook({ credential: "acme hook" }), /credential is a credential's name/],
     ["a header without a template", without("template"), /together, or neither/],
@@ -190,10 +220,14 @@ describe("the notifications configuration", () => {
     ["a role naming an unknown channel", { ...ok, roles: { accountant: { channels: ["acct", "slack"] } } }, /names "slack", which notifications\.channels does not define/],
     ["outcomes that are not true or false", { ...ok, roles: { accountant: { channels: ["acct"], outcomes: "yes" } } }, /outcomes is true or false/],
     ["a link that is no URL", { ...ok, link: "runs/{run}" }, /link is an absolute http/],
+    ["a link longer than 2048 characters", { ...ok, link: `https://m.example/${"a".repeat(2048)}/{run}` }, /at most 2048 characters/],
     ["a link with another placeholder", { ...ok, link: "https://mandate.acme.example/{tenant}/{run}" }, /holds "\{tenant\}"/],
     ["a link with a step's value as a placeholder", { ...ok, link: "https://mandate.acme.example/{run}/{result}" }, /holds "\{result\}"/],
     ["a link with a brace left open", { ...ok, link: "https://mandate.acme.example/{run" }, /holds "\{run"/],
     ["a link with a brace that closes nothing", { ...ok, link: "https://mandate.acme.example/run}" }, /holds "\}"/],
+    ["a link with a placeholder in its host", { ...ok, link: "https://{run}.acme.example/x" }, /placeholders after the host/],
+    ["a link with a placeholder at the end of its host", { ...ok, link: "https://mandate.acme.example{run}" }, /placeholders after the host/],
+    ["a link with a placeholder in its port", { ...ok, link: "https://mandate.acme.example:{run}/x" }, /placeholders after the host/],
   ];
   for (const [what, raw, why, egress] of refused) {
     it(`refuses ${what}: bad_notification_channel`, () => {
@@ -209,11 +243,72 @@ describe("the notifications configuration", () => {
       expect((thrown as Violation).message).toMatch(why);
     });
   }
+});
 
-  it("makes a link from the three ids only, each URL-encoded, an absent one empty", () => {
+// ── what a notification may carry ──────────────────────────────────────
+
+describe("what a notification may carry", () => {
+  it("carries ids of a narrow form as they are, and any other as a digest", () => {
+    for (const id of ["0b9b6e1c-7c5e-4e2a-9b1d-1a2b3c4d5e6f", "default", "acme.finance", "run-12", "tenant_7:eu@a#b~c"]) expect(carried(id, CARRIED.id)).toBe(id);
+    for (const id of ["two words", "<!channel>", "ünïcode", "a/b", "", "x".repeat(129), "line\nbreak", `${M}?q=1`]) {
+      const shown = carried(id, CARRIED.id);
+      expect(shown).toMatch(/^digest:[0-9a-f]{32}$/);
+      expect(shown).toBe(carried(id, CARRIED.id));
+    }
+    expect(carried("Ship", CARRIED.workflow)).toBe("Ship");
+    expect(carried("Ship it", CARRIED.workflow)).toMatch(/^digest:/);
+    expect(carried(`sha256:${"a".repeat(64)}`, CARRIED.package)).toBe(`sha256:${"a".repeat(64)}`);
+    expect(carried("sha256:short", CARRIED.package)).toMatch(/^digest:/);
+  });
+
+  it("carries a command as its IR path, and one inside a lead's sub-program as the sub-program's command and a digest of the rest", () => {
+    const plan = "/defs/W/body/0/value/program/1";
+    expect(commandShown("/defs/Ship/body/0/value", [plan])).toBe("/defs/Ship/body/0/value");
+    expect(commandShown("/defs/W/body/0/branches/a/contract/accept/first/call", [])).toBe("/defs/W/body/0/branches/a/contract/accept/first/call");
+    expect(commandShown("/defs/W/on/budget_exceeded@0", [])).toBe("/defs/W/on/budget_exceeded@0");
+    const a = commandShown(`${plan}/defs/${M}Fix/body/0/value`, [plan]);
+    const b = commandShown(`${plan}/defs/${M}Fix/body/1/value`, [plan]);
+    expect(a).toMatch(new RegExp(`^${plan.replaceAll("/", "\\/")}\\/digest:[0-9a-f]{32}$`));
+    expect(a).not.toBe(b);
+    expect(a).not.toContain(M);
+    // A command of no form a path has is a digest whole.
+    expect(commandShown("not a path", [])).toMatch(/^digest:/);
+    expect(commandShown(null, [])).toBeNull();
+  });
+
+  it("makes a link from the three ids only, each URL-encoded, an absent one empty; one that would leave the template's origin is none", () => {
     expect(linkOf("https://m.example/runs/{run}?role={role}&at={command}", { run: "r 1/2", role: "accountant", command: "/defs/W/body/0" })).toBe("https://m.example/runs/r%201%2F2?role=accountant&at=%2Fdefs%2FW%2Fbody%2F0");
     expect(linkOf("https://m.example/{run}/{role}/{command}", { run: "r", role: null, command: null })).toBe("https://m.example/r//");
     expect(linkOf(null, { run: "r", role: null, command: null })).toBeNull();
+    // A template the reader would refuse, given by hand: the run's id would move the link to another host.
+    expect(linkOf("https://{run}/x", { run: "evil.example", role: null, command: null })).toBeNull();
+    expect(linkOf("https://m.example{run}", { run: ".evil.example", role: null, command: null })).toBeNull();
+  });
+
+  it("puts a run's id and a tenant of no safe form in no member, the sentence and the link: only their digest, the id made of the true ones", async () => {
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    const run = `two words <!channel> ${M}`;
+    const tenant = `${M} ${"t".repeat(300)}`;
+    await followed(w, ["hook"], run);
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: run, tenant });
+    const way = fakeWay();
+    const c = config({ ...HOOK_CONFIG, channels: { hook: { webhook: { url: HOOK, credential: "acme_hook", format: "text" } } }, link: "https://m.acme.example/runs/{run}" });
+    expect(await pass(w, c, { transport: way.transport })).toMatchObject({ sent: 1 });
+    const [sent] = way.calls;
+    expect(sent!.body).not.toContain(M);
+    expect(sent!.body).not.toContain("<!channel>");
+    expect(JSON.parse(sent!.body)).toEqual({ text: `Mandate: run ${carried(run, CARRIED.id)} of Ship (tenant ${carried(tenant, CARRIED.id)}) waits for platform_lead at /defs/Ship/body/0/value (wait_opened, event ${(await w.rt.journal.events(run)).find((e) => e.type === "wait_opened")!.seq}). https://m.acme.example/runs/${carried(run, CARRIED.id).replace(":", "%3A")}` });
+    // The id is the true run's, so a repeat is known by it.
+    const seq = (await w.rt.journal.events(run)).find((e) => e.type === "wait_opened")!.seq;
+    expect(sent!.headers[NOTIFICATION_HEADER]).toBe(digest("operation", { format: NOTIFICATION_FORMAT, channel: "hook", run, seq }));
+    // Every member is bounded.
+    const json = fakeWay();
+    await w.db.query("update notify_cursors set seq = 0");
+    await pass(w, config(HOOK_CONFIG), { transport: json.transport });
+    const n = bodies(json.calls)[0]!;
+    expect([n.run, n.tenant]).toEqual([carried(run, CARRIED.id), carried(tenant, CARRIED.id)]);
+    for (const v of Object.values(n)) if (typeof v === "string") expect(v.length).toBeLessThanOrEqual(300);
   });
 });
 
@@ -224,17 +319,17 @@ describe("the pump", () => {
     const w = await ownedRun();
     const way = fakeWay();
     const c = config(HOOK_CONFIG);
-    const r = await notifyPass(w.db, { config: c, transport: way.transport });
-    expect(r).toEqual({ sent: 3, retried: 0, dead: 0, failures: [] });
+    expect(await pass(w, c, { transport: way.transport })).toEqual({ sent: 3, failed: 0, dead: 0, pending: 0, failures: [] });
     const sent = bodies(way.calls);
     expect(sent.map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened platform_lead", "wait_opened reviewer", "run_succeeded platform_lead"]);
     const events = await w.rt.journal.events("o1");
+    const run = await w.rt.getRun("o1");
     for (const n of sent) {
       expect(Object.keys(n)).toEqual([...NOTIFICATION_MEMBERS]);
       expect(n).toMatchObject({ format: NOTIFICATION_FORMAT, tenant: "default", run: "o1", workflow: "Ship", package: w.pkg.hash, link: null });
       expect(n.id).toBe(digest("operation", { format: NOTIFICATION_FORMAT, channel: "hook", run: "o1", seq: n.seq }));
       expect(events.find((e) => e.seq === n.seq)?.type).toBe(n.event);
-      expect(n.as_of).toEqual({ revision: (await w.rt.getRun("o1")).revision, event: events.at(-1)!.seq });
+      expect(n.as_of).toEqual({ revision: run.revision, event: events.at(-1)!.seq });
     }
     expect(sent.map((n) => [n.kind, n.class])).toEqual([
       ["decision", "S0"],
@@ -243,22 +338,21 @@ describe("the pump", () => {
     ]);
     expect(sent[0]!.command).toBe((events.find((e) => e.seq === sent[0]!.seq)!.data as Obj)["command"]);
     expect(sent[2]!.command).toBeNull();
-    // Each request: POST to the webhook, JSON, the id in its header.
     for (const call of way.calls) {
       expect(call.url).toBe(HOOK);
       expect(call.headers["content-type"]).toBe("application/json");
     }
     expect(ids(way.calls)).toEqual(sent.map((n) => n.id));
-    expect(await cursor(w.db, "hook", "o1")).toBe(events.at(-1)!.seq);
+    expect(await cursorRow(w.db, "hook", "o1")).toEqual({ seq: events.at(-1)!.seq, pending: null, attempts: 0, retry_at: null });
     // A second pass has nothing to send.
-    expect(await notifyPass(w.db, { config: c, transport: way.transport })).toEqual({ sent: 0, retried: 0, dead: 0, failures: [] });
+    expect(await pass(w, c, { transport: way.transport })).toEqual({ sent: 0, failed: 0, dead: 0, pending: 0, failures: [] });
     expect(way.calls).toHaveLength(3);
   });
 
   it("a text webhook sends {text: a fixed sentence} made of the same members", async () => {
     const w = await ownedRun();
     const way = fakeWay();
-    await notifyPass(w.db, { config: config({ ...HOOK_CONFIG, channels: { hook: { webhook: { url: HOOK, credential: "acme_hook", format: "text" } } }, link: "https://m.acme.example/runs/{run}" }), transport: way.transport });
+    await pass(w, config({ ...HOOK_CONFIG, channels: { hook: { webhook: { url: HOOK, credential: "acme_hook", format: "text" } } }, link: "https://m.acme.example/runs/{run}" }), { transport: way.transport });
     const sent = way.calls.map((c) => JSON.parse(c.body) as Obj);
     expect(sent.map((b) => Object.keys(b))).toEqual([["text"], ["text"], ["text"]]);
     expect(String(sent[0]!["text"])).toMatch(/^Mandate: run o1 of Ship \(tenant default\) waits for platform_lead at \/defs\/Ship\/body\/0\/value \(wait_opened, event \d+\)\. https:\/\/m\.acme\.example\/runs\/o1$/);
@@ -267,82 +361,169 @@ describe("the pump", () => {
     expect(sentence(n)).toBe("Mandate: run r of W (tenant t) waits for finance_lead at /c, deadline 2027-01-02T00:00:00.000Z (review_escalated, event 9).");
   });
 
-  it("retries with a backoff, the cursor standing before the notification meanwhile, and keeps the run's order", async () => {
+  it("makes one attempt per pass: a failure keeps the cursor before it and the next attempt for later, by the runtime's clock, in the run's order", async () => {
     const w = await ownedRun();
     let first: string | undefined;
     const way = fakeWay((id, nth) => {
       first ??= id;
       return id === first && nth <= 2 ? new Response("busy", { status: 503 }) : new Response("ok");
     });
-    const waits: Array<[number, number | null]> = [];
-    const r = await notifyPass(w.db, { config: config(HOOK_CONFIG), transport: way.transport, sleep: async (ms) => void waits.push([ms, await cursor(w.db, "hook", "o1")]) });
-    expect(r).toEqual({ sent: 3, retried: 2, dead: 0, failures: [] });
-    const firstSeq = bodies(way.calls)[0]!.seq;
-    // Each wait came while the cursor stood just before the notification being retried.
-    expect(waits).toEqual([
-      [1000, firstSeq - 1],
-      [2000, firstSeq - 1],
-    ]);
-    const order = ids(way.calls);
-    expect(order.slice(0, 3)).toEqual([first, first, first]);
-    expect(new Set(order.slice(3)).size).toBe(2);
-    expect(bodies(way.calls).map((n) => n.seq)).toEqual([firstSeq, firstSeq, firstSeq, ...bodies(way.calls).slice(3).map((n) => n.seq)]);
-    expect(bodies(way.calls).slice(3).every((n) => n.seq > firstSeq)).toBe(true);
+    const c = config(HOOK_CONFIG);
+    expect(await pass(w, c, { transport: way.transport })).toEqual({ sent: 0, failed: 1, dead: 0, pending: 1, failures: [] });
+    const seq = bodies(way.calls)[0]!.seq;
+    expect(await cursorRow(w.db, "hook", "o1")).toEqual({ seq: seq - 1, pending: seq, attempts: 1, retry_at: w.clock.now() + 1000 });
+    // Before its time the next pass asks nothing of the receiver, and says the notification waits.
+    w.clock.advance(999);
+    expect(await pass(w, c, { transport: way.transport })).toEqual({ sent: 0, failed: 0, dead: 0, pending: 1, failures: [] });
+    expect(way.calls).toHaveLength(1);
+    w.clock.advance(1);
+    expect(await pass(w, c, { transport: way.transport })).toEqual({ sent: 0, failed: 1, dead: 0, pending: 1, failures: [] });
+    expect(await cursorRow(w.db, "hook", "o1")).toEqual({ seq: seq - 1, pending: seq, attempts: 2, retry_at: w.clock.now() + 2000 });
+    w.clock.advance(2000);
+    expect(await pass(w, c, { transport: way.transport })).toEqual({ sent: 3, failed: 0, dead: 0, pending: 0, failures: [] });
+    expect(ids(way.calls).slice(0, 3)).toEqual([first, first, first]);
+    expect(bodies(way.calls).map((n) => n.seq)).toEqual([seq, seq, seq, ...bodies(way.calls).slice(3).map((n) => n.seq)]);
+    expect(bodies(way.calls).slice(3).every((n) => n.seq > seq)).toBe(true);
     // The same notification, byte for byte, at every attempt.
-    expect(new Set(way.calls.slice(0, 3).map((c) => c.body)).size).toBe(1);
+    expect(new Set(way.calls.slice(0, 3).map((x) => x.body)).size).toBe(1);
+    expect(await cursorRow(w.db, "hook", "o1")).toEqual({ seq: await lastSeq(w, "o1"), pending: null, attempts: 0, retry_at: null });
   });
 
-  it("gives a notification up after six attempts, records it in notify_dead and moves past it; the next ones go on", async () => {
+  it("asks a receiver that failed nothing more in the pass: another run's notification waits for the next one", async () => {
+    const w = await ownedRun("o1");
+    await ownedRun("o2", undefined, w);
+    const way = fakeWay(() => new Response("busy", { status: 503 }));
+    expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toEqual({ sent: 0, failed: 1, dead: 0, pending: 1, failures: [] });
+    expect(way.calls).toHaveLength(1);
+    expect(await cursorRow(w.db, "hook", "o2")).toEqual({ seq: 0, pending: null, attempts: 0, retry_at: null });
+  });
+
+  it("gives a notification up at its sixth failed attempt, 1, 2, 4, 8 and 16 s apart: notify_dead, and the cursor moves past it", async () => {
     const w = await ownedRun();
     let first: string | undefined;
     const way = fakeWay((id) => {
       first ??= id;
       return id === first ? new Response("no", { status: 500 }) : new Response("ok");
     });
-    const waits: number[] = [];
+    const c = config(HOOK_CONFIG);
     const dead: unknown[] = [];
-    const r = await notifyPass(w.db, { config: config(HOOK_CONFIG), transport: way.transport, sleep: async (ms) => void waits.push(ms), onDead: (d) => dead.push(d) });
-    expect(r).toEqual({ sent: 2, retried: 5, dead: 1, failures: [] });
-    expect(ids(way.calls).filter((i) => i === first)).toHaveLength(6);
+    const waits: number[] = [];
+    for (let attempt = 1; attempt < 6; attempt++) {
+      expect(await pass(w, c, { transport: way.transport }), `attempt ${attempt}`).toEqual({ sent: 0, failed: 1, dead: 0, pending: 1, failures: [] });
+      const row = (await cursorRow(w.db, "hook", "o1"))!;
+      expect(row.attempts).toBe(attempt);
+      waits.push(row.retry_at! - w.clock.now());
+      w.clock.advance(row.retry_at! - w.clock.now());
+    }
     expect(waits).toEqual([1, 2, 3, 4, 5].map(backoffMs));
     expect(waits).toEqual([1000, 2000, 4000, 8000, 16000]);
+    expect(await pass(w, c, { transport: way.transport, onDead: (d) => dead.push(d) })).toEqual({ sent: 2, failed: 0, dead: 1, pending: 0, failures: [] });
+    expect(ids(way.calls).filter((i) => i === first)).toHaveLength(6);
     const seq = bodies(way.calls)[0]!.seq;
     const rows = await w.db.query<Obj>("select channel, run_id, seq, attempts, reason from notify_dead");
     expect(rows.map((x) => ({ ...x, seq: Number(x["seq"]), attempts: Number(x["attempts"]) }))).toEqual([{ channel: "hook", run_id: "o1", seq, attempts: 6, reason: "hooks.acme.example answered 500" }]);
     expect(dead).toEqual([{ channel: "hook", run: "o1", seq, id: first, attempts: 6, reason: "hooks.acme.example answered 500" }]);
     // A notification given up is not tried again.
-    expect(await notifyPass(w.db, { config: config(HOOK_CONFIG), transport: way.transport })).toEqual({ sent: 0, retried: 0, dead: 0, failures: [] });
+    expect(await pass(w, c, { transport: way.transport })).toEqual({ sent: 0, failed: 0, dead: 0, pending: 0, failures: [] });
     expect(await count(w, "select count(*) as n from notify_dead")).toBe(1);
   });
 
-  it("gives up at once what trying again would not change: a 4xx answer", async () => {
+  it("gives up at once what trying again would not change, a 4xx, and goes on with the run's next notifications", async () => {
     const w = await ownedRun();
-    const way = fakeWay((_id, _nth) => new Response("gone", { status: 404 }));
-    const waits: number[] = [];
-    const r = await notifyPass(w.db, { config: config(HOOK_CONFIG), transport: way.transport, sleep: async (ms) => void waits.push(ms) });
-    expect(r).toEqual({ sent: 0, retried: 0, dead: 3, failures: [] });
-    expect(waits).toEqual([]);
-    expect((await w.db.query<{ attempts: unknown }>("select attempts from notify_dead")).map((x) => Number(x.attempts))).toEqual([1, 1, 1]);
+    const way = fakeWay(() => new Response("gone", { status: 404 }));
+    expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toEqual({ sent: 0, failed: 0, dead: 3, pending: 0, failures: [] });
+    expect((await w.db.query<{ attempts: unknown; reason: string }>("select attempts, reason from notify_dead order by seq")).map((x) => [Number(x.attempts), x.reason])).toEqual(Array(3).fill([1, "hooks.acme.example answered 404"]));
   });
 
-  it("counts no attempt while the way out is not there: the channel stops for the pass, its cursor where it was", async () => {
+  it("tries again after a 408, a 429 and no answer in time", async () => {
+    const w = await ownedRun();
+    const answers: Answer[] = [() => new Response("", { status: 408 }), () => new Response("", { status: 429 }), never, () => new Response("ok")];
+    let i = 0;
+    const way = fakeWay((id, nth, signal) => answers[Math.min(i++, answers.length - 1)]!(id, nth, signal));
+    const c = config(HOOK_CONFIG);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      expect(await pass(w, c, { transport: way.transport, timeoutMs: 50 }), `attempt ${attempt}`).toMatchObject({ sent: 0, failed: 1, pending: 1 });
+      expect((await cursorRow(w.db, "hook", "o1"))!.attempts).toBe(attempt);
+      w.clock.advance(backoffMs(attempt));
+    }
+    expect(await pass(w, c, { transport: way.transport })).toMatchObject({ sent: 3, failed: 0, pending: 0 });
+    // A timeout given up says so: six times no answer.
+    const slow = await ownedRun("o2", undefined, w);
+    const quiet = fakeWay(never);
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      await pass(slow, c, { transport: quiet.transport, timeoutMs: 20 });
+      w.clock.advance(backoffMs(attempt));
+    }
+    expect(await w.db.query("select attempts, reason from notify_dead where run_id = 'o2'")).toEqual([{ attempts: 6, reason: "hooks.acme.example gave no answer within 20 ms" }]);
+  });
+
+  it("stops at once when the pass is stopped, a request in flight among it: no attempt is counted, and the next pass sends it", async () => {
+    const w = await ownedRun();
+    const stop = new AbortController();
+    const way = fakeWay(never);
+    const going = pass(w, config(HOOK_CONFIG), { transport: way.transport, signal: stop.signal });
+    await until(() => way.calls.length === 1, "the first request");
+    stop.abort();
+    expect(await going).toEqual({ sent: 0, failed: 0, dead: 0, pending: 0, failures: [] });
+    const seq = bodies(way.calls)[0]!.seq;
+    expect(await cursorRow(w.db, "hook", "o1")).toEqual({ seq: seq - 1, pending: null, attempts: 0, retry_at: null });
+    const again = fakeWay();
+    expect(await pass(w, config(HOOK_CONFIG), { transport: again.transport })).toMatchObject({ sent: 3 });
+    expect(ids(again.calls)[0]).toBe(ids(way.calls)[0]);
+  });
+
+  it("counts no attempt while the way out is not there: the channel waits, its cursor where it was", async () => {
     const w = await ownedRun();
     const way = fakeWay();
     way.setReady(async () => {
       throw new NotifyUnavailable("the egress proxy at made-up.sock: it does not answer");
     });
     const failures: string[] = [];
-    const r = await notifyPass(w.db, { config: config(HOOK_CONFIG), transport: way.transport, onFailure: (c, m) => failures.push(`${c}: ${m}`) });
-    expect(r).toEqual({ sent: 0, retried: 0, dead: 0, failures: [{ channel: "hook", message: "the egress proxy at made-up.sock: it does not answer" }] });
+    expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport, onFailure: (c, m) => failures.push(`${c}: ${m}`) })).toEqual({
+      sent: 0,
+      failed: 0,
+      dead: 0,
+      pending: 0,
+      failures: [{ channel: "hook", message: "the egress proxy at made-up.sock: it does not answer" }],
+    });
     expect(failures).toEqual(["hook: the egress proxy at made-up.sock: it does not answer"]);
     expect(way.calls).toEqual([]);
-    const before = await cursor(w.db, "hook", "o1");
     const firstSeq = (await w.rt.journal.events("o1")).find((e) => e.type === "wait_opened")!.seq;
-    expect(before).toBe(firstSeq - 1);
+    expect(await cursorRow(w.db, "hook", "o1")).toEqual({ seq: firstSeq - 1, pending: null, attempts: 0, retry_at: null });
     expect(await count(w, "select count(*) as n from notify_dead")).toBe(0);
-    // Once it is there, everything goes, in order.
     way.setReady(async () => undefined);
-    expect(await notifyPass(w.db, { config: config(HOOK_CONFIG), transport: way.transport })).toMatchObject({ sent: 3 });
+    expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toMatchObject({ sent: 3 });
+  });
+
+  it("serves several tenants: one whose way out is not there waits, and the other's notifications go", async () => {
+    const w = await ownedRun("a1", "acme");
+    await ownedRun("b1", "beta", w);
+    const way = fakeWay();
+    way.setReady(async (tenant) => {
+      if (tenant === "acme") throw new NotifyUnavailable("the egress proxy refused acme's session");
+    });
+    const r = await pass(w, config(HOOK_CONFIG), { transport: way.transport });
+    expect(r).toMatchObject({ sent: 3, failures: [{ channel: "hook", message: "the egress proxy refused acme's session" }] });
+    expect(new Set(way.calls.map((c) => c.tenant))).toEqual(new Set(["beta"]));
+    expect(bodies(way.calls).every((n) => n.tenant === "beta" && n.run === "b1")).toBe(true);
+    expect((await cursorRow(w.db, "hook", "a1"))!.seq).toBeLessThan(await lastSeq(w, "a1"));
+    expect((await cursorRow(w.db, "hook", "b1"))!.seq).toBe(await lastSeq(w, "b1"));
+  });
+
+  it("tries again a file that cannot be written, and gives it up at the sixth attempt", async () => {
+    const w = await ownedRun();
+    const d = dir();
+    const path = join(d, "a-directory.jsonl");
+    mkdirSync(path);
+    const c = config({ channels: { local: { file: path } }, roles: { platform_lead: { channels: ["local"] } } });
+    await followed(w, ["local"], "o1");
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      expect(await pass(w, c), `attempt ${attempt}`).toMatchObject({ sent: 0, failed: 1, pending: 1 });
+      w.clock.advance(backoffMs(attempt));
+    }
+    expect(await pass(w, c)).toMatchObject({ dead: 1 });
+    const [row] = await w.db.query<{ reason: string }>("select reason from notify_dead");
+    expect(row!.reason).toMatch(/^could not append to .*a-directory\.jsonl \(E[A-Z]+\)$/);
   });
 
   it("delivers at least once: a pump that stopped after a delivery and before its cursor sends it again, with the same id", async () => {
@@ -352,7 +533,7 @@ describe("the pump", () => {
     let fail = true;
     const crashing: Db = {
       query: (async (sql: string, params?: unknown[]) => {
-        if (fail && sql.includes("insert into notify_cursors") && params?.[2] === firstSeq) {
+        if (fail && sql.includes("update notify_cursors set seq") && params?.[2] === firstSeq) {
           fail = false;
           throw new Error("the process died");
         }
@@ -361,9 +542,9 @@ describe("the pump", () => {
       tx: (fn) => w.db.tx(fn),
       close: () => w.db.close(),
     };
-    await expect(notifyPass(crashing, { config: config(HOOK_CONFIG), transport: way.transport })).rejects.toThrow("the process died");
+    await expect(notifyPass(crashing, { config: config(HOOK_CONFIG), transport: way.transport, now: () => w.clock.now() })).rejects.toThrow("the process died");
     expect(way.calls).toHaveLength(1);
-    await notifyPass(w.db, { config: config(HOOK_CONFIG), transport: way.transport });
+    await pass(w, config(HOOK_CONFIG), { transport: way.transport });
     const got = ids(way.calls);
     expect(got).toHaveLength(4);
     expect(got[1]).toBe(got[0]);
@@ -375,14 +556,14 @@ describe("the pump", () => {
     const w = await ownedRun();
     const way = fakeWay();
     const c = config(HOOK_CONFIG);
-    const [a, b] = await Promise.all([notifyPass(w.db, { config: c, transport: way.transport }), notifyPass(w.db, { config: c, transport: way.transport })]);
+    const [a, b] = await Promise.all([pass(w, c, { transport: way.transport }), pass(w, c, { transport: way.transport })]);
     expect(a.sent + b.sent).toBeGreaterThanOrEqual(3);
     expect(a.dead + b.dead).toBe(0);
     const got = bodies(way.calls);
     const firsts = got.filter((n, i) => got.findIndex((m) => m.id === n.id) === i);
     expect(firsts.map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened platform_lead", "wait_opened reviewer", "run_succeeded platform_lead"]);
     for (const n of got) expect({ ...n, as_of: null }).toEqual({ ...firsts.find((f) => f.id === n.id)!, as_of: null });
-    expect(await cursor(w.db, "hook", "o1")).toBe((await w.rt.journal.events("o1")).at(-1)!.seq);
+    expect((await cursorRow(w.db, "hook", "o1"))!.seq).toBe(await lastSeq(w, "o1"));
   });
 
   it("sends no event outside the S0 and S1 lists; asks_exhausted joins them once slice B3 gives it its class", () => {
@@ -391,6 +572,108 @@ describe("the pump", () => {
       else expect(EVENT_CLASSES[type], type).toBe(kind === "decision" ? "S0" : "S1");
     }
     expect(Object.keys(NOTIFIED).sort()).toEqual(["amendment_requested", "asks_exhausted", "budget_exceeded", "review_escalated", "review_requested", "run_attention_required", "run_cancelled", "run_failed", "run_succeeded", "wait_opened"]);
+  });
+
+  it("pairs an amendment's request with the wait after it, also across a page of the pump's reads", async () => {
+    for (const batch of [500, 2]) {
+      const w = await nworld(OWNED, "0.7");
+      await approveCard(w);
+      await followed(w, ["hook"], "am");
+      await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "am" });
+      // An amendment a lead asked for, as the journal holds one: the request, then its wait, in one transaction.
+      const command = "/defs/Ship/body/0/value/step/0/tool/0/amendment";
+      const at = await w.db.tx(async (tx) => {
+        await w.rt.journal.lock(tx, "am");
+        const asked = await w.rt.journal.event(tx, "am", "amendment_requested", { plan: "/defs/Ship/body/0/value", step: "s", lead: "Lead.finish", from: w.pkg.hash, package: w.pkg.hash, diff: "sha256:d" });
+        await w.rt.journal.event(tx, "am", "wait_opened", { command, kind: "amendment", request: { role: "platform_lead", reason: `${M} a lead's words`, deadline: 1234 } });
+        return asked.seq;
+      });
+      // A page that ends at the amendment's request, its wait on the next page: [at - 1, at], then [at + 1].
+      if (batch === 2) await w.db.query("update notify_cursors set seq = $1 where run_id = 'am'", [at - 2]);
+      const way = fakeWay();
+      await pass(w, config(HOOK_CONFIG), { transport: way.transport, batch });
+      const amendment = bodies(way.calls).find((n) => n.event === "amendment_requested");
+      expect(amendment, `batch ${batch}`).toMatchObject({ seq: at, role: "platform_lead", command, deadline: 1234 });
+      // Its wait_opened is not told again.
+      expect(bodies(way.calls).filter((n) => n.seq === at + 1)).toEqual([]);
+      expect(way.calls.map((c) => c.body).join("")).not.toContain(M);
+    }
+  });
+});
+
+// ── which runs, and when ────────────────────────────────────────────────
+
+describe("which runs a pass tells, and when", () => {
+  it("tells a channel that meets a run for the first time only of its waits still open, the latest question of each; its cursor starts at the end", async () => {
+    // Asked of the platform lead, answered, now asking the reviewer: only the reviewer's question is still open.
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "late" });
+    await answer(w, "late", w.who.pat, "because");
+    const way = fakeWay();
+    expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toMatchObject({ sent: 1 });
+    expect(bodies(way.calls).map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened reviewer"]);
+    expect((await cursorRow(w.db, "hook", "late"))!.seq).toBe(await lastSeq(w, "late"));
+    // A run that ended before the channel met it is not told at all.
+    const ended = await ownedRun("done", undefined, w);
+    await ended.db.query("delete from notify_cursors where run_id = 'done'");
+    const quiet = fakeWay();
+    await pass(w, config(HOOK_CONFIG), { transport: quiet.transport });
+    expect(quiet.calls).toEqual([]);
+    expect((await cursorRow(w.db, "hook", "done"))!.seq).toBe(await lastSeq(w, "done"));
+    // A role added to a channel later is told only of what comes after the cursor.
+    const more = fakeWay();
+    await pass(w, config({ ...HOOK_CONFIG, roles: { ...HOOK_CONFIG.roles, finance_lead: { channels: ["hook"], outcomes: true } } }), { transport: more.transport });
+    expect(more.calls).toEqual([]);
+  });
+
+  it("tells a channel meeting an escalated review the escalation alone, and not the request it replaced", async () => {
+    const w = await nworld(REVIEW, "0.7");
+    await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "rv" });
+    w.clock.advance(DAY);
+    await w.rt.tick("rv");
+    const way = fakeWay();
+    const c = config({ channels: { hook: { webhook: { url: HOOK, credential: "acme_hook" } } }, roles: { accountant: { channels: ["hook"] }, finance_lead: { channels: ["hook"] } } });
+    await pass(w, c, { transport: way.transport });
+    expect(bodies(way.calls).map((n) => `${n.event} ${n.role} ${n.command}`)).toEqual([`review_escalated finance_lead ${REVIEW_AT}`]);
+  });
+
+  it("visits only the runs with something new past the channel's cursor", async () => {
+    const w = await ownedRun("v1");
+    await ownedRun("v2", undefined, w);
+    const way = fakeWay();
+    await pass(w, config(HOOK_CONFIG), { transport: way.transport });
+    const asked: string[] = [];
+    const counting: Db = { query: (async (sql: string, p?: unknown[]) => (asked.push(sql), w.db.query(sql, p))) as Db["query"], tx: (fn) => w.db.tx(fn), close: () => w.db.close() };
+    await notifyPass(counting, { config: config(HOOK_CONFIG), transport: way.transport, now: () => w.clock.now() });
+    // No run is read one by one: none has anything new.
+    expect(asked.filter((s) => s.includes("select r.revision"))).toEqual([]);
+    expect(way.calls).toHaveLength(6);
+    // One run moves on: that one alone is read.
+    await append(w, "v2", "run_cancelled", {});
+    asked.length = 0;
+    await notifyPass(counting, { config: config(HOOK_CONFIG), transport: way.transport, now: () => w.clock.now() });
+    expect(asked.filter((s) => s.includes("select r.revision"))).toHaveLength(1);
+  });
+
+  it("tells nothing of a run under a halt, opens no session and moves no cursor; once it is lifted, all of it in order", async () => {
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    await followed(w, ["hook"], "h1");
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "h1" });
+    await w.rt.halt({ tenant: "default" }, { reason: "made up", by: "ops" });
+    expect((await w.rt.getRun("h1")).state).toBe("cancelled");
+    const way = fakeWay();
+    expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toEqual({ sent: 0, failed: 0, dead: 0, pending: 0, failures: [] });
+    expect(way.opened).toEqual([]);
+    expect(await cursorRow(w.db, "hook", "h1")).toEqual({ seq: 0, pending: null, attempts: 0, retry_at: null });
+    // A halt of every tenant holds the same.
+    await w.rt.liftHalt({ tenant: "default" }, "ops");
+    await w.rt.halt({ all: true }, { by: "ops" });
+    expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toMatchObject({ sent: 0 });
+    await w.rt.liftHalt({ all: true }, "ops");
+    expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toMatchObject({ sent: 2 });
+    expect(bodies(way.calls).map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened platform_lead", "run_cancelled platform_lead"]);
   });
 });
 
@@ -408,20 +691,26 @@ describe("a webhook through the egress proxy", () => {
     ew.up.seen.length = 0;
     ew.dials.length = 0;
     ew.resolved.length = 0;
+    ew.dns.clear();
     ew.up.handler = (_req, res) => {
       res.writeHead(200, { "content-type": "text/plain" });
       res.end("ok");
     };
   });
 
-  /** Runs `f` with the process's `fetch` replaced: every URL it is called with is recorded, and any but a proxy session's fails. */
+  /** The ports of the proxy's open sessions for channel `hook`: the one place its requests may go. */
+  const sessionPorts = (): number[] =>
+    [...(ew.proxy as unknown as { sessions: Map<string, { id: string; port: number }> }).sessions.values()].filter((s) => s.id.startsWith("gw.notify.hook.")).map((s) => s.port);
+
+  /** Runs `f` with the process's `fetch` replaced: every URL is recorded, and any but the base URL of a session of the channel fails. */
   async function onlyThroughTheProxy<T>(f: () => Promise<T>): Promise<{ value: T; urls: string[] }> {
     const real = globalThis.fetch;
     const urls: string[] = [];
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       urls.push(url);
-      if (!/^http:\/\/127\.0\.0\.1:\d+\//.test(url)) throw new Error(`the adapter opened a connection of its own, to ${url}`);
+      const at = /^http:\/\/127\.0\.0\.1:(\d+)\//.exec(url);
+      if (!at || !sessionPorts().includes(Number(at[1]))) throw new Error(`the adapter opened a connection of its own, to ${url}`);
       return real(input, init);
     }) as typeof fetch;
     try {
@@ -431,14 +720,13 @@ describe("a webhook through the egress proxy", () => {
     }
   }
 
-  const opts = (o: Partial<NotifyOptions> = {}): Omit<NotifyOptions, "config"> => ({ transport: egressTransport({ admin: ew.config.admin }), sleep: async () => undefined, ...o });
+  const opts = (o: Partial<NotifyOptions> = {}): Partial<NotifyOptions> => ({ transport: egressTransport({ admin: ew.config.admin }), ...o });
 
-  it("is sent to the proxy's session and nowhere else; the proxy puts the secret in, the runtime holds a placeholder", async () => {
+  it("is sent to its session's own address and nowhere else; the proxy puts the secret in, the runtime holds a placeholder", async () => {
     const w = await ownedRun();
-    const { value: r, urls } = await onlyThroughTheProxy(() => notifyPass(w.db, { config: config(HOOK_CONFIG), ...opts() }));
-    expect(r).toEqual({ sent: 3, retried: 0, dead: 0, failures: [] });
+    const { value: r, urls } = await onlyThroughTheProxy(() => pass(w, config(HOOK_CONFIG), opts()));
+    expect(r).toEqual({ sent: 3, failed: 0, dead: 0, pending: 0, failures: [] });
     expect(urls).toHaveLength(3);
-    expect(urls.every((u) => /^http:\/\/127\.0\.0\.1:\d+\/in$/.test(u))).toBe(true);
     expect(ew.up.seen.map((s) => `${s.method} ${s.url}`)).toEqual(["POST /in", "POST /in", "POST /in"]);
     expect(ew.dials.map((d) => `${d.host}:${d.port}`)).toEqual(["hooks.acme.example:443", "hooks.acme.example:443", "hooks.acme.example:443"]);
     for (const s of ew.up.seen) {
@@ -450,19 +738,23 @@ describe("a webhook through the egress proxy", () => {
     }
   });
 
-  it("would fail if the adapter sent the webhook its own way (the test of the test)", async () => {
+  it("would fail if the adapter sent the webhook its own way, or to another local port (the test of the test)", async () => {
     const { value } = await onlyThroughTheProxy(async () => {
-      try {
-        await fetch(HOOK, { method: "POST", body: "{}" });
-        return "sent";
-      } catch (e) {
-        return (e as Error).message;
+      const out: string[] = [];
+      for (const url of [HOOK, `http://127.0.0.1:${ew.up.port}/in`]) {
+        try {
+          await fetch(url, { method: "POST", body: "{}" });
+          out.push("sent");
+        } catch (e) {
+          out.push((e as Error).message);
+        }
       }
+      return out;
     });
-    expect(value).toBe(`the adapter opened a connection of its own, to ${HOOK}`);
+    expect(value).toEqual([`the adapter opened a connection of its own, to ${HOOK}`, `the adapter opened a connection of its own, to http://127.0.0.1:${ew.up.port}/in`]);
   });
 
-  it("opens its session for the run's tenant and notify:<channel>: a halt of the tenant and a revocation of the channel cut it", async () => {
+  it("opens its session for the run's tenant and notify:<channel>: a revocation of the tenant and of the channel cut it", async () => {
     const spec = config(HOOK_CONFIG).channels["hook"]! as { webhook: Parameters<typeof webhookNotifier>[1] };
     const t = egressTransport({ admin: ew.config.admin })();
     try {
@@ -471,14 +763,12 @@ describe("a webhook through the egress proxy", () => {
       await acme.ready();
       expect((await acme.fetch(HOOK, { method: "POST", body: "{}" })).status).toBe(200);
       expect((await beta.fetch(HOOK, { method: "POST", body: "{}" })).status).toBe(200);
-      // `revoke { tenant }` (a halt) cuts the tenant's notification session, and not the other tenant's.
       const cut = await ew.client.revoke({ tenant: "acme" });
       expect(cut).toEqual([expect.stringMatching(/^gw\.notify\.hook\.[0-9a-f]{16}$/)]);
       const denied = await acme.fetch(HOOK, { method: "POST", body: "{}" });
       expect(denied.headers.get("x-mandate-egress-denied")).toBe("session_revoked");
       await expect(acme.fetch(HOOK, { method: "POST", body: "{}" })).rejects.toThrow(/session_revoked/);
       expect((await beta.fetch(HOOK, { method: "POST", body: "{}" })).status).toBe(200);
-      // `revoke { run: "notify:hook" }` cuts the channel's sessions.
       expect(await ew.client.revoke({ run: "notify:hook" })).toEqual(expect.arrayContaining([expect.stringMatching(/^gw\.notify\.hook\./)]));
     } finally {
       await t.close();
@@ -491,8 +781,7 @@ describe("a webhook through the egress proxy", () => {
       res.writeHead(302, { location: "https://evil.example/x" });
       res.end();
     };
-    const r = await notifyPass(w.db, { config: config(HOOK_CONFIG), ...opts() });
-    expect(r).toEqual({ sent: 0, retried: 0, dead: 3, failures: [] });
+    expect(await pass(w, config(HOOK_CONFIG), opts())).toEqual({ sent: 0, failed: 0, dead: 3, pending: 0, failures: [] });
     expect(ew.up.seen).toHaveLength(3);
     expect(ew.resolved.filter((h) => h !== "hooks.acme.example")).toEqual([]);
     expect(ew.dials.every((d) => d.host === "hooks.acme.example")).toBe(true);
@@ -504,7 +793,7 @@ describe("a webhook through the egress proxy", () => {
     const w = await ownedRun();
     const plain = { url: "http://hooks.acme.example/in", host: "hooks.acme.example", credential: "acme_hook", header: "authorization", template: "Bearer {secret}", format: "mandate" as const };
     const bad: NotificationsConfig = { channels: { hook: { webhook: plain } }, roles: { platform_lead: { channels: ["hook"], outcomes: false } }, link: null };
-    await expect(notifyPass(w.db, { config: bad, ...opts() })).rejects.toMatchObject({ code: "bad_notification_channel" });
+    await expect(pass(w, bad, opts())).rejects.toMatchObject({ code: "bad_notification_channel" });
     expect(() => webhookNotifier("hook", plain, () => ({ fetch, ready: async () => undefined }))).toThrow(/https:\/\/ only/);
     expect(ew.up.seen).toEqual([]);
     expect(ew.dials).toEqual([]);
@@ -518,23 +807,45 @@ describe("a webhook through the egress proxy", () => {
       res.end(JSON.stringify(req.headers));
     };
     const told: string[] = [];
-    const r = await notifyPass(w.db, { config: config(HOOK_CONFIG), ...opts({ onDead: (d) => told.push(JSON.stringify(d)), onFailure: (c, m) => told.push(`${c} ${m}`) }) });
-    expect(r).toMatchObject({ sent: 0, dead: 3 });
-    expect(ew.up.seen).toHaveLength(18);
+    const reports: unknown[] = [];
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      reports.push(await pass(w, config(HOOK_CONFIG), opts({ onDead: (d) => told.push(JSON.stringify(d)), onFailure: (c, m) => told.push(`${c} ${m}`) })));
+      w.clock.advance(backoffMs(attempt));
+    }
+    expect(await count(w, "select count(*) as n from notify_dead")).toBe(1);
     const rows = JSON.stringify(await w.db.query("select * from notify_dead"));
-    for (const text of [rows, JSON.stringify(r), ...told]) {
-      expect(text).not.toContain(HOOK_SECRET);
-      expect(text).not.toMatch(/mdt-ph-/);
+    const cursors = JSON.stringify(await w.db.query("select * from notify_cursors"));
+    for (const t of [rows, cursors, JSON.stringify(reports), ...told]) {
+      expect(t).not.toContain(HOOK_SECRET);
+      expect(t).not.toMatch(/mdt-ph-/);
     }
     expect(rows).toContain("hooks.acme.example answered 500");
   });
 
-  it("is no attempt when the proxy does not bind the credential to the webhook's host: the channel waits, nothing is given up", async () => {
+  it("is no attempt when the proxy refuses the session: the channel waits, nothing is given up", async () => {
     const w = await ownedRun();
-    const r = await notifyPass(w.db, { config: config({ ...HOOK_CONFIG, channels: { hook: { webhook: { url: "https://other.acme.example/in", credential: "acme_hook" } } } }), ...opts() });
-    expect(r.sent + r.dead).toBe(0);
+    const r = await pass(w, config({ ...HOOK_CONFIG, channels: { hook: { webhook: { url: "https://other.acme.example/in", credential: "acme_hook" } } } }), opts());
+    expect(r.sent + r.dead + r.failed).toBe(0);
     expect(r.failures).toEqual([{ channel: "hook", message: expect.stringMatching(/^egress_unavailable: .*does not bind credential acme_hook to other\.acme\.example/) }]);
     expect(ew.up.seen).toEqual([]);
+  });
+
+  it("counts the proxy's denial of one request as a failed attempt: denied six times, it is given up and the channel goes on", async () => {
+    const w = await ownedRun();
+    // The webhook's host now names a private address: the proxy denies each request, and the session stands.
+    ew.dns.set("hooks.acme.example", ["10.0.0.7"]);
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      expect(await pass(w, config(HOOK_CONFIG), opts()), `attempt ${attempt}`).toEqual({ sent: 0, failed: 1, dead: 0, pending: 1, failures: [] });
+      w.clock.advance(backoffMs(attempt));
+    }
+    // The sixth denial gives the first up; the next one is denied too, and waits.
+    expect(await pass(w, config(HOOK_CONFIG), opts())).toEqual({ sent: 0, failed: 1, dead: 1, pending: 1, failures: [] });
+    expect(await w.db.query("select attempts, reason from notify_dead")).toEqual([{ attempts: 6, reason: "the egress proxy denied the request to hooks.acme.example (resolved_private)" }]);
+    expect(ew.up.seen).toEqual([]);
+    // Once the proxy lets it through, the channel goes on: nothing blocks it for good.
+    ew.dns.clear();
+    w.clock.advance(backoffMs(1));
+    expect(await pass(w, config(HOOK_CONFIG), opts())).toMatchObject({ sent: 2, pending: 0 });
   });
 });
 
@@ -549,7 +860,6 @@ describe("what a notification carries", () => {
     await ew.close();
   });
 
-  const M = "LEAKMARK";
   /** The review program with markers in its criteria's words and its questions, and a workflow under an envelope. */
   const PROGRAM =
     REVIEW.replace("The total is within 2% of the invoice's", `${M}-criterion: the total is within 2%`) +
@@ -571,7 +881,7 @@ workflow Ship(title: Text) -> Untrusted<Text>
 }
 `;
 
-  it("holds no marker planted in a run's inputs, steps, results, errors and questions, in either adapter or format, and exactly the fixed members", async () => {
+  it("holds no marker planted in a run's inputs, steps, results, errors, questions and details, in either adapter or format, and exactly the fixed members", async () => {
     const items = [0, 1, 2].map((i) => inv(`${M}-invoice-${i}`, 1000, `${M}-vendor-${i}`));
     const w = await nworld(PROGRAM, "0.7", {
       ...Object.fromEntries(items.map((i) => [String(i["invoice_no"]), { ...i, total_cents: 1100, vendor_id: i["vendor_id"] }])),
@@ -579,6 +889,7 @@ workflow Ship(title: Text) -> Untrusted<Text>
     });
     const d = dir();
     mkdirSync(join(d, "out"));
+    const channels = ["hook_json", "hook_text", "local"];
     const c = config(
       {
         channels: {
@@ -596,8 +907,10 @@ workflow Ship(title: Text) -> Untrusted<Text>
       },
       d,
     );
-    const notify = { config: c, transport: egressTransport({ admin: ew.config.admin }), sleep: async () => undefined };
-    const pass = () => tickPass(w.db, { runtimeFor: async () => ({ rt: w.rt }), notify });
+    // Each channel follows each run from its start, so that everything the runs did is told.
+    for (const run of ["leak-review", "leak-fail", "leak-ship"]) await followed(w, channels, run);
+    const notify = { config: c, transport: egressTransport({ admin: ew.config.admin }), now: () => w.clock.now() };
+    const pass = () => tickPass(w.db, { runtimeFor: async () => ({ rt: w.rt }), notify, now: () => w.clock.now() });
 
     // A review of three matches, escalated, and decided by the finance lead.
     await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items }, runId: "leak-review" });
@@ -614,22 +927,30 @@ workflow Ship(title: Text) -> Untrusted<Text>
     await pass();
     await answer(w, "leak-ship", w.who.pat, `${M}-answer-1`);
     await pass();
+    // What a lead can write, and what an exception holds, as the journal holds them: an amendment's reason, a wait of a
+    // sub-program whose definition names a lead chose, the details of a budget run out and of a run that needs attention.
+    const plan = "/defs/Ship/body/1/value";
+    await append(w, "leak-ship", "amendment_requested", { plan, step: `${plan}/step/0/tool/0`, lead: `${M}Lead.finish`, from: w.pkg.hash, package: w.pkg.hash, diff: `sha256:${M}` });
+    await append(w, "leak-ship", "wait_opened", { command: `${plan}/step/0/tool/0/amendment`, kind: "amendment", request: { role: "platform_lead", reason: `${M}-reason: three more repositories`, envelope: { owner: `${M}` }, deadline: null } });
+    await append(w, "leak-ship", "program_admitted", { plan, number: 1, command: `${plan}/program/1`, workflow: `${M}Fix` });
+    await append(w, "leak-ship", "wait_opened", { command: `${plan}/program/1/defs/${M}Fix/body/0/value`, kind: "input", request: { question: `${M}-sub-question`, role: "reviewer" } });
+    await append(w, "leak-ship", "budget_exceeded", { episode: 0, detail: { $tag: "BudgetExceeded", $args: [{ dimension: `${M}-dimension`, requested: 1 }] } });
+    await append(w, "leak-ship", "run_attention_required", { attention: { violation: `${M}_code`, message: `${M}-attention message` } });
+    await pass();
     await answer(w, "leak-ship", w.who.rex, `${M}-answer-2`);
     await pass();
     expect([(await w.rt.getRun("leak-review")).state, (await w.rt.getRun("leak-fail")).state, (await w.rt.getRun("leak-ship")).state]).toEqual(["succeeded", "failed", "succeeded"]);
 
-    // The markers are in the journal: in requests, questions, results and errors.
-    for (const type of ["wait_opened", "run_waiting", "run_succeeded", "run_failed"]) {
+    // The markers are in the journal: in requests, questions, results, errors and details.
+    for (const type of ["wait_opened", "run_waiting", "run_succeeded", "run_failed", "amendment_requested", "budget_exceeded", "run_attention_required", "program_admitted"]) {
       expect(await count(w, "select count(*) as n from events where type = $1 and data::text like $2", [type, `%${M}%`]), type).toBeGreaterThan(0);
     }
-    // And in the steps' results, as the journal's commands hold them.
     expect(await count(w, "select count(*) as n from commands where kind = 'delegate' and result::text like $1", [`%${M}%`])).toBeGreaterThan(0);
 
     // Everything either adapter emitted: each request the webhook's receiver got, whole, and the file, whole.
     const file = readFileSync(join(d, "out/notifications.jsonl"), "utf8");
     const requests = ew.up.seen.map((s) => ({ url: s.url, headers: s.headers.filter((_, i) => i % 2 === 0 || s.headers[i - 1]!.toLowerCase() !== "authorization"), body: s.body }));
-    const emitted = [file, ...requests.map((r) => JSON.stringify(r))];
-    for (const text of emitted) expect(text).not.toContain(M);
+    for (const t of [file, ...requests.map((r) => JSON.stringify(r))]) expect(t).not.toContain(M);
 
     // Every payload has exactly the fixed members; every text body is {text} alone.
     const json = ew.up.seen.filter((s) => s.url === "/json").map((s) => JSON.parse(s.body) as Obj);
@@ -649,8 +970,9 @@ workflow Ship(title: Text) -> Untrusted<Text>
       expect(typeof t["text"]).toBe("string");
     }
     for (const s of ew.up.seen) expect(seenHeader(s, NOTIFICATION_HEADER)).toHaveLength(1);
-    // And it is not empty: every kind of event was told, through every adapter.
-    expect(new Set(local.map((n) => n["event"]))).toEqual(new Set(["review_requested", "review_escalated", "run_succeeded", "run_failed", "wait_opened"]));
+    // And it is not empty: every kind of event was told, through every adapter, the sub-program's wait by its plan.
+    expect(new Set(local.map((n) => n["event"]))).toEqual(new Set(["review_requested", "review_escalated", "run_succeeded", "run_failed", "wait_opened", "amendment_requested", "budget_exceeded", "run_attention_required"]));
+    expect(local.some((n) => String(n["command"]).startsWith(`${plan}/program/1/digest:`))).toBe(true);
     expect(json.length).toBeGreaterThan(0);
     expect(text.length).toBeGreaterThan(0);
     expect(new Set(local.map((n) => n["run"]))).toEqual(new Set(["leak-review", "leak-fail", "leak-ship"]));

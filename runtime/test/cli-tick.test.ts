@@ -94,19 +94,20 @@ describe("mandate tick", () => {
     // Within its deadline of an hour: nothing moves, and the reviewer is told what is asked of them.
     const first = await mandate("tick");
     expect(first.code, first.err).toBe(0);
-    expect(first.out).toBe("tick: 1 run waiting, 0 moved; notifications: 1 sent, 0 retried, 0 given up\n");
+    expect(first.out).toBe("tick: 1 run waiting, 0 moved; notifications: 1 sent, 0 given up, 0 to try again\n");
     expect(told()).toEqual(["c1 wait_opened reviewer"]);
-    // A run whose approval has a deadline of a moment, a pass once it has passed.
+    // A run whose approval has a deadline of a moment, a pass once it has passed. The channel meets that run only
+    // after the pass ended it: nothing of its past is told, since none of its waits is open any more.
     expect((await start("Rush", "c2")).code).toBe(0);
     await pause(400);
     const second = await mandate("tick");
     expect(second.code, second.err).toBe(0);
-    expect(second.out).toMatch(/^run c2: waiting -> failed, revision \d+ -> \d+\ntick: 2 runs waiting, 1 moved; notifications: 2 sent, 0 retried, 0 given up\n$/);
-    expect(told()).toEqual(["c1 wait_opened reviewer", "c2 wait_opened reviewer", "c2 run_failed reviewer"]);
+    expect(second.out).toMatch(/^run c2: waiting -> failed, revision \d+ -> \d+\ntick: 2 runs waiting, 1 moved; notifications: 0 sent, 0 given up, 0 to try again\n$/);
+    expect(told()).toEqual(["c1 wait_opened reviewer"]);
     expect((await mandate("status", "c2")).out).toMatch(/^run c2 {2}Rush {2}failed/);
     expect((await mandate("status", "c1")).out).toMatch(/^run c1 {2}Ship {2}waiting/);
     // A pass with nothing to do sends nothing.
-    expect((await mandate("tick")).out).toBe("tick: 1 run waiting, 0 moved; notifications: 0 sent, 0 retried, 0 given up\n");
+    expect((await mandate("tick")).out).toBe("tick: 1 run waiting, 0 moved; notifications: 0 sent, 0 given up, 0 to try again\n");
   });
 
   it("sends nothing with --no-notify", async () => {
@@ -115,20 +116,38 @@ describe("mandate tick", () => {
     expect(r.out).toBe("tick: 1 run waiting, 0 moved; notifications: off\n");
   });
 
-  it("with --follow, makes a pass every --interval until SIGINT", async () => {
+  it("with --follow, makes a pass every --interval until SIGINT, and says how many", { timeout: 60_000 }, async () => {
     const going = mandate("tick", "--follow", "--interval", "50ms");
-    await pause(300);
+    await pause(600);
     process.emit("SIGINT");
     const r = await going;
     expect(r.code, r.err).toBe(0);
+    // A --follow that made one pass and ended would say so: it made several.
+    const passes = Number(/^tick: stopped after (\d+) pass(es)?\n$/.exec(r.out)?.[1]);
+    expect(passes, r.out).toBeGreaterThanOrEqual(2);
     expect(process.listenerCount("SIGINT")).toBe(0);
   });
 
-  it("refuses an interval without --follow, one that is no duration, and a run", async () => {
+  it("refuses an interval without --follow, one that is no duration, one too long for a timer, and a run", async () => {
     expect((await mandate("tick", "--interval", "10s")).code).toBe(2);
     expect((await mandate("tick", "--follow", "--interval", "soon")).code).toBe(2);
     expect((await mandate("tick", "--follow", "--interval", "0s")).code).toBe(2);
+    // 600 hours is above 2^31 - 1 ms, which Node would cut to 1 ms.
+    const long = await mandate("tick", "--follow", "--interval", "600h");
+    expect(long.code).toBe(2);
+    expect(long.err).toMatch(/--interval is at most 2147483647 ms/);
     expect((await mandate("tick", "c1")).code).toBe(2);
+  });
+
+  it("is refused, as every command that reads the configuration, halt among them, when a section of it cannot be used", async () => {
+    // The rule that was: one section that cannot be used refuses every command that reads the file.
+    const other = join(dir, "other.runtime.json");
+    writeFileSync(other, JSON.stringify({ ...base, violations: { limit: 0 } }));
+    expect(await mandateWith(other, "halt", "--list")).toMatchObject({ code: 1, err: expect.stringMatching(/^mandate: bad_config: /) });
+    // A notifications section is held to the same rule.
+    const bad = join(dir, "halt.runtime.json");
+    writeFileSync(bad, JSON.stringify({ ...base, notifications: { channels: { local: {} } } }));
+    expect(await mandateWith(bad, "halt", "--list")).toMatchObject({ code: 1, err: expect.stringMatching(/^mandate: bad_notification_channel: .*has no adapter/) });
   });
 
   it("refuses a configuration whose notifications cannot be used, by name, before anything is done", async () => {
@@ -154,10 +173,10 @@ describe("mandate tick", () => {
       );
       const r = await mandateWith(config, "tick");
       expect(r.code, r.err).toBe(0);
-      expect(r.out).toBe("tick: 1 run waiting, 0 moved; notifications: 0 sent, 0 retried, 3 given up\n");
-      const given = /^mandate: notification sha256:[0-9a-f]{64} \(run c[12], event \d+\) on channel hook given up after 1 attempt: hooks\.acme\.example answered 404$/;
-      expect(r.err.split("\n").filter(Boolean)).toEqual([expect.stringMatching(given), expect.stringMatching(given), expect.stringMatching(given)]);
-      expect(ew.up.seen).toHaveLength(3);
+      // The new channel meets both runs: c1 asks the reviewer still, c2 has ended. One notification, refused for good.
+      expect(r.out).toBe("tick: 1 run waiting, 0 moved; notifications: 0 sent, 1 given up, 0 to try again\n");
+      expect(r.err.split("\n").filter(Boolean)).toEqual([expect.stringMatching(/^mandate: notification sha256:[0-9a-f]{64} \(run c1, event \d+\) on channel hook given up after 1 attempt: hooks\.acme\.example answered 404$/)]);
+      expect(ew.up.seen).toHaveLength(1);
       for (const text of [r.out, r.err]) {
         expect(text).not.toContain(secret);
         expect(text).not.toMatch(/mdt-ph-/);

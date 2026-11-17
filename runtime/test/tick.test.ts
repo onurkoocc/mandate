@@ -2,13 +2,16 @@
 // package, and then sends the notifications of 0.7 runs. In a 0.7 run `tick` acts on every open wait whose deadline
 // has passed, not only on the one `runs.waiting` names, and drives a run whose wait was decided and not driven on; a
 // run of 0.1 to 0.6 is ticked as it always was, and is never notified. A tick acts under the run's lock and is
-// idempotent: two passes racing on one run act once. The clock is simulated, and the channels are files.
+// idempotent: two passes racing on one run act once, and a decided run is driven only once it has been still for
+// `STALE_DRIVE_MS`. A runtime is built only for a run with something due. The clock is simulated, and the channels are
+// files.
 
 import { join } from "node:path";
 import { rmSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
+import type { Db } from "../src/db.js";
 import { notifyPass } from "../src/notify.js";
-import { tickPass, type PassOptions } from "../src/tick.js";
+import { driveLoop, MAX_INTERVAL_MS, STALE_DRIVE_MS, tickPass, type PassOptions, type PassReport } from "../src/tick.js";
 import type { Obj } from "../src/values.js";
 import { closeAll } from "./helpers.js";
 import { answer, approveCard, BATCH, BOTH, brief, count, DAY, fileChannels, HOUR, lines, msg, nworld, OWNED, REVIEW, REVIEW_AT, scratch, sign, type NWorld } from "./notify-world.js";
@@ -25,9 +28,10 @@ function dir(): string {
   return d;
 }
 
-/** A pass over the world's runs, its one runtime ticking each, with these notifications (none: `--no-notify`). */
+/** A pass over the world's runs by its clock, its one runtime ticking each, with these notifications (none: `--no-notify`). */
 function pass(w: NWorld, notify?: PassOptions["notify"]) {
-  return tickPass(w.db, { runtimeFor: async () => ({ rt: w.rt }), ...(notify ? { notify } : {}) });
+  const now = () => w.clock.now();
+  return tickPass(w.db, { runtimeFor: async () => ({ rt: w.rt }), now, ...(notify ? { notify: { now, ...notify } } : {}) });
 }
 
 const types = async (w: NWorld, runId: string, type: string): Promise<Obj[]> => (await w.rt.journal.events(runId)).filter((e) => e.type === type).map((e) => e.data as Obj);
@@ -123,10 +127,15 @@ describe("a pass of the driver loop over a 0.7 run", () => {
       const stuck = await w.rt.getRun(r.run_id);
       expect(stuck.state).toBe("waiting");
       expect((stuck.waiting as Obj)["command"]).toBe(waited);
+      // Within the grace period the decider's own drive may be on its way: a pass takes nothing from it.
+      w.clock.advance(STALE_DRIVE_MS - 1);
+      expect(await pass(w)).toMatchObject({ due: 0, moved: 0 });
+      expect((await w.rt.getRun(r.run_id)).revision).toBe(stuck.revision);
+      w.clock.advance(1);
       const report = await pass(w);
       const after = await w.rt.getRun(r.run_id);
       if (language === "0.7") {
-        // Driven on: it now waits on the other approval, and nothing expired.
+        // Still for 30 s: driven on, it now waits on the other approval, and nothing expired.
         expect(report.moved).toBe(1);
         expect(after.state).toBe("waiting");
         expect((after.waiting as Obj)["command"]).not.toBe(waited);
@@ -167,12 +176,18 @@ describe("a pass of the driver loop over a 0.7 run", () => {
     const d = dir();
     const config = fileChannels(d, { accountant: true, finance_lead: true });
     await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "race" });
+    // The channels meet the run while the accountant is asked.
+    await pass(w, { config });
     const calls = w.agents.count("Matcher.match");
     w.clock.advance(DAY);
     await Promise.all([pass(w, { config }), pass(w, { config })]);
     expect(await types(w, "race", "review_escalated")).toHaveLength(1);
     w.clock.advance(DAY);
+    const leases = (await types(w, "race", "lease_acquired")).length;
     await Promise.all([pass(w, { config }), pass(w, { config }), pass(w, { config })]);
+    // The tick that expired the review drives the run; one that comes right after it sees a run that just moved, and
+    // takes no lease from that drive.
+    expect((await types(w, "race", "lease_acquired")).length).toBe(leases + 1);
     expect(await types(w, "race", "review_expired")).toHaveLength(1);
     expect(await types(w, "race", "wait_expired")).toHaveLength(1);
     expect(await types(w, "race", "run_succeeded")).toHaveLength(1);
@@ -206,7 +221,7 @@ describe("a pass over a 0.6 run", () => {
     expect((await w.rt.getRun("six")).state).toBe("succeeded");
     for (const f of ["accountant", "finance_lead", "all"]) expect(lines(join(d, `${f}.jsonl`))).toEqual([]);
     expect(await count(w, "select count(*) as n from notify_cursors")).toBe(0);
-    expect(await notifyPass(w.db, { config })).toEqual({ sent: 0, retried: 0, dead: 0, failures: [] });
+    expect(await notifyPass(w.db, { config })).toEqual({ sent: 0, failed: 0, dead: 0, pending: 0, failures: [] });
   });
 
   it("with --no-notify (no notification options), ticks and sends nothing", async () => {
@@ -214,8 +229,57 @@ describe("a pass over a 0.6 run", () => {
     await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "quiet" });
     w.clock.advance(DAY);
     const r = await pass(w);
-    expect(r).toEqual({ waiting: 1, moved: 1, failed: 0 });
+    expect(r).toEqual({ waiting: 1, due: 1, moved: 1, failed: 0 });
     expect(await count(w, "select count(*) as n from notify_cursors")).toBe(0);
+  });
+
+  it("builds no runtime for a run with nothing due", async () => {
+    const w = await nworld(REVIEW, "0.7");
+    await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "early" });
+    w.clock.advance(DAY);
+    await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "late" });
+    const built: string[] = [];
+    const r = await tickPass(w.db, { runtimeFor: async (runId) => (built.push(runId), { rt: w.rt }), now: () => w.clock.now() });
+    expect(r).toEqual({ waiting: 2, due: 1, moved: 1, failed: 0 });
+    expect(built).toEqual(["early"]);
+  });
+
+  it("with follow, makes a pass every interval until stopped, and goes on after a pass that failed as a whole", async () => {
+    const w = await nworld(REVIEW, "0.7");
+    let fail = 1;
+    const flaky: Db = {
+      query: (async (sql: string, p?: unknown[]) => {
+        if (fail > 0 && sql.startsWith("select run_id from runs where state = 'waiting'")) {
+          fail--;
+          throw new Error("the database went away");
+        }
+        return w.db.query(sql, p);
+      }) as Db["query"],
+      tx: (fn) => w.db.tx(fn),
+      close: () => w.db.close(),
+    };
+    const stop = new AbortController();
+    const reports: PassReport[] = [];
+    const errors: string[] = [];
+    const going = driveLoop(flaky, {
+      runtimeFor: async () => ({ rt: w.rt }),
+      follow: true,
+      intervalMs: 5,
+      signal: stop.signal,
+      onPass: (r) => {
+        reports.push(r);
+        if (reports.length === 3) stop.abort();
+      },
+      onPassError: (e) => errors.push((e as Error).message),
+    });
+    const { passes, last } = await going;
+    expect(errors).toEqual(["the database went away"]);
+    expect(reports).toHaveLength(3);
+    expect(passes).toBe(4);
+    expect(last).toEqual({ waiting: 0, due: 0, moved: 0, failed: 0 });
+    // Without follow, one pass; and an interval Node would cut to 1 ms is refused.
+    expect((await driveLoop(w.db, { runtimeFor: async () => ({ rt: w.rt }) })).passes).toBe(1);
+    await expect(driveLoop(w.db, { runtimeFor: async () => ({ rt: w.rt }), follow: true, intervalMs: MAX_INTERVAL_MS + 1 })).rejects.toThrow(RangeError);
   });
 
   it("reports a notification pass that fails as a whole, after the runs were ticked", async () => {
@@ -225,8 +289,8 @@ describe("a pass over a 0.6 run", () => {
     const errors: string[] = [];
     // A configuration the reader would refuse, given by hand: its webhook is not https.
     const config = { channels: { hook: { webhook: { url: "http://hooks.acme.example/in", host: "hooks.acme.example", credential: "c", header: "authorization", template: "Bearer {secret}", format: "mandate" as const } } }, roles: { accountant: { channels: ["hook"], outcomes: false } }, link: null };
-    const r = await tickPass(w.db, { runtimeFor: async () => ({ rt: w.rt }), notify: { config }, onNotifyError: (e) => errors.push((e as Error).message) });
-    expect(r).toEqual({ waiting: 1, moved: 1, failed: 1 });
+    const r = await tickPass(w.db, { runtimeFor: async () => ({ rt: w.rt }), now: () => w.clock.now(), notify: { config }, onNotifyError: (e) => errors.push((e as Error).message) });
+    expect(r).toEqual({ waiting: 1, due: 1, moved: 1, failed: 1 });
     expect(errors).toEqual([expect.stringMatching(/^bad_notification_channel: /)]);
     expect(await count(w, "select count(*) as n from notify_cursors")).toBe(0);
   });
@@ -241,8 +305,9 @@ describe("a pass over a 0.6 run", () => {
     const r = await tickPass(w.db, {
       runtimeFor: async (runId) => ({ rt: { tick: (id: string) => (runId === "a" ? Promise.reject(new Error("unfit_host: made up")) : tick(id)) } }),
       onError: (run, e) => errors.push(`${run}: ${(e as Error).message}`),
+      now: () => w.clock.now(),
     });
-    expect(r).toEqual({ waiting: 2, moved: 1, failed: 1 });
+    expect(r).toEqual({ waiting: 2, due: 2, moved: 1, failed: 1 });
     expect(errors).toEqual(["a: unfit_host: made up"]);
     expect(await types(w, "a", "review_escalated")).toEqual([]);
     expect(await types(w, "b", "review_escalated")).toHaveLength(1);
