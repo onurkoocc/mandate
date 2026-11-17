@@ -287,13 +287,8 @@ impl<'a> Parser<'a> {
     }
 
     /// Whether the program reads what 0.7 adds (spec/attention.md): it is of
-    /// language 0.7 or later. Nothing reads it yet: each construct of 0.7
-    /// (`stage`, `report`, `owner`, `asks`) is read behind it by the slice
-    /// that adds it, and until then a 0.7 program reads as a 0.6 one.
-    #[expect(
-        dead_code,
-        reason = "the first slice of 0.7 that reads a construct calls it, and takes this away"
-    )]
+    /// language 0.7 or later. Each construct of 0.7 is read behind it: today
+    /// `stage`; `report`, `owner` and `asks` by the slices that add them.
     pub(crate) fn reads_0_7(&self) -> bool {
         self.language.at_least(Language::V0_7)
     }

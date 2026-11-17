@@ -1,0 +1,41 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1902c",
+  "kind": "compile",
+  "title": "A stage at the end of a body marks no statement and is refused (a mutation: a stage added after Greet's last statement).",
+  "spec": [
+    "spec/attention.md#stage",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Greet/body/-",
+      "value": {
+        "op": "stage",
+        "name": "done",
+        "title": "Done"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1902",
+        "path": "/defs/Greet/body/4",
+        "facts": {
+          "workflow": "Greet",
+          "stage": "done",
+          "problem": "empty"
+        }
+      }
+    ]
+  }
+}

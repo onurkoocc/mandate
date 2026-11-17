@@ -1101,7 +1101,9 @@ impl<'a> Resolver<'a> {
                         self.expr(v, &format!("{path}/value"), &c);
                     }
                 }
-                None => {}
+                // 0.7: a stage's name is no reference and binds nothing; it
+                // opens no scope (spec/attention.md "`stage`").
+                Some(StmtOp::Stage) | None => {}
             }
         }
     }

@@ -1,0 +1,20 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "A01a",
+  "kind": "compile",
+  "title": "In a program of 0.7, stage is an ordinary name wherever a name and a string do not follow it on its line: a field, a parameter, a variable at the start of a statement.",
+  "spec": [
+    "spec/attention.md#version-gating",
+    "spec/attention.md#stage"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "text": "mandate @ 0.7\n\nmodule example.attention.names @ 0.1\n\ntype Step = { stage: Text, title: Text }\n\nfn title_of(stage: Step) -> Text ! {} {\n  stage.title\n}\n\nfn next(stage: Int) -> Int ! {} {\n  let asks = stage\n  stage + asks\n}\n",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

@@ -535,6 +535,25 @@ pub fn static_check(
     }
 }
 
+/// The static nodes each workflow of `program` expands to: `countNodes` of
+/// its body, which E0105 holds to `LIMITS.expandedNodes`, by the workflow's
+/// name in the order of the canonical program. `linked` is as for
+/// [`static_check`]. What a test compares where no count is over the limit,
+/// and so in no diagnostic (a stage of 0.7 counts as none).
+#[must_use]
+pub fn workflow_nodes(program: Program<'_>, linked: Option<&Map>) -> Vec<(String, f64)> {
+    let (canonical_program, defs) = canonical_parts(program, linked);
+    let Some(p) = Program::of(&canonical_program) else {
+        return Vec::new();
+    };
+    let mut checker = Checker::new(p, &defs, None, None);
+    checker.find_recursion();
+    p.definitions()
+        .filter(|(_, d)| d.kind() == Some(DefKind::Workflow))
+        .map(|(name, d)| (name.to_owned(), checker.count_nodes(d.body(), &[])))
+        .collect()
+}
+
 /// `checker(program, …)` of `static.ts`: the canonical program, and the
 /// canonical `{ ...linked, ...canonical.defs }` (or the program's own
 /// definitions without `linked`).
@@ -1183,6 +1202,12 @@ impl<'a> Checker<'a> {
         for (i, s) in stmts.iter().enumerate() {
             let path = sub_n(base, i);
             let s = Stmt::of(s);
+            // 0.7: a stage is no statement of the block's value: what is
+            // before it and after it is as if it were not there (an `on
+            // error` never follows one, E1902).
+            if s.is_some_and(|s| s.op() == Some(StmtOp::Stage)) {
+                continue;
+            }
             if let Some(s) = s.filter(|s| s.op() == Some(StmtOp::OnError)) {
                 self.after_error(s, &mut frame, &path, &mut last, bound);
                 continue;
@@ -1257,7 +1282,7 @@ impl<'a> Checker<'a> {
             .enumerate()
             .rev()
             .filter_map(|(i, s)| Some((i, Stmt::of(s)?)))
-            .find(|(_, s)| !typed || s.op() != Some(StmtOp::OnError));
+            .find(|(_, s)| !typed || !matches!(s.op(), Some(StmtOp::OnError | StmtOp::Stage)));
         let last_index = stmts.len().checked_sub(1);
         let Some((i, tail)) = tail.filter(|(i, _)| typed || Some(*i) == last_index) else {
             return;
@@ -1267,7 +1292,17 @@ impl<'a> Checker<'a> {
             Some(StmtOp::Expr) => self.expect_val(last, &returns, &sub(&at, "value")),
             Some(StmtOp::Let) if typed => self.expect_val(last, &returns, &sub(&at, "value")),
             Some(StmtOp::If | StmtOp::Loop) if typed => self.expect_val(last, &returns, &at),
-            _ => {}
+            Some(
+                StmtOp::Let
+                | StmtOp::If
+                | StmtOp::Loop
+                | StmtOp::Par
+                | StmtOp::Return
+                | StmtOp::OnError
+                | StmtOp::Run
+                | StmtOp::Stage,
+            )
+            | None => {}
         }
     }
 
@@ -1295,7 +1330,10 @@ impl<'a> Checker<'a> {
                 None
             }
             Some(StmtOp::Expr) => Some(self.expr_or_unknown(s.value(), frame, &sub(path, "value"))),
-            None => None,
+            // 0.7: a stage has no value, binds nothing and opens no scope;
+            // where it stands and what it is named are E1901 and E1902
+            // (`crate::stages`).
+            Some(StmtOp::Stage) | None => None,
         }
     }
 
@@ -1608,10 +1646,15 @@ impl<'a> Checker<'a> {
     /// statement each, a loop's body `max_iter` times, an `if`'s two
     /// blocks, a delegation, effect, inference, verification, map or plan
     /// each, and the body of every function it calls that is not on a
-    /// cycle (once per call, so a diamond of calls counts each path).
+    /// cycle (once per call, so a diamond of calls counts each path). A
+    /// stage of 0.7 is no node: it counts toward no limit
+    /// (spec/attention.md "`stage`").
     pub(crate) fn count_nodes(&self, stmts: &'a [Value], seen: &[&'a str]) -> f64 {
         let mut n = 0.0;
         for s in stmts.iter().filter_map(Stmt::of) {
+            if s.op() == Some(StmtOp::Stage) {
+                continue;
+            }
             n += 1.0;
             match s.op() {
                 Some(StmtOp::Loop) => {
@@ -1622,7 +1665,16 @@ impl<'a> Checker<'a> {
                     n += self.count_nodes(s.then_block(), seen)
                         + self.count_nodes(s.else_block().unwrap_or_default(), seen);
                 }
-                _ => {}
+                Some(
+                    StmtOp::Let
+                    | StmtOp::Par
+                    | StmtOp::Return
+                    | StmtOp::OnError
+                    | StmtOp::Run
+                    | StmtOp::Expr
+                    | StmtOp::Stage,
+                )
+                | None => {}
             }
             walk_stmt_exprs(
                 s,
