@@ -128,7 +128,10 @@ executable). The conversations cover both protocol eras, every tool with a
 passing and a failing program of 0.5, 0.6 and 0.7, each view of 0.6, each
 message limit, how lines are split and skipped, what `JSON.parse` and
 `JSON.stringify` do to numbers, names given twice, array-index names and lone
-surrogates, and the failures of a door in the bridge's words.
+surrogates, `String` of an object with its own `toString` (which throws), lines
+of long names above many values (`long-names`, answered in time proportional
+to the line), a call's module of a server module's name, and the failures of a
+door in the bridge's words.
 
 The lines of `tools_list` are the one place the two servers differ until slice
 B9 moves the Node server to the door `mcp_tools`: the Node server serves the
@@ -136,10 +139,34 @@ frozen tool list, the native one the list of 0.7. There the native line must be
 the Node line with the list of 0.7 (the door's `tools` for `mandate/0.7`, as it
 writes them) in the place of the frozen list (the door's for `mandate/0.6`),
 which is so only when the Node server's list is the door's frozen list. What
-0.7 adds to the tools (`libraries`, the card, the attention view, the sections
-`patterns` and `attention`, the message for a view that is not one, which names
-the views of 0.7) has no Node answer yet and is not here; `tests/mcp.rs` holds
-it.
+0.7 adds to the tools (`libraries` of `check`, `project` and `caps_of`, the
+`lock` of `caps_of`, the card, the attention view, the sections `patterns` and
+`attention`, the message for a view that is not one, which names the views of
+0.7) has no Node answer yet and is not here; `tests/mcp.rs` holds it.
+
+The `section` of `mandate.spec` is found as the text it is: the bridge's server
+escapes every character a regular expression gives a meaning to. The reference
+compiler's server, frozen, escapes only `.`, so that there `(` is an Internal
+error and `\d` or `4+` another section; `bridge/test/mcp.test.ts` holds the
+bridge's server to the reference compiler's everywhere else, and to the text
+here.
+
+What the native server does not do as the Node server does, stated:
+
+- The Node server runs the compiler in a WebAssembly module with a ceiling of
+  256 MiB of memory: a call that needs more is the Internal error
+  `the Rust compiler failed on <door> (out_of_memory): …`. The native server
+  has no such ceiling, and answers the call. A check of a 1 MB JSON source of
+  500 000 numbers nested 60 deep is one (its table of spans, a pointer for each
+  number, passes the ceiling). It is not among the conversations.
+- The host also stops an answer of more than 64 MiB
+  (`output_too_large`); the native server counts the answer the module would
+  write and fails the same way (`tools.rs`, `answer_cap`), but no call is known
+  that reaches 64 MiB of answer before 256 MiB of memory.
+- A native stack overflow or allocation failure ends the process, where the
+  module's is the Internal error `stack_exhausted` or `out_of_memory`; a panic
+  of a door is caught and answered as the module's trap, and says nothing on
+  standard error.
 
 ## authority/
 

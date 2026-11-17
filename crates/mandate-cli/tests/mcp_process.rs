@@ -46,6 +46,10 @@ fn start(args: &[&str]) -> Child {
     Command::new(env!("CARGO_BIN_EXE_mandate"))
         .args(args)
         .current_dir(repo())
+        // Rust's own panic hook would read the executable for a backtrace
+        // and write it; the server says nothing on standard error of what a
+        // request holds (every conversation is held to an empty one).
+        .env("RUST_BACKTRACE", "full")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -97,6 +101,40 @@ fn every_recorded_conversation_gets_the_node_servers_bytes_through_the_executabl
     );
     assert!(all.len() >= 15 && answers >= 200);
     assert!(problems.is_empty(), "{}", problems.join("\n\n"));
+}
+
+/// How long the executable takes for each line of the conversation
+/// `long-names` (a 500 KiB name above 250 000 zeros), alone: printed for the
+/// record. What holds the walks to the length of the line is the count of
+/// the JSON Pointers they make (`src/mcp/mod.rs` and `src/mcp/json.rs`, the
+/// unit tests), not a clock.
+#[test]
+fn the_lines_of_long_names_are_answered_each_on_its_own() {
+    let c = conversations()
+        .into_iter()
+        .find(|c| c.name == "long-names")
+        .expect("the conversation long-names");
+    let lines: Vec<&[u8]> = c
+        .input
+        .split(|b| *b == b'\n')
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert_eq!(lines.len(), 5);
+    for (i, line) in lines.iter().enumerate() {
+        let mut input = line.to_vec();
+        input.push(b'\n');
+        let bytes = input.len();
+        let started = std::time::Instant::now();
+        let (out, err, code) = run_with(&["mcp"], input);
+        let took = started.elapsed();
+        assert_eq!((code, err.as_str()), (Some(0), ""));
+        assert_eq!(out.lines().count(), 1);
+        println!(
+            "long-names line {}: {bytes} bytes, answered in {} ms",
+            i + 1,
+            took.as_millis()
+        );
+    }
 }
 
 /// The peak resident memory of process `pid`, in KiB (`VmHWM`).

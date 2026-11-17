@@ -407,11 +407,6 @@ fn project_gives_the_card_of_a_workflow_as_mandate_view_does() {
             &invoices_args(r#","view":"card","workflow":"NoSuch""#),
         ),
         call(3, "mandate.project", &invoices_args(r#","view":"card""#)),
-        call(
-            4,
-            "mandate.project",
-            &invoices_args(r#","view":"authority""#),
-        ),
     ]);
     let text = format!(r#""content":[{{"type":"text","text":{}}}]"#, quoted(&cli));
     assert!(
@@ -428,14 +423,6 @@ fn project_gives_the_card_of_a_workflow_as_mandate_view_does() {
         )
     );
     assert_eq!(out[2], tool_error(3, "workflow must be a string"));
-    // A view of a program that applies a pattern of a library is given the
-    // library's modules.
-    assert!(
-        out[3].contains(r#""isError":false"#),
-        "{}",
-        &out[3][..400.min(out[3].len())]
-    );
-    assert!(out[3].contains(r#""kind":"authority""#));
 
     // A program of 0.4 with its module: the card door's answer, through the
     // tool, as `mandate view --card` prints it.
@@ -542,4 +529,256 @@ fn the_servers_modules_are_read_before_it_starts_as_the_node_command_line_reads_
     // An option without its value.
     assert_eq!(serve_io(&mut io, &["mcp", "--module"], b""), 2);
     assert!(io.err.starts_with("usage: mandate"), "{}", io.err);
+}
+
+/// What `mandate <args>` prints over the invoices program's files.
+fn mandate_on_invoices(args: &[&str]) -> String {
+    let mut io = invoices_io();
+    let code = serve_io(&mut io, args, b"");
+    assert_eq!(code, 0, "{args:?}: {}{}", io.out, io.err);
+    io.out
+}
+
+/// The member `name` of a JSON text, written as `JSON.stringify(v, null,
+/// 2)` writes it: what the tool's `content` text of that view is.
+fn pretty_member(text: &str, name: &str) -> String {
+    let v = mandate_ir::parse(text).unwrap().value;
+    let member = mandate_ir::JsValue::from(v.get(name).unwrap());
+    mandate_ir::stringify_pretty(&member).unwrap()
+}
+
+/// The `content` text of a tool result, `text` quoted as JSON.
+fn content(text: &str) -> String {
+    format!(r#""content":[{{"type":"text","text":{}}}]"#, quoted(text))
+}
+
+#[test]
+fn project_views_of_a_program_that_applies_a_pinned_librarys_pattern_are_mandate_views() {
+    let pinned = [
+        "--lock",
+        "fixtures/library/invoices.lock.json",
+        "--libraries",
+        "libs",
+    ];
+    let mut args = vec!["view", "fixtures/library/invoices.mdt", "--format", "json"];
+    args.extend(pinned);
+    let views = mandate_on_invoices(&args);
+    let mut args = vec!["view", "fixtures/library/invoices.mdt", "--format", "json"];
+    args.extend([
+        "--against",
+        "fixtures/library/invoices.mdt",
+        "--against-lock",
+        "fixtures/library/invoices.lock.json",
+    ]);
+    args.extend(pinned);
+    let diff = mandate_on_invoices(&args);
+    let source = quoted(&read_text("fixtures/library/invoices.mdt").unwrap());
+    let out = serve(&[
+        call(
+            1,
+            "mandate.project",
+            &invoices_args(r#","view":"authority""#),
+        ),
+        call(2, "mandate.project", &invoices_args(r#","view":"cost""#)),
+        call(
+            3,
+            "mandate.project",
+            &invoices_args(r#","view":"architecture""#),
+        ),
+        call(
+            4,
+            "mandate.project",
+            &invoices_args(&format!(r#","view":"diff","before":{source}"#)),
+        ),
+    ]);
+    // `mandate view` prints the three views of the program with the
+    // libraries' modules, the tool one at a time.
+    assert!(
+        out[0].contains(&content(&pretty_member(&views, "authority"))),
+        "{}",
+        &out[0][..300]
+    );
+    assert!(
+        out[1].contains(&content(&pretty_member(&views, "cost"))),
+        "{}",
+        &out[1][..300]
+    );
+    // `mandate view` gives the architecture view the lock as well, and the
+    // tool, as the Node server's, does not; for this program the two are
+    // the same.
+    assert!(
+        out[2].contains(&content(&pretty_member(&views, "architecture"))),
+        "{}",
+        &out[2][..300]
+    );
+    // The diff of the program with itself, its libraries and its lock on
+    // both sides: what `mandate view --against` prints.
+    assert!(
+        out[3].contains(&content(diff.trim_end())),
+        "{}",
+        &out[3][..300]
+    );
+}
+
+#[test]
+fn libraries_that_are_not_libraries_are_a_tool_error_in_each_tool_that_takes_them() {
+    let refused = "libraries must be a list of libraries, each { manifest, files }";
+    let source = quoted(&read_text("fixtures/fixbug/fixbug.mdt").unwrap());
+    for libraries in [
+        "5",
+        "{}",
+        "[5]",
+        "[{}]",
+        "[null]",
+        "[[]]",
+        r#"[{"manifest":"x"}]"#,
+        r#"[{"files":{}}]"#,
+        r#"[{"manifest":5,"files":{}}]"#,
+        r#"[{"manifest":"x","files":[]}]"#,
+        r#"[{"manifest":"x","files":{"a.mdt":5}}]"#,
+        r#"[{"manifest":"x","files":{"a.mdt":"t","b.mdt":null}}]"#,
+    ] {
+        let args = format!(r#"{{"source":{source},"libraries":{libraries}}}"#);
+        let named = format!(r#"{{"source":{source},"name":"FixBug","libraries":{libraries}}}"#);
+        let viewed = format!(r#"{{"source":{source},"view":"authority","libraries":{libraries}}}"#);
+        let out = serve(&[
+            call(1, "mandate.check", &args),
+            call(2, "mandate.project", &viewed),
+            call(3, "mandate.caps_of", &named),
+        ]);
+        assert_eq!(
+            out,
+            [
+                tool_error(1, refused),
+                tool_error(2, refused),
+                tool_error(3, refused)
+            ],
+            "{libraries}"
+        );
+    }
+    // One of the shape that does not read is the compiler's to say, as a
+    // diagnostic of the check, not an Internal error.
+    let out = serve(&[call(
+        4,
+        "mandate.check",
+        &format!(r#"{{"source":{source},"libraries":[{{"manifest":"x","files":{{}}}}]}}"#),
+    )]);
+    assert!(out[0].contains(r#""isError":false"#), "{}", out[0]);
+}
+
+#[test]
+fn caps_of_takes_the_lock_and_the_libraries_and_apply_patch_does_not_yet() {
+    let out = serve(&[
+        call(
+            1,
+            "mandate.caps_of",
+            &invoices_args(r#","name":"MatchInvoices""#),
+        ),
+        call(
+            2,
+            "mandate.caps_of",
+            &invoices_args_with(r#","name":"MatchInvoices""#),
+        ),
+        call(
+            3,
+            "mandate.caps_of",
+            &invoices_args(r#","name":"MatchInvoices","lock":null"#),
+        ),
+    ]);
+    // With both: the authority of the workflow, its delegations among them.
+    assert!(out[0].contains(r#""isError":false"#), "{}", &out[0][..300]);
+    assert!(out[0].contains(r#""who":"MatchInvoices""#));
+    assert!(out[0].contains(r#""who":"MatchInvoices → "#));
+    // Without the libraries, as `check`: the pinned library is not there.
+    assert!(
+        out[1].contains("the program does not check: MDT-E"),
+        "{}",
+        out[1]
+    );
+    // With the libraries and no lock, as `check` with no lock.
+    let mut io = invoices_io();
+    let check_no_lock = serve_io(
+        &mut io,
+        &["mcp"],
+        format!(
+            "{}\n",
+            call(4, "mandate.check", &invoices_args(r#","lock":null"#))
+        )
+        .as_bytes(),
+    );
+    assert_eq!(check_no_lock, 0);
+    let checks = io.out.contains(r#""structuredContent":{"ok":true"#);
+    assert_eq!(
+        out[2].contains(r#""isError":false"#),
+        checks,
+        "{}\n{}",
+        out[2],
+        io.out
+    );
+    // apply_patch: its door, check_patch, takes no lock and no libraries
+    // (spec/attention.md "The MCP server"), so a program that uses a pinned
+    // library does not check after the patch.
+    let hash = {
+        let line = serve(&[call(5, "mandate.check", &invoices_args(""))]).remove(0);
+        let at = line.find(r#""program":"sha256:"#).unwrap() + r#""program":""#.len();
+        line[at..at + 71].to_owned()
+    };
+    let patched = serve(&[call(
+        6,
+        "mandate.apply_patch",
+        &invoices_args(&format!(r#","base":"{hash}","ops":[]"#)),
+    )]);
+    assert!(
+        patched[0].contains(r#""structuredContent":{"ok":false"#),
+        "{}",
+        &patched[0][..400]
+    );
+    assert!(patched[0].contains("MDT-E1604"), "{}", &patched[0][..400]);
+}
+
+#[test]
+fn a_library_module_of_a_name_the_server_has_takes_its_place_in_a_view() {
+    // The server is started with acme.connectors.types as a module; the
+    // call gives acme.connectors, which holds it too. The check is given
+    // both (the module, and the library); a view is given the library's
+    // after the server's, so that the library's module is the one shown.
+    let mut io = invoices_io();
+    io.files.insert(
+        "types.mdt".to_owned(),
+        read_bytes("fixtures/library/acme.connectors/types.mdt").unwrap(),
+    );
+    let input = format!(
+        "{}\n{}\n",
+        call(1, "mandate.check", &invoices_args("")),
+        call(
+            2,
+            "mandate.project",
+            &invoices_args(r#","view":"authority""#)
+        )
+    );
+    assert_eq!(
+        serve_io(&mut io, &["mcp", "--module", "types.mdt"], input.as_bytes()),
+        0,
+        "{}",
+        io.err
+    );
+    let with_module: Vec<String> = io.out.lines().map(str::to_owned).collect();
+    let alone = serve(&[
+        call(1, "mandate.check", &invoices_args("")),
+        call(
+            2,
+            "mandate.project",
+            &invoices_args(r#","view":"authority""#),
+        ),
+    ]);
+    // The check takes the module beside the library that holds it, and
+    // checks as without it; the view, given the library's module in the
+    // place of the server's, is the view without the server's module.
+    assert!(
+        with_module[0].contains(r#""structuredContent":{"ok":true"#),
+        "{}",
+        &with_module[0][..300]
+    );
+    assert_eq!(with_module[0], alone[0]);
+    assert_eq!(with_module[1], alone[1]);
 }
