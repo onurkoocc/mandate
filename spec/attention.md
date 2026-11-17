@@ -332,17 +332,35 @@ E1509 brings to the check what the runtime already refuses at load
 the methods `verify` and `waiver` are the runtime's own. In a 0.6 program it
 stays a refusal at load only.
 
-**The class of a function's result.** In 0.7 a call of a function is of the
-data class of what the function returns, typed in its body with its
-parameters of their declared types (its last value and every `return`'s),
-as well as of its arguments' class. Before 0.7 it is of its arguments' class
-alone, so a function that reads classified data itself (a `data.read` of an
-environment's declared read) and returns it as an unclassified type such as
-`Text` hands back a value of a lower class than the data, and every rule that
-reads a value's class reads that lower one (E0220 for a model's
-`max_class`, among them). A program of 0.1 to 0.6 is checked as before; in
-0.7 such a value keeps its class, and the rules refuse what they refuse for
-the data itself.
+**The class of a function's result.** In 0.6 and 0.7 a call of a function
+is of the data class of what the function returns, typed in its body with
+its parameters of their declared types (its last value and every
+`return`'s), as well as of its arguments' class. A function that reads
+classified data itself (a `data.read` of an environment's declared read) and
+returns it as an unclassified type such as `Text` hands back a value of the
+data's class, and every rule that reads a value's class refuses what it
+refuses for the data itself (E0220 for a model's `max_class` and for an
+envelope's `spawn.max_class`, E1706 for a sub-program under its envelope).
+It holds for a function of the program, of a module it imports and of a
+library, and through a record, a list, a template, either branch of an `if`
+and another function. A function that reads classified data and returns a
+constant hands back a public value. In 0.6 the rule gives the class only:
+how a value is known (the attention facts, "What is shown") is 0.7's alone.
+A program of 0.1 to 0.5 is checked as before: a call is of its arguments'
+class alone, so such a function's result is of a lower class than the data
+(a function may read data since 0.3,
+[`system.md`](system.md#reads-and-run-modes-b6)); changing that would change
+the TypeScript reference compiler, which reads those versions.
+
+*Security note, 2026-11-18.* As 0.6 was released, its call was of its
+arguments' class alone. A 0.6 program could so pass confidential data out of
+a function as a public value: hand it to a model whose capability allows
+public data only, or to a delegation or a model under an envelope whose
+`spawn.max_class` is public, in the run or in a lead's sub-program, and its
+check passed. The check now refuses it (E0220, and E1706 in a sub-program;
+conformance cases `E0220i` and `E1706f`). This is the one place where a
+diagnostic of a 0.6 program changed after its release: every other output
+of a program of 0.1 to 0.6 stays byte for byte as it was.
 
 Every new code has at least one conformance case of language `mandate/0.7`,
 a passing program, one patch and the one code expected, and a test fails on a

@@ -1,0 +1,59 @@
+// A run under an envelope whose spawn.max_class is public, that may read a
+// confidential row and whose agents' model may see confidential data. Its
+// lead's sub-program is sub.mdt beside it (spec/attention.md "The class of a
+// function's result", 2026-11-18).
+
+mandate @ 0.6
+
+module example.reads @ 0.1
+
+use std.{data, model}
+
+role core_owner "Core owner"
+
+type CustomerName = Text classified confidential
+type Row = { tracking_no: Text, full_name: CustomerName }
+
+component core {
+  repo  "acme/core"
+  root  "/work/acme-core"
+  lang  java
+  owner role "core_owner"
+}
+
+environment prod_sim {
+  class confidential
+  read customers from core
+    sql "select tracking_no, full_name from customers where tracking_no = :tracking_no"
+    params (tracking_no: Text)
+    returns Row
+    max_rows 1
+}
+
+capability Reads     = data.read(prod_sim, customers)
+capability ModelConf = model.infer(tier: standard, max_class: confidential)
+
+agent Summarizer {
+  role   "Summarizes a text."
+  caps   ModelConf
+  budget { tokens: 1000, spend: 1 USD, steps: 5 }
+  skill summarize(t: Text) -> Inferred<Text> ! {Model}
+}
+
+agent Lead {
+  role   "Plans what is left."
+  caps   ModelConf
+  budget { tokens: 5000, spend: 2 USD, steps: 20 }
+  skill finish(t: Text) -> Inferred<Text> ! {Model}
+}
+
+workflow Run(t: Text) -> Inferred<Text>
+  envelope {
+    owner   core_owner
+    caps    Reads, ModelConf
+    budget  { tokens: 100000, time: 1h, spend: 20 USD, steps: 200, agents: 20 }
+    spawn   { max_concurrent: 4, max_class: public }
+  }
+{
+  plan Lead.finish(t) within envelope
+}

@@ -425,6 +425,8 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0210d` | A declined item that an `on unmet` handler gives, posted | E0210 |
 | `E0210e` | A declined item that an `if`'s `else` gives, posted | E0210 |
 | `E0220f` | Restricted data given by a later arm of a `switch`, sent to a model that may receive internal data | E0220 |
+| `E0220i` | Since 2026-11-18 a call of a function in 0.6 is of the class of what it returns: a confidential row the function reads and returns as `Text`, handed to a model allowed public data (a mutation; spec/attention.md, the security note) | E0220 |
+| `E1706f` | The same in a lead's sub-program: its function's result handed to a delegation under an envelope whose `spawn.max_class` is public | E1706 |
 | `E0120e` | A call of `human.ask` after a variable of the body took the name `human` | E0120 |
 | `E0120f` | A call of a member of a value, `x.m()` | E0120 |
 | `E0120g` | A call of a workflow | E0120 |
@@ -517,7 +519,8 @@ each the review program with what the case adds, a program of its own. The
 cases of the typing of 0.6 (each form typed as the runtime evaluates it) are
 programs of their own too: `E1505h` to `E1505l` the release program of
 `E1505` with what the case adds, `E0210b` to `E0210e` and `E1506i` the review
-program, `E0220f` a program of classes, and the others (and `E0408b`) a small
+program, `E0220f` a program of classes, `E0220i` and `E1706f` (with its parent) programs of
+a function that reads a confidential row, and the others (and `E0408b`) a small
 program that opens or lands a change. What a case cannot say, because its modules must load, is in
 `crates/mandate-check/tests/language_0_6.rs`: a module of 0.5 among the modules given
 to a check that imports one of 0.6 (E1603), and one of 0.6 that imports a module
@@ -673,13 +676,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 517, passed 517, pending 0
+conformance cases: ran 519, passed 519, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 392 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
+  of them 394 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
 ```
 
-(533 cases: 517 `compile`, 265 of them of language 0.6 and 127 of 0.7, and 16 `journal`; no case
+(535 cases: 519 `compile`, 267 of them of language 0.6 and 127 of 0.7, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

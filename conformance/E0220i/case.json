@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0220i",
+  "kind": "compile",
+  "title": "In 0.6 too a call of a function is of the class of what the function returns (since 2026-11-18): the text of a confidential row the function reads itself, handed to a model that may see public data only, is refused (as 0.6 was released the call was of its arguments' class alone and passed; a mutation: the model is handed n instead of t).",
+  "spec": [
+    "spec/attention.md#static-rules",
+    "spec/checks.md#data-classes-55"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/ViaText/body/1/value/from/name",
+      "value": "n"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0220",
+        "path": "/defs/ViaText/body/1/value",
+        "facts": {
+          "data_class": "confidential",
+          "allowed": "public"
+        }
+      }
+    ]
+  }
+}
