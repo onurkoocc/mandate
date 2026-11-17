@@ -311,6 +311,9 @@ impl<'a> Parser<'a> {
         if self.at_stage() {
             return self.stage_stmt(start);
         }
+        if self.at_report() {
+            return self.report_stmt(start);
+        }
         let value = self.expr(false)?;
         Ok(self.at(obj().with("op", "expr").with("value", value), start))
     }
@@ -431,6 +434,64 @@ impl<'a> Parser<'a> {
             .with("op", "stage")
             .with("name", name)
             .with("title", title);
+        Ok(self.at(s, start))
+    }
+
+    /// 0.7 (spec/attention.md "`report`"): whether a `report` statement
+    /// starts here, in a program that reads 0.7: the word `report`, then on
+    /// the same line the word `to`, a name (an identifier that is not
+    /// reserved) and a string. Anywhere else, and in every program of 0.1 to
+    /// 0.6, `report` and `to` are ordinary names.
+    fn at_report(&self) -> bool {
+        if !self.reads_0_7() || !self.is_w("report") {
+            return false;
+        }
+        let (to, role, title) = (self.la(1), self.la(2), self.la(3));
+        is_w(to, "to")
+            && !to.nl
+            && role.kind == TokKind::Ident
+            && !role.nl
+            && !is_reserved(&role.text)
+            && title.kind == TokKind::String
+            && !title.nl
+    }
+
+    /// `report to <role> "<title>" { name: expr, … }`: one or more fields
+    /// (the schema holds them to sixteen), a trailing comma allowed, each a name, a colon and an
+    /// expression; two fields with one name are E0121, and the reading goes
+    /// on. The fields are an array in the order written, the order a person
+    /// reads them. What the role names, how many fields there are and what
+    /// each may be are the schema's and the check's (E1501, E1903 to E1905);
+    /// the title is a string without interpolation.
+    fn report_stmt(&mut self, start: &Token) -> Res<O> {
+        self.bump();
+        self.bump();
+        let role = self.ident("a role name")?;
+        let title = self.string("a report title")?;
+        self.expect_p("{")?;
+        let mut fields: Vec<Node> = Vec::new();
+        let mut names: Vec<String> = Vec::new();
+        loop {
+            let t = self.t();
+            let name = self.ident("a field name")?;
+            if names.contains(&name) {
+                self.dup("report field", &name, t);
+            }
+            self.expect_p(":")?;
+            let value = self.expr(false)?;
+            let field = obj().with("name", name.as_str()).with("value", value);
+            fields.push(Node::Obj(self.at(field, t)));
+            names.push(name);
+            if !self.eat_p(",") || self.is_p("}") {
+                break;
+            }
+        }
+        self.expect_p("}")?;
+        let s = obj()
+            .with("op", "report")
+            .with("role", role)
+            .with("title", title)
+            .with("fields", fields);
         Ok(self.at(s, start))
     }
 

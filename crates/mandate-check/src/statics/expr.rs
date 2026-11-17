@@ -176,7 +176,24 @@ impl<'a> Checker<'a> {
     /// place in its frame).
     pub(crate) fn expr(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         let v = self.expr_inner(e, frame, path);
+        if self.report_floor.is_some() {
+            return self.floored(v);
+        }
         self.raised(v)
+    }
+
+    /// 0.7: [`Checker::raised`] of a value typed inside a report's field,
+    /// whose level lowers the field's floor ([`Checker::report_floor`]).
+    #[inline(never)]
+    fn floored(&mut self, v: Val) -> Val {
+        let v = self.raised(v);
+        let l = crate::reports::known(&v.ty, self);
+        if let Some(f) = self.report_floor
+            && crate::ty::level_rank(l) > crate::ty::level_rank(f)
+        {
+            self.report_floor = Some(l);
+        }
+        v
     }
 
     /// `{ ty: v.ty, cls: maxClass(v.cls, typeClass(v.ty)) }`.
@@ -741,7 +758,22 @@ impl<'a> Checker<'a> {
     /// `cap.narrow(…)`.
     #[inline(never)]
     fn call(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        // 0.7: inside a report's field, what `len` counts does not lower the
+        // field's floor: a count is the run's, however what it counts is
+        // known (spec/attention.md "The invoice flow": `len(items)` is
+        // counted by the run).
+        let held = if self.report_floor.is_some()
+            && e.callee()
+                .is_some_and(|c| c.is(ExprOp::Var) && c.name() == Some("len"))
+        {
+            self.report_floor.take()
+        } else {
+            None
+        };
         let args = self.call_args(e, frame, path);
+        if held.is_some() {
+            self.report_floor = held;
+        }
         self.call_with(e, frame, path, args)
     }
 

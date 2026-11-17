@@ -1,0 +1,180 @@
+// A program of language 0.7 with reports (spec/attention.md "`report`"): a
+// pattern whose reports go to its role slot, applied by a workflow whose
+// expansion reports to the role it binds; and a workflow written out that
+// tells two roles what it did, in fields a model wrote, a contract verified,
+// a connector gave and the run counted. A report shows values and does
+// nothing: it changes nothing the program computes, costs or may do. It
+// checks (A02); the cases of the rules of reports (E1903 to E1905, E1705)
+// are one change of it each. Only the Rust compiler reads it.
+
+mandate @ 0.7
+
+module example.attention.reports @ 0.1
+
+use std.{human, model, tool}
+
+role accountant   "Accountant"
+role finance_lead "Finance lead"
+
+type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }
+type Order   = { order_no: Text, vendor_id: Text, total_cents: Int }
+type Match   = { invoice_no: Text, order: Order }
+type DraftId = { draft_id: Text }
+
+/// The result of a batch: each commit's outcome, what was declined, and the
+/// indices of the items whose work failed.
+type Batch<Out, R> = {
+  posted:   List<Outcome<Receipt<R>>>,
+  declined: List<Declined<Out>>,
+  failed:   List<Int>
+}
+
+/// What a greeting was, as a person reads it: the line a model wrote, and
+/// how long it is.
+type Draft = { line: Inferred<Text>, words: Int }
+
+/// The ERP: lists the invoices and the open orders, names a vendor, posts
+/// draft invoices.
+connector erp = mcp("https://erp.example.com/mcp")
+  version "1.0"
+  class   confidential
+{
+  tool list_invoices() -> Untrusted<List<Invoice>>
+    read_only
+
+  tool list_orders(vendor_id: Text) -> Untrusted<List<Order>>
+    read_only
+
+  tool vendor_name(vendor_id: Text) -> Untrusted<Text>
+    read_only
+
+  tool find_draft(key: Text) -> Untrusted<Option<DraftId>>
+    read_only
+
+  tool post_draft(m: Verified<Match>, key: Text) -> Receipt<DraftId>
+    critical
+    idempotency key key
+    retry_class reconcilable
+    reconcile by find_draft
+}
+
+capability Inbox     = tool.call(erp, list_invoices)
+capability ErpRead   = tool.call(erp, list_orders)
+capability ErpVendor = tool.call(erp, vendor_name)
+capability ErpDraft  = tool.call(erp, post_draft)
+capability ModelStd  = model.infer(tier: standard, max_class: confidential)
+
+/// Whether `a` is within `pct` percent of `b`.
+fn near(a: Int, b: Int, pct: Int) -> Bool ! {} {
+  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)
+}
+
+/// A match names its invoice's vendor; its total may be off by more than 2%
+/// when the accountant or the finance lead waives it.
+contract Matched(inv: Invoice, m: Match) {
+  accept vendor "The invoice's vendor is the order's vendor"
+    by static inv.vendor_id == m.order.vendor_id
+  accept totals "The total is within 2% of the order's"
+    by static near(inv.total_cents, m.order.total_cents, 2)
+    waive by accountant, finance_lead
+}
+
+/// A greeting says something.
+contract Greeted(name: Text, line: Text) {
+  accept said "The greeting is not empty"
+    by static line != ""
+}
+
+agent Matcher {
+  role   "Matches one invoice to an open order of its vendor. Writes nothing."
+  caps   ErpRead, ModelStd
+  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }
+  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}
+}
+
+agent Greeter {
+  role   "Writes one line of greeting."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill greet(name: Text) -> Inferred<Text> ! {Model}
+}
+
+/// Works on every item of a list. What passes goes on; what does not is
+/// asked about once, as one list. It tells its reviewer how many items it
+/// collected, and at the end what became of them.
+pattern BatchWithExceptions<Item, Out, R>(
+  source:      tool() -> Untrusted<List<Item>>,
+  work:        skill(Untrusted<Item>) -> Inferred<Out>,
+  accepted:    contract(Item, Out),
+  reviewer:    role,
+  escalate_to: role,
+  commit:      effect(Verified<Out, accepted>) -> Receipt<R>,
+  key:         field(Out),
+  max_items:   const Int,
+  concurrency: const Int,
+  deadline:    const Duration
+) -> Batch<Out, R>
+{
+  stage collect "Collect the items"
+  let items    = source()
+  report to reviewer "Items collected" { items: len(items) }
+
+  stage work "Work on each item"
+  let checked  = map it in items max max_items par concurrency {
+    let out = delegate work(it)
+    verify out against accepted(it, out)
+  }
+
+  stage exceptions "Decide on the exceptions"
+  let reviewed = human.review(checked, role: reviewer, deadline: deadline, escalate_to: escalate_to)
+
+  stage commit "Commit what was accepted"
+  let posted   = map v in reviewed.accepted max max_items {
+    effect commit(v) idempotent_by v.key
+  }
+  report to reviewer "Batch done" {
+    posted: len(posted), declined: len(reviewed.declined), failed: len(reviewed.failed)
+  }
+  Batch { posted, declined: reviewed.declined, failed: reviewed.failed }
+}
+
+/// Matches every invoice, asks the accountant once about those that failed
+/// only what may be waived, and posts each accepted match as a draft. Its
+/// expansion tells the accountant what it collected and what it did.
+workflow MatchAll = BatchWithExceptions<Invoice, Match, DraftId>(
+    source: erp.list_invoices, work: Matcher.match, accepted: Matched,
+    reviewer: accountant, escalate_to: finance_lead,
+    commit: erp.post_draft, key: invoice_no,
+    max_items: 60, concurrency: 6, deadline: 1d)
+  caps   Inbox, ErpRead, ErpDraft, ModelStd
+  budget { spend: 20 USD, time: 2h }
+
+/// Writes a greeting for the vendor, checks it, and tells the accountant
+/// what a model wrote, what was verified and what the ERP said, the finance
+/// lead when the greeting is long, and each of up to three rounds it counts.
+workflow Greet(vendor_id: Text) -> Verified<Text, Greeted>
+  caps   ModelStd, ErpVendor
+  budget { time: 5m, steps: 6 }
+{
+  stage draft "Write the greeting"
+  let vendor = erp.vendor_name(vendor_id)
+  let line   = delegate Greeter.greet(vendor_id)
+  report to accountant "Greeting drafted" {
+    draft: line,
+    vendor: vendor,
+    both: "{line} for {vendor}",
+    words: len(line),
+    note: Draft { line, words: len(line) },
+  }
+  if len(line) > 80 {
+    report to finance_lead "A long greeting" { words: len(line) }
+  }
+
+  stage check "Check the greeting"
+  let ok = verify line against Greeted(vendor_id, line)
+  loop max_iter 3 {
+    report to accountant "One round" { greeting: ok, checked: true }
+  }
+  report to accountant "Greeting checked" { greeting: ok, mixed: "{ok} / {line}" }
+  ok
+}

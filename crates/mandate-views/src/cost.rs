@@ -498,9 +498,9 @@ impl<'a> Walk<'a> {
                     total.add(&c, 1.0);
                 }
                 // An `on error` and a test's `run` hand out nothing here; a
-                // stage of 0.7 hands out nothing (spec/attention.md
-                // "`stage`").
-                Some(StmtOp::OnError | StmtOp::Run | StmtOp::Stage) | None => {}
+                // stage and a report of 0.7 hand out nothing: a report's
+                // fields are pure (spec/attention.md "`stage`", "`report`").
+                Some(StmtOp::OnError | StmtOp::Run | StmtOp::Stage | StmtOp::Report) | None => {}
             }
         }
         total

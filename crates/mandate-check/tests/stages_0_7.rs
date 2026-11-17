@@ -167,9 +167,9 @@ fn the_rules_of_a_list_of_stages_and_their_messages() {
             "MDT-E1902 at /defs/W/body/3/name: Stage 'draft' is named twice in the body of workflow W; the stages of one body have names of their own.",
             "MDT-E1902 at /defs/W/body/3: Stage 'draft' of workflow W is directly followed by another stage and marks no statement; each stage is followed by at least one.",
             "MDT-E1902 at /defs/W/body/4: Stage 'give' of workflow W is directly followed by an on error, which handles the statement before the stage; a stage stands before the statement whose handler follows it.",
-            "MDT-E1902 at /defs/W/body/4/title: The title of stage 'give' of workflow W holds the control character U+0009; a title is constant text of 1 to 80 characters with no control, format or bidirectional character, since a person reads it on an approval card.",
+            "MDT-E1902 at /defs/W/body/4/title: The title of stage 'give' of workflow W holds the control character U+0009; a title is constant text of 1 to 80 characters with no control, format, bidirectional, line separator or paragraph separator character, since a person reads it on one line of an approval card.",
             "MDT-E1902 at /defs/W/body/7: Stage 'end' ends the body of workflow W and marks no statement; each stage is followed by at least one.",
-            "MDT-E1902 at /defs/W/body/7/title: The title of stage 'end' of workflow W holds the format or bidirectional character U+200F; a title is constant text of 1 to 80 characters with no control, format or bidirectional character, since a person reads it on an approval card.",
+            "MDT-E1902 at /defs/W/body/7/title: The title of stage 'end' of workflow W holds the format or bidirectional character U+200F; a title is constant text of 1 to 80 characters with no control, format, bidirectional, line separator or paragraph separator character, since a person reads it on one line of an approval card.",
         ]
     );
     assert_eq!(

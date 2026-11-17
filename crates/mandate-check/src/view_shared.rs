@@ -745,8 +745,9 @@ impl<'a> Graph<'a> {
             }
             Some(StmtOp::Loop) => self.block(s.body(), prev),
             // No step: an `on error` and a test's `run` are not drawn, and
-            // a stage of 0.7 is no step of the graph.
-            Some(StmtOp::OnError | StmtOp::Run | StmtOp::Stage) | None => prev,
+            // a stage and a report of 0.7 are no steps of the graph (a
+            // report's fields are pure: they hold nothing that is drawn).
+            Some(StmtOp::OnError | StmtOp::Run | StmtOp::Stage | StmtOp::Report) | None => prev,
         }
     }
 

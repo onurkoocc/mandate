@@ -1,0 +1,66 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1905e",
+  "kind": "compile",
+  "title": "A report in an on budget_exceeded handler is refused (a mutation: Greet gains a handler that reports).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Greet/on",
+      "value": [
+        {
+          "event": "budget_exceeded",
+          "then": {
+            "op": "block",
+            "body": [
+              {
+                "op": "report",
+                "role": "accountant",
+                "title": "Moved",
+                "fields": [
+                  {
+                    "name": "n",
+                    "value": {
+                      "op": "int",
+                      "value": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "expr",
+                "value": {
+                  "op": "pause"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1905",
+        "path": "/defs/Greet/on/0/then/body/0",
+        "facts": {
+          "role": "accountant",
+          "title": "Moved",
+          "place": "on_budget_exceeded"
+        }
+      }
+    ]
+  }
+}

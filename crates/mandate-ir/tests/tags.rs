@@ -265,6 +265,10 @@ fn tags_convert_both_ways_and_versions_are_ordered() {
     assert_eq!(ExprOp::Changeset.since(), Language::V0_3);
     assert_eq!(ExprOp::Int.since(), Language::V0_1);
     assert_eq!(StmtOp::OnError.since(), Language::V0_1);
+    // The statements of 0.7, in the 0.7 schema alone.
+    assert_eq!(StmtOp::Stage.since(), Language::V0_7);
+    assert_eq!(StmtOp::Report.since(), Language::V0_7);
+    assert_eq!(StmtOp::from_tag("report"), Some(StmtOp::Report));
     assert_eq!(Language::NEWEST.to_string(), "mandate/0.7");
     assert_eq!(Language::ALL.last(), Some(&Language::NEWEST));
     let refine = parse(r#"{"refine": {"ref": "Int"}, "where": {"op": "bool", "value": true}}"#)

@@ -16,8 +16,8 @@
 
 use mandate_ir::{
     Arg, Criterion, DefKind, Definition, Diagnostic, Expr, ExprOp, JsObject, JsValue, Language,
-    Location, Map, Program, Repair, RepairOp, RepairOpKind, Risk, Spans, Tier, TierBy, Value,
-    Verifier, VerifierForm, compare_utf16, nearest_span, ptr, ptr_token, sort_utf16,
+    Location, Map, Program, Repair, RepairOp, RepairOpKind, Risk, Spans, StmtOp, Tier, TierBy,
+    Value, Verifier, VerifierForm, compare_utf16, nearest_span, ptr, ptr_token, sort_utf16,
 };
 
 use crate::caps::callee_path;
@@ -168,6 +168,12 @@ impl Sites {
                 }
             }
         }
+        // 0.7: a report names the role it is addressed to, as a name
+        // (spec/attention.md "`report`"). No IR before 0.7 has one, so the
+        // sites of an older program are what they were.
+        if let Some(s) = mandate_ir::Stmt::of(v).filter(|s| s.op() == Some(StmtOp::Report)) {
+            self.text(s.role(), format!("{path}/role"), "a report");
+        }
         // `sup && typeof sup === "object" && sup.name === "escalate"`.
         if let Some(sup) = o.get("supervise")
             && sup.get("name").and_then(Value::as_str) == Some("escalate")
@@ -197,7 +203,9 @@ impl Sites {
 /// (by UTF-16 code units, stably): a component's owner, an environment's
 /// authorization, an envelope's owner and approvals, a change set's
 /// approvers, `human.approve`, `human.ask`, `escalate human(…)` and
-/// `supervise escalate(human, …)`: `roleSites(defs)`.
+/// `supervise escalate(human, …)`: `roleSites(defs)`; and, in 0.7, the
+/// role a `report` is addressed to ("a report"), which no IR before 0.7
+/// has, so that the sites of an older program are the TypeScript's.
 #[must_use]
 pub fn role_sites(defs: &Map) -> Vec<RoleSite> {
     let mut s = Sites {

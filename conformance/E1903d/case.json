@@ -1,0 +1,42 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1903d",
+  "kind": "compile",
+  "title": "A pattern's report to a role definition rather than one of its role slots is refused: a pattern's report goes to the role each application binds (a mutation: the role of the pattern's first report).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#titles",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/2/role",
+      "value": "accountant"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1903",
+        "path": "/defs/BatchWithExceptions/body/2/role",
+        "facts": {
+          "pattern": "BatchWithExceptions",
+          "role": "accountant",
+          "problem": "role",
+          "slots": [
+            "reviewer",
+            "escalate_to"
+          ]
+        }
+      }
+    ]
+  }
+}

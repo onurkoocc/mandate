@@ -1,0 +1,68 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1905c",
+  "kind": "compile",
+  "title": "A report in an on error handler is refused (a mutation: a handler added after the delegation, whose block reports).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Greet/body/3",
+      "value": {
+        "op": "on_error",
+        "pattern": {
+          "p": "wild"
+        },
+        "then": {
+          "op": "block",
+          "body": [
+            {
+              "op": "report",
+              "role": "accountant",
+              "title": "Moved",
+              "fields": [
+                {
+                  "name": "n",
+                  "value": {
+                    "op": "int",
+                    "value": 1
+                  }
+                }
+              ]
+            },
+            {
+              "op": "expr",
+              "value": {
+                "op": "text",
+                "value": "none"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1905",
+        "path": "/defs/Greet/body/3/then/body/0",
+        "facts": {
+          "role": "accountant",
+          "title": "Moved",
+          "place": "on_error"
+        }
+      }
+    ]
+  }
+}
