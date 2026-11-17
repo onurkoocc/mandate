@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as compiler from "../../compiler/src/index.js";
-import { atLeast, BRIDGE_LANGUAGE_VERSIONS, check, checkSubprogram, hashProgram, isProgram06OrLater, isProgram07OrLater, LANGUAGE_06, LANGUAGE_07, libraryVerify, load, LOCK_FORMAT_06, LOCK_FORMAT_07, skeleton, type LibrarySource, type Program06, type Shape06, type SubprogramCheck06 } from "../src/index.js";
+import { atLeast, BRIDGE_LANGUAGE_VERSIONS, check, checkSubprogram, hashProgram, isProgram06OrLater, isProgram07OrLater, LANGUAGE_06, LANGUAGE_07, libraryVerify, load, LOCK_FORMAT_06, LOCK_FORMAT_07, skeleton, type Budget07, type Lock, type Lock07, type Promotion, type ReportStmt, type StageStmt, type Stmt07, type WorkflowDef07, type LibrarySource, type Program06, type Shape06, type SubprogramCheck06 } from "../src/index.js";
 import { modulePath } from "../src/wasm/module.js";
 
 const needs = existsSync(modulePath()) ? describe : describe.skip;
@@ -87,6 +87,21 @@ describe("isProgram06OrLater and isProgram07OrLater", () => {
 
   it("hold the lock formats of 0.6 and 0.7 by their names", () => {
     expect([LOCK_FORMAT_06, LOCK_FORMAT_07]).toEqual(["mandate/lock/0.6", "mandate/lock/0.7"]);
+  });
+});
+
+describe("the types of 0.7", () => {
+  it("take the examples of spec/attention.md (\"The IR\", \"Lock 0.7\"), which the compiler does not give yet", () => {
+    // Held by the type checker (npm run typecheck reads the tests); at run time, only that they are the spec's values.
+    const stage = { op: "stage", name: "collect", title: "Collect the items" } satisfies StageStmt;
+    const report = { op: "report", role: "reviewer", title: "Items collected", fields: [{ name: "items", value: { op: "call", callee: { op: "var", name: "len" }, args: [{ value: { op: "var", name: "items" } }] } }] } satisfies ReportStmt;
+    const body: Stmt07[] = [stage, report];
+    const budget = { spend: { micros: 20_000_000, currency: "USD" }, time: { ms: 7_200_000 }, asks: 2 } satisfies Budget07;
+    const owned = { owner: "accountant", budget } satisfies Partial<WorkflowDef07>;
+    // Its format, LOCK_FORMAT_07, is a member the reference lock type names with its own formats alone, as for 0.6.
+    const lock = { modules: {}, roles: { accountant: ["ana"] }, role_classes: { accountant: "confidential" }, promotion: "required" } satisfies Lock;
+    const ladder: Lock07 = { promotion: "required" satisfies Promotion };
+    expect([body.map((s) => s.op), owned.budget.asks, lock.role_classes.accountant, ladder.promotion]).toEqual([["stage", "report"], 2, "confidential", "required"]);
   });
 });
 

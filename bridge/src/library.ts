@@ -204,11 +204,14 @@ export type Budget07 = Budget & { asks?: number };
  * A workflow of 0.7 (spec/attention.md "`owner`"; "The IR", `Def(workflow).owner`): `owner`, the role that approves
  * its card and signs its promotions, on a workflow without an envelope (E1910); an envelope's `owner` is 0.4's.
  */
-export type WorkflowDef07 = WorkflowDef06 & { owner?: string };
+export type WorkflowDef07 = Omit<WorkflowDef06, "budget" | "envelope"> & { owner?: string; budget?: Budget07; envelope?: Envelope07 };
+
+/** An envelope of 0.7: its budget may hold `asks` (spec/attention.md "`asks`"). Its `owner` is 0.4's, as before. */
+export type Envelope07 = Omit<Envelope06, "budget"> & { budget?: Budget07 };
 
 // ── the lock of 0.7 (spec/attention.md "Lock 0.7"; spec/lock-0.7.schema.json) ─
 //
-// Types alone, as the IR's: slice RL5 adds `role_classes` to the compiler, and RL4 `promotion`.
+// Types alone, as the IR's: slice RL5 adds both members to the compiler.
 
 /** The one value of a lock's `promotion`: a run of `read_only` or `live` needs a signed promotion. */
 export type Promotion = "required";
