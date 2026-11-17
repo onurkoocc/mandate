@@ -116,6 +116,20 @@ pub fn domain_hash(domain: HashDomain, value: &Value, version: &str) -> String {
     out
 }
 
+/// `sha256:<hex>` of the UTF-8 bytes of `text`, with no domain prefix:
+/// `sha256Of` of `runtime/src/artifacts.ts`.
+#[must_use]
+pub fn sha256_of(text: &str) -> String {
+    let digest = Sha256::digest(text.as_bytes());
+    let mut out = String::with_capacity(71);
+    out.push_str("sha256:");
+    for byte in digest.iter() {
+        // Writing to a String cannot fail.
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 /// A program's hash and one hash per definition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProgramHashes {

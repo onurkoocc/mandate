@@ -561,6 +561,9 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `S02k` | A 0.7 program accepts a lock of an older format (0.6) | — |
 | `S02l` | A lock of format 0.7, read by `spec/lock-0.7.schema.json`, with a 0.7 program | — |
 | `E0140d` | An unknown field of a 0.7 lock is refused: the 0.7 lock schema is closed | E0140 |
+| `E1509` | A criterion of a 0.7 program met by a call of `waiver` is refused (the runtime refuses it at load) | E1509 |
+| `E1509a` | A `verify` among the `and` parts of an invariant criterion is refused | E1509 |
+| `E1509b` | `test.verify`, alone and joined to another part with `and`, is not a reserved name: it checks | — |
 
 ## What the Rust crates run
 
@@ -598,13 +601,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 395, passed 395, pending 0
+conformance cases: ran 398, passed 398, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 270 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
+  of them 273 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
 ```
 
-(411 cases: 395 `compile`, 265 of them of language 0.6 and 5 of 0.7, and 16 `journal`; no case
+(414 cases: 398 `compile`, 265 of them of language 0.6 and 8 of 0.7, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

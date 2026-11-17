@@ -1,0 +1,19 @@
+// A program of language 0.7 whose criteria are met by `test.verify` and by
+// `test.suite` joined to it with `and`: a callee path that only ends in a
+// reserved name is not one (spec/attention.md "Static rules", E1509), and it
+// checks.
+
+mandate @ 0.7
+
+module example.reserved @ 0.1
+
+use std.{test}
+
+type Change = { files: List<Text> }
+
+contract Tested(c: Change) {
+  accept verified "The change is verified"
+    by test.verify(["unit"])
+  accept suite "The suite passes, and the change is verified"
+    by test.suite(["unit"]) and test.verify(["unit"])
+}
