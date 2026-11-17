@@ -491,6 +491,7 @@ fn admit(parent: &Value, file: &str, room: &str) -> mandate_check::doors::Subpro
         ops: &ops,
         lead: mandate_check::stdlib::DataClass::Public,
         room: &room,
+        std_patterns: None,
     })
     .unwrap()
 }
@@ -1436,6 +1437,7 @@ fn an_amendment_that_raises_the_bound_above_asks_is_refused() {
         modules: None,
         workflow: "W",
         envelope: Some(&envelope),
+        std_patterns: None,
     })
     .unwrap();
     assert!(!a.ok);
