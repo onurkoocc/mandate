@@ -7,7 +7,8 @@
 //!   body runs with how each is authorized (`not critical`, `critical`,
 //!   `irreversible`; a connector's write tool is critical), its budget, the
 //!   roles it waits for (a review's `role` and `escalate_to`, an
-//!   escalation's, an approval's, its envelope's owner and approvals) and the
+//!   escalation's, an approval's, its envelope's owner and approvals, and in
+//!   0.7 its own `owner`) and the
 //!   highest data class a model capability of it may receive.
 //! - **An agent**: its capabilities, its budget and that class.
 //! - **A pattern**: its shape, the digest of its type parameters, slots, run
@@ -320,6 +321,11 @@ fn module_signature(
                 let body = value.get("body").cloned().unwrap_or(Value::Null);
                 effects_in(lp, &linked, &body, &mut e.effects);
                 roles_in(&body, &mut e.roles);
+                // 0.7: the workflow's owner, who approves its card and signs
+                // its promotions, as an envelope's owner approves it.
+                if let Some(owner) = value.get("owner").and_then(Value::as_str) {
+                    e.roles.insert(owner.to_owned());
+                }
                 if let Some(env) = value.get("envelope") {
                     if let Some(owner) = env.get("owner").and_then(Value::as_str) {
                         e.roles.insert(owner.to_owned());

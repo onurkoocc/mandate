@@ -306,9 +306,10 @@ struct Home {
 }
 
 /// The members a workflow that applies a pattern may have besides
-/// `apply`: what the application writes, `caps` and `budget`, and what any
+/// `apply`: what the application writes, `caps` and `budget` (and in 0.7
+/// its `owner`, which only a 0.7 schema lets a workflow hold), and what any
 /// definition of 0.6 has.
-const APPLICATION_MEMBERS: [&str; 6] = ["kind", "apply", "caps", "budget", "pub", "doc"];
+const APPLICATION_MEMBERS: [&str; 7] = ["kind", "apply", "caps", "owner", "budget", "pub", "doc"];
 
 /// What [`expand`] is given besides the program.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -940,7 +941,9 @@ fn application<'a>(
         return Err(diags);
     }
     // The workflow, in the order a written one's members are read: kind,
-    // params, returns, caps, body, budget, then pub and doc.
+    // params, returns, caps, body, owner (0.7), budget, then pub and doc.
+    // The owner is the application's: it names the role that approves the
+    // running program's card and signs its promotions.
     let mut wf = Map::new();
     wf.insert("kind", "workflow");
     wf.insert("params", exp_params);
@@ -950,7 +953,7 @@ fn application<'a>(
         w.get("caps").cloned().unwrap_or(Value::Array(Vec::new())),
     );
     wf.insert("body", exp_body);
-    for k in ["budget", "pub", "doc"] {
+    for k in ["owner", "budget", "pub", "doc"] {
         if let Some(x) = w.get(k) {
             wf.insert(k, x.clone());
         }
@@ -969,7 +972,7 @@ fn application<'a>(
         (format!("{base}/returns"), body_origin("returns")),
         (format!("{base}/body"), body_origin("body")),
     ];
-    for k in ["kind", "caps", "budget", "pub", "doc"] {
+    for k in ["kind", "caps", "owner", "budget", "pub", "doc"] {
         records.push((format!("{base}/{k}"), Origin::Same));
     }
     records.extend(subst.origins);

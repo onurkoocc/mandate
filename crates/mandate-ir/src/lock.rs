@@ -52,11 +52,19 @@ pub const LOCK_FORMAT_0_6: &str = "mandate/lock/0.6";
 pub const LOCK_FIELDS_0_6: [&str; 2] = ["libraries", "connectors"];
 
 /// The lock format of language 0.7 (spec/attention.md "Lock 0.7"), which
-/// only the Rust compiler reads: every field of format 0.6, read by its own
-/// schema, `spec/lock-0.7.schema.json`. Like [`LOCK_FORMAT_0_6`] it is not
-/// in [`LOCK_FORMATS`], and it comes after 0.6. A program of 0.7 accepts a
-/// lock of an older format as well; nothing writes this one yet.
+/// only the Rust compiler reads: every field of format 0.6 and
+/// [`LOCK_FIELDS_0_7`], read by its own schema, `spec/lock-0.7.schema.json`.
+/// Like [`LOCK_FORMAT_0_6`] it is not in [`LOCK_FORMATS`], and it comes after
+/// 0.6. A program of 0.7 accepts a lock of an older format as well; nothing
+/// writes this one yet (`mandate add` keeps it, with every field it has).
 pub const LOCK_FORMAT_0_7: &str = "mandate/lock/0.7";
+
+/// The lock fields of format 0.7: `role_classes` (each role's highest data
+/// class) and `promotion` (`"required"`, the ladder). In an older lock each
+/// is refused by the older schema, as any field it does not have is (E0140,
+/// at the lock's root); with a program older than 0.7 each is refused by
+/// the check (E1911), since nothing of such a run would apply it.
+pub const LOCK_FIELDS_0_7: [&str; 2] = ["role_classes", "promotion"];
 
 /// The formats only the Rust compiler reads, oldest first, after every
 /// format of [`LOCK_FORMATS`].
@@ -159,7 +167,8 @@ fn format_text_and_fact(lock: &Value) -> (String, JsValue) {
 /// `members` and `roles` need 0.4 (in that order); `host`, `isolation` and
 /// `egress` need 0.5; a key listed under two members (at the second one, in
 /// the order of `members` and of each member's keys); a role that lists a
-/// member `members` does not have; a tier whose model has no tariff.
+/// member `members` does not have; 0.7, a role `role_classes` gives a class
+/// to that `roles` does not name; a tier whose model has no tariff.
 #[must_use]
 pub fn validate_lock(value: &Value) -> Vec<Diagnostic> {
     let refused = lock_schema_diagnostics(value);
@@ -244,6 +253,30 @@ pub fn validate_lock(value: &Value) -> Vec<Diagnostic> {
                     Some(JsObject::new().with("role", role).with("member", member)),
                 ));
             }
+        }
+    }
+    // 0.7: a class for a role nobody holds would be read by nothing: the
+    // role is one `roles` names. Only a lock of 0.7 has `role_classes` (an
+    // older schema refuses it).
+    let classes = lock.get("role_classes").and_then(Value::as_object);
+    for (role, _) in classes.into_iter().flat_map(|cs| cs.iter()) {
+        // `!own(lock.roles, role)`.
+        if !roles
+            .and_then(|rs| rs.get(role))
+            .is_some_and(Value::is_truthy)
+        {
+            out.push(Diagnostic::new(
+                "E0140",
+                format!(
+                    "Lock field role_classes gives a class to role {role}, which is not in roles."
+                ),
+                Location::path(format!("/role_classes/{role}")),
+                Some(
+                    JsObject::new()
+                        .with("field", "role_classes")
+                        .with("role", role),
+                ),
+            ));
         }
     }
     let models = lock.get("models").and_then(Value::as_object);

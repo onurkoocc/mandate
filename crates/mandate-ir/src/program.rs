@@ -296,7 +296,9 @@ impl<'a> Definition<'a> {
         self.list_given("consumes")
     }
 
-    /// `owner` of a `component`.
+    /// `owner` of a `component`; 0.7, of a `workflow` without an envelope,
+    /// the role that approves its card and signs its promotions
+    /// (spec/attention.md "`owner`").
     #[must_use]
     pub fn owner(self) -> Option<&'a str> {
         self.get("owner").and_then(Value::as_str)

@@ -53,6 +53,7 @@ use crate::caps::{CapOptions, cap_from_call, caps_of};
 use crate::managed_agents::{agent_models, binding_checks};
 use crate::modules::{Linked, Modules};
 use crate::roles::role_sites_of;
+use crate::stdlib::DataClass;
 
 // ---------------------------------------------------------------------------
 // The lock as a view
@@ -155,6 +156,39 @@ impl<'a> Lock<'a> {
     #[must_use]
     pub fn egress(self) -> Option<&'a Value> {
         self.member("egress")
+    }
+
+    /// `role_classes` (0.7): by role, the highest data class it may be shown.
+    #[must_use]
+    pub fn role_classes(self) -> Option<&'a Value> {
+        self.member("role_classes")
+    }
+
+    /// `promotion` (0.7): `"required"`, the promotion ladder.
+    #[must_use]
+    pub fn promotion(self) -> Option<&'a Value> {
+        self.member("promotion")
+    }
+
+    /// Whether the lock asks for the promotion ladder: its `promotion` is
+    /// `"required"` (spec/attention.md "Promotion").
+    #[must_use]
+    pub fn promotion_required(self) -> bool {
+        self.promotion().and_then(Value::as_str) == Some("required")
+    }
+
+    /// The highest data class `role` may be shown (spec/attention.md "Lock
+    /// 0.7"): the entry of `role_classes`, else `internal`, for a lock of any
+    /// format (an older lock has no `role_classes`, and so every role may be
+    /// shown `internal`). What E1909 compares each question's `shown`, each
+    /// escalation's and each report field's class with, and what the
+    /// runtime's mask caps a value at.
+    #[must_use]
+    pub fn role_class(self, role: &str) -> DataClass {
+        own(self.role_classes(), role)
+            .and_then(Value::as_str)
+            .and_then(DataClass::from_name)
+            .unwrap_or(DataClass::Internal)
     }
 
     /// The model locked for `tier`: `own(lock.models, tier)`, when there is
@@ -794,6 +828,51 @@ pub fn sandbox_lock_checks(program: Program<'_>, lock: Lock<'_>) -> Vec<Diagnost
                 ),
             ));
         }
+    }
+    out
+}
+
+/// What a lock of 0.7 adds that only a run of 0.7 reads (spec/attention.md
+/// "Lock 0.7", "Formats and languages"): `role_classes`, which caps what a
+/// run masks for each role, and `promotion`, which asks for the promotion
+/// ladder. A run of a program older than 0.7 masks nothing and climbs no
+/// ladder, so in a lock packaged with one either field would not apply, and
+/// is refused rather than dropped silently (E1911, at the field), as E1803
+/// refuses a lock's `isolation` and `egress` for a program before 0.5. A
+/// lock is read by the schema of its own format, so only a lock of format
+/// 0.7 has either; a program of 0.7 takes a lock of any format.
+#[must_use]
+pub fn attention_lock_checks(program: Program<'_>, lock: Lock<'_>) -> Vec<Diagnostic> {
+    if program
+        .language()
+        .is_some_and(|l| l.at_least(mandate_ir::Language::V0_7))
+    {
+        return Vec::new();
+    }
+    let language = js(program.members().get("language"));
+    let mut out: Vec<Diagnostic> = Vec::new();
+    for field in mandate_ir::LOCK_FIELDS_0_7 {
+        if lock.member(field).is_none() {
+            continue;
+        }
+        let what = if field == "role_classes" {
+            "its runs mask nothing for a role"
+        } else {
+            "its runs climb no promotion ladder"
+        };
+        out.push(Diagnostic::new(
+            "E1911",
+            format!(
+                "Lock field {field} applies to a program of mandate/0.7 or later. This program is {}: {what}, so {field} would not apply. Write the program in mandate/0.7, or take {field} out of the lock.",
+                language.to_js_string()
+            ),
+            Location::path(format!("/{field}")),
+            Some(
+                JsObject::new()
+                    .with("field", field)
+                    .with("language", language.clone()),
+            ),
+        ));
     }
     out
 }

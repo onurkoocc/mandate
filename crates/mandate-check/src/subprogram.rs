@@ -269,7 +269,8 @@ pub fn subprogram_shape(
 /// 0.7, E1705: what a sub-program may show (spec/attention.md "What a
 /// sub-program may show"). A `stage` or a `report` written in the
 /// sub-program's own text is refused, each at its place, with the fact
-/// `construct` (`stage`, `report`): what a person is shown is written by the
+/// `construct` (`stage`, `report`), and so is a workflow's `owner`
+/// (`owner`, at `/defs/<W>/owner`): what a person is shown is written by the
 /// program's author and named on the approved card, never by a lead. A
 /// sub-program whose workflow applies a pattern the envelope's `shapes`
 /// lists has that pattern's stages and reports through its expansion, which
@@ -308,6 +309,19 @@ pub fn subprogram_attention(sub: &Value) -> Vec<Diagnostic> {
                     JsObject::new().with("def", name).with("construct", construct),
                 ));
             }
+        }
+        // An owner approves a card and signs promotions of a program a
+        // person approved; a sub-program runs under its parent's envelope,
+        // whose owner has that place.
+        if Definition::of(d).kind() == Some(DefKind::Workflow) && d.get("owner").is_some() {
+            out.push(diagnostic(
+                "E1705",
+                format!(
+                    "A sub-program cannot name an owner ('{name}'): it runs inside the envelope a person approved, whose owner decides for it (spec/attention.md \"Sub-programs and amendments\")."
+                ),
+                &format!("{at}/owner"),
+                JsObject::new().with("def", name).with("construct", "owner"),
+            ));
         }
     }
     out

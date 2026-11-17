@@ -665,6 +665,11 @@ pub enum GovernanceChangeKind {
     /// an effect of a higher class, a contract for a weaker one, another
     /// reviewer, a higher `max_items` (spec/library.md "Patterns").
     ApplicationChanged,
+    /// 0.7: a workflow's `owner` came, went or names another role: who
+    /// approves its card and signs its promotions changed, as a change of
+    /// an envelope's owner changes who approves the envelope
+    /// (spec/attention.md "`owner`").
+    OwnerChanged,
 }
 
 impl GovernanceChangeKind {
@@ -686,6 +691,7 @@ impl GovernanceChangeKind {
             GovernanceChangeKind::WaiverAdded => "waiver_added",
             GovernanceChangeKind::WaiverRemoved => "waiver_removed",
             GovernanceChangeKind::ApplicationChanged => "application_changed",
+            GovernanceChangeKind::OwnerChanged => "owner_changed",
         }
     }
 }
@@ -871,6 +877,14 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                             GovernanceChangeKind::EnvelopeChanged,
                             format!("{path}/envelope"),
                             format!("+ {name}: envelope"),
+                        );
+                    }
+                    // 0.7: who approves the new workflow's card.
+                    if let Some(owner) = a.get("owner") {
+                        out.gov(
+                            GovernanceChangeKind::OwnerChanged,
+                            format!("{path}/owner"),
+                            format!("+ {name}: owner {}", js_text(Some(owner))),
                         );
                     }
                     // 0.6: what the new workflow's expansion does.
@@ -1462,6 +1476,21 @@ fn workflow_changes(
             GovernanceChangeKind::EnvelopeChanged,
             format!("{path}/envelope"),
             format!("~ {name}: envelope {how}"),
+        );
+    }
+    // 0.7: the owner approves the card and signs the promotions of a
+    // workflow without an envelope, as an envelope's owner approves the
+    // envelope: any change to who it is, theirs to see (spec/attention.md
+    // "`owner`").
+    if b.get("owner") != a.get("owner") {
+        let who = |v: &Value| {
+            v.get("owner")
+                .map_or_else(|| "nobody".to_owned(), |o| js_text(Some(o)))
+        };
+        out.gov(
+            GovernanceChangeKind::OwnerChanged,
+            format!("{path}/owner"),
+            format!("~ {name}.owner: {} → {}", who(b), who(a)),
         );
     }
     if j_or_null(b.get("ensures")) != j_or_null(a.get("ensures")) {

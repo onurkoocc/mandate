@@ -810,6 +810,18 @@ pub const CODES: &[CodeRow] = &[
         explain: "`asks` (0.7) bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: one in an agent's, a skill's, a function's, a delegation's, a map's or a plan's budget is refused at the field, with the definition and the place (`place`: `agent`, `skill`, `fn`, `delegate`, `map`, `plan`, …). A sub-program's questions come out of what is left of the run's `asks`, which its admission reserves (E1706) (spec/attention.md \"`asks`\").",
         reference: Reference::Rust,
     },
+    CodeRow {
+        code: "MDT-E1910",
+        title: "Owner misplaced or missing",
+        explain: "`owner r` (0.7) names the role that approves the card of a workflow without an envelope and signs its promotions. A workflow with an envelope writes none, since its envelope's `owner` has that place: one written beside an envelope is refused at the `owner` (`problem: \"with_envelope\"`). With a lock whose `promotion` is `\"required\"`, every workflow of the program has an `owner` or an envelope, since nobody could promote one with neither: such a workflow is refused at itself (`problem: \"no_owner\"`). Facts: `workflow`, `problem`, and beside an envelope the role the `owner` names (`owner`) (spec/attention.md \"`owner`\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1911",
+        title: "Lock field of a newer language",
+        explain: "`role_classes` and `promotion` in a lock of format 0.7 are read by a run of a program of mandate/0.7 or later: it masks each value above a role's class and climbs the promotion ladder. A run of an older program masks nothing and climbs no ladder, so in a lock packaged with one the field would not apply, and a field that silently does not apply misleads whoever reads the lock, so it is refused, at the field, as E1803 refuses `isolation` and `egress` for a program before 0.5. Write the program in mandate/0.7, or take the field out. Facts: `field`, `language` (spec/attention.md \"Lock 0.7\").",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.
@@ -838,6 +850,8 @@ pub const CODES_0_7: &[&str] = &[
     "MDT-E1906",
     "MDT-E1907",
     "MDT-E1908",
+    "MDT-E1910",
+    "MDT-E1911",
 ];
 
 impl CodeRow {
