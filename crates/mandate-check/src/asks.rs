@@ -607,7 +607,7 @@ impl<'a> Env<'a> {
 struct Walk<'e, 'a> {
     env: &'e Env<'a>,
     /// The functions and contracts walked so far.
-    units: &'e HashMap<Unit<'a>, UnitBound>,
+    units: &'e Units<'a>,
     /// Those being walked: a call of one recurses.
     pending: &'e HashSet<Unit<'a>>,
     found: Found,
@@ -640,11 +640,7 @@ fn role_text(v: &Value) -> String {
 }
 
 impl<'e, 'a> Walk<'e, 'a> {
-    fn new(
-        env: &'e Env<'a>,
-        units: &'e HashMap<Unit<'a>, UnitBound>,
-        pending: &'e HashSet<Unit<'a>>,
-    ) -> Walk<'e, 'a> {
+    fn new(env: &'e Env<'a>, units: &'e Units<'a>, pending: &'e HashSet<Unit<'a>>) -> Walk<'e, 'a> {
         Walk {
             env,
             units,
@@ -683,7 +679,7 @@ impl<'e, 'a> Walk<'e, 'a> {
         on_no_answer: OnNoAnswer,
         only: Option<Only>,
     ) {
-        let Shown::Typed(key) = site.shown;
+        let key = site.shown;
         let (cls, known, typed) = self.env.shown(key);
         let multiplicity = n.times(ctx.times);
         tally.asks.add(site.role.as_deref(), n);
@@ -856,7 +852,7 @@ impl<'e, 'a> Walk<'e, 'a> {
                 self.ask(
                     &mut out,
                     ctx,
-                    Site::new(path, SiteKind::Escalate, role, Shown::Typed(path)),
+                    Site::new(path, SiteKind::Escalate, role, path),
                     Count::ONE,
                     None,
                     OnNoAnswer::Waits,
@@ -868,7 +864,7 @@ impl<'e, 'a> Walk<'e, 'a> {
                     self.ask(
                         &mut out,
                         ctx,
-                        Site::new(path, SiteKind::Pause, None, Shown::Typed(path)),
+                        Site::new(path, SiteKind::Pause, None, path),
                         Count::ONE,
                         None,
                         OnNoAnswer::Waits,
@@ -879,8 +875,7 @@ impl<'e, 'a> Walk<'e, 'a> {
             OpSite::Delegate => {
                 if let Some(s) = e.supervise().filter(|s| s.name() == Some("escalate")) {
                     let role = role_name(named(s.args(), "role"));
-                    let mut site =
-                        Site::new(path, SiteKind::SuperviseEscalate, role, Shown::Typed(path));
+                    let mut site = Site::new(path, SiteKind::SuperviseEscalate, role, path);
                     site.wait = format!("{path}/escalate");
                     self.ask(
                         &mut out,
@@ -933,7 +928,7 @@ impl<'e, 'a> Walk<'e, 'a> {
                 self.ask(
                     out,
                     ctx,
-                    Site::new(path, SiteKind::Ask, role, Shown::Typed(path)),
+                    Site::new(path, SiteKind::Ask, role, path),
                     Count::ONE,
                     None,
                     OnNoAnswer::Waits,
@@ -955,7 +950,7 @@ impl<'e, 'a> Walk<'e, 'a> {
                 self.ask(
                     out,
                     ctx,
-                    Site::new(path, SiteKind::Review, role, Shown::Typed(path)),
+                    Site::new(path, SiteKind::Review, role, path),
                     Count::ONE,
                     deadline,
                     first,
@@ -965,7 +960,7 @@ impl<'e, 'a> Walk<'e, 'a> {
                     self.ask(
                         out,
                         ctx,
-                        Site::new(path, SiteKind::Review, to, Shown::Typed(path)),
+                        Site::new(path, SiteKind::Review, to, path),
                         Count::ONE,
                         deadline,
                         OnNoAnswer::Declined,
@@ -1031,7 +1026,7 @@ impl<'e, 'a> Walk<'e, 'a> {
                         OnNoAnswer::Waits
                     };
                     let deadline_ms = self.constant_ms(deadline);
-                    let mut site = Site::new(path, SiteKind::Verify, role, Shown::Typed(path));
+                    let mut site = Site::new(path, SiteKind::Verify, role, path);
                     site.wait = format!("{path}/contract/{group}/{}{part}/call", ptr_token(cn));
                     self.ask(out, ctx, site, Count::ONE, deadline_ms, on_no_answer, None);
                 }
@@ -1101,7 +1096,7 @@ impl<'e, 'a> Walk<'e, 'a> {
             return;
         }
         if let Some(r) = &role {
-            let mut site = Site::new(path, effect_kind, Some(r.clone()), Shown::Typed(key));
+            let mut site = Site::new(path, effect_kind, Some(r.clone()), key);
             site.wait = auth_wait.clone();
             self.ask(out, ctx, site, Count::ONE, None, OnNoAnswer::Waits, None);
         }
@@ -1115,7 +1110,7 @@ impl<'e, 'a> Walk<'e, 'a> {
                     .to_owned(),
                 None => "owner".to_owned(),
             };
-            let mut site = Site::new(path, SiteKind::Governance, Some(owner), Shown::Typed(key));
+            let mut site = Site::new(path, SiteKind::Governance, Some(owner), key);
             site.wait = if role.is_some() {
                 format!("{path}/governance")
             } else {
@@ -1204,7 +1199,7 @@ impl<'e, 'a> Walk<'e, 'a> {
             self.effect(effect, mem.arg_values(), &mp, Some((m, approver)), ctx, out);
         }
         let approver = e.approver().map(str::to_owned);
-        let mut site = Site::new(path, SiteKind::Changeset, approver, Shown::Typed(path));
+        let mut site = Site::new(path, SiteKind::Changeset, approver, path);
         site.wait = format!("{path}/authorize");
         self.ask(out, ctx, site, Count::ONE, None, OnNoAnswer::Waits, None);
     }
@@ -1218,23 +1213,18 @@ struct EffectKind {
     carries_files: bool,
 }
 
-/// Where a question's `shown` and `known` come from: what the typing
-/// recorded at this key.
-enum Shown<'k> {
-    Typed(&'k str),
-}
-
 /// A question site, before its counts.
 struct Site<'k> {
     path: &'k str,
     wait: String,
     kind: SiteKind,
     role: Option<String>,
-    shown: Shown<'k>,
+    /// The key of what the typing recorded of what it shows ([`Asked`]).
+    shown: &'k str,
 }
 
 impl<'k> Site<'k> {
-    fn new(path: &'k str, kind: SiteKind, role: Option<String>, shown: Shown<'k>) -> Site<'k> {
+    fn new(path: &'k str, kind: SiteKind, role: Option<String>, shown: &'k str) -> Site<'k> {
         Site {
             path,
             wait: path.to_owned(),
@@ -1464,20 +1454,21 @@ fn unit_parts<'a>(defs: &'a Map, unit: Unit<'a>) -> Vec<(String, &'a Value)> {
     }
 }
 
+/// What each function and contract asks, per call.
+type Units<'a> = HashMap<Unit<'a>, UnitBound>;
+
+/// The calls that recur: the unit whose walk met it, the unit it calls,
+/// and where.
+type Cycles<'a> = Vec<(Unit<'a>, Unit<'a>, String)>;
+
 /// The functions and contracts the parts `roots` reach, walked so that each
 /// is walked after what it calls: depth first and without recursion of the
 /// compiler's own, so that a chain of calls as long as a program may write
 /// costs no stack. A call of one still being walked recurses: it is left
 /// for [`bound`] to make unbounded.
-fn walk_units<'a>(
-    env: &Env<'a>,
-    roots: &[&'a Value],
-) -> (
-    HashMap<Unit<'a>, UnitBound>,
-    Vec<(Unit<'a>, Unit<'a>, String)>,
-) {
-    let mut done: HashMap<Unit<'a>, UnitBound> = HashMap::new();
-    let mut cycles: Vec<(Unit<'a>, Unit<'a>, String)> = Vec::new();
+fn walk_units<'a>(env: &Env<'a>, roots: &[&'a Value]) -> (Units<'a>, Cycles<'a>) {
+    let mut done: Units<'a> = HashMap::new();
+    let mut cycles: Cycles<'a> = Vec::new();
     let mut pending: HashSet<Unit<'a>> = HashSet::new();
     let mut start: Vec<Unit<'a>> = Vec::new();
     for r in roots {
@@ -1887,8 +1878,7 @@ pub fn asks_checks(program: Program<'_>, spans: Option<&Spans>) -> Vec<Diagnosti
             out.push(Diagnostic::new(
                 "E1908",
                 format!(
-                    "asks bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: this one is in {}'s {place} budget (spec/attention.md \"asks\").",
-                    name
+                    "asks bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: this one is in {name}'s {place} budget (spec/attention.md \"asks\")."
                 ),
                 Location::path_span(path, span),
                 Some(JsObject::new().with("def", name).with("place", place)),

@@ -1228,6 +1228,51 @@
       "plans": []
     }
   },
+  "fixtures/attention/shapes.mdt": {
+    "Planning": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Planning",
+      "program": "sha256:386031b9d85fa8f2006f5928dfacc3f4bff56cb49577a8b04c886e469de7835d",
+      "stages": [],
+      "reports": [],
+      "questions": [],
+      "effects": [],
+      "totals": {
+        "questions": 0,
+        "by_role": [],
+        "reports": []
+      },
+      "asks": 3,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Planning",
+          "wait": "/defs/Planning/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": [
+        {
+          "path": "/defs/Planning/body/0/value",
+          "kind": "plan",
+          "role": "platform_lead",
+          "shown": "public",
+          "known": "model",
+          "on_no_answer": "refused_to_lead",
+          "stage": null,
+          "multiplicity": 1,
+          "from": "asks_left"
+        }
+      ]
+    }
+  },
   "fixtures/attention/stages.mdt": {
     "MatchAll": {
       "format": "mandate/attention/0.1",
@@ -1366,6 +1411,92 @@
         {
           "path": "/defs/Greet",
           "wait": "/defs/Greet/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/shapes.plans/noted.mdt": {
+    "Rest": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Rest",
+      "program": "sha256:94b259dd2d762393b4ae0cf36b38d5b7a88e55d1f9af7d6cdb437d1b7dceb4b1",
+      "stages": [
+        {
+          "path": "/defs/Rest/body/0",
+          "name": "write",
+          "title": "Write the note",
+          "index": 0
+        },
+        {
+          "path": "/defs/Rest/body/3",
+          "name": "ask",
+          "title": "Ask about it",
+          "index": 1
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Rest/body/2",
+          "role": "accountant",
+          "title": "Note written",
+          "stage": "write",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/Rest/body/4/value",
+          "wait": "/defs/Rest/body/4/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "model",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "ask",
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 1,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Rest",
+          "wait": "/defs/Rest/on/budget_exceeded",
           "kind": "pause",
           "role": null,
           "shown": "public",

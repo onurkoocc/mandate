@@ -109,15 +109,83 @@ fn the_facts_of_every_workflow_of_0_7() {
         }
         file.insert(p.as_str(), row);
     }
+    // 0.7: the facts of a lead's sub-program that applies a listed shape,
+    // as the runtime asks for them at its admission (RL4): the door given
+    // the sub-program as its check reads it (`opened(sub, parent)`), its
+    // parent among the modules and the claim of its check; its paths are in
+    // the program it runs as.
+    let mut subs = 0_usize;
+    for (sub, parent, workflow, number) in SUBPROGRAMS_0_7 {
+        let parent_ir = load(&common::read_source(parent).unwrap(), kind_of(parent))
+            .program
+            .expect("the parent loads");
+        let module = parent_ir.get("module").and_then(Value::as_str).unwrap();
+        let mut view = mandate_check::skeleton(
+            module,
+            f64::from(*number),
+            mandate_check::language_of(&parent_ir),
+        );
+        let own = load(&common::read_source(sub).unwrap(), kind_of(sub))
+            .program
+            .expect("the sub-program loads");
+        if let (Value::Object(v), Some(defs)) = (&mut view, own.get("defs")) {
+            v.insert("defs", defs.clone());
+        }
+        let view = mandate_check::opened(&view, &parent_ir);
+        let envelope = parent_ir
+            .get("defs")
+            .and_then(|d| d.get(*workflow))
+            .and_then(|w| w.get("envelope"))
+            .unwrap();
+        let mut row = JsObject::new();
+        for (name, d) in own.get("defs").and_then(Value::as_object).unwrap().iter() {
+            if d.get("kind").and_then(Value::as_str) != Some("workflow") {
+                continue;
+            }
+            let input: JsValue = JsObject::new()
+                .with("text", stringify(&JsValue::from(&view)).unwrap())
+                .with("kind", "json")
+                .with(
+                    "opts",
+                    JsObject::new()
+                        .with(
+                            "modules",
+                            JsObject::new().with(module, JsValue::from(&parent_ir)),
+                        )
+                        .with(
+                            "claim",
+                            JsObject::new()
+                                .with("envelope", JsValue::from(envelope))
+                                .with("lead", "public"),
+                        ),
+                )
+                .with("workflow", name)
+                .into();
+            let out = (door.call)(&parse(&stringify(&input).unwrap()).unwrap().value).unwrap();
+            assert!(!matches!(out, JsValue::Null), "{sub} {name}: no facts");
+            row.insert(name, out);
+            subs += 1;
+        }
+        file.insert(*sub, row);
+    }
     known.sort();
     known.dedup();
     match pin_0_7(ATTENTION_0_7, &json_text(&JsValue::Object(file))) {
         Ok(line) => println!(
-            "attention facts of 0.7: {} programs, {workflows} workflows, {stages} stages, {reports} reports, fields known as {known:?}; {line}",
+            "attention facts of 0.7: {} programs, {workflows} workflows, {stages} stages, {reports} reports, fields known as {known:?}, {subs} workflows of sub-programs; {line}",
             programs.len()
         ),
         Err(e) => panic!("{e}"),
     }
-    assert!(stages > 0 && reports > 0);
+    assert!(stages > 0 && reports > 0 && subs > 0);
     assert_eq!(known, ["external", "model", "plain", "verified"]);
 }
+
+/// The sub-programs of 0.7 whose facts are pinned with the programs: each
+/// file, its parent, the workflow whose envelope bounds it, and its number.
+const SUBPROGRAMS_0_7: &[(&str, &str, &str, u32)] = &[(
+    "fixtures/attention/shapes.plans/noted.mdt",
+    "fixtures/attention/shapes.mdt",
+    "Planning",
+    1,
+)];

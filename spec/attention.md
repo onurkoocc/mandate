@@ -17,8 +17,8 @@ best-effort basis.
 | Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | the compiler's part implemented (RL1); the runtime's gates not implemented yet |
 | `stage`: grammar, IR, printer; E1901, E1902 | RL2 | not implemented yet |
 | `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | implemented (RL3), but for E1705 for `owner`, which is RL5's |
-| `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | not implemented yet |
-| The facts (`attention_facts`) | RL3, RL4 | the door and its stages and reports implemented (RL3, `mandate/attention/0.1`, `vectors/README.md`); the question sites, the effect sites and the totals not implemented yet (RL4) |
+| `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | implemented (RL4, `crates/mandate-check/src/asks.rs`) |
+| The facts (`attention_facts`) | RL3, RL4 | implemented: the door and its stages and reports (RL3, `mandate/attention/0.1`), the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4); the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
 | `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | not implemented yet |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | not implemented yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |

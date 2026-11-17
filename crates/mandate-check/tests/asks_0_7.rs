@@ -14,6 +14,7 @@
     clippy::expect_used,
     clippy::panic,
     clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
     missing_docs
 )]
 
@@ -601,6 +602,56 @@ fn the_door_gives_the_facts_of_a_sub_program_in_its_running_program() {
             .and_then(Value::as_i64),
         Some(1)
     );
+}
+
+#[test]
+fn raising_asks_is_a_governance_change() {
+    // A patch that lets a run ask more, or without a limit, is one a person
+    // approves, as for every other limit; lowering it is not.
+    let text = read_text(ASKS).unwrap();
+    let before = load(&text, SourceKind::Mdt).program.unwrap();
+    let with = |n: Option<i64>| {
+        let mut p = before.clone();
+        let Value::Object(root) = &mut p else {
+            panic!()
+        };
+        let mut defs = root.get("defs").and_then(Value::as_object).unwrap().clone();
+        let mut w = defs
+            .get("Asking")
+            .and_then(Value::as_object)
+            .unwrap()
+            .clone();
+        let mut b = w.get("budget").and_then(Value::as_object).unwrap().clone();
+        match n {
+            Some(n) => {
+                b.insert("asks", Value::from(mandate_ir::Int::new(n).unwrap()));
+            }
+            None => {
+                b.remove("asks");
+            }
+        }
+        w.insert("budget", Value::Object(b));
+        defs.insert("Asking", Value::Object(w));
+        root.insert("defs", Value::Object(defs));
+        p
+    };
+    let governance = |after: &Value| -> Vec<String> {
+        mandate_check::governance_changes(&before, after, None)
+            .iter()
+            .map(|c| c.text.clone())
+            .collect()
+    };
+    assert_eq!(
+        governance(&with(Some(10))),
+        ["~ Asking.budget.asks: 9 → 10"]
+    );
+    assert_eq!(
+        governance(&with(None)),
+        ["~ Asking.budget.asks: 9 → no limit"]
+    );
+    assert!(governance(&with(Some(8))).is_empty());
+    let changes = mandate_check::budget_changes("W", None, Some(&with(Some(3))));
+    assert!(changes.up.is_empty());
 }
 
 #[test]

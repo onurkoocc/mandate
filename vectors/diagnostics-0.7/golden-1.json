@@ -276,6 +276,50 @@
       "texts": {}
     },
     {
+      "program": "fixtures/attention/shapes.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:386031b9d85fa8f2006f5928dfacc3f4bff56cb49577a8b04c886e469de7835d",
+            "defs": {
+              "Lead": "sha256:cb22b96cd54733fed70a873c8d479ee5a8d0597fe4ed4a30cdbde3b17df86e8b",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329",
+              "Noted": "sha256:ad241ada056f66adab1e47319472c1b7182700343a7134a1637478658d153175",
+              "Planning": "sha256:9d9d211a77dd43d6f0e6125b02a966f84c314e0b28539a6b6c3af6cd0b9ea1de",
+              "Writer": "sha256:77852bc892b8e3f2dd9849ce9b014885cf9481d337c242c4ea0bdfdedd586895",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:386031b9d85fa8f2006f5928dfacc3f4bff56cb49577a8b04c886e469de7835d",
+            "defs": {
+              "Lead": "sha256:cb22b96cd54733fed70a873c8d479ee5a8d0597fe4ed4a30cdbde3b17df86e8b",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329",
+              "Noted": "sha256:ad241ada056f66adab1e47319472c1b7182700343a7134a1637478658d153175",
+              "Planning": "sha256:9d9d211a77dd43d6f0e6125b02a966f84c314e0b28539a6b6c3af6cd0b9ea1de",
+              "Writer": "sha256:77852bc892b8e3f2dd9849ce9b014885cf9481d337c242c4ea0bdfdedd586895",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
       "program": "fixtures/attention/stages.mdt",
       "modules": [
         "fixtures/system/acme.system.mdt",

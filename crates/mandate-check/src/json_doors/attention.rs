@@ -33,9 +33,40 @@ pub(super) const ATTENTION_FACTS: &[&str] = &["text", "kind", "opts", "workflow"
 /// Every `path` is in the running program (the expansion, for a workflow
 /// that applies a pattern), the path of the statement a run runs.
 /// `multiplicity` is an integer or `"unbounded"`, `known` one of `verified`,
-/// `plain`, `model`, `external`, `stage` a stage's name or `null`. A later
-/// slice adds members (the question sites, the effect sites, the totals);
-/// these keep their names and meanings.
+/// `plain`, `model`, `external`, `stage` a stage's name or `null`.
+///
+/// After `reports`, the attention bound ([`crate::asks`], RL4), members
+/// added beside those above, which keep their names and meanings:
+///
+/// ```json
+/// { "questions": [ { "path", "wait", "kind", "role", "shown", "known", "deadline_ms",
+///                    "on_no_answer", "escalates"?, "stage", "multiplicity", "only" } ],
+///   "effects":   [ { "path", "effect", "multiplicity", "counted", "role", "batch", "stage" } ],
+///   "totals":    { "questions", "by_role": [ { "role", "questions" } ], "reports": [ { "role", "reports" } ] },
+///   "asks":      2,
+///   "budget_exceeded": [ <a question, "only": "budget_exceeded"> ],
+///   "plans":     [ { "path", "kind": "plan", "role", "shown", "known", "on_no_answer", "stage",
+///                    "multiplicity", "from": "asks_left" } ] }
+/// ```
+///
+/// `kind` is one of a closed list, one name for each row of the table of
+/// sites ([`crate::asks::SiteKind`]), which the runtime tags every wait it
+/// opens with: `verify`, `ask`, `escalate`, `pause`, `supervise_escalate`,
+/// `effect`, `changeset`, `governance`, `review`, `plan`. `on_no_answer` is
+/// one of `waits`, `unmet`, `escalates` (with `escalates: { to,
+/// deadline_ms }`), `declined`, `refused_to_lead`; `only` is `null`,
+/// `on_escalation`, `governance_file` or `budget_exceeded`. A count is an
+/// integer, or the string `"unbounded"`. `asks` is the declared `asks`, or
+/// `null`.
+///
+/// For a lead's sub-program the runtime passes, at its admission, `text`
+/// the sub-program as its check reads it (`opened(sub, parent)`, as JSON,
+/// `kind: "json"`), `opts.modules` with its parent under the parent's
+/// module (and the modules the parent's check is given), `opts.claim` the
+/// claim its check is given (`{ envelope, lead }`), and `workflow` its one
+/// workflow: the facts are then of the program it runs as (`running` of
+/// `check_subprogram`), with the stages, reports and questions of a listed
+/// shape it applies.
 pub(super) fn attention_facts(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, ATTENTION_FACTS)?;
     let text = a.str("text")?;

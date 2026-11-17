@@ -437,11 +437,13 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         if let Some(view_program) = Program::of(&view) {
             let defs = link_reaching(view_program, Some(&modules), reach.as_ref()).defs;
             // 0.7: what its admission reserves of the run's `asks`.
-            let asks = view_program
+            let v0_7 = view_program
                 .language()
-                .is_some_and(|l| l.at_least(mandate_ir::Language::V0_7))
-                .then(|| typing.bounds.iter().find(|b| b.workflow == workflow))
-                .flatten()
+                .is_some_and(|l| l.at_least(mandate_ir::Language::V0_7));
+            let asks = typing
+                .bounds
+                .iter()
+                .find(|b| v0_7 && b.workflow == workflow)
                 .map(|b| crate::subprogram::AsksClaim {
                     declared: b.declared,
                     total: b.asks.total,

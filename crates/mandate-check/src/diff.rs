@@ -16,8 +16,8 @@
 //! notes at [`semantic_diff`]).
 
 use mandate_ir::{
-    Definition, JsObject, JsValue, Map, Program, Value, budget_amount, canonicalize, ptr_token,
-    sort_utf16, unique_in_order, workflow_bounds,
+    Definition, JsObject, JsValue, Map, Program, Value, budget_amount, budget_asks, canonicalize,
+    ptr_token, sort_utf16, unique_in_order, workflow_bounds,
 };
 
 use crate::caps::{CapVal, show_cap, within};
@@ -398,6 +398,16 @@ pub fn budget_changes(name: &str, before: Option<&Value>, after: Option<&Value>)
             (Some(x), Some(y)) if y < x => out.down.push(line(x, y)),
             (Some(_), Some(_)) => {}
         }
+    }
+    // 0.7: `asks`, the most questions a run may put to people, which no
+    // budget of an earlier program has: raised or lifted, a person
+    // approves, as for every other limit (spec/attention.md "`asks`").
+    match (budget_asks(before), budget_asks(after)) {
+        (Some(x), None) => out.up.push(format!("{name}.budget.asks: {x} → no limit")),
+        (None, Some(y)) => out.down.push(format!("{name}.budget.asks: no limit → {y}")),
+        (Some(x), Some(y)) if y > x => out.up.push(format!("{name}.budget.asks: {x} → {y}")),
+        (Some(x), Some(y)) if y < x => out.down.push(format!("{name}.budget.asks: {x} → {y}")),
+        _ => {}
     }
     out
 }

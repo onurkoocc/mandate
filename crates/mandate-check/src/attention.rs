@@ -57,11 +57,15 @@
 //! the order the author wrote them. Each list is an array, not an object,
 //! because the canonical form (JCS) would sort an object's members: the
 //! order is the order a person reads. A consumer that looks a node up by its
-//! path builds its own index. A later slice adds members beside these (the
-//! question sites, the effect sites, the totals and the declared `asks`)
-//! and changes none of them; the format stays `mandate/attention/0.1`, and
-//! a consumer ignores a member it does not know. The facts are not part of
-//! the IR or of any hash, and computing them changes nothing of `check`.
+//! path builds its own index. The attention bound (RL4, [`crate::asks`])
+//! adds members beside these and changes none of them: `questions`,
+//! `effects`, `totals`, `asks`, `budget_exceeded` and `plans`, whose shape
+//! the door's documentation gives (`crate::json_doors`, `attention_facts`)
+//! and `vectors/README.md` ("The attention facts"); the format stays
+//! `mandate/attention/0.1`, and a consumer ignores a member it does not
+//! know. The facts are not part of the IR or of any hash, and computing
+//! them changes nothing of `check`: the bound is the static checks' own, the
+//! one that gives E1906 and E1907.
 
 use mandate_ir::{
     DefKind, Definition, JsObject, JsValue, Language, Program, ReportField, Stmt, StmtOp, Value,

@@ -7,7 +7,7 @@
     "check_patched": 83,
     "check_subprogram": 6
   },
-  "golden_results": 12,
+  "golden_results": 15,
   "diagnostics": 134,
   "by_code": {
     "MDT-E0101": 2,
