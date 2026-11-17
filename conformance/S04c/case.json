@@ -1,0 +1,44 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S04c",
+  "kind": "compile",
+  "title": "In 0.7 a cycle of calls through a contract of another module (of 0.6, which does not refuse it) is refused where the program reaches it, the verify, with the contract, its module and its path (a mutation: the verify's contract D becomes C).",
+  "spec": [
+    "spec/checks.md#budgets-86",
+    "spec/attention.md#what-each-question-records"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "cyc.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/W/body/1/value/contract",
+      "value": "C"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0502",
+        "path": "/defs/W/body/1/value",
+        "facts": {
+          "cycle": [
+            "C",
+            "again"
+          ],
+          "definition": "C",
+          "module": "example.cyc",
+          "at": "/defs/C"
+        }
+      }
+    ]
+  }
+}

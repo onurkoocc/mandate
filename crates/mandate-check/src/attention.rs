@@ -73,7 +73,7 @@ use mandate_ir::{
 };
 use mandate_syntax::SourceKind;
 
-use crate::asks::{OnNoAnswer, QuestionFact, SiteKind, WorkflowBound};
+use crate::asks::{Detail, OnNoAnswer, QuestionFact, SiteKind, WorkflowBound};
 use crate::check::{CheckOptions, check_shown};
 use crate::reports::known_name;
 use crate::statics::{ShownField, Typing};
@@ -361,16 +361,56 @@ fn question_js(q: &QuestionFact) -> JsValue {
             ),
         );
     }
-    o.with(
-        "stage",
-        q.stage.as_deref().map_or(JsValue::Null, JsValue::from),
-    )
-    .with("multiplicity", q.multiplicity.to_js())
-    .with(
-        "only",
-        q.only.map_or(JsValue::Null, |o| JsValue::from(o.as_str())),
-    )
-    .into()
+    o = o
+        .with(
+            "stage",
+            q.stage.as_deref().map_or(JsValue::Null, JsValue::from),
+        )
+        .with("multiplicity", q.multiplicity.to_js())
+        .with(
+            "only",
+            q.only.map_or(JsValue::Null, |o| JsValue::from(o.as_str())),
+        );
+    // Members a row of its kind alone has: every other row is as it was.
+    match &q.detail {
+        Some(Detail::Verify {
+            contract,
+            criterion,
+        }) => o
+            .with("contract", contract.as_str())
+            .with("criterion", criterion.as_str())
+            .into(),
+        Some(Detail::Review { items, waivable }) => o
+            .with("items", items.to_js())
+            .with(
+                "waivable",
+                waivable
+                    .iter()
+                    .map(|w| JsValue::from(w.as_str()))
+                    .collect::<Vec<_>>(),
+            )
+            .into(),
+        None => o.into(),
+    }
+}
+
+/// `waivable` (each `Contract.criterion`) in the order the running program
+/// writes each contract's criteria, `accept` before `invariant`: the checks
+/// read a canonical program, whose members are sorted.
+fn program_order(waivable: &mut [String], defs: Option<&Value>) {
+    let place = |w: &String| -> usize {
+        let Some((c, n)) = w.split_once('.') else {
+            return usize::MAX;
+        };
+        let Some(d) = defs.and_then(|d| d.get(c)).map(Definition::of) else {
+            return usize::MAX;
+        };
+        d.accept()
+            .chain(d.invariant())
+            .position(|(k, _)| k == n)
+            .unwrap_or(usize::MAX)
+    };
+    waivable.sort_by_key(|w| place(w));
 }
 
 impl AttentionFacts {
@@ -444,6 +484,7 @@ impl AttentionFacts {
             .map(|p| {
                 JsObject::new()
                     .with("path", p.path.as_str())
+                    .with("wait", p.wait.as_str())
                     .with("kind", SiteKind::Plan.as_str())
                     .with("role", role_js(p.role.as_deref()))
                     .with("shown", p.shown.as_str())
@@ -559,11 +600,20 @@ pub fn attention_facts(
             fields,
         });
     });
-    let bound = typing
+    let mut bound = typing
         .bounds
         .iter()
         .find(|b| b.workflow == workflow)?
         .clone();
+    for q in bound
+        .questions
+        .iter_mut()
+        .chain(bound.budget_exceeded.iter_mut())
+    {
+        if let Some(Detail::Review { waivable, .. }) = &mut q.detail {
+            program_order(waivable, running.get("defs"));
+        }
+    }
     Some(AttentionFacts {
         workflow: workflow.to_owned(),
         program: r.hashes.as_ref()?.program.clone(),
