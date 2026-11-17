@@ -157,7 +157,7 @@ interface Scope {
 /** Cancellation shared by the branches of one `par` block (fail_fast, §8.7). */
 interface Siblings {
   failed: boolean;
-  /** The fault that stopped the siblings: what the block fails with. */
+  /** The fault that stopped the siblings: what the block fails with in a run of a package older than 0.7. */
   first?: Fault;
 }
 
@@ -211,6 +211,12 @@ export interface InterpOptions {
   journal: Journal;
   adapters: Adapters;
   program: Program;
+  /**
+   * The run's package holds anything of 0.7 or later (package.ts `isPackage07OrLater`): a par whose branches fail in
+   * one round fails with the first of their faults in the branches' order. A run of an older package keeps the fault
+   * that stopped the others, as it always did.
+   */
+  package07?: boolean;
   packageHash: string;
   runId: string;
   fence: number;
@@ -590,7 +596,10 @@ export class Interpreter {
       // Anything other than a recoverable fault (attention, suspension, cancellation, a crash) wins.
       const hard = failures.find((f) => !(f instanceof Fault) && !(f instanceof SiblingStopped));
       if (hard) throw hard;
-      lastError = siblings.first ?? failures.find((f) => f instanceof Fault) ?? failures[0];
+      // 0.7: the block fails with the fault of its first failed branch in the branches' own order (`settled` is in
+      // it), never with whichever finished first, so that a run and its replay end with the same fault whatever the
+      // timing. An older package's run fails with the fault that stopped the others, as it always did.
+      lastError = this.o.package07 ? (failures.find((f) => f instanceof Fault) ?? failures[0]) : (siblings.first ?? failures.find((f) => f instanceof Fault) ?? failures[0]);
     }
     throw lastError;
   }
