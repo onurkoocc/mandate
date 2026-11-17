@@ -15,10 +15,10 @@ best-effort basis.
 | Part | Slice | State |
 |---|---|---|
 | Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | the compiler's part implemented (RL1); the runtime's gates not implemented yet |
-| `stage`: grammar, IR, printer; E1901, E1902 | RL2 | not implemented yet |
-| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | implemented (RL3), but for E1705 for `owner`, which is RL5's |
-| `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | implemented (RL4, `crates/mandate-check/src/asks.rs`) |
-| The facts (`attention_facts`) | RL3, RL4 | implemented: the door and its stages and reports (RL3, `mandate/attention/0.1`), the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4); the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
+| `stage`: grammar, IR, printer; E1901, E1902 | RL2 | read and checked by the compiler since RL2; the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
+| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3, but for E1705 for `owner`, which is RL5's; the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
+| `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`); the runtime refuses a package that declares `asks` (`unsupported_language`) until its slice B3 |
+| The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
 | `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | not implemented yet |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | not implemented yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
@@ -189,9 +189,10 @@ nobody.
   report do not have the same name (E0121 in text, E1903 in IR).
 - **What a field may be (E1904).** A field's expression is pure: it holds no
   `delegate`, `spawn`, `await`, `infer`, `verify`, `effect`, `changeset`,
-  `map`, `plan`, `escalate`, `pause`, `human.*`, function call or tool call.
-  The one call it may hold is the built-in `len`; any other call, a built-in
-  or not, is E1904. Its type is displayable: `Int`, `Dec`, `Bool`, `Text`, `Money`,
+  `map`, `plan`, `escalate`, `pause`, `human.*`, function call or tool call,
+  and no `try`, which can end the run, and no block, which holds statements
+  rather than a value. The one call it may hold is the built-in `len`; any
+  other call, a built-in or not, is E1904. Its type is displayable: `Int`, `Dec`, `Bool`, `Text`, `Money`,
   `Duration`, `Time`, an enum, an `Option` or a `List` of one of these, or a
   record of these one level deep, each of them optionally inside `Verified`,
   `Inferred` or `Untrusted`.
@@ -215,7 +216,8 @@ nobody.
   field is known no better than the weakest value it is made of, where its
   type does not say so: a text that interpolates a model's output, or a list
   typed by its first item, is a model's output. A count is the exception:
-  what `len` gives is counted by the run, however what it counts is known.
+  what `len` counts does not lower the level, since a count is the run's own,
+  while the class of what is counted stays the count's class.
 
 ### Titles
 
@@ -396,6 +398,7 @@ to each role.
 | A sequence of statements; the branches of `par` | Summed, role by role, and the totals summed |
 | `if`, `switch` | The larger of the branches, role by role, and the larger of the totals |
 | `loop … max_iter n` | The body's, times `n` |
+| The branches of a `par` under `supervise restart_all` | Each branch's, times `RESTART_ALL_ROUNDS` (2, the runtime's rounds of `restart_all`; a test holds the two equal): a branch run again shows its reports and asks its questions again |
 | A loop without `max_iter` that holds a question | ∞ |
 | A map's body | 0: it holds no question (E1708), which the algebra asserts |
 | A function call | The function's, times the multipliers around the call; a recursive call ∞ |
@@ -465,8 +468,9 @@ it). For a workflow it gives, by IR node path:
 - each question site: the facts [above](#what-each-question-records);
 - every effect site: its effect's name, its multiplicity, and whether the
   static total counts it ([above](#effects-and-the-runtimes-configuration));
-- each report: its role, title and stage, and for each field its name, type,
-  data class, level, and multiplicity;
+- each report: its role, title and stage, its multiplicity (how many times
+  one run can show it: one number for the report, not one per field), and
+  for each field its name, type, data class and level;
 - the totals `A`, `T` and `R`, the declared `asks`, and the rows of the
   `on budget_exceeded` handler and of each `plan`.
 

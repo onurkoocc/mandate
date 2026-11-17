@@ -440,31 +440,20 @@ fn the_messages_of_e1906_to_e1908() {
     );
 }
 
-/// The number in `const <name> = <n>;` of the runtime's interpreter.
-fn runtime_constant(source: &str, name: &str) -> Option<u64> {
-    let at = source.find(&format!("const {name} = "))?;
-    let rest = &source[at + name.len() + 9..];
-    rest[..rest.find(';')?].trim().parse().ok()
-}
-
 #[test]
-fn the_constants_of_the_bound_are_the_runtimes() {
+fn a_restarted_branch_and_each_escalation_ask_again() {
+    // The numbers are held to the runtime's in
+    // `crates/mandate-testkit/tests/attention_constants_0_7.rs`. Here, what
+    // makes each of them a question asked again: a par under restart_all
+    // runs its branches a second time under new command ids (`#all1`), and
+    // each escalation of a delegation is a wait of its own attempt
+    // (`<path>#<attempt>/escalate`), so no answer of an earlier one stands
+    // for it.
     let interp = read_text("runtime/src/interp.ts").unwrap();
-    assert_eq!(
-        runtime_constant(&interp, "MAX_ESCALATIONS"),
-        Some(SUPERVISE_ESCALATIONS),
-        "runtime/src/interp.ts MAX_ESCALATIONS"
-    );
-    // A par under restart_all runs its branches twice at most, the second
-    // time under new command ids (`#all1`), so that every wait is asked
-    // again.
-    assert!(
-        interp.contains(&format!(
-            "const rounds = strategy === \"restart_all\" ? {RESTART_ALL_ROUNDS} : 1;"
-        )),
-        "the rounds of restart_all"
-    );
     assert!(interp.contains("`${path}/branches/${bn}#all${round}`"));
+    assert!(interp.contains("const id = attempt ? `${path}#${attempt}` : path;"));
+    assert!(interp.contains("await this.wait(`${id}/escalate`, \"input\""));
+    assert_eq!((RESTART_ALL_ROUNDS, SUPERVISE_ESCALATIONS), (2, 5));
 }
 
 /// The parent of the sub-program cases: its program, and the envelope of
