@@ -510,7 +510,10 @@ fn stmt_cost(
                 None => once,
             })
         }
-        _ => None,
+        // An `on error`'s handler and a test's `run` add nothing here, as
+        // in `blockCost`; a stage of 0.7 costs nothing (spec/attention.md
+        // "`stage`").
+        Some(StmtOp::OnError | StmtOp::Run | StmtOp::Stage) | None => None,
     }
 }
 

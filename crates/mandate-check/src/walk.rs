@@ -145,7 +145,8 @@ fn stmt_work<'a>(s: Stmt<'a>, deep: bool, todo: &mut Vec<Work<'a>>) {
         }
         Some(StmtOp::OnError) => ex(s.then_expr(), &mut out),
         Some(StmtOp::Run) => ex(s.target(), &mut out),
-        None => {}
+        // 0.7: a stage holds no expression.
+        Some(StmtOp::Stage) | None => {}
     }
     todo.extend(out.into_iter().rev());
 }

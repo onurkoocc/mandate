@@ -1,0 +1,29 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1901b",
+  "kind": "compile",
+  "title": "A stage written in a branch of an if in a workflow's body is out of place, though the workflow's body may have stages.",
+  "spec": [
+    "spec/attention.md#stage",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "text": "mandate @ 0.7\n\nmodule example.attention.branch @ 0.1\n\nuse std.{model}\n\ncapability ModelStd = model.infer(tier: standard, max_class: internal)\n\nagent Greeter {\n  role   \"Writes one line of greeting.\"\n  caps   ModelStd\n  budget { time: 2m, steps: 2 }\n  skill greet(name: Text) -> Inferred<Text> ! {Model}\n}\n\nworkflow Greet(name: Text) -> Inferred<Text>\n  caps   ModelStd\n  budget { time: 5m, steps: 4 }\n{\n  if name == \"\" {\n    stage nameless \"Greet someone without a name\"\n    delegate Greeter.greet(\"friend\")\n  }\n  delegate Greeter.greet(name)\n}\n",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1901",
+        "path": "/defs/Greet/body/0/then/0",
+        "facts": {
+          "stage": "nameless",
+          "place": "nested"
+        }
+      }
+    ]
+  }
+}

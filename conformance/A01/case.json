@@ -1,0 +1,30 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "A01",
+  "kind": "compile",
+  "title": "A program of 0.7 with stages checks: a workflow written out in two stages, and a pattern in four applied by a workflow whose expansion has them; a stage changes nothing else the check finds.",
+  "spec": [
+    "spec/attention.md#stage",
+    "spec/attention.md#titles",
+    "spec/attention.md#the-ir"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

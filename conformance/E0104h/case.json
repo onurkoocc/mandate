@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104h",
+  "kind": "compile",
+  "title": "A stage in the IR of a program of 0.6 is refused: the statements of the schemas of 0.1 to 0.6 are closed (a mutation: one statement added).",
+  "spec": [
+    "spec/attention.md#version-gating",
+    "spec/attention.md#the-ir",
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/library/minimal.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Greet/body/0",
+      "value": {
+        "op": "stage",
+        "name": "greet",
+        "title": "Write the greeting"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/Greet/body/0"
+      }
+    ]
+  }
+}

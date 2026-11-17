@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1902a",
+  "kind": "compile",
+  "title": "A body that has stages starts with one: a statement before the first stage is refused (a mutation: the first stage of Greet taken away).",
+  "spec": [
+    "spec/attention.md#stage",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/Greet/body/0"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1902",
+        "path": "/defs/Greet/body/0",
+        "facts": {
+          "workflow": "Greet",
+          "stage": "give",
+          "problem": "before_first"
+        }
+      }
+    ]
+  }
+}

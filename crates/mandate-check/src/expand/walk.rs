@@ -13,7 +13,7 @@
 
 use std::rc::Rc;
 
-use mandate_ir::{Pattern, PatternKind, Value, ptr_token};
+use mandate_ir::{Pattern, PatternKind, StmtOp, Value, ptr_token};
 
 use crate::caps::callee_path;
 
@@ -165,17 +165,17 @@ impl Walk {
         let mut scope = Rc::clone(scope);
         for (i, s) in stmts.iter().enumerate() {
             let at = format!("{path}/{i}");
-            let op = s.get("op").and_then(Value::as_str);
+            let op = s.get("op").and_then(StmtOp::from_value);
             self.node(s, &at, &scope, false);
             let mut bound: Vec<String> = Vec::new();
             match op {
-                Some("let") => {
+                Some(StmtOp::Let) => {
                     if let Some(n) = s.get("name").and_then(Value::as_str) {
                         self.found(Named::Bind(n.to_owned()), sub(&at, "name"), false);
                         bound.push(n.to_owned());
                     }
                 }
-                Some("par") => {
+                Some(StmtOp::Par) => {
                     for (n, _) in s
                         .get("branches")
                         .and_then(Value::as_object)
@@ -186,7 +186,18 @@ impl Walk {
                         bound.push(n.to_owned());
                     }
                 }
-                _ => {}
+                // Bind nothing for what follows; a stage of 0.7 opens no
+                // scope either (spec/attention.md "`stage`").
+                Some(
+                    StmtOp::If
+                    | StmtOp::Loop
+                    | StmtOp::Return
+                    | StmtOp::OnError
+                    | StmtOp::Run
+                    | StmtOp::Expr
+                    | StmtOp::Stage,
+                )
+                | None => {}
             }
             if !bound.is_empty() {
                 scope = Scope::child(&scope, bound);
@@ -521,6 +532,9 @@ impl Walk {
                 }
                 return;
             }
+            // 0.7: a stage names nothing: its name is no reference and its
+            // title is text (spec/attention.md "`stage`").
+            "stage" => return,
             _ => {}
         }
         // Every other statement and expression: its members, a `let`'s type

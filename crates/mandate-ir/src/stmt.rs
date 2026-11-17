@@ -38,10 +38,16 @@ impl<'a> Stmt<'a> {
         self.map.get("op").and_then(StmtOp::from_value)
     }
 
-    /// `name`: of a `let`.
+    /// `name`: of a `let` and of a `stage`.
     #[must_use]
     pub fn name(self) -> Option<&'a str> {
         string(self.map, "name")
+    }
+
+    /// `title` of a `stage` (0.7, spec/attention.md "`stage`").
+    #[must_use]
+    pub fn title(self) -> Option<&'a str> {
+        string(self.map, "title")
     }
 
     /// `type`: of a `let`.

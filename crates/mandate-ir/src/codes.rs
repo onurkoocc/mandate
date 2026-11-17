@@ -755,6 +755,18 @@ pub const CODES: &[CodeRow] = &[
         explain: "Every name an envelope's `shapes` lists (0.6) is a pattern the program defines, or one a `use` list brings from a module the check is given or from a library (`std.patterns` among them). A name that names no definition, or a definition of another kind, is refused at the name; the facts name the workflow, the shape and, when it is one, the kind and the module. A list that is empty or names a pattern twice is refused when it is read (E0104 in IR, E0101 or E0121 in the text) (spec/library.md \"shapes\").",
         reference: Reference::Rust,
     },
+    CodeRow {
+        code: "MDT-E1901",
+        title: "Stage out of place",
+        explain: "A `stage` (0.7) marks the top level of a workflow's body or of a pattern's body, and nothing else: one in a block, a branch, a loop, a map's body, a `par`, a function, an agent's skill, a handler, a test or any other place is refused at the stage. The fact `place` says where it stands (`nested` inside a workflow's or a pattern's body, or the kind of what holds it) (spec/attention.md \"`stage`\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1902",
+        title: "Malformed stage list",
+        explain: "The stages of one body (0.7) have names of their own, the body starts with one when it has any, each is followed by at least one statement, and the statement directly after one is not `on error`. Its title is constant text of 1 to 80 characters (Unicode scalar values, which the schema holds too) with no C0 or C1 control, format character (Cf) or bidirectional control, since a person reads it on an approval card. The fact `problem` says which rule (`duplicate`, `before_first`, `empty`, `on_error`, `title`); a workflow that applies a pattern is held to them on its expansion (spec/attention.md \"`stage`\", \"Titles\").",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.
@@ -772,8 +784,8 @@ pub fn iter() -> impl Iterator<Item = &'static CodeRow> {
 /// added: each is a row of [`CODES`] whose reference is [`Reference::Rust`].
 /// A slice of 0.7 that adds a code lists it here, and the gates of 0.7 hold
 /// it to a conformance case of 0.7 that expects it; a code of the Rust that
-/// is not listed is of 0.6, and is held to a case of 0.6. None yet.
-pub const CODES_0_7: &[&str] = &[];
+/// is not listed is of 0.6, and is held to a case of 0.6.
+pub const CODES_0_7: &[&str] = &["MDT-E1901", "MDT-E1902"];
 
 impl CodeRow {
     /// The language version that added the code, for a row of the Rust

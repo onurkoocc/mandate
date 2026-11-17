@@ -369,10 +369,11 @@ fn every_code_of_0_7_has_a_case_of_0_7() {
         missing.is_empty(),
         "codes of 0.7 with no conformance case of 0.7 that expects them: {missing:?}"
     );
-    // The rule finds a code with no case: one no case of 0.7 expects.
+    // The rule finds a code with no case: one no case of 0.7 expects (a
+    // made-up code), beside two that cases of 0.7 expect.
     assert_eq!(
-        without_case(&["MDT-E1901", "MDT-E0104"], &cases),
-        ["MDT-E1901"]
+        without_case(&["MDT-E1999", "MDT-E1901", "MDT-E0104"], &cases),
+        ["MDT-E1999"]
     );
     let table: BTreeSet<&str> = codes::iter().map(|r| r.code).collect();
     for (id, codes) in &cases {

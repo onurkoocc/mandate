@@ -367,3 +367,25 @@ and the runtime's checker reports it to the lead, as E1705.
 
 A program of 0.1 to 0.5 has no `shapes`: in its text the word is no field of an
 envelope (E0101), and in its IR an unknown member (E0104, case E0104g).
+
+## Attention (0.7)
+
+Specified in [`attention.md`](attention.md#static-rules). E19xx is assigned
+there. As E13xx, these codes are the Rust compiler's alone, in its table of
+codes (`CODES_0_7`), each with hand-written conformance cases of
+`mandate/0.7`, and `mandate check` reports them. The stages are checked after
+the shapes of an envelope, on the program as written (its workflows written
+out, its patterns, and every other place a stage might stand), and again on
+what an expansion writes: a workflow that applies a pattern has the pattern's
+stages, and a diagnostic of its expansion is reported at the application
+(`/defs/<W>/apply`, with `pattern_path` and `expanded_path`). A stage adds no
+cost, node, value, scope, role or authority, so no other code changes for it
+but in its paths: the statements after a stage have a higher index.
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1901 | Stage out of place | E1901, E1901a, E1901b | 0.7 only; a `stage` that is not a top-level statement of a workflow's body (written out) or of a pattern's body: in a block, a branch, a loop, a map's body or another member of a workflow or a pattern (`place: "nested"`), or in a definition of another kind or a test (`place` its kind, or `test`); at the stage. Facts: `stage`, `place` |
+| MDT-E1902 | Malformed stage list | E1902 to E1902f | 0.7 only; of the top level of one body: a stage named like an earlier one (`duplicate`, at its `name`), a statement before the first stage of a body that has stages (`before_first`, at `body/0`), a stage directly before another or at the end (`empty`) and one directly before `on error` (`on_error`), each at the stage, and a title with a control (`rule: "control"`) or a format or bidirectional character (`rule: "format"`, Unicode's category Cf), with `char` its code point, at its `title`. A title's length (1 to 80 code points) is held by the schema of 0.7 (E0104, E0104i and E0104j) and its interpolation by the parser (E0101, E0101h). Facts: `workflow` or `pattern`, `stage`, `problem`, `rule`, `char` |
+
+A program of 0.1 to 0.6 has no `stage`: in its text the line is ordinary names
+(A01b), and in its IR a statement its schema does not have (E0104, E0104h).
