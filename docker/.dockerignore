@@ -1,0 +1,4 @@
+# The build context admits only what the Dockerfile copies.
+*
+!boot.sh
+!run-job.sh
