@@ -1020,7 +1020,9 @@ configuration) and the secrets in its own environment. It opens no database,
 and serves until SIGINT or SIGTERM ([`egress.md`](egress.md#running-the-proxy)).
 
 `--limit` takes `spend`, `tokens`, `steps` and, for a workflow with an
-envelope, `agents`, separated by commas. `approve-envelope` signs a
+envelope, `agents`, separated by commas, and for a package of 0.7 `asks`,
+a whole number of questions ([`attention.md`](attention.md#asks-at-run-time);
+for an earlier package it is refused, `unsupported_limit`). `approve-envelope` signs a
 package's envelope so that its runs may start
 ([`envelope.md`](envelope.md#approving-an-envelope)). `amend` is the
 owner's decision on an amendment a lead asked for: `status` shows who
