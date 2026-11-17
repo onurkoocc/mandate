@@ -594,6 +594,52 @@ fn the_door_gives_the_facts_of_a_sub_program_in_its_running_program() {
 }
 
 #[test]
+fn an_application_is_counted_on_its_expansion_and_reported_at_the_application() {
+    // shapes.mdt's pattern asks its reviewer once; a workflow of the program
+    // that applies it with asks: 0 is above its asks (E1906, at its own
+    // budget), and with the question in a loop the bound cannot count, at
+    // the application (E1907, with the pattern's path).
+    let applied = "\n\nworkflow Applied = Noted(work: Writer.write, reviewer: accountant, topic: \"the rest\")\n  caps   ModelStd\n  budget { steps: 4, asks: 0 }\n";
+    let text = format!("{}{applied}", read_text(SHAPES).unwrap());
+    let r = checked(&text);
+    let d: Vec<String> = r
+        .diagnostics
+        .iter()
+        .map(|d| format!("{} at {}", d.code, d.at.path.as_deref().unwrap_or("")))
+        .collect();
+    assert_eq!(d, ["MDT-E1906 at /defs/Applied/budget/asks"]);
+    let looped = text.replace(
+        "  human.ask(\"Is {w} right?\", role: reviewer)",
+        "  loop until true {\n    human.ask(\"Is {w} right?\", role: reviewer)\n  }\n  w",
+    );
+    let r = checked(&looped);
+    let e1907: Vec<(String, Option<String>)> = r
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "MDT-E1907")
+        .map(|d| {
+            (
+                d.at.path.clone().unwrap_or_default(),
+                d.facts
+                    .as_ref()
+                    .and_then(|f| f.get("pattern_path"))
+                    .and_then(JsValue::as_str)
+                    .map(str::to_owned),
+            )
+        })
+        .collect();
+    assert_eq!(
+        e1907,
+        [(
+            "/defs/Applied/apply".to_owned(),
+            Some("/defs/Noted/body/4/body/0/value".to_owned())
+        )],
+        "{:?}",
+        shown(&r)
+    );
+}
+
+#[test]
 fn raising_asks_is_a_governance_change() {
     // A patch that lets a run ask more, or without a limit, is one a person
     // approves, as for every other limit; lowering it is not.
