@@ -1197,8 +1197,11 @@ impl<'a> Checker<'a> {
             for (n, _) in &graph {
                 visit(n, &mut Vec::new(), &graph, &mut state, &mut through);
             }
-            let contract = |c: &str| self.def_of(c, DefKind::Contract).is_some();
-            through.retain(|(cycle, _)| cycle.iter().any(|c| contract(c)));
+            through.retain(|(cycle, _)| {
+                cycle
+                    .iter()
+                    .any(|c| self.def_of(c, DefKind::Contract).is_some())
+            });
             self.recursion_found(through);
         }
     }
