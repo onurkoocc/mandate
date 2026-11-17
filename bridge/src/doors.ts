@@ -90,6 +90,10 @@ export const RUST_ONLY = {
   libraryUpgrade: { door: "library_upgrade", params: ["library", "range", "lock", "versions", "pinned", "libraries", "config", "now", "accept_governance"] },
   libraryPublish: { door: "library_publish", params: ["source", "published", "libraries", "now"] },
   authoritySignature: { door: "authority_signature", params: ["library", "libraries"] },
+  // Language 0.7's two doors for the runtime's use of connectors (library.ts): which connectors a program can call,
+  // and a tool's schema digest (the runtime's own `schemaDigest`, byte for byte).
+  callableConnectors: { door: "callable_connectors", params: ["program", "modules"] },
+  toolSchemaDigest: { door: "tool_schema_digest", params: ["tool"] },
   // Whether a value is the `libraries` member of a configuration: asked of the door that reads one before it resolves
   // anything, in a request that resolves nothing.
   librariesConfigProblems: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now"] },

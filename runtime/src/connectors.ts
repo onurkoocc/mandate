@@ -21,8 +21,9 @@
 // `structuredContent` is always a JSON object. `Untrusted<T>` and `Receipt<T>` are how the value is known, not part
 // of its shape.
 
-import type { CapVal, ConnectorBinding, ConnectorDef, ConnectorTool, Lock, Program, TypeExpr } from "@mandate/bridge";
+import { toolSchemaDigest, type CapVal, type ConnectorBinding, type ConnectorDef, type ConnectorTool, type Lock, type Program, type TypeExpr } from "@mandate/bridge";
 import type { AuthorizationContext, PreparedAction, RunMode, ToolAdapter, ToolContract, ToolSpec } from "./adapters.js";
+import { CompilerFailure } from "@mandate/bridge/mode";
 import { connectorGateway, type ConnectorGateway } from "./gateway.js";
 import { McpClient, McpDenied, McpError, type ListedTool, type McpFetch } from "./mcp-client.js";
 import { heldSchema, heldTo, isClosed, isRecord, typeSchema, type JsonSchema } from "./schema.js";
@@ -126,6 +127,14 @@ export interface ConnectorsOptions {
   samples?: ToolSamples | undefined;
   /** The longest one request may take, in milliseconds; `CONNECTOR_REQUEST_MS` when absent. */
   requestMs?: number | undefined;
+  /**
+   * Language 0.7 (spec/attention.md "Carry-over from 0.6"): the lock keys (`<module>.<connector>`) of the connectors
+   * the compiler says the package can call (the `callable_connectors` door). Only those are bound; one that is
+   * declared and not in it needs no lock entry and no adapter, and a call of it is refused (`bad_connector`). The
+   * schema digests are the compiler's too (`tool_schema_digest`). Absent for a package of 0.1 to 0.6: every connector
+   * the program declares is bound, with the runtime's own digest.
+   */
+  callable?: ReadonlySet<string> | undefined;
 }
 
 /** The connectors of one package, bound by its lock. Building it reaches no server. */
@@ -133,6 +142,8 @@ export class Connectors {
   private readonly bound = new Map<string, Bound>();
   private readonly tools = new Map<string, BoundTool>();
   private readonly fetches = new Map<string, McpFetch>();
+  /** The connectors a 0.7 program declares that nothing can call (by name): not bound, and refused when met. */
+  private readonly unbound = new Set<string>();
 
   constructor(private readonly o: ConnectorsOptions) {
     const entries = isObj((o.lock.connectors ?? null) as unknown as Value) ? o.lock.connectors! : {};
@@ -140,6 +151,10 @@ export class Connectors {
       const module = (def as unknown as { module?: unknown }).module;
       if (typeof module !== "string" || module === "") throw new Violation("bad_connector", `connector ${name}: the running program does not say which module declares it, so the lock cannot bind it.`);
       const full = `${module}.${name}`;
+      if (o.callable && !o.callable.has(full)) {
+        this.unbound.add(name);
+        continue;
+      }
       const binding = Object.hasOwn(entries, full) ? entries[full] : undefined;
       if (!binding || !isObj(binding as unknown as Value)) throw new Violation("bad_connector", `connector ${full}: the package's lock has no connectors entry for it (MDT-E1407).`);
       // A call leaves only to the URL the lock binds, and that is the URL the connector declares: any other host is one the lock does not bind for it.
@@ -165,8 +180,9 @@ export class Connectors {
     return [...this.bound.values()].map((b) => ({ connector: b.full, host: b.gateway.spec.host, credential: b.gateway.spec.credential })).sort((a, b) => (a.connector < b.connector ? -1 : a.connector > b.connector ? 1 : 0));
   }
 
+  /** Whether the program declares the connector, bound or not: a call of one that is not bound is refused by `tool`. */
   has(connector: string): boolean {
-    return this.bound.has(connector);
+    return this.bound.has(connector) || this.unbound.has(connector);
   }
 
   /** Whether `effect` names a tool of a connector, `<connector>.<tool>`. */
@@ -174,7 +190,7 @@ export class Connectors {
     const dot = effect.indexOf(".");
     if (dot <= 0) return undefined;
     const connector = effect.slice(0, dot);
-    return this.bound.has(connector) ? { connector, tool: effect.slice(dot + 1) } : undefined;
+    return this.has(connector) ? { connector, tool: effect.slice(dot + 1) } : undefined;
   }
 
   /**
@@ -187,6 +203,7 @@ export class Connectors {
     const known = this.tools.get(key);
     if (known) return known;
     const b = this.bound.get(connector);
+    if (!b && this.unbound.has(connector)) throw new Violation("bad_connector", `connector ${connector}: nothing in the package can call it (no capability of a workflow or an agent names it), so the runtime did not bind it and a call of it is refused (spec/attention.md "Carry-over from 0.6").`);
     if (!b) throw new Violation("bad_connector", `No connector '${connector}'.`);
     const def = isObj(b.def.tools as unknown as Value) && Object.hasOwn(b.def.tools, name) ? b.def.tools[name] : undefined;
     if (!def) throw new Violation("bad_connector", `connector ${b.full} declares no tool '${name}': only a declared tool is called.`);
@@ -319,10 +336,25 @@ export class Connectors {
     }
   }
 
+  /**
+   * Language 0.7: the digest of a listed tool is the compiler's (`tool_schema_digest`), never the runtime's own
+   * function. A tool the door refuses (it nests too deep, it is too large) cannot be pinned or matched, so the
+   * connector's binding is refused (`tool_schema_mismatch`): there is no fallback.
+   */
+  private compilerDigest(b: Bound, tool: Omit<ListedTool, "digest">): string {
+    try {
+      return toolSchemaDigest(JSON.stringify(tool));
+    } catch (e) {
+      // The compiler failing (a trap, no memory) is not a refusal of this tool and goes up as itself; its refusal of the request (too large) is.
+      if (e instanceof CompilerFailure && e.kind !== "refused") throw e;
+      throw new Violation("tool_schema_mismatch", `connector ${b.full}: the compiler cannot digest the schema of its listed tool ${tool.name} (${e instanceof Error ? e.message : String(e)}), so it cannot be pinned or matched. Nothing was called.`);
+    }
+  }
+
   /** What a connector's server lists, by tool name; a failure as the violation it is at a start, a resume and a pin. */
   private async list(b: Bound): Promise<Map<string, ListedTool>> {
     try {
-      return new Map((await new McpClient({ url: b.gateway.endpoint, fetch: this.fetchFor(b) }).listTools({ signal: this.within() })).map((t) => [t.name, t]));
+      return new Map((await new McpClient({ url: b.gateway.endpoint, fetch: this.fetchFor(b), ...(this.o.callable ? { digest: (t) => this.compilerDigest(b, t) } : {}) }).listTools({ signal: this.within() })).map((t) => [t.name, t]));
     } catch (e) {
       if (e instanceof McpDenied) throw new Violation("egress_denied", `connector ${b.full}: the egress proxy denied its tools/list (${e.reason}); it was not sent upstream.`);
       if (e instanceof McpError) throw new Violation(e.kind, `connector ${b.full}: ${e.message.slice(e.kind.length + 2)}`);
