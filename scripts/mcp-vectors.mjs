@@ -379,7 +379,16 @@ const CONVERSATIONS = [
       tool(103, "mandate.spec", { section: [[{ toString: {} }]] }),
       tool(104, "mandate.spec", { section: { valueOf: 4 } }),
       tool(105, "mandate.spec", { section: [{ valueOf: 4 }, 4] }),
-    ].map(msg),
+    ]
+      .map(msg)
+      .concat(
+        // A section of any length is its text: the reference's regular expression is too large past 32 765 characters.
+        ...lineWith(tool(106, "mandate.spec", { section: "@@" }), [{ text: '"' }, { repeat: "a", count: 32_765 }, { text: '"' }]),
+        ...lineWith(tool(107, "mandate.spec", { section: "@@" }), [{ text: '"' }, { repeat: "a", count: 32_766 }, { text: '"' }]),
+        ...lineWith(tool(108, "mandate.spec", { section: "@@" }), [{ text: '"' }, { repeat: "😀", count: 16_383 }, { text: '"' }]),
+        ...lineWith(tool(109, "mandate.spec", { section: "@@" }), [{ text: '"4' }, { repeat: " ", count: 40_000 }, { text: 'x"' }]),
+        ...lineWith(tool(110, "mandate.spec", { section: "@@" }), [{ text: '"4' }, { repeat: "(", count: 1_000_000 }, { text: '"' }]),
+      ),
   ],
   [
     "not-tools",

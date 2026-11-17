@@ -738,23 +738,94 @@ fn caps_of_takes_the_lock_and_the_libraries_and_apply_patch_does_not_yet() {
 
 #[test]
 fn a_library_module_of_a_name_the_server_has_takes_its_place_in_a_view() {
-    // The server is started with acme.connectors.types as a module; the
-    // call gives acme.connectors, which holds it too. The check is given
-    // both (the module, and the library); a view is given the library's
-    // after the server's, so that the library's module is the one shown.
+    // A view is given `{ ...modules, ...modulesOf(libraries) }`: a library's
+    // module in the place of a server module of its name. Which one a view
+    // reads can differ only when their texts do, and then the check refuses
+    // the program first (E1605: the library's text is the one its digest
+    // covers), so no view is made of the server's.
+    //
+    // The server is started with modules of the library's two names, its
+    // acme.connectors changed: the mailbox's class is internal, where the
+    // library's is confidential. The call gives the library.
+    let dir = "fixtures/library/acme.connectors";
+    let connectors = read_text(&format!("{dir}/connectors.mdt")).unwrap();
+    let mailbox = "pub connector mailbox = mcp(\"https://mail.acme.example/mcp\")\n  version \"1.4\"\n  class   confidential";
+    assert!(connectors.contains(mailbox));
+    let changed = connectors.replace(mailbox, &mailbox.replace("confidential", "internal"));
     let mut io = invoices_io();
     io.files.insert(
         "types.mdt".to_owned(),
-        read_bytes("fixtures/library/acme.connectors/types.mdt").unwrap(),
+        read_bytes(&format!("{dir}/types.mdt")).unwrap(),
+    );
+    io.files
+        .insert("connectors.mdt".to_owned(), changed.into_bytes());
+    let server = ["mcp", "--module", "types.mdt", "--module", "connectors.mdt"];
+    let authority = r#","view":"authority""#;
+    let input = format!(
+        "{}\n{}\n{}\n",
+        call(1, "mandate.check", &invoices_args("")),
+        call(2, "mandate.project", &invoices_args(authority)),
+        // The server's modules alone, without the library or its lock.
+        call(
+            3,
+            "mandate.project",
+            &invoices_args_with(&format!(r#","lock":null{authority}"#))
+        ),
+    );
+    assert_eq!(
+        serve_io(&mut io, &server, input.as_bytes()),
+        0,
+        "{}",
+        io.err
+    );
+    let with_modules: Vec<String> = io.out.lines().map(str::to_owned).collect();
+    let alone = serve(&[
+        call(1, "mandate.check", &invoices_args("")),
+        call(2, "mandate.project", &invoices_args(authority)),
+    ]);
+    let refused = "Module acme.connectors is given to the check and is a module of a library, with another text: the library's is the one its digest covers.";
+    assert!(
+        with_modules[0].contains(r#""structuredContent":{"ok":false"#),
+        "{}",
+        &with_modules[0][..300]
+    );
+    assert!(with_modules[0].contains("MDT-E1605"));
+    assert!(
+        with_modules[0].contains(refused),
+        "{}",
+        &with_modules[0][..600]
+    );
+    assert_eq!(
+        with_modules[1],
+        tool_error(
+            2,
+            &format!("the program does not check: MDT-E1605 {refused}")
+        )
+    );
+    assert!(alone[0].contains(r#""structuredContent":{"ok":true"#));
+    // The server's modules alone, without the library, check, and the view
+    // of them is the library's view (the mailbox's class is not in it).
+    assert!(
+        with_modules[2].contains(r#""isError":false"#),
+        "{}",
+        &with_modules[2][..300]
+    );
+    assert_eq!(
+        with_modules[2].replacen(r#""id":3"#, r#""id":2"#, 1),
+        alone[1]
+    );
+
+    // A server module of the library's text: the check takes both and checks
+    // as without it, and the view is the view without it.
+    let mut io = invoices_io();
+    io.files.insert(
+        "types.mdt".to_owned(),
+        read_bytes(&format!("{dir}/types.mdt")).unwrap(),
     );
     let input = format!(
         "{}\n{}\n",
         call(1, "mandate.check", &invoices_args("")),
-        call(
-            2,
-            "mandate.project",
-            &invoices_args(r#","view":"authority""#)
-        )
+        call(2, "mandate.project", &invoices_args(authority)),
     );
     assert_eq!(
         serve_io(&mut io, &["mcp", "--module", "types.mdt"], input.as_bytes()),
@@ -762,23 +833,6 @@ fn a_library_module_of_a_name_the_server_has_takes_its_place_in_a_view() {
         "{}",
         io.err
     );
-    let with_module: Vec<String> = io.out.lines().map(str::to_owned).collect();
-    let alone = serve(&[
-        call(1, "mandate.check", &invoices_args("")),
-        call(
-            2,
-            "mandate.project",
-            &invoices_args(r#","view":"authority""#),
-        ),
-    ]);
-    // The check takes the module beside the library that holds it, and
-    // checks as without it; the view, given the library's module in the
-    // place of the server's, is the view without the server's module.
-    assert!(
-        with_module[0].contains(r#""structuredContent":{"ok":true"#),
-        "{}",
-        &with_module[0][..300]
-    );
-    assert_eq!(with_module[0], alone[0]);
-    assert_eq!(with_module[1], alone[1]);
+    let same: Vec<String> = io.out.lines().map(str::to_owned).collect();
+    assert_eq!(same, alone);
 }

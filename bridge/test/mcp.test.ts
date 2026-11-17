@@ -162,9 +162,11 @@ describe("the bridge's MCP server equals the compiler's", () => {
   it("finds a section of the specification by its text, where the compiler's server reads it as a regular expression", () => {
     // The one place the two servers part (vectors/README.md, "mcp/"): the reference compiler's server, frozen,
     // escapes only `.`, so that `(` is an Internal error there and `\d` or `4+` another section.
-    for (const section of ["(", "\\d", "1|x", "4+", "[4]", "4\\b", "4.*", "^4", "$"]) {
+    // And a section of any length: the reference's expression is too large past 32 765 characters.
+    const long = ["a".repeat(32_765), "a".repeat(32_766), "😀".repeat(16_383), `4${" ".repeat(40_000)}x`, `4${"(".repeat(1_000_000)}`];
+    for (const section of ["(", "\\d", "1|x", "4+", "[4]", "4\\b", "4.*", "^4", "$", ...long]) {
       const b = new bridge.McpServer().handle(tool(1, "mandate.spec", { section })) as { result: { isError: boolean; content: Array<{ text: string }> } };
-      expect(b.result.isError, section).toBe(true);
+      expect(b.result.isError, section.slice(0, 20)).toBe(true);
       expect(b.result.content[0]!.text).toBe(`no section ${section} in the core specification`);
     }
     for (const section of ["4", "4.", " 7.2 "]) {

@@ -527,46 +527,58 @@ fn line_of(v: &J) -> String {
 }
 
 thread_local! {
-    /// Whether this thread is serving: a panic on it says nothing.
-    static SERVING: Cell<bool> = const { Cell::new(false) };
+    /// Whether this thread is in a door's call: a panic of it says nothing.
+    static IN_DOOR: Cell<bool> = const { Cell::new(false) };
 }
 
 /// The panic hook is set once for the process.
 static QUIET_HOOK: Once = Once::new();
 
-/// Sets, once for the process, a panic hook that says nothing for a panic
-/// on a thread that is serving, and passes any other to the hook that was
-/// there before. A door that panics is caught (`tools.rs`) and answered
+/// A panic hook.
+type Hook = Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Send + Sync + 'static>;
+
+/// The hook that says nothing for a panic in a door's call ([`InDoor`]) and
+/// passes any other, the server's own code's among them, to `before`.
+fn quiet_hook(before: Hook) -> Hook {
+    Box::new(move |info| {
+        if !IN_DOOR.with(Cell::get) {
+            before(info);
+        }
+    })
+}
+
+/// Sets, once for the process, [`quiet_hook`] over the hook that was there
+/// before. A door that panics is caught (`tools.rs`, `door`) and answered
 /// with the Node server's words for it, a trap; Rust's own hook would write
 /// the panic's message, which may quote what a request held, on standard
 /// error, and read the executable for a backtrace under `RUST_BACKTRACE`.
 /// The Node server never shows what the module writes on its standard
-/// error.
+/// error. A panic of the server's own code is not caught and says where it
+/// is, as before.
 fn quiet_panics() {
-    QUIET_HOOK.call_once(|| {
-        let before = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            if !SERVING.with(Cell::get) {
-                before(info);
-            }
-        }));
-    });
+    QUIET_HOOK.call_once(|| std::panic::set_hook(quiet_hook(std::panic::take_hook())));
 }
 
-/// This thread serving, until it is dropped.
-struct Serving;
+/// This thread in a door's call, until it is dropped.
+pub(crate) struct InDoor;
 
-impl Serving {
-    fn begin() -> Serving {
+impl InDoor {
+    /// The call begins.
+    pub(crate) fn begin() -> InDoor {
         quiet_panics();
-        SERVING.with(|s| s.set(true));
-        Serving
+        InDoor::mark()
+    }
+
+    /// The call begins, whatever hook is set.
+    fn mark() -> InDoor {
+        IN_DOOR.with(|s| s.set(true));
+        InDoor
     }
 }
 
-impl Drop for Serving {
+impl Drop for InDoor {
     fn drop(&mut self) {
-        SERVING.with(|s| s.set(false));
+        IN_DOOR.with(|s| s.set(false));
     }
 }
 
@@ -575,7 +587,7 @@ impl Drop for Serving {
 /// (the reader of standard output went away), 2 when the input cannot be
 /// read; either is said on standard error.
 pub(crate) fn serve(io: &mut dyn Io, modules: JsObject) -> i32 {
-    let _serving = Serving::begin();
+    quiet_panics();
     let mut server = Server::new(modules);
     let mut lines = Lines::new(LIMIT_BYTES);
     let mut buf = vec![0u8; READ_BYTES];
@@ -620,7 +632,7 @@ pub(crate) fn serve(io: &mut dyn Io, modules: JsObject) -> i32 {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::panic, clippy::arithmetic_side_effects)]
 
-    use super::{LIMIT_BYTES, Serving, json, over_limit};
+    use super::{InDoor, LIMIT_BYTES, json, over_limit, quiet_hook};
 
     /// The review's line: a ping whose `params` holds one member of a long
     /// name above 25 arrays of 10 000 zeros, and `more` after it.
@@ -657,25 +669,31 @@ mod tests {
         }
     }
 
-    /// A panic on a thread that serves goes to no hook; one on another
-    /// thread, or after, to the hook that was there before.
+    /// A panic in a door's call goes to no hook; one of the server's own
+    /// code, outside a door's call, goes to the hook that was there before,
+    /// which says where it is. The test puts the hook it found back.
     #[cfg(panic = "unwind")]
     #[test]
-    fn a_panic_while_serving_says_nothing() {
+    fn a_panic_in_a_door_says_nothing_and_any_other_says_where_it_is() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static SAID: AtomicUsize = AtomicUsize::new(0);
-        // Stands for Rust's own hook, which writes on standard error.
-        std::panic::set_hook(Box::new(|_| {
+        let found = std::panic::take_hook();
+        // The recorder stands for Rust's own hook, which writes on standard
+        // error.
+        std::panic::set_hook(quiet_hook(Box::new(|_| {
             SAID.fetch_add(1, Ordering::SeqCst);
-        }));
+        })));
         {
-            let _serving = Serving::begin();
+            let _door = InDoor::mark();
             let caught = std::panic::catch_unwind(|| panic!("what a request held"));
             assert!(caught.is_err());
         }
-        assert_eq!(SAID.load(Ordering::SeqCst), 0);
-        let caught = std::panic::catch_unwind(|| panic!("not serving"));
+        let in_door = SAID.load(Ordering::SeqCst);
+        // While the server serves, but outside a door's call: its own code.
+        let caught = std::panic::catch_unwind(|| panic!("the server's own"));
+        let outside = SAID.load(Ordering::SeqCst);
+        std::panic::set_hook(found);
         assert!(caught.is_err());
-        assert_eq!(SAID.load(Ordering::SeqCst), 1);
+        assert_eq!((in_door, outside), (0, 1));
     }
 }

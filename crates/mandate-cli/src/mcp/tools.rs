@@ -29,7 +29,7 @@ use mandate_doors::MAX_REQUEST_BYTES;
 use mandate_ir::{JsObject, JsValue, stringify};
 
 use super::json::{J, JObj, JStr, NOT_PRIMITIVE, js_truthy, request_value};
-use super::{Fail, Server};
+use super::{Fail, InDoor, Server};
 
 /// The core specification, `spec/core.md`.
 const CORE: &str = include_str!("../../../../spec/core.md");
@@ -131,8 +131,12 @@ fn door(name: &'static str, input: JObj) -> Result<JsValue, Fail> {
             "the Rust compiler failed on {name} (refused): unknown_door: no door is named `{name}`"
         )));
     };
-    // A panic says nothing while the server serves (`mod.rs`, `Serving`).
-    let result = catch_unwind(AssertUnwindSafe(|| (d.call)(&value))).map_err(|_| {
+    // A panic of the door says nothing (`mod.rs`, `InDoor`), and is caught.
+    let caught = {
+        let _quiet = InDoor::begin();
+        catch_unwind(AssertUnwindSafe(|| (d.call)(&value)))
+    };
+    let result = caught.map_err(|_| {
         internal(format!(
             "the Rust compiler failed on {name} (trap): the module panicked"
         ))

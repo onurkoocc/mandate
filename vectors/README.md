@@ -145,11 +145,12 @@ which is so only when the Node server's list is the door's frozen list. What
 0.7) has no Node answer yet and is not here; `tests/mcp.rs` holds it.
 
 The `section` of `mandate.spec` is found as the text it is: the bridge's server
-escapes every character a regular expression gives a meaning to. The reference
-compiler's server, frozen, escapes only `.`, so that there `(` is an Internal
-error and `\d` or `4+` another section; `bridge/test/mcp.test.ts` holds the
-bridge's server to the reference compiler's everywhere else, and to the text
-here.
+compares it with each heading, and makes no regular expression of it. The
+reference compiler's server, frozen, makes one and escapes only `.`, so that
+there `(` is an Internal error, `\d` or `4+` another section, and a section of
+more than 32 765 UTF-16 code units an expression too large; `bridge/test/mcp.test.ts`
+holds the bridge's server to the reference compiler's everywhere else, and to
+the text here.
 
 What the native server does not do as the Node server does, stated:
 
@@ -166,7 +167,11 @@ What the native server does not do as the Node server does, stated:
 - A native stack overflow or allocation failure ends the process, where the
   module's is the Internal error `stack_exhausted` or `out_of_memory`; a panic
   of a door is caught and answered as the module's trap, and says nothing on
-  standard error.
+  standard error (a panic of the server's own code is not caught, and says
+  where it is).
+- No conversation holds a real panic of a door or an answer of more than 64
+  MiB: no call is known that makes either. Their answers are held by the unit
+  tests of `crates/mandate-cli/src/mcp/` alone.
 
 ## authority/
 
