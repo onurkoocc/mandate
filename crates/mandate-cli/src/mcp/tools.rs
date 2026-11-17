@@ -8,12 +8,15 @@
 //! What language 0.7 adds (spec/attention.md "The MCP server"), which the
 //! Node server does not do yet:
 //!
-//! - `check` and `project` take `libraries`, a list of `{ manifest, files }`,
-//!   given to the check as `opts.libraries` (when the list is not empty); the
-//!   check finds the embedded `std.patterns` by itself. A `project` view is
-//!   given the modules of those libraries too, as `mandate view` gives them
-//!   (`modulesOf` of `bridge/src/libraries.ts`), and the `before` program of
-//!   a diff is checked with them;
+//! - `check`, `project` and `caps_of` take `libraries`, a list of `{
+//!   manifest, files }` (each a string `manifest` and an object `files` of
+//!   strings, else the tool error), given to the check as `opts.libraries`
+//!   (when the list is not empty); the check finds the embedded
+//!   `std.patterns` by itself. A view of `project` and the authority view of
+//!   `caps_of` are given the modules of those libraries too, as `mandate
+//!   view` gives them (`modulesOf` of `bridge/src/libraries.ts`), and the
+//!   `before` program of a diff is checked with them; `caps_of` takes `lock`
+//!   too, as `check` does;
 //! - `project` has the view `card`, of the workflow `workflow` (the door
 //!   `card`, as `mandate view --card` asks it), and the view `attention`,
 //!   which has no door yet ([`attention_view`]);
@@ -25,7 +28,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use mandate_doors::MAX_REQUEST_BYTES;
 use mandate_ir::{JsObject, JsValue, stringify};
 
-use super::json::{J, JObj, JStr, js_truthy, request_value};
+use super::json::{J, JObj, JStr, NOT_PRIMITIVE, js_truthy, request_value};
 use super::{Fail, Server};
 
 /// The core specification, `spec/core.md`.
@@ -70,10 +73,46 @@ fn internal(message: impl Into<JStr>) -> Fail {
     Fail::Internal(message.into())
 }
 
+/// The most bytes of answer the bridge's host takes from the module
+/// (`MAX_ANSWER_BYTES` of `bridge/src/wasm/host.ts`): a longer one stops the
+/// call, `output_too_large`.
+pub(crate) const MAX_ANSWER_BYTES: usize = 64 * 1024 * 1024;
+
+/// How many bytes the module would write for this result of a door: the
+/// answer `{"ok":true,"output":…}` or `{"ok":false,"error":…}`
+/// (`mandate_doors::written`), the output written once.
+fn answer_bytes(result: &Result<JsValue, mandate_doors::DoorError>) -> usize {
+    match result {
+        Ok(out) => {
+            let around = mandate_doors::written(Ok(JsValue::Null))
+                .len()
+                .saturating_sub("null".len());
+            let output = if out.is_undefined() {
+                "null".len()
+            } else {
+                stringify(out).map_or("null".len(), |t| t.len())
+            };
+            around.saturating_add(output)
+        }
+        Err(e) => mandate_doors::written(Err(e.clone().into())).len(),
+    }
+}
+
+/// The failure of a door whose answer the host would not take whole, in the
+/// host's words; nothing when it would.
+fn answer_cap(name: &str, result: &Result<JsValue, mandate_doors::DoorError>) -> Result<(), Fail> {
+    if answer_bytes(result) > MAX_ANSWER_BYTES {
+        return Err(internal(format!(
+            "the Rust compiler failed on {name} (output_too_large): the answer passed {MAX_ANSWER_BYTES} bytes and the call was stopped"
+        )));
+    }
+    Ok(())
+}
+
 /// The output of the door `name` for `input`, as the bridge's `rustCall`
 /// gives it; its failures in the bridge's words.
 fn door(name: &'static str, input: JObj) -> Result<JsValue, Fail> {
-    let value = request_value(&J::Obj(input), "", 2).map_err(|problem| {
+    let value = request_value(&J::Obj(input), 2).map_err(|problem| {
         internal(format!(
             "the Rust compiler failed on {name} (unrepresentable): {problem}"
         ))
@@ -92,14 +131,18 @@ fn door(name: &'static str, input: JObj) -> Result<JsValue, Fail> {
             "the Rust compiler failed on {name} (refused): unknown_door: no door is named `{name}`"
         )));
     };
-    match catch_unwind(AssertUnwindSafe(|| (d.call)(&value))) {
-        Ok(Ok(JsValue::Undefined)) => Ok(JsValue::Null),
-        Ok(Ok(out)) => Ok(out),
-        // The function the door stands for throws, with its message.
-        Ok(Err(e)) => Err(internal(e.message)),
-        Err(_) => Err(internal(format!(
+    // A panic says nothing while the server serves (`mod.rs`, `Serving`).
+    let result = catch_unwind(AssertUnwindSafe(|| (d.call)(&value))).map_err(|_| {
+        internal(format!(
             "the Rust compiler failed on {name} (trap): the module panicked"
-        ))),
+        ))
+    })?;
+    answer_cap(name, &result)?;
+    match result {
+        Ok(JsValue::Undefined) => Ok(JsValue::Null),
+        Ok(out) => Ok(out),
+        // The function the door stands for throws, with its message.
+        Err(e) => Err(internal(e.message)),
     }
 }
 
@@ -177,11 +220,25 @@ fn check_options(modules: &JsObject, lock: Option<&J>, libraries: Option<&J>) ->
         .with_some("libraries", libraries.cloned())
 }
 
-/// 0.7: the call's `libraries`, a list, when it has a non-empty one.
+/// Whether `v` is a library as a call gives one: an object with a string
+/// `manifest` and an object `files` whose every member is a string. What
+/// else it holds is the door's to refuse.
+fn is_library(v: &J) -> bool {
+    matches!(v.get("manifest"), Some(J::Str(_)))
+        && match v.get("files") {
+            Some(J::Obj(files)) => files.iter().all(|(_, text)| matches!(text, J::Str(_))),
+            _ => false,
+        }
+}
+
+/// 0.7: the call's `libraries`, a list of libraries, when it has a
+/// non-empty one; the tool error when it is not such a list.
 fn libraries_arg(args: &J) -> Result<Option<&J>, Fail> {
     match args.get("libraries") {
         None => Ok(None),
-        Some(given @ J::Arr(list)) => Ok(if list.is_empty() { None } else { Some(given) }),
+        Some(given @ J::Arr(list)) if list.iter().all(is_library) => {
+            Ok(if list.is_empty() { None } else { Some(given) })
+        }
         Some(_) => Err(tool(
             "libraries must be a list of libraries, each { manifest, files }",
         )),
@@ -194,7 +251,11 @@ fn spec_text(section: Option<&J>) -> Result<String, Fail> {
     let Some(section) = section else {
         return Ok(CORE.to_owned());
     };
-    let want = section.to_js_string().trimmed(true);
+    // `String(section)` throws for an object with an own `toString`.
+    let want = section
+        .to_js_string()
+        .map_err(|_| internal(NOT_PRIMITIVE))?
+        .trimmed(true);
     match want.text() {
         Some("patterns") => return Ok(PATTERNS.to_owned()),
         Some("attention") => return Ok(ATTENTION.to_owned()),
@@ -358,6 +419,17 @@ impl Server {
         Ok(out)
     }
 
+    /// 0.7: what a view is given: the call's modules and, when it gives
+    /// libraries, theirs after them (`{ ...modules, ...modulesOf(libraries)
+    /// }`, so that a library's module of a name the server or the call has
+    /// too is the library's, in the place the name had).
+    fn linked(modules: &JsObject, libraries: Option<&J>) -> Result<JsObject, Fail> {
+        Ok(match libraries {
+            Some(l) => modules.clone().spread(&Server::modules_of(l)?),
+            None => modules.clone(),
+        })
+    }
+
     /// `callTool`: runs one tool; its structured result, or why it cannot.
     pub(super) fn call_tool(&mut self, name: &str, args: &J) -> Result<JsValue, Fail> {
         let modules = self.modules_for(args)?;
@@ -438,13 +510,23 @@ impl Server {
             }
             "mandate.caps_of" => {
                 let source = str_arg(args, "source")?;
-                let p = self.program(source, args.get("kind"), &modules, None, None)?;
+                // 0.7: the lock and the libraries, as `check` and `project`
+                // take them.
+                let libraries = libraries_arg(args)?;
+                let p = self.program(
+                    source,
+                    args.get("kind"),
+                    &modules,
+                    args.get("lock"),
+                    libraries,
+                )?;
                 let who = str_arg(args, "name")?;
+                let linked = Server::linked(&modules, libraries)?;
                 let view = door(
                     "authority",
                     JObj::new()
                         .with("program", J::Js(p.clone()))
-                        .with_some("modules", view_modules(&modules, &[&p])),
+                        .with_some("modules", view_modules(&linked, &[&p])),
                 )?;
                 let remote = JStr::concat(&[who, &JStr::from(" (remote)")]);
                 let delegated = JStr::concat(&[who, &JStr::from(" → ")]);
@@ -486,10 +568,7 @@ impl Server {
         let libraries = libraries_arg(args)?;
         let p = self.program(source, args.get("kind"), modules, lock, libraries)?;
         // 0.7: a view is given the modules of the libraries too.
-        let linked = match libraries {
-            Some(l) => modules.clone().spread(&Server::modules_of(l)?),
-            None => modules.clone(),
-        };
+        let linked = Server::linked(modules, libraries)?;
         let view = args.get("view").and_then(J::as_jstr).and_then(JStr::text);
         match view {
             // 0.6: a workflow that applies a pattern of a module is shown,
@@ -549,5 +628,40 @@ impl Server {
             Some("attention") => Err(attention_view()),
             _ => Err(tool(VIEWS)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic, clippy::arithmetic_side_effects)]
+
+    use mandate_ir::JsValue;
+
+    use super::{Fail, MAX_ANSWER_BYTES, answer_bytes, answer_cap};
+
+    #[test]
+    fn an_answer_the_host_would_not_take_is_its_failure_in_its_words() {
+        // `{"ok":true,"output":` and `}` around the output: 21 bytes.
+        let around = r#"{"ok":true,"output":}"#.len();
+        assert_eq!(answer_bytes(&Ok(JsValue::Null)), around + 4);
+        assert_eq!(answer_bytes(&Ok(JsValue::Undefined)), around + 4);
+        // A string of n characters is written in n + 2 bytes.
+        let fits = MAX_ANSWER_BYTES - around - 2;
+        let at = Ok(JsValue::String("a".repeat(fits)));
+        assert_eq!(answer_bytes(&at), MAX_ANSWER_BYTES);
+        assert!(answer_cap("check", &at).is_ok());
+        let over = Ok(JsValue::String("a".repeat(fits + 1)));
+        match answer_cap("check", &over) {
+            Err(Fail::Internal(m)) => assert_eq!(
+                m.text(),
+                Some(
+                    "the Rust compiler failed on check (output_too_large): the answer passed 67108864 bytes and the call was stopped"
+                )
+            ),
+            other => panic!("{other:?}"),
+        }
+        // A character from U+0080 up counts its UTF-8 bytes.
+        let wide = Ok(JsValue::String("é".repeat(fits / 2 + 1)));
+        assert!(answer_cap("load", &wide).is_err());
     }
 }

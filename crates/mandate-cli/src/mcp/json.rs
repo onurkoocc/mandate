@@ -17,9 +17,16 @@
 //! [`KEPT_DEPTH`] levels: a value one level deeper is kept as [`J::Deep`]
 //! (it is past the server's nesting limit, so the message is refused for
 //! it), and what is deeper still is read and dropped. The tree is then at
-//! most one level deeper than the limit, so walking and dropping it are
-//! bounded too.
+//! most one level deeper than the limit, so the recursion of a walk over it
+//! is bounded too.
+//!
+//! The work is bounded as well, by the length of the line: a walk over the
+//! tree (the server's limits, [`request_value`]) keeps the steps it took
+//! ([`Step`]) and makes a JSON Pointer of them ([`pointer`]) only for the
+//! one value it reports, so that a long name above many values is not
+//! written out again for each of them.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
 
 use mandate_ir::{Int, JsValue, Map, Value, is_safe_integer, write_json_string, write_number};
@@ -239,9 +246,21 @@ impl J {
         )
     }
 
-    /// `String(v)`.
-    pub(crate) fn to_js_string(&self) -> JStr {
-        match self {
+    /// `String(v)`, or the `TypeError` it throws ([`NOT_PRIMITIVE`]).
+    ///
+    /// For an object `String` is `ToPrimitive` with the hint string, which
+    /// calls the first of `toString` and `valueOf` that is callable and
+    /// gives a primitive. An object `JSON.parse` made has the inherited
+    /// ones, unless it has an own member of the name, which is a JSON value
+    /// and so not callable: an own `toString` leaves `valueOf`, whose
+    /// inherited one gives the object itself, not a primitive, and an own
+    /// `valueOf` is not callable either. So an object with an own
+    /// `toString` throws, whatever else it has, and any other object is
+    /// `[object Object]`. An array is `join(",")` of its elements (`null`
+    /// empty), each through `String` again, so one such object in it, at any
+    /// depth, throws too.
+    pub(crate) fn to_js_string(&self) -> Result<JStr, NotPrimitive> {
+        Ok(match self {
             J::Null => JStr::from("null"),
             J::Bool(b) => JStr::from(if *b { "true" } else { "false" }),
             J::Num(x) => {
@@ -258,15 +277,46 @@ impl J {
                         parts.push(comma.clone());
                     }
                     if !matches!(item, J::Null | J::Js(JsValue::Null | JsValue::Undefined)) {
-                        parts.push(item.to_js_string());
+                        parts.push(item.to_js_string()?);
                     }
                 }
                 let refs: Vec<&JStr> = parts.iter().collect();
                 JStr::concat(&refs)
             }
+            J::Obj(o) if o.get("toString").is_some() => return Err(NotPrimitive),
             J::Obj(_) | J::Deep => JStr::from("[object Object]"),
-            J::Js(v) => JStr::Text(v.to_js_string()),
+            J::Js(v) => JStr::Text(js_value_string(v)?),
+        })
+    }
+}
+
+/// The message of the `TypeError` that `String(v)` throws for an object
+/// with an own `toString` member, as V8 words it.
+pub(crate) const NOT_PRIMITIVE: &str = "Cannot convert object to primitive value";
+
+/// `String(v)` threw: [`NOT_PRIMITIVE`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct NotPrimitive;
+
+/// [`J::to_js_string`] of a value a door gave.
+fn js_value_string(v: &JsValue) -> Result<String, NotPrimitive> {
+    match v {
+        JsValue::Object(o) if o.get("toString").is_some_and(|t| !t.is_undefined()) => {
+            Err(NotPrimitive)
         }
+        JsValue::Array(items) => {
+            let mut out = String::new();
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                if !matches!(item, JsValue::Null | JsValue::Undefined) {
+                    out.push_str(&js_value_string(item)?);
+                }
+            }
+            Ok(out)
+        }
+        other => Ok(other.to_js_string()),
     }
 }
 
@@ -283,8 +333,8 @@ pub(crate) fn js_truthy(v: &JsValue) -> bool {
 }
 
 /// `String(v)` of an optional value: `undefined` when there is none.
-pub(crate) fn js_string_of(v: Option<&J>) -> JStr {
-    v.map_or_else(|| JStr::from("undefined"), J::to_js_string)
+pub(crate) fn js_string_of(v: Option<&J>) -> Result<JStr, NotPrimitive> {
+    v.map_or_else(|| Ok(JStr::from("undefined")), J::to_js_string)
 }
 
 /// The name of a member: an array index, or any other name.
@@ -738,21 +788,73 @@ fn write(out: &mut String, v: &J) {
 const REQUEST_DEPTH: usize = mandate_doors::MAX_REQUEST_DEPTH;
 
 /// `where` of the bridge's `writeRequest`: the place in the input.
-fn place_of(at: &str) -> String {
-    if at.is_empty() {
-        "the input".to_owned()
-    } else {
-        format!("the input at {at}")
+fn place_of(path: &[Step<'_>]) -> String {
+    if path.is_empty() {
+        return "the input".to_owned();
     }
+    // A request's names are well-formed: one that is not is refused before
+    // a step is made of it.
+    let at = match pointer(path) {
+        JStr::Text(s) => s,
+        JStr::Units(u) => String::from_utf16_lossy(&u),
+    };
+    format!("the input at {at}")
 }
 
-/// A JSON Pointer reference token (RFC 6901): `~` as `~0`, `/` as `~1`.
-pub(crate) fn pointer_token(name: &str) -> String {
-    name.replace('~', "~0").replace('/', "~1")
+/// One step of the way to a value from the value that holds it all: an
+/// element's index, or a member's name. A walk keeps its steps and makes a
+/// JSON Pointer of them ([`pointer`]) only when it has something to say
+/// about the value it is at, so that a walk costs as much as the value is
+/// long, whatever its names are.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Step<'a> {
+    /// An element's index.
+    Index(usize),
+    /// A member's name, as the line gave it.
+    Name(Key<'a>),
+    /// A member's name, of a value a door gave.
+    Text(&'a str),
+}
+
+thread_local! {
+    /// How many JSON Pointers [`pointer`] has made on this thread.
+    static POINTERS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// How many JSON Pointers [`pointer`] has made on this thread: what the
+/// tests read to hold that a walk makes none on a value it accepts.
+#[cfg(test)]
+pub(crate) fn pointers_made() -> usize {
+    POINTERS.with(Cell::get)
+}
+
+/// The JSON Pointer (RFC 6901) of the value `path` leads to: each step
+/// after a `/`, `~` written `~0` and `/` written `~1` (`ptrToken`).
+pub(crate) fn pointer(path: &[Step<'_>]) -> JStr {
+    POINTERS.with(|c| c.set(c.get().saturating_add(1)));
+    let mut units: Vec<u16> = Vec::new();
+    for step in path {
+        units.push(0x2f);
+        let token: Vec<u16> = match step {
+            Step::Index(i) => i.to_string().encode_utf16().collect(),
+            Step::Name(Key::Index(n)) => n.to_string().encode_utf16().collect(),
+            Step::Name(Key::Name(JStr::Text(s))) => s.encode_utf16().collect(),
+            Step::Text(s) => s.encode_utf16().collect(),
+            Step::Name(Key::Name(JStr::Units(u))) => u.clone(),
+        };
+        for unit in token {
+            match unit {
+                0x7e => units.extend([0x7e, 0x30]),
+                0x2f => units.extend([0x7e, 0x31]),
+                u => units.push(u),
+            }
+        }
+    }
+    JStr::from_units(units)
 }
 
 /// A number as a request carries it: a safe integer that is not `-0`.
-fn request_number(x: f64, at: &str) -> Result<Value, String> {
+fn request_number(x: f64, path: &[Step<'_>]) -> Result<Value, String> {
     let negative_zero = x.to_bits() == (-0.0f64).to_bits();
     // A safe integer is exact as an i64.
     let int = if is_safe_integer(x) && !negative_zero {
@@ -770,7 +872,7 @@ fn request_number(x: f64, at: &str) -> Result<Value, String> {
         };
         format!(
             "{} is the number {shown}, and a request holds integers within ±(2^53−1) only",
-            place_of(at)
+            place_of(path)
         )
     })
 }
@@ -779,32 +881,36 @@ fn request_number(x: f64, at: &str) -> Result<Value, String> {
 /// writes it and the door's reader reads it back; or what in it a request
 /// cannot carry, with where it is (the bridge's words), for the first such
 /// thing in the order the bridge walks the value. `depth` is the level of
-/// `v` in the request (its input is at 2).
-pub(crate) fn request_value(v: &J, at: &str, depth: usize) -> Result<Value, String> {
+/// `v` in the request (its input is at 2). The place is made only for that
+/// message: the walk keeps its steps ([`Step`]).
+pub(crate) fn request_value(v: &J, depth: usize) -> Result<Value, String> {
+    walk(v, &mut Vec::new(), depth)
+}
+
+fn walk<'a>(v: &'a J, path: &mut Vec<Step<'a>>, depth: usize) -> Result<Value, String> {
     match v {
         J::Null | J::Deep => Ok(Value::Null),
         J::Bool(b) => Ok(Value::Bool(*b)),
-        J::Num(x) => request_number(*x, at),
+        J::Num(x) => request_number(*x, path),
         J::Str(JStr::Text(s)) => Ok(Value::String(s.clone())),
         J::Str(JStr::Units(_)) => Err(format!(
             "{} is a string with a lone surrogate, which the request reader refuses",
-            place_of(at)
+            place_of(path)
         )),
-        J::Js(v) => request_js(v, at, depth),
+        J::Js(v) => walk_js(v, path, depth),
         J::Arr(items) => {
-            too_deep(at, depth)?;
+            too_deep(path, depth)?;
             let mut out = Vec::with_capacity(items.len());
             for (i, item) in items.iter().enumerate() {
-                out.push(request_value(
-                    item,
-                    &format!("{at}/{i}"),
-                    depth.saturating_add(1),
-                )?);
+                path.push(Step::Index(i));
+                let value = walk(item, path, depth.saturating_add(1));
+                path.pop();
+                out.push(value?);
             }
             Ok(Value::Array(out))
         }
         J::Obj(o) => {
-            too_deep(at, depth)?;
+            too_deep(path, depth)?;
             let mut out = Map::new();
             for (k, item) in o.iter() {
                 let name = match k {
@@ -813,71 +919,73 @@ pub(crate) fn request_value(v: &J, at: &str, depth: usize) -> Result<Value, Stri
                     Key::Name(JStr::Units(_)) => {
                         return Err(format!(
                             "{} has a member name with a lone surrogate",
-                            place_of(at)
+                            place_of(path)
                         ));
                     }
                 };
                 if unwritten(item) {
                     continue;
                 }
-                let inner = format!("{at}/{}", pointer_token(&name));
-                let value = request_value(item, &inner, depth.saturating_add(1))?;
-                out.insert(name, value);
+                path.push(Step::Name(k));
+                let value = walk(item, path, depth.saturating_add(1));
+                path.pop();
+                out.insert(name, value?);
             }
             Ok(Value::Object(out))
         }
     }
 }
 
-fn too_deep(at: &str, depth: usize) -> Result<(), String> {
+fn too_deep(path: &[Step<'_>], depth: usize) -> Result<(), String> {
     if depth > REQUEST_DEPTH {
         return Err(format!(
             "{} is nested deeper than the {REQUEST_DEPTH} levels a request may have",
-            place_of(at)
+            place_of(path)
         ));
     }
     Ok(())
 }
 
-/// [`request_value`] of a value a door gave, as the bridge holds it after
-/// reading the door's answer: `undefined` was written as `null` in an
-/// array and left out of an object, a number that is not finite as `null`,
-/// `-0` as `0`.
-fn request_js(v: &JsValue, at: &str, depth: usize) -> Result<Value, String> {
+/// [`walk`] of a value a door gave, as the bridge holds it after reading
+/// the door's answer: `undefined` was written as `null` in an array and
+/// left out of an object, a number that is not finite as `null`, `-0` as
+/// `0`.
+fn walk_js<'a>(v: &'a JsValue, path: &mut Vec<Step<'a>>, depth: usize) -> Result<Value, String> {
     match v {
         JsValue::Undefined | JsValue::Null => Ok(Value::Null),
         JsValue::Bool(b) => Ok(Value::Bool(*b)),
         JsValue::Number(x) if !x.is_finite() => Ok(Value::Null),
         JsValue::Number(x) if *x == 0.0 => Ok(Value::Number(Int::saturating(0))),
-        JsValue::Number(x) => request_number(*x, at),
+        JsValue::Number(x) => request_number(*x, path),
         JsValue::String(s) => Ok(Value::String(s.clone())),
         JsValue::Array(items) => {
-            too_deep(at, depth)?;
+            too_deep(path, depth)?;
             let mut out = Vec::with_capacity(items.len());
             for (i, item) in items.iter().enumerate() {
-                out.push(request_js(
-                    item,
-                    &format!("{at}/{i}"),
-                    depth.saturating_add(1),
-                )?);
+                path.push(Step::Index(i));
+                let value = walk_js(item, path, depth.saturating_add(1));
+                path.pop();
+                out.push(value?);
             }
             Ok(Value::Array(out))
         }
         JsValue::Object(o) => {
-            too_deep(at, depth)?;
+            too_deep(path, depth)?;
             let mut out = Map::new();
             for (k, item) in o.iter() {
                 if item.is_undefined() {
                     continue;
                 }
-                let inner = format!("{at}/{}", pointer_token(k));
-                out.insert(k, request_js(item, &inner, depth.saturating_add(1))?);
+                path.push(Step::Text(k));
+                let value = walk_js(item, path, depth.saturating_add(1));
+                path.pop();
+                out.insert(k, value?);
             }
             Ok(Value::Object(out))
         }
         JsValue::Json(text) => mandate_ir::parse(text.as_str())
             .map(|p| p.value)
-            .map_err(|_| format!("{} is a value a request does not carry", place_of(at))),
+            .map_err(|_| format!("{} is a value a request does not carry", place_of(path))),
     }
 }
 
@@ -885,7 +993,9 @@ fn request_js(v: &JsValue, at: &str, depth: usize) -> Result<Value, String> {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::panic, clippy::arithmetic_side_effects)]
 
-    use super::{J, JStr, KEPT_DEPTH, parse, stringify};
+    use super::{
+        J, JStr, KEPT_DEPTH, NotPrimitive, parse, pointers_made, request_value, stringify,
+    };
 
     fn round(text: &str) -> String {
         stringify(&parse(text).unwrap_or_else(|| panic!("{text}")))
@@ -949,6 +1059,64 @@ mod tests {
         let low = JStr::from_units(vec![0xde00]);
         assert_eq!(JStr::concat(&[&lone, &low]), JStr::from("😀"));
         let arr = parse(r#"[null,"a",[1,[2,null]],{}]"#).unwrap();
-        assert_eq!(arr.to_js_string(), JStr::from(",a,1,2,,[object Object]"));
+        assert_eq!(
+            arr.to_js_string(),
+            Ok(JStr::from(",a,1,2,,[object Object]"))
+        );
+    }
+
+    #[test]
+    fn string_of_an_object_with_its_own_to_string_throws_as_javascript_does() {
+        // As Node gives `String(JSON.parse(text))`, each checked there.
+        for (text, shown) in [
+            (r#"{"toString":1}"#, None),
+            (r#"{"toString":"x"}"#, None),
+            (r#"{"toString":null}"#, None),
+            (r#"{"toString":1,"valueOf":2}"#, None),
+            (r#"{"valueOf":1,"toString":2}"#, None),
+            (r#"[{"toString":null}]"#, None),
+            (r#"[[{"toString":{}}]]"#, None),
+            (r#"{"valueOf":1}"#, Some("[object Object]")),
+            (r#"{"__proto__":{"toString":1}}"#, Some("[object Object]")),
+            (r#"[{"valueOf":1}]"#, Some("[object Object]")),
+            (r#"[1,{"a":1}]"#, Some("1,[object Object]")),
+            ("{}", Some("[object Object]")),
+        ] {
+            let got = parse(text).unwrap().to_js_string();
+            assert_eq!(got, shown.map(JStr::from).ok_or(NotPrimitive), "{text}");
+        }
+    }
+
+    /// The review's line: a member of a 500 KiB name above 25 arrays of
+    /// 10 000 zeros, as the `lock` of a request's input.
+    fn wide(name: &str, last: &str) -> J {
+        let arrays = vec![format!("[{}]", vec!["0"; 10_000].join(",")); 25].join(",");
+        parse(&format!(r#"{{"lock":{{"{name}":[{arrays}{last}]}}}}"#)).unwrap()
+    }
+
+    #[test]
+    fn a_request_walk_makes_a_pointer_only_for_the_value_it_refuses() {
+        let name = "n".repeat(500 * 1024);
+        let before = pointers_made();
+        assert!(request_value(&wide(&name, ""), 2).is_ok());
+        assert_eq!(pointers_made(), before, "none for a value that is carried");
+        let refused = request_value(&wide(&name, ",[1.5]"), 2).unwrap_err();
+        assert_eq!(pointers_made(), before + 1, "one for the one that is not");
+        assert!(
+            refused.starts_with("the input at /lock/nnnn"),
+            "{}",
+            &refused[..40]
+        );
+        assert!(refused.ends_with(
+            "n/25/0 is the number 1.5, and a request holds integers within ±(2^53−1) only"
+        ));
+        // A name with a lone surrogate is refused before any step of it.
+        let lone = format!("\\ud800{name}");
+        let refused = request_value(&wide(&lone, ""), 2).unwrap_err();
+        assert_eq!(
+            refused,
+            "the input at /lock has a member name with a lone surrogate"
+        );
+        assert_eq!(pointers_made(), before + 2);
     }
 }

@@ -142,7 +142,9 @@ function specText(section: unknown): string {
   if (section === undefined) return text;
   const want = String(section).trim();
   const lines = text.split("\n");
-  const start = lines.findIndex((l) => new RegExp(`^#{2,3} ${want.replace(/\./g, "\\.")}\\.? `).test(l));
+  // The section is matched as the text it is: every character a regular expression gives a meaning to is escaped,
+  // so that `(` is no error and `4+` or `\d` no other section (the reference compiler's server escapes only `.`).
+  const start = lines.findIndex((l) => new RegExp(`^#{2,3} ${want.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}\\.? `).test(l));
   if (start < 0) throw new ToolError(`no section ${want} in the core specification`);
   const depth = lines[start]!.match(/^#+/)![0].length;
   const end = lines.findIndex((l, i) => i > start && /^#+ /.test(l) && l.match(/^#+/)![0].length <= depth);

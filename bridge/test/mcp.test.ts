@@ -159,6 +159,21 @@ describe("the bridge's MCP server equals the compiler's", () => {
     }
   });
 
+  it("finds a section of the specification by its text, where the compiler's server reads it as a regular expression", () => {
+    // The one place the two servers part (vectors/README.md, "mcp/"): the reference compiler's server, frozen,
+    // escapes only `.`, so that `(` is an Internal error there and `\d` or `4+` another section.
+    for (const section of ["(", "\\d", "1|x", "4+", "[4]", "4\\b", "4.*", "^4", "$"]) {
+      const b = new bridge.McpServer().handle(tool(1, "mandate.spec", { section })) as { result: { isError: boolean; content: Array<{ text: string }> } };
+      expect(b.result.isError, section).toBe(true);
+      expect(b.result.content[0]!.text).toBe(`no section ${section} in the core specification`);
+    }
+    for (const section of ["4", "4.", " 7.2 "]) {
+      const b = new bridge.McpServer().handle(tool(2, "mandate.spec", { section })) as { result: { isError: boolean } };
+      expect(b.result.isError, section).toBe(false);
+      expect(same(b)).toEqual(same(new compiler.McpServer().handle(tool(2, "mandate.spec", { section }))));
+    }
+  });
+
   it("calls the tools directly the same way, and refuses the same arguments", () => {
     for (const msg of SINGLE) {
       const params = (msg as { params?: { name?: unknown; arguments?: unknown } } | null)?.params;

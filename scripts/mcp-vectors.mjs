@@ -59,6 +59,31 @@ const SHARED_06 = read("fixtures/library/shared.mdt");
 const SUMMARIZE_06 = read("fixtures/library/summarize.mdt");
 const MINIMAL_07 = read("fixtures/attention/minimal.mdt");
 const STAGES_07 = read("fixtures/attention/stages.mdt");
+/** The system model at another version: a module of the name of the server's own. */
+const SYSTEM_02 = SYSTEM.replace("module acme.system @ 0.1", "module acme.system @ 0.2");
+/** A program with a remote agent, whose rows the authority view names `X (remote)`, and a delegation to it. */
+const REMOTE = `mandate @ 0.5
+
+module example.remote @ 0.1
+
+use std.{net}
+
+agent remote Billing = a2a("https://billing.partner.example/.well-known/agent-card.json")
+  version  "1.0"
+  require  signed_card(issuer: "partner.example")
+  trust    untrusted
+  caps     net.https(hosts: ["billing.partner.example"])
+  skills {
+    quote(order: Text) -> Text
+  }
+
+workflow Refund(order: Text) -> Untrusted<Text>
+  caps   net.https(hosts: ["billing.partner.example"])
+  budget { time: 5m, steps: 4 }
+{
+  delegate Billing.quote(order)
+}
+`;
 
 const FIXBUG_IR = JSON.stringify(check(FIXBUG, "mdt").program);
 const FIXBUG_BASE = check(FIXBUG, "mdt").hashes.program;
@@ -83,6 +108,19 @@ function lineWith(v, parts) {
 
 /** An array of `n` zeros, as parts. */
 const zeros = (n) => [{ text: "[" }, { repeat: "0,", count: n - 1 }, { text: "0]" }];
+
+/** One array of 10 000 zeros. */
+const TEN_THOUSAND = `[${new Array(10_000).fill(0).join(",")}]`;
+
+/** `head`, then a member whose name is `prefix` and 500 KiB of `n`, holding 25 arrays of 10 000 zeros, then `tail`. */
+const longName = (head, prefix, tail) => [
+  { text: `${head}"${prefix}` },
+  { repeat: "n", count: 500 * 1024 },
+  { text: '":[' },
+  { repeat: `${TEN_THOUSAND},`, count: 24 },
+  { text: `${TEN_THOUSAND}]` },
+  { line: tail },
+];
 
 /** `n` levels of `{"k":` around `inner`. */
 const nestedObject = (n, inner) => `${'{"k":'.repeat(n)}${inner}${"}".repeat(n)}`;
@@ -128,6 +166,10 @@ const CONVERSATIONS = [
       modern(18, "no/such/method"),
       { jsonrpc: "2.0", id: null, method: "ping", params: { _meta: V } },
       { jsonrpc: "2.0", method: "ping", params: { _meta: V } },
+      // A tools/call without an id is a notification: the tool is not run and nothing is answered.
+      { jsonrpc: "2.0", method: "tools/call", params: { name: "mandate.check", arguments: { source: FIXBUG }, _meta: V } },
+      { jsonrpc: "2.0", method: "tools/call", params: { name: "mandate.nothing", _meta: V } },
+      modern(19, "ping"),
     ].map(msg),
   ],
   [
@@ -150,6 +192,40 @@ const CONVERSATIONS = [
       tool(29, "mandate.explain", { code: "E0130" }),
       { jsonrpc: "2.0", id: 30, method: "tools/list", params: { _meta: { "io.modelcontextprotocol/protocolVersion": "1900-01-01" } } },
     ].map(msg),
+  ],
+  [
+    "string-of-objects",
+    "String(v) of an object with its own toString throws (TypeError), at any depth of an array, where the server makes text of a value: an initialize's protocolVersion, which then opens no session, a tool's name, and as a notification; an object with only its own valueOf is [object Object]",
+    [],
+    [
+      init(1, { toString: 1 }),
+      legacy(2, "tools/list"),
+      init(3, [["2025-06-18"]]),
+      legacy(4, "tools/call", { name: { toString: 1 } }),
+      legacy(5, "tools/call", { name: [{ toString: null }] }),
+      legacy(6, "tools/call", { name: { valueOf: 1 } }),
+      legacy(7, "tools/call", { name: [[{ toString: {} }]] }),
+      init(8, { toString: "2025-03-26", valueOf: "2025-03-26" }),
+      legacy(9, "tools/list"),
+      { jsonrpc: "2.0", method: "initialize", params: { protocolVersion: [{ toString: 1 }] } },
+      legacy(10, "ping"),
+      init(11, { valueOf: "2025-03-26" }),
+      legacy(12, "ping"),
+      init(13, [1, ["2025-03-26"]]),
+      init(14, [["2025-03-26"]]),
+    ].map(msg),
+  ],
+  [
+    "long-names",
+    "a line of a 500 KiB name above 25 arrays of 10 000 zeros, which the limits and a door's request walk in time proportional to the line: as a ping's params, with a lone surrogate at the start of the name, and as the lock of a check",
+    [],
+    [
+      ...longName('{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"},', "", "}}"),
+      ...longName('{"jsonrpc":"2.0","id":2,"method":"ping","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"},', "\\ud800", "}}"),
+      ...longName('{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"},"name":"mandate.check","arguments":{"source":"x","lock":{', "", "}}}}"),
+      ...longName('{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"},"name":"mandate.check","arguments":{"source":"x","lock":{', "\\ud800", "}}}}"),
+      msg(modern(5, "ping")),
+    ],
   ],
   [
     "initialize-as-notification",
@@ -244,6 +320,12 @@ const CONVERSATIONS = [
       tool(65, "mandate.caps_of", { source: AUDIENCE, modules: [SYSTEM], name: "Audience" }),
       tool(66, "mandate.caps_of", { source: MIGRATE_06, name: "MigrateAll" }),
       tool(67, "mandate.caps_of", { name: "FixBug" }),
+      // A remote agent's row is `Billing (remote)`; a workflow's delegations are `Refund → …`.
+      tool(68, "mandate.caps_of", { source: REMOTE, name: "Billing" }),
+      tool(69, "mandate.caps_of", { source: REMOTE, name: "Refund" }),
+      tool(70, "mandate.caps_of", { source: REMOTE, name: "Billing (remote)" }),
+      tool(71, "mandate.caps_of", { source: REMOTE, name: "Refund →" }),
+      tool(72, "mandate.caps_of", { source: FIXBUG, name: "FixBug → Explorer" }),
     ].map(msg),
   ],
   [
@@ -265,6 +347,11 @@ const CONVERSATIONS = [
       tool(87, "mandate.project", { source: FIXBUG, view: "cost", lock: null }),
       tool(88, "mandate.project", { source: FIXBUG, view: "diff", before: "not a program" }),
       tool(89, "mandate.project", { source: "not a program", view: "architecture" }),
+      // `before_kind` says what `before` is, as `kind` says what `source` is.
+      tool(90, "mandate.project", { source: FIXBUG, view: "diff", before: FIXBUG_IR, before_kind: "json" }),
+      tool(91, "mandate.project", { source: FIXBUG, view: "diff", before: FIXBUG_IR, before_kind: "mdt" }),
+      tool(92, "mandate.project", { source: FIXBUG, view: "diff", before: FIXBUG_TARGET, before_kind: "json" }),
+      tool(93, "mandate.project", { source: FIXBUG, view: "diff", before: `  ${FIXBUG_IR}`, before_kind: "yaml" }),
     ].map(msg),
   ],
   [
@@ -283,6 +370,15 @@ const CONVERSATIONS = [
       tool(88, "mandate.spec", { section: 7.2 }),
       tool(89, "mandate.spec", { section: ["7", "2"] }),
       tool(90, "mandate.spec", { section: "\u3000\ufeff3\u00a0" }),
+      // A section is its text: what a regular expression would read otherwise is no section (bridge/src/mcp.ts escapes
+      // every such character; the reference compiler's server escapes only `.`).
+      ...["(", "\\d", "1|x", "4+", "[4]", "4\\b", "4.*", "^4", "$", "4)"].map((section, i) => tool(91 + i, "mandate.spec", { section })),
+      // `String(section)` throws for an object with its own `toString`, at any depth of an array: an Internal error.
+      tool(101, "mandate.spec", { section: { toString: "x" } }),
+      tool(102, "mandate.spec", { section: [{ toString: null }] }),
+      tool(103, "mandate.spec", { section: [[{ toString: {} }]] }),
+      tool(104, "mandate.spec", { section: { valueOf: 4 } }),
+      tool(105, "mandate.spec", { section: [{ valueOf: 4 }, 4] }),
     ].map(msg),
   ],
   [
@@ -314,6 +410,21 @@ const CONVERSATIONS = [
       tool(4, "mandate.caps_of", { source: AUDIENCE, name: "Audience" }),
       tool(5, "mandate.check", { source: MIGRATE, modules: [DOMAIN] }),
       tool(6, "mandate.check", { source: AUDIENCE, modules: [SYSTEM] }),
+      // A call's module of the server's module's name takes its place (`{ ...base, ...modules }`): here another version.
+      tool(7, "mandate.check", { source: AUDIENCE, modules: [SYSTEM_02] }),
+      tool(8, "mandate.project", { source: AUDIENCE, modules: [SYSTEM_02], view: "architecture" }),
+      tool(9, "mandate.check", { source: AUDIENCE, modules: [SYSTEM, SYSTEM_02] }),
+    ].map(msg),
+  ],
+  [
+    "server-modules-two",
+    "two modules the server is started with, and a call's module that takes the place of the first of them",
+    ["--module", "fixtures/system/acme.system.mdt", "--module", "fixtures/system/repos.mdt"],
+    [
+      tool(1, "mandate.check", { source: AUDIENCE }),
+      tool(2, "mandate.check", { source: AUDIENCE, modules: [SYSTEM_02] }),
+      tool(3, "mandate.project", { source: AUDIENCE, modules: [SYSTEM_02], view: "authority" }),
+      tool(4, "mandate.caps_of", { source: AUDIENCE, modules: [SYSTEM_02, DOMAIN], name: "Audience" }),
     ].map(msg),
   ],
   [
@@ -396,6 +507,11 @@ const CONVERSATIONS = [
       raw(`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"mandate.check","arguments":{"source":${JSON.stringify(FIXBUG)},"lock":[1,[2,3.25]]},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
       raw(`{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"mandate.apply_patch","arguments":{"source":${JSON.stringify(FIXBUG_IR)},"base":"${FIXBUG_BASE}","ops":[{"op":"replace","path":"/version","value":"0.2","extra":1}]},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
       raw('{"jsonrpc":"2.0","id":{"z":1},"method":"tools/call","params":{"name":"mandate.check","arguments":{"source":"x","lock":{"y":0.5}},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}'),
+      // A lock with a member `__proto__` (an own member, as JSON.parse makes it) and array-index names, which go first,
+      // as it reaches the door: as a value, and in the place a request cannot carry.
+      raw(`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"mandate.check","arguments":{"source":${JSON.stringify(FIXBUG)},"lock":{"lock":"mandate/lock/0.5","__proto__":{"x":1},"10":2,"2":1,"modules":{}}},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+      raw(`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"mandate.check","arguments":{"source":${JSON.stringify(FIXBUG)},"lock":{"lock":"mandate/lock/0.5","__proto__":{"x":0.5},"10":2,"2":[1.5]}},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+      raw(`{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"mandate.project","arguments":{"source":${JSON.stringify(FIXBUG)},"view":"cost","lock":{"__proto__":null,"lock":"mandate/lock/0.5","modules":{},"0":{}}},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
     ],
   ],
   [

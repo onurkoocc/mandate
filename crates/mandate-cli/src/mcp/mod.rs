@@ -25,10 +25,13 @@ mod json;
 mod lines;
 mod tools;
 
+use std::cell::Cell;
+use std::sync::Once;
+
 use mandate_ir::{JsObject, JsValue, Map, Value};
 
 use crate::Io;
-use json::{J, JObj, JStr, KEPT_DEPTH, Key, js_space, js_string_of};
+use json::{J, JObj, JStr, KEPT_DEPTH, NOT_PRIMITIVE, Step, js_space, js_string_of};
 use lines::{Line, Lines};
 
 /// The versions of the modern era.
@@ -146,37 +149,20 @@ struct Breach {
     path: JStr,
 }
 
-/// `ptrToken` of a member name that may hold a lone surrogate.
-fn token_of(k: Key<'_>) -> JStr {
-    match k.to_jstr() {
-        JStr::Text(s) => JStr::Text(json::pointer_token(&s)),
-        JStr::Units(u) => {
-            let mut out = Vec::with_capacity(u.len());
-            for c in u {
-                match c {
-                    0x7e => out.extend([0x7e, 0x30]),
-                    0x2f => out.extend([0x7e, 0x31]),
-                    c => out.push(c),
-                }
-            }
-            JStr::from_units(out)
-        }
-    }
-}
-
 /// `overLimit`: the first limit `v` breaks, in the order the Node server
 /// walks it (each value's depth, then an array's length, then its
-/// elements; an object's members in their order).
-fn over_limit(v: &J, path: &JStr, depth: usize) -> Option<Breach> {
+/// elements; an object's members in their order). The walk keeps its
+/// steps in `path` and makes the JSON Pointer only of the value that breaks
+/// a limit, so that it costs as much as the message is long.
+fn over_limit<'a>(v: &'a J, path: &mut Vec<Step<'a>>, depth: usize) -> Option<Breach> {
     if depth > LIMIT_DEPTH {
         return Some(Breach {
             reason: "E_INPUT_TOO_DEEP",
             message: format!("Request nesting exceeds the depth limit of {LIMIT_DEPTH}"),
             limit: LIMIT_DEPTH,
-            path: path.clone(),
+            path: json::pointer(path),
         });
     }
-    let slash = JStr::from("/");
     match v {
         J::Arr(items) => {
             if items.len() > LIMIT_ITEMS {
@@ -187,18 +173,30 @@ fn over_limit(v: &J, path: &JStr, depth: usize) -> Option<Breach> {
                         items.len()
                     ),
                     limit: LIMIT_ITEMS,
-                    path: path.clone(),
+                    path: json::pointer(path),
                 });
             }
-            items.iter().enumerate().find_map(|(i, item)| {
-                let at = JStr::concat(&[path, &slash, &JStr::Text(i.to_string())]);
-                over_limit(item, &at, depth.saturating_add(1))
-            })
+            for (i, item) in items.iter().enumerate() {
+                path.push(Step::Index(i));
+                let breach = over_limit(item, path, depth.saturating_add(1));
+                path.pop();
+                if breach.is_some() {
+                    return breach;
+                }
+            }
+            None
         }
-        J::Obj(o) => o.iter().find_map(|(k, item)| {
-            let at = JStr::concat(&[path, &slash, &token_of(k)]);
-            over_limit(item, &at, depth.saturating_add(1))
-        }),
+        J::Obj(o) => {
+            for (k, item) in o.iter() {
+                path.push(Step::Name(k));
+                let breach = over_limit(item, path, depth.saturating_add(1));
+                path.pop();
+                if breach.is_some() {
+                    return breach;
+                }
+            }
+            None
+        }
         _ => None,
     }
 }
@@ -325,7 +323,7 @@ impl Server {
                         None,
                     )));
                 };
-                if let Some(b) = over_limit(&msg, &JStr::from(""), 1) {
+                if let Some(b) = over_limit(&msg, &mut Vec::new(), 1) {
                     let data = JObj::new()
                         .with("reason", J::str(b.reason))
                         .with("limit", J::Num(b.limit as f64))
@@ -396,11 +394,13 @@ impl Server {
         let meta = object_or_empty(params.get("_meta").filter(|p| p.truthy()), &empty);
         let method_is = |name: &str| method.text() == Some(name);
 
-        // Legacy era: the handshake opens a session for this process.
+        // Legacy era: the handshake opens a session for this process. A
+        // version that `String` throws on is an Internal error, and opens
+        // none.
         if method_is("initialize") {
             let asked = match params.get("protocolVersion") {
                 None | Some(J::Null) => JStr::from(""),
-                Some(v) => v.to_js_string(),
+                Some(v) => v.to_js_string().map_err(|_| JStr::from(NOT_PRIMITIVE))?,
             };
             let version = asked
                 .text()
@@ -482,8 +482,8 @@ impl Server {
                     _ => false,
                 };
                 let Some(J::Str(JStr::Text(name))) = name.filter(|_| known) else {
-                    let message =
-                        JStr::concat(&[&JStr::from("Unknown tool: "), &js_string_of(name)]);
+                    let shown = js_string_of(name).map_err(|_| JStr::from(NOT_PRIMITIVE))?;
+                    let message = JStr::concat(&[&JStr::from("Unknown tool: "), &shown]);
                     return Ok(Some(failure(id, -32602, message, None)));
                 };
                 match self.call_tool(name, args) {
@@ -526,11 +526,56 @@ fn line_of(v: &J) -> String {
     text
 }
 
+thread_local! {
+    /// Whether this thread is serving: a panic on it says nothing.
+    static SERVING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The panic hook is set once for the process.
+static QUIET_HOOK: Once = Once::new();
+
+/// Sets, once for the process, a panic hook that says nothing for a panic
+/// on a thread that is serving, and passes any other to the hook that was
+/// there before. A door that panics is caught (`tools.rs`) and answered
+/// with the Node server's words for it, a trap; Rust's own hook would write
+/// the panic's message, which may quote what a request held, on standard
+/// error, and read the executable for a backtrace under `RUST_BACKTRACE`.
+/// The Node server never shows what the module writes on its standard
+/// error.
+fn quiet_panics() {
+    QUIET_HOOK.call_once(|| {
+        let before = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if !SERVING.with(Cell::get) {
+                before(info);
+            }
+        }));
+    });
+}
+
+/// This thread serving, until it is dropped.
+struct Serving;
+
+impl Serving {
+    fn begin() -> Serving {
+        quiet_panics();
+        SERVING.with(|s| s.set(true));
+        Serving
+    }
+}
+
+impl Drop for Serving {
+    fn drop(&mut self) {
+        SERVING.with(|s| s.set(false));
+    }
+}
+
 /// Serves newline-delimited JSON-RPC over `io`'s standard streams until
 /// the input ends (status 0). Status 1 when an answer cannot be written
 /// (the reader of standard output went away), 2 when the input cannot be
 /// read; either is said on standard error.
 pub(crate) fn serve(io: &mut dyn Io, modules: JsObject) -> i32 {
+    let _serving = Serving::begin();
     let mut server = Server::new(modules);
     let mut lines = Lines::new(LIMIT_BYTES);
     let mut buf = vec![0u8; READ_BYTES];
@@ -569,4 +614,68 @@ pub(crate) fn serve(io: &mut dyn Io, modules: JsObject) -> i32 {
         return 1;
     }
     0
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic, clippy::arithmetic_side_effects)]
+
+    use super::{LIMIT_BYTES, Serving, json, over_limit};
+
+    /// The review's line: a ping whose `params` holds one member of a long
+    /// name above 25 arrays of 10 000 zeros, and `more` after it.
+    fn wide(name: &str, more: &str) -> String {
+        let arrays = vec![format!("[{}]", vec!["0"; 10_000].join(",")); 25].join(",");
+        format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"ping","params":{{"{name}":[{arrays}]{more}}}}}"#
+        )
+    }
+
+    #[test]
+    fn the_limits_make_a_pointer_only_for_the_value_that_breaks_one() {
+        let long = "n".repeat(500 * 1024);
+        for name in [long.clone(), format!("\\ud800{long}")] {
+            let line = wide(&name, "");
+            assert!(line.len() <= LIMIT_BYTES, "{}", line.len());
+            let msg = json::parse(&line).unwrap();
+            let before = json::pointers_made();
+            assert!(over_limit(&msg, &mut Vec::new(), 1).is_none());
+            assert_eq!(
+                json::pointers_made(),
+                before,
+                "none on a line that breaks no limit"
+            );
+            let over = format!(r#","z":[{}]"#, vec!["0"; 10_001].join(","));
+            let msg = json::parse(&wide(&name, &over)).unwrap();
+            let breach = over_limit(&msg, &mut Vec::new(), 1).unwrap();
+            assert_eq!(
+                json::pointers_made(),
+                before + 1,
+                "one for the one that breaks it"
+            );
+            assert_eq!(breach.path, json::JStr::from("/params/z"));
+        }
+    }
+
+    /// A panic on a thread that serves goes to no hook; one on another
+    /// thread, or after, to the hook that was there before.
+    #[cfg(panic = "unwind")]
+    #[test]
+    fn a_panic_while_serving_says_nothing() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static SAID: AtomicUsize = AtomicUsize::new(0);
+        // Stands for Rust's own hook, which writes on standard error.
+        std::panic::set_hook(Box::new(|_| {
+            SAID.fetch_add(1, Ordering::SeqCst);
+        }));
+        {
+            let _serving = Serving::begin();
+            let caught = std::panic::catch_unwind(|| panic!("what a request held"));
+            assert!(caught.is_err());
+        }
+        assert_eq!(SAID.load(Ordering::SeqCst), 0);
+        let caught = std::panic::catch_unwind(|| panic!("not serving"));
+        assert!(caught.is_err());
+        assert_eq!(SAID.load(Ordering::SeqCst), 1);
+    }
 }
