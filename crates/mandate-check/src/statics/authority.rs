@@ -1895,7 +1895,13 @@ impl<'a> Checker<'a> {
         // 0.7: under `supervise escalate` a person is shown how the
         // delegation failed, which is made of what it was handed
         // (`crate::asks`).
-        let args = if e.supervise().and_then(|s| s.name()) == Some("escalate") {
+        let args = if let Some(s) = e.supervise().filter(|s| s.name() == Some("escalate")) {
+            self.role_not_bound(
+                s.args(),
+                frame,
+                &format!("{path}/supervise"),
+                "supervise escalate",
+            );
             self.asked_args(e, frame, path, path, |_, _| true)
         } else {
             self.call_args(e, frame, path)

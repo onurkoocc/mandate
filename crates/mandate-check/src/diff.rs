@@ -23,6 +23,7 @@ use mandate_ir::{
 use crate::caps::{CapVal, show_cap, within};
 use crate::lock_diff::{lock_diff, lock_limits_diff};
 use crate::modules::{Modules, linked_program};
+use crate::report_sig::{Reports, compare_reports, holds_report, report_records};
 use crate::view_shared::{
     Graph, ProgramRef, VIEW_FORMAT, caps_in, defs_of, duration, is_system, j, j_or_null, js_text,
     json_string, kind_text, method_of, micros_as_units, program_ref, workflow_effects,
@@ -665,6 +666,10 @@ pub enum GovernanceChangeKind {
     /// an effect of a higher class, a contract for a weaker one, another
     /// reviewer, a higher `max_items` (spec/library.md "Patterns").
     ApplicationChanged,
+    /// 0.7: a workflow shows people more: a report added, or one whose
+    /// fields' highest class rose (spec/attention.md "Reports are
+    /// governance"). What a person is shown is part of what they approved.
+    ReportWidened,
     /// 0.7: a workflow's `owner` came, went or names another role: who
     /// approves its card and signs its promotions changed, as a change of
     /// an envelope's owner changes who approves the envelope
@@ -691,6 +696,7 @@ impl GovernanceChangeKind {
             GovernanceChangeKind::WaiverAdded => "waiver_added",
             GovernanceChangeKind::WaiverRemoved => "waiver_removed",
             GovernanceChangeKind::ApplicationChanged => "application_changed",
+            GovernanceChangeKind::ReportWidened => "report_widened",
             GovernanceChangeKind::OwnerChanged => "owner_changed",
         }
     }
@@ -782,6 +788,9 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
     let (bdefs, adefs) = (defs_of(bp), defs_of(ap));
     let mut names = unique_in_order(bdefs.keys().chain(adefs.keys()).map(str::to_owned));
     sort_utf16(&mut names);
+    // 0.7: the reports of both programs, recorded once, when a workflow in
+    // both makes one.
+    let mut shown: Option<(Reports, Reports)> = None;
     for name in &names {
         let path = format!("/defs/{name}");
         // 0.6: a definition's `doc` is a person's text about it. A changed
@@ -980,6 +989,16 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                 } else {
                     application_changes(&mut out, name, &path, b, a);
                     workflow_changes(&mut out, (lb, la), name, &path, b, a);
+                    // 0.7: what the workflow shows people.
+                    if holds_report(b) || holds_report(a) {
+                        let (was, now) = shown.get_or_insert_with(|| {
+                            (
+                                program_reports(before, modules),
+                                program_reports(after, modules),
+                            )
+                        });
+                        report_changes(&mut out, name, &path, was, now);
+                    }
                 }
             }
             // 0.6: a pattern's body is what its applications do.
@@ -1044,6 +1063,50 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
         }
     }
     out
+}
+
+/// 0.7: what each workflow and pattern of `program` shows people, as its
+/// check would type it: the expansion, linked with `modules` (and the
+/// built-in `std.patterns` its language reads without a pin)
+/// ([`crate::report_sig`]). Empty for a program older than 0.7.
+fn program_reports(program: &Value, modules: Option<&Modules>) -> Reports {
+    let Some(view) = Program::of(program).filter(|p| {
+        p.language()
+            .is_some_and(|l| l.at_least(mandate_ir::Language::V0_7))
+    }) else {
+        return Reports::new();
+    };
+    let with_builtin = crate::library::with_builtin(view, modules, None);
+    let modules = with_builtin.as_ref().or(modules);
+    let expanded = crate::expand::expanded_program(program, modules);
+    let Some(source) = Program::of(expanded.as_ref().unwrap_or(program)) else {
+        return Reports::new();
+    };
+    let linked = crate::modules::link(source, modules).defs;
+    report_records(source, &linked)
+}
+
+/// 0.7: what changed in what the workflow `name` shows people (the
+/// workflow case of [`classify`]): a report added, or one whose highest
+/// class rose, is the governance change `report_widened`; one taken away,
+/// or whose class fell, a behavior change.
+fn report_changes(out: &mut Classified, name: &str, path: &str, was: &Reports, now: &Reports) {
+    let empty: Vec<crate::report_sig::ReportSig> = Vec::new();
+    let (before, after) = (
+        was.get(name).unwrap_or(&empty),
+        now.get(name).unwrap_or(&empty),
+    );
+    let (up, down) = compare_reports(name, before, after);
+    for text in up {
+        out.gov(
+            GovernanceChangeKind::ReportWidened,
+            format!("{path}/body"),
+            text,
+        );
+    }
+    for text in down {
+        out.beh(format!("{path}/body"), text);
+    }
 }
 
 /// What the pattern `p` names in `program`: `"local"` for one it defines,
@@ -1790,6 +1853,27 @@ pub fn semantic_diff_with(
     locks: Option<Locks<'_>>,
     modules: Option<&Modules>,
 ) -> DiffView {
+    semantic_diff_pinned(before, after, locks, modules, None)
+}
+
+/// [`semantic_diff_with`] where `std.patterns` is read at the version each
+/// program's lock pins, or else at `named` (0.7: a caller that holds no
+/// lock names the version, [`crate::library::embedded_pin`]); with neither,
+/// the version of each program's language, as [`semantic_diff_with`] reads
+/// it.
+#[must_use]
+pub fn semantic_diff_pinned(
+    before: &Value,
+    after: &Value,
+    locks: Option<Locks<'_>>,
+    modules: Option<&Modules>,
+    named: Option<&mandate_lib::Version>,
+) -> DiffView {
+    let pin_of = |lock: Option<&Value>| crate::library::std_patterns_pin(lock).or(named.copied());
+    let (pin_before, pin_after) = (
+        pin_of(locks.and_then(|l| l.before)),
+        pin_of(locks.and_then(|l| l.after)),
+    );
     // 0.6 (B13): one classification of a change for the semantic diff, a
     // patch (`governance_changes`), and an upgrade or a publication of a
     // library (`crate::library::ops`): `classify` with the modules. Before
@@ -1831,11 +1915,11 @@ pub fn semantic_diff_with(
             .map(|(n, a, q)| format!("{n} {a} {}", resolved(q, &a)))
             .collect()
     };
-    let critical = |p: &Value| -> Vec<String> {
+    let critical = |p: &Value, pin: Option<&mandate_lib::Version>| -> Vec<String> {
         // 0.6: a workflow that applies a pattern commits what its expansion
         // does; one this diff cannot expand (its pattern is in a module it
         // is not given) is said to, so that no line says it commits nothing.
-        let expanded = crate::expand::for_views(p, modules);
+        let expanded = crate::expand::for_views_pinned(p, modules, pin);
         let Some(program) = Program::of(expanded.as_ref().unwrap_or(p)) else {
             return Vec::new();
         };
@@ -1856,8 +1940,8 @@ pub fn semantic_diff_with(
         all
     };
     let mut unchanged: Vec<String> = Vec::new();
-    let cb = critical(before);
-    let ca = critical(after);
+    let cb = critical(before, pin_before.as_ref());
+    let ca = critical(after, pin_after.as_ref());
     // What an application's pattern is may change with nothing in the
     // workflow changing (another module, or a pattern the program defines
     // now, or its module pinned to another hash): what it commits is then

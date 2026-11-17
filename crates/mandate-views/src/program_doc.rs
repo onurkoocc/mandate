@@ -4,9 +4,9 @@
 use mandate_check::{Modules, VIEW_FORMAT, linked_program, program_ref};
 use mandate_ir::{Program, Value};
 
-use crate::architecture::{architecture_blocks, architecture_with_lock};
-use crate::authority::{authority, authority_blocks};
-use crate::cost::{cost, cost_blocks};
+use crate::architecture::{architecture_blocks, architecture_pinned};
+use crate::authority::{authority_blocks, authority_pinned};
+use crate::cost::{cost_blocks, cost_pinned};
 use crate::doc::{Block, Doc};
 use crate::system::{has_system, system, system_blocks};
 use mandate_check::is_kind;
@@ -19,6 +19,21 @@ use mandate_check::is_kind;
 /// itself. `programDoc(program, lock, modules)`.
 #[must_use]
 pub fn program_doc(program: &Value, lock: Option<&Value>, modules: Option<&Modules>) -> Doc {
+    program_doc_pinned(program, lock, modules, None)
+}
+
+/// [`program_doc`] with the version of `std.patterns` a caller that holds
+/// no lock names (0.7, `named`): each view's expansion reads the version
+/// the lock pins, else `named`, else the version of the program's language.
+/// What the document says it was generated from does not change with it.
+#[must_use]
+pub fn program_doc_pinned(
+    program: &Value,
+    lock: Option<&Value>,
+    modules: Option<&Modules>,
+    named: Option<&mandate_check::library::Version>,
+) -> Doc {
+    let pin = mandate_check::library::std_patterns_pin(lock).or(named.copied());
     let r = program_ref(program);
     let given = modules.filter(|m| !m.is_empty());
     let p = Program::of(program);
@@ -34,11 +49,18 @@ pub fn program_doc(program: &Value, lock: Option<&Value>, modules: Option<&Modul
     });
     let mut blocks: Vec<Block> = Vec::new();
     if runs {
-        blocks.extend(architecture_blocks(&architecture_with_lock(
-            linked, lock, None,
+        blocks.extend(architecture_blocks(&architecture_pinned(
+            linked,
+            lock,
+            None,
+            pin.as_ref(),
         )));
-        blocks.extend(authority_blocks(&authority(linked)));
-        blocks.extend(cost_blocks(&cost(linked, lock)));
+        blocks.extend(authority_blocks(&authority_pinned(
+            linked,
+            None,
+            pin.as_ref(),
+        )));
+        blocks.extend(cost_blocks(&cost_pinned(linked, lock, None, pin.as_ref())));
     }
     if has_system(program, modules) {
         blocks.extend(system_blocks(&system(program, modules)));

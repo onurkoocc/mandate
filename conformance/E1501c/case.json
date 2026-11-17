@@ -3,21 +3,36 @@
   "format": "mandate/conformance-case/0.1",
   "id": "E1501c",
   "kind": "compile",
-  "title": "A workflow's owner that no role definition has is refused as a role site, with the nearest role as a suggestion (a mutation: Describe's owner).",
+  "title": "In 0.7 a role a question names is a role definition and no name the scope binds: an approval's role that a parameter of its contract also names is refused, since a run reads the approval's role in the contract's scope (a mutation: Approved gains a parameter named accountant).",
   "spec": [
-    "spec/attention.md#owner",
+    "spec/attention.md#what-each-question-records",
     "spec/envelope.md#roles"
   ],
   "language": "mandate/0.7",
   "input": {
-    "file": "../../fixtures/attention/owner.mdt",
+    "file": "../../fixtures/attention/asks.mdt",
     "kind": "mdt"
   },
   "patch": [
     {
-      "op": "replace",
-      "path": "/defs/Describe/owner",
-      "value": "acountant"
+      "op": "add",
+      "path": "/defs/Approved/params/1",
+      "value": {
+        "name": "accountant",
+        "type": {
+          "ref": "Text"
+        }
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/Approving/body/4/value/args/1",
+      "value": {
+        "value": {
+          "op": "text",
+          "value": "finance_lead"
+        }
+      }
     }
   ],
   "expect": {
@@ -25,11 +40,12 @@
     "diagnostics": [
       {
         "code": "MDT-E1501",
-        "path": "/defs/Describe/owner",
+        "path": "/defs/Approved/accept/checked/by/call/args/0/value",
         "facts": {
-          "role": "acountant",
-          "where": "a workflow's owner",
-          "did_you_mean": "accountant"
+          "role": "accountant",
+          "where": "human.approve",
+          "argument": "role",
+          "shadowed_by": "parameter"
         }
       }
     ]

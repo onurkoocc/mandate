@@ -525,6 +525,7 @@ impl<'a> Checker<'a> {
             .filter(|t| self.at_least(Language::V0_6) && is_person(*t))
         {
             Some(to) => {
+                self.role_not_bound(to.arg_values(), frame, &at, "escalate human(…)");
                 let first = to.arg_values().iter().position(|a| a.get("name").is_none());
                 self.asked_args(to, frame, &at, path, |i, _| Some(i) == first);
             }
@@ -780,12 +781,28 @@ impl<'a> Checker<'a> {
             None
         };
         // 0.7: `human.ask` shows a person its question, its first argument
-        // without a name (`crate::asks`).
-        let args = if self.at_least(Language::V0_7)
-            && e.callee().and_then(callee_path).as_deref() == Some("human.ask")
-        {
+        // without a name; a function of the program is handed what its
+        // sites show at least (`crate::asks`). A role a person is asked as
+        // is no name the scope binds (E1501; a review's roles are held to
+        // be role definitions by E1507 already, and in every language).
+        let v0_7 = self.at_least(Language::V0_7);
+        let callee = if v0_7 {
+            e.callee().and_then(callee_path)
+        } else {
+            None
+        };
+        if let Some(p @ ("human.ask" | "human.approve")) = callee.as_deref() {
+            self.role_not_bound(e.arg_values(), frame, path, p);
+        }
+        let function = callee
+            .as_deref()
+            .filter(|p| !p.contains('.') && self.def_of(p, DefKind::Fn).is_some())
+            .map(str::to_owned);
+        let args = if callee.as_deref() == Some("human.ask") {
             let first = e.arg_values().iter().position(|a| a.get("name").is_none());
             self.asked_args(e, frame, path, path, |i, _| Some(i) == first)
+        } else if let Some(f) = function {
+            self.handed_args(e, frame, path, &f)
         } else {
             self.call_args(e, frame, path)
         };
@@ -1324,8 +1341,12 @@ impl<'a> Checker<'a> {
     fn verify(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         let v = self.operand(e.value_expr(), frame, path, "value");
         // 0.7: a person who approves a criterion is shown the contract's
-        // arguments (`crate::asks`).
+        // arguments, which the contract's own sites are handed too
+        // (`crate::asks`).
         let args = self.asked_args(e, frame, path, path, |_, _| true);
+        if self.at_least(Language::V0_7) {
+            self.handed_verify(frame, path, e.contract().unwrap_or_default());
+        }
         self.verify_args(e, frame, path, &args);
         let handler = e
             .on_unmet()

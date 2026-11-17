@@ -312,8 +312,14 @@ export interface Shape06 {
   module: string;
 }
 
+/**
+ * A lead's sub-program as `check_subprogram` takes it, and (0.7) `std_patterns`: the version of `std.patterns` the
+ * parent's lock pins, which the check, given no lock, reads (one the compiler embeds, else the door refuses it).
+ */
+export type SubprogramInput07 = SubprogramInput & { std_patterns?: string };
+
 /** `checkSubprogram` as the bridge exports it: the reference's, which a parent of 0.6 reaches only in the Rust. */
-export type CheckSubprogram06 = (i: SubprogramInput) => SubprogramCheck06;
+export type CheckSubprogram06 = (i: SubprogramInput07) => SubprogramCheck06;
 
 /** What `library_verify` gives: whether the library reads and checks, and its name, version, digest and pin. */
 export interface LibraryVerified {
@@ -375,6 +381,11 @@ export interface LibraryRequest {
   config?: LibrariesConfig;
   /** The time, `YYYY-MM-DDTHH:MM:SSZ`. */
   now: string;
+  /**
+   * 0.7: the language of the program the lock is for (`mandate add --program`), as `mandate/0.7`: which embedded
+   * versions of `std.patterns` may be pinned, and for 0.7 a lock of format 0.7. None is a program of 0.6.
+   */
+  language?: string;
 }
 
 /**
@@ -527,7 +538,8 @@ export interface AttentionFacts {
 export interface AttentionFactsInput {
   text: string;
   kind: SourceKind;
-  opts?: CheckOptions06 & { claim?: Record<string, unknown> };
+  /** `std_patterns` (0.7): the version of `std.patterns` the lock of a sub-program's parent pins, for a check given no lock. */
+  opts?: CheckOptions06 & { claim?: Record<string, unknown>; std_patterns?: string };
   workflow: string;
 }
 

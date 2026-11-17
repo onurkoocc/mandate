@@ -34,7 +34,7 @@ export const DOOR_BACKED = {
   showCap: { door: "show_cap", params: ["c"] },
   governanceFiles: { door: "governance_files", params: ["files", "extra"] },
   skeleton: { door: "skeleton", params: ["parent", "n", "language"] },
-  subprogramLinked: { door: "subprogram_linked", params: ["sub", "parent", "modules"] },
+  subprogramLinked: { door: "subprogram_linked", params: ["sub", "parent", "modules", "std_patterns"] },
   // The lock, the Managed Agents binding, the sandbox.
   validateLock: { door: "validate_lock", params: ["value"] },
   roleLockChecks: { door: "role_lock_checks", params: ["program", "linked", "lock", "spans"] },
@@ -51,7 +51,7 @@ export const DOOR_BACKED = {
   checkPatch: { door: "check_patch", params: ["program", "base", "ops", "modules"] },
   checkSubprogram: { door: "check_subprogram", params: ["i"] },
   checkAmendment: { door: "check_amendment", params: ["i"] },
-  semanticDiff: { door: "semantic_diff", params: ["before", "after", "locks", "modules"] },
+  semanticDiff: { door: "semantic_diff", params: ["before", "after", "locks", "modules", "std_patterns"] },
   governanceChanges: { door: "governance_changes", params: ["before", "after", "modules"] },
   envelopeChanges: { door: "envelope_changes", params: ["before", "after", "workflow", "modules"] },
   // The run-time authority decisions (authority.ts).
@@ -60,13 +60,13 @@ export const DOOR_BACKED = {
   mapScopes: { door: "map_scopes", params: ["input"] },
   inFlightOverlap: { door: "in_flight_overlap", params: ["input"] },
   // The views, the documents, the card and the ACS target.
-  architecture: { door: "architecture", params: ["program", "modules", "lock"] },
+  architecture: { door: "architecture", params: ["program", "modules", "lock", "std_patterns"] },
   architectureBlocks: { door: "architecture_blocks", params: ["v"] },
-  authority: { door: "authority", params: ["program", "modules"] },
+  authority: { door: "authority", params: ["program", "modules", "std_patterns"] },
   authorityBlocks: { door: "authority_blocks", params: ["v"] },
-  cost: { door: "cost", params: ["program", "lock", "modules"] },
-  programDoc: { door: "program_doc", params: ["program", "lock", "modules"] },
-  diffDoc: { door: "diff_doc", params: ["before", "after", "locks", "modules"] },
+  cost: { door: "cost", params: ["program", "lock", "modules", "std_patterns"] },
+  programDoc: { door: "program_doc", params: ["program", "lock", "modules", "std_patterns"] },
+  diffDoc: { door: "diff_doc", params: ["before", "after", "locks", "modules", "std_patterns"] },
   envelopeWorkflows: { door: "envelope_workflows", params: ["program"] },
   card: { door: "card", params: ["program", "workflow", "opts"] },
   cardDoc: { door: "card_doc", params: ["program", "workflow", "opts"] },
@@ -86,8 +86,8 @@ export type DoorBacked = keyof typeof DOOR_BACKED;
 export const RUST_ONLY = {
   libraryVerify: { door: "library_verify", params: ["library", "libraries"] },
   // `mandate add`, `upgrade` and `publish`: each takes its door's input as one request, whose members are these.
-  libraryAdd: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now"] },
-  libraryUpgrade: { door: "library_upgrade", params: ["library", "range", "lock", "versions", "pinned", "libraries", "config", "now", "accept_governance"] },
+  libraryAdd: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now", "language"] },
+  libraryUpgrade: { door: "library_upgrade", params: ["library", "range", "lock", "versions", "pinned", "libraries", "config", "now", "accept_governance", "language"] },
   libraryPublish: { door: "library_publish", params: ["source", "published", "libraries", "now"] },
   authoritySignature: { door: "authority_signature", params: ["library", "libraries"] },
   // Language 0.7's two doors for the runtime's use of connectors (library.ts): which connectors a program can call,
@@ -98,7 +98,7 @@ export const RUST_ONLY = {
   attentionFacts: { door: "attention_facts", params: ["text", "kind", "opts", "workflow"] },
   // Whether a value is the `libraries` member of a configuration: asked of the door that reads one before it resolves
   // anything, in a request that resolves nothing.
-  librariesConfigProblems: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now"] },
+  librariesConfigProblems: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now", "language"] },
 } as const satisfies Record<string, { door: string; params: readonly string[] }>;
 
 /**

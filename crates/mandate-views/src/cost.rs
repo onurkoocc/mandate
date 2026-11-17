@@ -539,9 +539,23 @@ pub fn cost(program: &Value, lock: Option<&Value>) -> CostView {
 /// [`cost`] shows it.
 #[must_use]
 pub fn cost_with(program: &Value, lock: Option<&Value>, modules: Option<&Modules>) -> CostView {
+    cost_pinned(program, lock, modules, None)
+}
+
+/// [`cost_with`] with the version of `std.patterns` a caller that holds no
+/// lock names (0.7, `named`): the expansion reads the version the lock
+/// pins, else `named`, else the version of the program's language.
+#[must_use]
+pub fn cost_pinned(
+    program: &Value,
+    lock: Option<&Value>,
+    modules: Option<&Modules>,
+    named: Option<&mandate_check::library::Version>,
+) -> CostView {
     let mut workflows: Vec<WorkflowCost> = Vec::new();
     // 0.6: a workflow that applies a pattern is shown as its expansion.
-    let expanded = mandate_check::expand::for_views(program, modules);
+    let pin = mandate_check::library::std_patterns_pin(lock).or(named.copied());
+    let expanded = mandate_check::expand::for_views_pinned(program, modules, pin.as_ref());
     if let Some(p) = Program::of(expanded.as_ref().unwrap_or(program)) {
         for (name, d) in sorted_defs(p) {
             if !is_kind(d, "workflow") {

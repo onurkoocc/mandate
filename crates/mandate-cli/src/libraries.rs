@@ -14,7 +14,7 @@ use mandate_check::library::ops::{
     Outcome, Publication, Published, Request, add, publish, upgrade,
 };
 use mandate_check::library::{LibrarySource, STD_PATTERNS, load_library};
-use mandate_ir::{Diagnostic, JsValue, Map, Value, format_diagnostic};
+use mandate_ir::{Diagnostic, JsObject, JsValue, Language, Map, Value, format_diagnostic};
 use mandate_lib::{
     Digest, LibrariesConfig, Timestamp, Version, is_name, read_libraries_config,
     read_lock_libraries, read_manifest,
@@ -309,6 +309,24 @@ impl Cli<'_> {
         if !is_name(library) {
             return Err(self.fail(2, &format!("{library} is not the name of a library")));
         }
+        // 0.7: the language of the program the lock is for, when `--program`
+        // names it; a program that does not load is reported against its file.
+        let language = match a.program.as_deref() {
+            Some(file) => {
+                let text = self.read(file)?;
+                let loaded = mandate_syntax::load(&text, mandate_syntax::kind_of(file));
+                match loaded.program {
+                    Some(p) if !mandate_ir::has_errors(&loaded.diagnostics) => {
+                        p.get("language").and_then(Language::from_value)
+                    }
+                    _ => {
+                        self.report(&loaded.diagnostics, file, a.json(), &JsObject::new());
+                        return Ok(1);
+                    }
+                }
+            }
+            None => None,
+        };
         let (lock_file, lock) = self.lock_to_change(a)?;
         let config = self.config(a)?;
         let dir = self.libraries_dir(a, config.as_ref());
@@ -344,6 +362,7 @@ impl Cli<'_> {
             libraries: &libraries,
             config: config.as_ref().and_then(|c| c.libraries.as_ref()),
             now: self.now()?,
+            language,
         };
         let outcome = if upgrading {
             upgrade(

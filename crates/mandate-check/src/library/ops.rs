@@ -15,9 +15,12 @@
 //!   candidate either.
 //! - **[`add`]** resolves the highest version within the range whose
 //!   waiting period is over and whose digest is not revoked
-//!   ([`mandate_lib::resolve`]; the built-in `std.patterns` is its one
-//!   candidate, the copy in the compiler), checks it with the libraries the
-//!   lock pins (E1601, E1606), and gives the lock with its pin. Nothing in
+//!   ([`mandate_lib::resolve`]; the candidates of the built-in
+//!   `std.patterns` are the copies in the compiler whose language is not
+//!   newer than the program's, [`Request::language`]: 1.0.0, and for a
+//!   program of 0.7 2.0.0 too), checks it with the libraries the lock pins
+//!   (E1601, E1606), and gives the lock with its pin, of format 0.7 for a
+//!   program of 0.7. Nothing in
 //!   the range at all is E1606 (`no_version`); something in the range that
 //!   is waiting or revoked is E1608, naming the version and the day it may
 //!   be resolved.
@@ -40,7 +43,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use mandate_ir::{Diagnostic, JsObject, JsValue, Map, Value, has_errors};
+use mandate_ir::{Diagnostic, JsObject, JsValue, Language, Map, Value, has_errors};
 use mandate_lib::{
     BaseComparison, Candidate, LibrariesConfig, LockLibrary, PassedOver, PublishPlan, Range,
     Resolve, Timestamp, Version, WaitDays, judge_next, lowest_above, plan_publish, read_index,
@@ -49,8 +52,8 @@ use mandate_lib::{
 
 use super::signature::{Signature, Widening, signature, widenings};
 use super::{
-    LibrarySource, LoadedLibrary, STD_PATTERNS, assemble, diagnostic, load_library, lock_path,
-    module_checks, std_patterns,
+    LibrarySource, LoadedLibrary, STD_PATTERNS, STD_PATTERNS_EMBEDDED, assemble, diagnostic,
+    library_language, load_library, lock_path, module_checks, std_patterns_for,
 };
 use crate::diff::{GovernanceChangeKind, classify};
 
@@ -128,8 +131,9 @@ impl Comparison {
     }
 }
 
-/// The libraries `deps` (and the built-in `std.patterns`), read; the
-/// E1601s of those that do not read.
+/// The libraries `deps` (but the built-in `std.patterns`, which
+/// [`builtin_for`] gives each library), read; the E1601s of those that do
+/// not read.
 fn read_deps(deps: &[LibrarySource]) -> (Vec<LoadedLibrary>, Vec<Diagnostic>) {
     let mut out = Vec::new();
     let mut diagnostics = Vec::new();
@@ -140,8 +144,43 @@ fn read_deps(deps: &[LibrarySource]) -> (Vec<LoadedLibrary>, Vec<Diagnostic>) {
             Err(d) => diagnostics.extend(d),
         }
     }
-    out.extend(std_patterns());
     (out, diagnostics)
+}
+
+/// The embedded versions of `std.patterns` a program of `language` may
+/// pin, oldest first: those whose language is not newer than its own
+/// (spec/attention.md "Which version"). `None` reads as a program of 0.6.
+fn embedded_for(language: Option<Language>) -> Vec<LoadedLibrary> {
+    let reads = language.unwrap_or(Language::V0_6);
+    STD_PATTERNS_EMBEDDED
+        .iter()
+        .filter(|e| reads.at_least(e.language))
+        .filter_map(|e| {
+            let version = Version::parse(e.version).ok()?;
+            std_patterns_for(Some(reads), Some(&version))
+        })
+        .collect()
+}
+
+/// The built-in `std.patterns` beside `library` when it is signed and
+/// checked: the newest embedded version within the range its manifest
+/// requires and of no newer language than its own, or without a
+/// requirement the version a program of its language reads
+/// ([`std_patterns_for`]). A library of 0.6 is given 1.0.0, as before 0.7.
+fn builtin_for(library: &LoadedLibrary) -> Option<LoadedLibrary> {
+    let language = library_language(library);
+    let pinned = library
+        .manifest
+        .requires()
+        .get(STD_PATTERNS)
+        .and_then(|range| {
+            embedded_for(language)
+                .into_iter()
+                .rev()
+                .map(|l| *l.manifest.version())
+                .find(|v| range.holds(v))
+        });
+    std_patterns_for(language, pinned.as_ref())
 }
 
 /// The signature of `library` with `deps` beside it, and the E1601s of its
@@ -152,8 +191,12 @@ fn signed(
     deps: &[LoadedLibrary],
     check: bool,
 ) -> (Signature, Vec<Diagnostic>) {
+    let builtin = (library.name() != STD_PATTERNS)
+        .then(|| builtin_for(library))
+        .flatten();
     let mut all: Vec<&LoadedLibrary> = vec![library];
     all.extend(deps.iter().filter(|d| d.name() != library.name()));
+    all.extend(builtin.iter());
     let versions: BTreeMap<String, LockLibrary> =
         all.iter().map(|l| (l.name().to_owned(), l.pin())).collect();
     let assembled = assemble(&all, &versions);
@@ -211,8 +254,12 @@ pub fn compare(old: &LoadedLibrary, new: &LoadedLibrary, deps: &[LoadedLibrary])
         .collect();
     let mut behavior = Vec::new();
     // Each module by the classifier of the semantic diff and of patches.
+    let builtin = (new.name() != STD_PATTERNS)
+        .then(|| builtin_for(new))
+        .flatten();
     let mut all: Vec<&LoadedLibrary> = vec![new];
     all.extend(deps.iter().filter(|d| d.name() != new.name()));
+    all.extend(builtin.iter());
     let versions: BTreeMap<String, LockLibrary> =
         all.iter().map(|l| (l.name().to_owned(), l.pin())).collect();
     let modules = assemble(&all, &versions).modules;
@@ -362,6 +409,12 @@ pub struct Request<'a> {
     pub config: Option<&'a LibrariesConfig>,
     /// The time the waiting period is compared with.
     pub now: Timestamp,
+    /// 0.7: the language of the program the lock is for, when the caller
+    /// knows it (`--program`). It decides which embedded versions of
+    /// `std.patterns` may be pinned (those of a language not newer than
+    /// it), and a program of 0.7 or later is given a lock of format
+    /// `mandate/lock/0.7`. `None` is a program of 0.6, as before 0.7.
+    pub language: Option<Language>,
 }
 
 /// What [`add`] and [`upgrade`] give.
@@ -441,8 +494,10 @@ fn refused(diagnostics: Vec<Diagnostic>, resolution: JsObject) -> Outcome {
 /// The lock with `pin` as the entry of `library`, the entries by name. A
 /// lock of a format before 0.6 becomes one of 0.6, the first that has
 /// `libraries`; one of 0.6 or later (0.7, spec/attention.md "Lock 0.7")
-/// keeps its format, and so every field that format has.
-fn with_pin(lock: &Value, library: &str, pin: &LockLibrary) -> Value {
+/// keeps its format, and so every field that format has. For a program of
+/// 0.7 or later (`language`), a lock of a format before 0.7 becomes one of
+/// 0.7, whose fields are those of 0.6 and two more it need not have.
+fn with_pin(lock: &Value, library: &str, pin: &LockLibrary, language: Option<Language>) -> Value {
     let mut m = lock.as_object().cloned().unwrap_or_default();
     let mut libraries: Vec<(String, Value)> = m
         .get("libraries")
@@ -465,8 +520,13 @@ fn with_pin(lock: &Value, library: &str, pin: &LockLibrary) -> Value {
         out.insert(k, v);
     }
     m.insert("libraries", Value::Object(out));
-    if !mandate_ir::lock_at_least(lock, mandate_ir::LOCK_FORMAT_0_6) {
-        m.insert("lock", mandate_ir::LOCK_FORMAT_0_6);
+    let floor = if language.is_some_and(|l| l.at_least(Language::V0_7)) {
+        mandate_ir::LOCK_FORMAT_0_7
+    } else {
+        mandate_ir::LOCK_FORMAT_0_6
+    };
+    if !mandate_ir::lock_at_least(lock, floor) {
+        m.insert("lock", floor);
     }
     Value::Object(m)
 }
@@ -501,8 +561,9 @@ fn resolved(r: &Request<'_>) -> Result<(LoadedLibrary, JsObject, Vec<Diagnostic>
     let pins = read_lock_libraries(r.lock.get("libraries")).unwrap_or_default();
     let pinned = pins.get(r.library).map(|p| *p.version());
     let (found, mut problems, unpublished) = if r.library == STD_PATTERNS {
-        // The built-in copy is the one candidate: it waits for nothing.
-        let builtin = std_patterns().into_iter().map(|l| {
+        // The built-in copies are the candidates, those of a language not
+        // newer than the program's (0.7): they wait for nothing.
+        let builtin = embedded_for(r.language).into_iter().map(|l| {
             (
                 Candidate {
                     version: *l.manifest.version(),
@@ -621,7 +682,7 @@ pub fn add(r: &Request<'_>) -> Outcome {
     let ok = !has_errors(&diagnostics);
     Outcome {
         ok,
-        lock: ok.then(|| with_pin(r.lock, r.library, &library.pin())),
+        lock: ok.then(|| with_pin(r.lock, r.library, &library.pin(), r.language)),
         chosen: Some((*library.manifest.version(), library.digest.to_string(), sig)),
         comparison: None,
         diagnostics,
@@ -651,7 +712,9 @@ pub fn upgrade(r: &Request<'_>, pinned: &LibrarySource, accept_governance: bool)
         );
     };
     let old = if r.library == STD_PATTERNS {
-        std_patterns().ok_or_else(Vec::new)
+        // The embedded version the lock pins; a pin of one that is not
+        // embedded is refused below, as one of another digest is.
+        std_patterns_for(r.language, Some(pin.version())).ok_or_else(Vec::new)
     } else {
         load_library(pinned, false, r.library)
     };
@@ -681,7 +744,7 @@ pub fn upgrade(r: &Request<'_>, pinned: &LibrarySource, accept_governance: bool)
         return added;
     };
     let new = if r.library == STD_PATTERNS {
-        std_patterns()
+        std_patterns_for(r.language, Some(&chosen.0))
     } else {
         r.versions
             .iter()

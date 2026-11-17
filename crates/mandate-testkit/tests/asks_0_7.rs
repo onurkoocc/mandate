@@ -1,15 +1,26 @@
 //! The attention bound of language 0.7 (spec/attention.md "The algebra"),
 //! held on generated programs: a body built of the constructs of the table
 //! of sites with known counts (`human.ask` to a role, `escalate`, `pause`,
-//! `supervise escalate`, a `verify` against a contract of k approvals), and
-//! of `if`, `loop max_iter n`, `par` (under `supervise restart_all` or not)
-//! and calls of functions, written as text, checked, and its bound read from
-//! the attention facts, against the count the generator computes of its own
-//! tree, by its own algebra: the total and each role's count. Then three
-//! relations of the bound to itself: the whole body in `loop max_iter k` is
-//! k times it; an `if` of two bodies is the larger; a body moved into a
-//! function called twice is twice it. The generator is the RL2 and RL3
-//! property tests' (xorshift64*, a fixed seed), so a failure is found again.
+//! `supervise escalate`, a `verify` against a contract of k approvals, a
+//! `verify` against a contract whose `require` asks, an `on error` handler
+//! that asks, a map whose body verifies against a contract whose invariant
+//! a person approves), and of `if`, `switch`, `loop max_iter n`, `par`
+//! (under `supervise restart_all` or not, its branches questions or calls,
+//! so that a `restart_all` in a function called from a branch of another
+//! nests) and calls of functions, written as text, checked, and its bound
+//! read from the attention facts, against the count the generator computes
+//! of its own tree, by its own algebra: the total and each role's count.
+//! Then three relations of the bound to itself: the whole body in `loop
+//! max_iter k` is k times it; an `if` of two bodies is the larger; a body
+//! moved into a function called twice is twice it. The generator is the
+//! RL2 and RL3 property tests' (xorshift64*, a fixed seed), so a failure is
+//! found again.
+//!
+//! Left out, and counted by hand elsewhere (`crates/mandate-check/tests/
+//! asks_0_7.rs` and the fixture `fixtures/attention/asks.mdt`): effects and
+//! their owners' gates, change sets, reviews and `plan`s, which need the
+//! system model, capabilities, a review's source or an envelope; `ensures`,
+//! a loop's `until`, and a map bound by an envelope's `agents`.
 
 #![allow(
     clippy::unwrap_used,
@@ -45,6 +56,15 @@ impl Rng {
 
 const ROLES: [&str; 3] = ["accountant", "finance_lead", "code_owner"];
 
+/// One branch of a generated `par`.
+#[derive(Clone, Copy, Debug)]
+enum Branch {
+    /// `human.ask(…, role: ROLES[r])`.
+    Ask(usize),
+    /// A call of the function `f<i>`.
+    Call(usize),
+}
+
 /// One construct of a generated body.
 #[derive(Clone, Debug)]
 enum Node {
@@ -58,13 +78,23 @@ enum Node {
     Supervise,
     /// `verify n against A<k>(n)`: k approvals, each to the accountant.
     Approve(u64),
+    /// `verify n against R(n)`, whose `require` asks the code owner: 1.
+    Required,
+    /// A delegation and an `on error` handler that asks the finance lead:
+    /// the statement's own and the handler's, 1.
+    Handled,
+    /// `map it in notes max k { verify it against Kept(it) }`, whose
+    /// invariant the accountant approves: k.
+    Mapped(u64),
     /// `if … { a } else { b }`: the larger.
     If(Vec<Node>, Vec<Node>),
+    /// `switch m { Fast => { a } Slow => { b } }`: the larger.
+    Switch(Vec<Node>, Vec<Node>),
     /// `loop max_iter n { … }`: n times.
     Loop(u64, Vec<Node>),
-    /// `par [supervise restart_all] { b<i> = human.ask(…) }`: the sum, twice
-    /// under restart_all.
-    Par(bool, Vec<usize>),
+    /// `par [supervise restart_all] { … }`: the sum, twice under
+    /// restart_all.
+    Par(bool, Vec<Branch>),
     /// A call of the function `f<i>`.
     Call(usize),
 }
@@ -123,12 +153,18 @@ fn count(body: &[Node], fns: &[Vec<Node>]) -> Counts {
             Node::Escalate | Node::Pause => out.add(None, 1),
             Node::Supervise => out.add(None, 5),
             Node::Approve(k) => out.add(Some("accountant"), *k),
-            Node::If(a, b) => out.plus(&count(a, fns).or(&count(b, fns))),
+            Node::Required => out.add(Some("code_owner"), 1),
+            Node::Handled => out.add(Some("finance_lead"), 1),
+            Node::Mapped(k) => out.add(Some("accountant"), *k),
+            Node::If(a, b) | Node::Switch(a, b) => out.plus(&count(a, fns).or(&count(b, fns))),
             Node::Loop(k, b) => out.plus(&count(b, fns).times(*k)),
             Node::Par(restart, branches) => {
                 let mut sum = Counts::default();
-                for r in branches {
-                    sum.add(Some(ROLES[*r]), 1);
+                for b in branches {
+                    match b {
+                        Branch::Ask(r) => sum.add(Some(ROLES[*r]), 1),
+                        Branch::Call(f) => sum.plus(&count(&fns[*f], fns)),
+                    }
                 }
                 out.plus(&sum.times(if *restart { 2 } else { 1 }));
             }
@@ -140,33 +176,56 @@ fn count(body: &[Node], fns: &[Vec<Node>]) -> Counts {
 
 /// A body of at most `width` constructs, nested at most `depth` deep;
 /// `fns` functions may be called, and `in_fn` keeps to what a function may
-/// hold (no delegation, verification or `par`).
+/// hold (no delegation, no `switch` on the workflow's mode, no map of its
+/// notes).
 fn body(rng: &mut Rng, depth: u32, width: u64, fns: usize, in_fn: bool) -> Vec<Node> {
     let n = 1 + rng.below(width);
     (0..n)
         .map(|_| {
-            let choices = if in_fn { 5 } else { 9 } + u64::from(fns > 0);
-            match rng.below(choices) {
+            let mut options: Vec<u8> = vec![0, 1, 2, 5, 6];
+            if depth > 0 {
+                options.extend([3, 4]);
+            }
+            if !in_fn {
+                options.extend([7, 8, 10, 11]);
+                if depth > 0 {
+                    options.push(9);
+                }
+            }
+            if fns > 0 {
+                options.push(12);
+            }
+            match options[rng.below(options.len() as u64) as usize] {
                 0 => Node::Ask(rng.below(3) as usize),
                 1 => Node::Escalate,
                 2 => Node::Pause,
-                3 if depth > 0 => Node::If(
+                3 => Node::If(
                     body(rng, depth - 1, width, fns, in_fn),
                     body(rng, depth - 1, width, fns, in_fn),
                 ),
-                4 if depth > 0 => {
-                    Node::Loop(1 + rng.below(3), body(rng, depth - 1, width, fns, in_fn))
-                }
-                5 if !in_fn => Node::Supervise,
-                6 if !in_fn => Node::Approve(1 + rng.below(3)),
-                7 | 8 if !in_fn => Node::Par(
+                4 => Node::Loop(1 + rng.below(3), body(rng, depth - 1, width, fns, in_fn)),
+                5 => Node::Par(
                     rng.below(2) == 0,
                     (0..1 + rng.below(2))
-                        .map(|_| rng.below(3) as usize)
+                        .map(|_| {
+                            if fns > 0 && rng.below(2) == 0 {
+                                Branch::Call(rng.below(fns as u64) as usize)
+                            } else {
+                                Branch::Ask(rng.below(3) as usize)
+                            }
+                        })
                         .collect(),
                 ),
-                9 | 5 if fns > 0 => Node::Call(rng.below(fns as u64) as usize),
-                _ => Node::Ask(0),
+                6 => Node::Required,
+                7 => Node::Supervise,
+                8 => Node::Approve(1 + rng.below(3)),
+                9 => Node::Switch(
+                    body(rng, depth - 1, width, fns, in_fn),
+                    body(rng, depth - 1, width, fns, in_fn),
+                ),
+                10 => Node::Handled,
+                11 => Node::Mapped(1 + rng.below(4)),
+                _ => Node::Call(rng.below(fns as u64) as usize),
             }
         })
         .collect()
@@ -178,6 +237,7 @@ fn text(body: &[Node], pad: &str, next: &mut usize) -> String {
     for n in body {
         *next += 1;
         let i = *next;
+        let inner = format!("{pad}  ");
         let line = match n {
             Node::Ask(r) => format!("{pad}human.ask(\"Question {i}?\", role: {})\n", ROLES[*r]),
             Node::Escalate => format!("{pad}escalate human(\"Escalation {i}\")\n"),
@@ -186,14 +246,29 @@ fn text(body: &[Node], pad: &str, next: &mut usize) -> String {
                 format!("{pad}delegate Writer.write(\"w{i}\") supervise escalate(human)\n")
             }
             Node::Approve(k) => format!("{pad}verify n against A{k}(n)\n"),
-            Node::If(a, b) => format!(
-                "{pad}if len(t) > {i} {{\n{}{pad}  t\n{pad}}} else {{\n{}{pad}  t\n{pad}}}\n",
-                text(a, &format!("{pad}  "), next),
-                text(b, &format!("{pad}  "), next)
+            Node::Required => format!("{pad}verify n against R(n)\n"),
+            Node::Handled => format!(
+                "{pad}let h{i} = delegate Writer.write(\"h{i}\")\n{pad}on error(_) => human.ask(\"Failed {i}?\", role: finance_lead)\n"
             ),
+            Node::Mapped(k) => format!(
+                "{pad}let m{i} = map it in notes max {k} {{\n{inner}verify it against Kept(it)\n{pad}}}\n"
+            ),
+            Node::If(a, b) => format!(
+                "{pad}if len(t) > {i} {{\n{}{inner}t\n{pad}}} else {{\n{}{inner}t\n{pad}}}\n",
+                text(a, &inner, next),
+                text(b, &inner, next)
+            ),
+            Node::Switch(a, b) => {
+                let deep = format!("{inner}  ");
+                format!(
+                    "{pad}let s{i} = switch m {{\n{inner}Fast => {{\n{}{deep}t\n{inner}}}\n{inner}Slow => {{\n{}{deep}t\n{inner}}}\n{pad}}}\n",
+                    text(a, &deep, next),
+                    text(b, &deep, next)
+                )
+            }
             Node::Loop(k, b) => format!(
-                "{pad}loop max_iter {k} {{\n{}{pad}  t\n{pad}}}\n",
-                text(b, &format!("{pad}  "), next)
+                "{pad}loop max_iter {k} {{\n{}{inner}t\n{pad}}}\n",
+                text(b, &inner, next)
             ),
             Node::Par(restart, branches) => {
                 let sup = if *restart {
@@ -202,16 +277,19 @@ fn text(body: &[Node], pad: &str, next: &mut usize) -> String {
                     ""
                 };
                 let mut s = format!("{pad}par{sup} {{\n");
-                for (j, r) in branches.iter().enumerate() {
-                    s.push_str(&format!(
-                        "{pad}  b{i}x{j} = human.ask(\"Branch {i} {j}?\", role: {})\n",
-                        ROLES[*r]
-                    ));
+                for (j, b) in branches.iter().enumerate() {
+                    let value = match b {
+                        Branch::Ask(r) => {
+                            format!("human.ask(\"Branch {i} {j}?\", role: {})", ROLES[*r])
+                        }
+                        Branch::Call(f) => format!("f{f}(t, n)"),
+                    };
+                    s.push_str(&format!("{inner}b{i}x{j} = {value}\n"));
                 }
                 s.push_str(&format!("{pad}}}\n"));
                 s
             }
-            Node::Call(f) => format!("{pad}f{f}(t)\n"),
+            Node::Call(f) => format!("{pad}f{f}(t, n)\n"),
         };
         out.push_str(&line);
     }
@@ -223,16 +301,16 @@ fn text(body: &[Node], pad: &str, next: &mut usize) -> String {
 fn program(body: &[Node], fns: &[Vec<Node>]) -> String {
     let mut next = 0;
     let mut out = String::from(
-        "mandate @ 0.7\n\nmodule example.generated @ 0.1\n\nuse std.{human, model}\n\nrole accountant   \"Accountant\"\nrole finance_lead \"Finance lead\"\nrole code_owner   \"Code owner\"\n\ntype Note = { text: Text }\n\ncapability ModelStd = model.infer(tier: standard, max_class: internal)\n\nagent Writer {\n  role   \"Writes.\"\n  caps   ModelStd\n  budget { time: 2m, steps: 2 }\n  skill write(t: Text) -> Inferred<Text> ! {Model}\n}\n\ncontract A1(n: Note) {\n  accept a \"One\" by human.approve(role: accountant)\n}\n\ncontract A2(n: Note) {\n  accept a \"Two\" by human.approve(role: accountant) and human.approve(role: accountant)\n}\n\ncontract A3(n: Note) {\n  accept a \"One\" by human.approve(role: accountant)\n  accept b \"Two more\" by human.approve(role: accountant) and human.approve(role: accountant)\n}\n\n",
+        "mandate @ 0.7\n\nmodule example.generated @ 0.1\n\nuse std.{human, model}\n\nrole accountant   \"Accountant\"\nrole finance_lead \"Finance lead\"\nrole code_owner   \"Code owner\"\n\ntype Note = { text: Text }\ntype Mode = Fast | Slow\n\ncapability ModelStd = model.infer(tier: standard, max_class: internal)\n\nagent Writer {\n  role   \"Writes.\"\n  caps   ModelStd\n  budget { time: 2m, steps: 2 }\n  skill write(t: Text) -> Inferred<Text> ! {Model}\n}\n\ncontract A1(n: Note) {\n  accept a \"One\" by human.approve(role: accountant)\n}\n\ncontract A2(n: Note) {\n  accept a \"Two\" by human.approve(role: accountant) and human.approve(role: accountant)\n}\n\ncontract A3(n: Note) {\n  accept a \"One\" by human.approve(role: accountant)\n  accept b \"Two more\" by human.approve(role: accountant) and human.approve(role: accountant)\n}\n\ncontract R(n: Note) {\n  require len(human.ask(\"Sure of {n.text}?\", role: code_owner)) > 0\n  accept a \"It is\" by static true\n}\n\ncontract Kept(n: Note) {\n  accept a \"It is\" by static true\n  invariant k \"The accountant keeps it\" by human.approve(role: accountant)\n}\n\n",
     );
     for (i, f) in fns.iter().enumerate() {
         out.push_str(&format!(
-            "fn f{i}(t: Text) -> Text ! {{Human}} {{\n{}  t\n}}\n\n",
+            "fn f{i}(t: Text, n: Note) -> Text ! {{Human}} {{\n{}  t\n}}\n\n",
             text(f, "  ", &mut next)
         ));
     }
     out.push_str(&format!(
-        "workflow W(n: Note, t: Text) -> Text\n  caps   ModelStd\n  budget {{ steps: 9 }}\n{{\n  let w = delegate Writer.write(t)\n{}  t\n}}\n",
+        "workflow W(n: Note, t: Text, m: Mode, notes: List<Note>) -> Text\n  caps   ModelStd\n  budget {{ steps: 9 }}\n{{\n  let w = delegate Writer.write(t)\n{}  t\n}}\n",
         text(body, "  ", &mut next)
     ));
     out

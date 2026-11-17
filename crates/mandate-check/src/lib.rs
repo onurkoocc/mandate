@@ -66,6 +66,10 @@
 //!   checks) and E1905. Rust only.
 //! - [`attention`]: the attention facts of a workflow of 0.7
 //!   ([`attention_facts`], [`AttentionFacts`], [`Count`]). Rust only.
+//! - [`report_sig`]: what each workflow and pattern of 0.7 shows people, as
+//!   a library's authority signature and the semantic diff record it, and
+//!   the comparison that makes a report added or raised a governance
+//!   change. Rust only.
 //! - [`asks`]: the attention bound of a workflow of 0.7, the questions a run
 //!   can put to people ([`WorkflowBound`], [`SiteKind`]), E1906 to E1908.
 //!   Rust only.
@@ -198,6 +202,7 @@ pub mod owner;
 pub mod patch;
 pub mod path;
 pub mod posix;
+pub mod report_sig;
 pub mod reports;
 pub mod resolve;
 pub mod roles;
@@ -228,11 +233,12 @@ pub use check::{
 pub use diff::{
     BudgetChanges, Change, Classified, DiffView, GovernanceChangeKind, KindedChange, Locks,
     ScopeDiff, budget_changes, classify, envelope_changes, governance_changes, scope_diff,
-    scope_diffs, semantic_diff, semantic_diff_with, shown_caps, steps, system_changes,
+    scope_diffs, semantic_diff, semantic_diff_pinned, semantic_diff_with, shown_caps, steps,
+    system_changes,
 };
 pub use doors::{
     AmendmentCheck, AmendmentInput, PatchCheck, SubprogramCheck, SubprogramInput, check_amendment,
-    check_patch, check_subprogram, subprogram_linked,
+    check_patch, check_subprogram, subprogram_linked, subprogram_linked_pinned,
 };
 pub use grant::{
     AuthorityContext, Capability, GrantDelegation, GrantInput, GrantOutput, InFlightOverlapInput,

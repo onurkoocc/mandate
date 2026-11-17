@@ -13,7 +13,7 @@ use mandate_ir::{
 };
 use mandate_syntax::{kind_of, load, print_program};
 use mandate_views::{
-    acs_target, architecture_with_lock, authority_with, card, card_doc, cost_with, diff_doc_with,
+    acs_target, architecture_pinned, authority_pinned, card, card_doc, cost_with, diff_doc_with,
     envelope_workflows, program_doc, to_html, to_markdown,
 };
 
@@ -22,9 +22,8 @@ use crate::libraries::Given;
 use crate::{Io, IoErrorKind};
 
 /// The commands of the Node command line that this executable does not
-/// have: `mcp`, and `CONTROL` of `bridge/src/cli.ts` (the runtime's).
-const NOT_HERE: [&str; 28] = [
-    "mcp",
+/// have: `CONTROL` of `bridge/src/cli.ts` (the runtime's).
+const NOT_HERE: [&str; 27] = [
     "run",
     "status",
     "approve",
@@ -66,10 +65,11 @@ const USAGE: &str = "usage: mandate <command> [options]
   explain <code> [--json]
   view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]
   view <file> --card [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]
-  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
-  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]
+  add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]
+  upgrade <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]
   publish <source dir> [--libraries <dir>] [--config <file>] [--json]
-  (mcp and the commands that control a run are the Node command line's, not this executable's)
+  mcp [--module <file>]…   (an MCP server on stdio)
+  (the commands that control a run are the Node command line's, not this executable's)
 ";
 
 /// A command that ended before its end, with its exit status; what it had
@@ -160,6 +160,8 @@ impl<'a> Cli<'a> {
             "add" => self.add(&a, false),
             "upgrade" => self.add(&a, true),
             "publish" => self.publish(&a),
+            // The server reads no file: its modules are read here, before it starts.
+            "mcp" => Ok(crate::mcp::serve(&mut *self.io, JsObject::from(&modules))),
             _ => Err(self.usage()),
         }
     }
@@ -681,14 +683,24 @@ impl<'a> Cli<'a> {
             self.out(&text);
         } else {
             let m = view_modules(&all, &[&program]);
+            // 0.7: every view reads std.patterns at the version the lock pins.
+            let pin = mandate_check::library::std_patterns_pin(lock.as_ref());
             let text = if format == "json" {
                 let views = JsObject::new()
                     .with(
                         "architecture",
-                        architecture_with_lock(&program, lock.as_ref().filter(|_| m.is_some()), m)
-                            .to_js(),
+                        architecture_pinned(
+                            &program,
+                            lock.as_ref().filter(|_| m.is_some()),
+                            m,
+                            pin.as_ref(),
+                        )
+                        .to_js(),
                     )
-                    .with("authority", authority_with(&program, m).to_js())
+                    .with(
+                        "authority",
+                        authority_pinned(&program, m, pin.as_ref()).to_js(),
+                    )
                     .with("cost", cost_with(&program, lock.as_ref(), m).to_js());
                 pretty(&JsValue::Object(views))
             } else {

@@ -1,0 +1,6 @@
+{
+  "library": "mandate/library/0.6",
+  "name": "acme.reports",
+  "version": "1.2.0",
+  "modules": ["reports.mdt"]
+}

@@ -81,11 +81,12 @@ pub use acs::{
     AcsTarget, acs_target,
 };
 pub use architecture::{
-    ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, architecture_with,
-    architecture_with_lock, mermaid,
+    ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, architecture_pinned,
+    architecture_with, architecture_with_lock, mermaid,
 };
 pub use authority::{
-    AuthorityRow, AuthorityView, authority, authority_blocks, authority_with, late_kinds,
+    AuthorityRow, AuthorityView, authority, authority_blocks, authority_pinned, authority_with,
+    late_kinds,
 };
 pub use card::{
     CardApproval, CardApproves, CardBudgetRow, CardBudgetText, CardHanded, CardMap, CardMember,
@@ -97,12 +98,12 @@ pub use card_library::{
     CardRole, CardTool,
 };
 pub use cost::{
-    BudgetFrom, CostRow, CostView, DelegateBudget, Sum, WorkflowCost, cost, cost_blocks, cost_with,
-    delegate_budget,
+    BudgetFrom, CostRow, CostView, DelegateBudget, Sum, WorkflowCost, cost, cost_blocks,
+    cost_pinned, cost_with, delegate_budget,
 };
-pub use diff::{diff_blocks, diff_doc, diff_doc_with};
+pub use diff::{diff_blocks, diff_doc, diff_doc_pinned, diff_doc_with};
 pub use doc::{Block, Cell, Doc, cell_text, html_escape, md_escape, to_html, to_markdown};
-pub use program_doc::program_doc;
+pub use program_doc::{program_doc, program_doc_pinned};
 pub use shown::{list, mermaid_text, show, show_command, type_text};
 pub use system::{
     SystemAuthorize, SystemComponent, SystemEnvironment, SystemInterface, SystemRead, SystemView,

@@ -114,7 +114,7 @@ pub fn expanded_program_reaching(
     }
     // 0.6: the built-in `std.patterns`, when the program imports it and the
     // modules do not hold it.
-    let with_builtin = crate::library::with_builtin(view, modules);
+    let with_builtin = crate::library::with_builtin(view, modules, None);
     let modules = with_builtin.as_ref().or(modules);
     let linked = crate::modules::link_reaching(view, modules, reach);
     let e = expand(
@@ -151,6 +151,28 @@ pub fn expanded_program_reaching(
 /// program applies no pattern, which a view reads as it is.
 #[must_use]
 pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
+    for_views_pinned(program, modules, None)
+}
+
+/// [`for_views`] of a program whose `std.patterns` is the version `pinned`
+/// (0.7: the version its lock pins, which a view is given): the built-in of
+/// that version is read, through [`crate::library::with_builtin`], unless
+/// `modules` hold `std.patterns`. `None` is [`for_views`]'s answer, byte
+/// for byte.
+#[must_use]
+pub fn for_views_pinned(
+    program: &Value,
+    modules: Option<&Modules>,
+    pinned: Option<&mandate_lib::Version>,
+) -> Option<Value> {
+    let with_pin = pinned.and_then(|v| {
+        Program::of(program).and_then(|p| crate::library::with_builtin(p, modules, Some(v)))
+    });
+    for_views_of(program, with_pin.as_ref().or(modules))
+}
+
+/// [`for_views`], once the modules hold the built-in that is read.
+fn for_views_of(program: &Value, modules: Option<&Modules>) -> Option<Value> {
     if !applies_pattern(program) {
         return None;
     }
@@ -158,7 +180,7 @@ pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
         return Some(e);
     }
     let view = Program::of(program)?;
-    let with_builtin = crate::library::with_builtin(view, modules);
+    let with_builtin = crate::library::with_builtin(view, modules, None);
     let modules = with_builtin.as_ref().or(modules);
     let linked = link(view, modules).defs;
     let mut members = view.members().clone();

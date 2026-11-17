@@ -16,8 +16,12 @@ pub(super) const ATTENTION_FACTS: &[&str] = &["text", "kind", "opts", "workflow"
 /// Input: `{ text, kind, opts?, workflow }`, `text`, `kind` and `opts` as the
 /// door `check` takes them (`lock`, `modules`, `claim`, `libraries`,
 /// `config`; `linked` is read as a boolean and the running program is asked
-/// for whatever it says), so that a caller gives both doors one input; and
-/// `workflow`, the name of a workflow the program defines.
+/// for whatever it says), so that a caller gives both doors one input, and
+/// (0.7) `std_patterns`, the version of `std.patterns` the lock of the
+/// program's parent or package pins, for a check that is given no lock (a
+/// lead's sub-program's): one the compiler embeds, and with a lock the one
+/// it pins, else `bad_input`; and `workflow`, the name of a workflow the
+/// program defines.
 ///
 /// Output: `null` when the program does not check, is older than 0.7, or
 /// defines no workflow of that name; else the facts, `mandate/attention/0.1`:
@@ -52,7 +56,15 @@ pub(super) const ATTENTION_FACTS: &[&str] = &["text", "kind", "opts", "workflow"
 /// `kind` is one of a closed list, one name for each row of the table of
 /// sites ([`crate::asks::SiteKind`]), which the runtime tags every wait it
 /// opens with: `verify`, `ask`, `escalate`, `pause`, `supervise_escalate`,
-/// `effect`, `changeset`, `governance`, `review`, `plan`. `on_no_answer` is
+/// `effect`, `changeset`, `governance`, `review`, `plan`. `wait` is the wait
+/// in its static form: the site's IR path and the part the runtime adds
+/// (`/contract/<group>/<criterion>[/all/i]/call`, `/authorize`,
+/// `/governance`, `/escalate`), not a run's command id, which adds
+/// iterations (`@i`, `#allN`, `[i]`, an attempt's `#k`) and stands a
+/// function's site under its call (`<call>>f/…`), a contract's under its
+/// `verify` (`<verify>/contract/…`) and a sub-program's under its command
+/// (`<plan>/program/<n>…`); `kind` and `wait` name one row (a review and its
+/// `only: on_escalation` row share the review's wait). `on_no_answer` is
 /// one of `waits`, `unmet`, `escalates` (with `escalates: { to,
 /// deadline_ms }`), `declined`, `refused_to_lead`; `only` is `null`,
 /// `on_escalation`, `governance_file` or `budget_exceeded`. A count is an
@@ -82,6 +94,13 @@ pub(super) fn attention_facts(input: &Value) -> Result<JsValue, DoorError> {
         libraries = super::library::sources_of(o, "libraries")?;
         config = super::library::config_of(o)?;
         o.opt_bool("linked")?;
+        // 0.7: the version of std.patterns the lock of a parent (or of a
+        // package) pins, for a check that is given no lock; with a lock, it
+        // must be the lock's.
+        let named = o.opt_std_patterns("std_patterns")?;
+        opts.std_patterns = crate::library::pin_of(opts.lock, named.as_ref())
+            .map_err(|e| DoorError::bad_input(format!("`opts.std_patterns`: {e}")))?
+            .filter(|_| named.is_some());
     }
     if !libraries.is_empty() {
         opts.libraries = Some(&libraries);

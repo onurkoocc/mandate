@@ -1,0 +1,106 @@
+// std.patterns 2.0.0 (spec/attention.md "std.patterns 2.0.0"): the three
+// patterns of 1.0.0 (lib/std.patterns/), with the same slots, written in
+// mandate @ 0.7, with stages, and two reports in BatchWithExceptions. A
+// program of 0.7 resolves this version when its lock pins none; a lock pins
+// it, or 1.0.0, by its digest like any library's. Each brings no authority
+// of its own: every agent, tool, effect, role and capability its expansion
+// reaches is an argument of the application, and the applying workflow's
+// caps and budget bound all of it. A stage and a report change no value of
+// the run and cost nothing.
+
+mandate @ 0.7
+
+module std.patterns @ 2.0
+
+use std.{human}
+
+/// The result of a batch: each commit's outcome, what was declined, and the
+/// indices of the items whose work failed.
+pub type Batch<Out, R> = {
+  posted:   List<Outcome<Receipt<R>>>,
+  declined: List<Declined<Out>>,
+  failed:   List<Int>
+}
+
+/// Works on every item of a list. What passes goes on; what does not is
+/// asked about once, as one list. The reviewer is told how many items were
+/// collected, and how the batch ended.
+pub pattern BatchWithExceptions<Item, Out, R>(
+  source:      tool() -> Untrusted<List<Item>>,
+  work:        skill(Untrusted<Item>) -> Inferred<Out>,
+  accepted:    contract(Item, Out),
+  reviewer:    role,
+  escalate_to: role,
+  commit:      effect(Verified<Out, accepted>) -> Receipt<R>,
+  key:         field(Out),
+  max_items:   const Int,
+  concurrency: const Int,
+  deadline:    const Duration
+) -> Batch<Out, R>
+{
+  stage collect "Collect the items"
+  let items    = source()
+  report to reviewer "Items collected" { items: len(items) }
+
+  stage work "Work on each item"
+  let checked  = map it in items max max_items par concurrency {
+    let out = delegate work(it)
+    verify out against accepted(it, out)
+  }
+
+  stage exceptions "Decide on the exceptions"
+  let reviewed = human.review(checked, role: reviewer, deadline: deadline, escalate_to: escalate_to)
+
+  stage commit "Commit what was accepted"
+  let posted   = map v in reviewed.accepted max max_items {
+    effect commit(v) idempotent_by v.key
+  }
+  report to reviewer "Batch done" {
+    posted: len(posted), declined: len(reviewed.declined), failed: len(reviewed.failed)
+  }
+  Batch { posted, declined: reviewed.declined, failed: reviewed.failed }
+}
+
+/// Works on disjoint parts side by side, then merges the results: `items`,
+/// a constant list the applying workflow writes, a part each. Each item
+/// is handed `scope` narrowed to its own `part`, so no two items write the
+/// same place.
+pub pattern FanOutMerge<Item, Out, M>(
+  items:       const List<Item>,
+  work:        skill(Item) -> Inferred<Out>,
+  scope:       capability,
+  part:        field(Item),
+  merge:       skill(List<Outcome<Inferred<Out>>>) -> Inferred<M>,
+  max_items:   const Int,
+  concurrency: const Int
+) -> Inferred<M>
+{
+  stage work "Work on each part"
+  let done = map it in items max max_items par concurrency with caps scope.narrow(it.part) {
+    delegate work(it)
+  }
+
+  stage merge "Merge the results"
+  delegate merge(done)
+}
+
+/// One agent makes from `input`, a constant the applying workflow writes;
+/// another, isolated and holding no write capability,
+/// looks for a counterexample. What it finds is held to the contract, and
+/// the criteria left open go to the owner.
+pub pattern MakerChecker<In, Out>(
+  input:    const In,
+  make:     skill(In) -> Inferred<Out>,
+  check:    skill(In, Inferred<Out>) -> Inferred<Out> read_only,
+  accepted: contract(In, Out),
+  owner:    role
+) -> Verified<Out, accepted>
+{
+  stage make "Make the result"
+  let made    = delegate make(input)
+
+  stage check "Check the result"
+  let checked = delegate check(input, made) isolated
+  verify checked against accepted(input, checked)
+    on unmet(c) => escalate human("Open criteria: {c}", role: owner)
+}
