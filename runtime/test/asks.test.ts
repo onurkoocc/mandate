@@ -21,7 +21,7 @@
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { attentionFacts, hashProgram, load, type AttentionFacts, type AttentionFactsInput, type Json, type Program } from "@mandate/bridge";
+import { attentionFacts, hashProgram, linkedProgram, load, type AttentionFacts, type AttentionFactsInput, type Json, type Program } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ASKS, SITE_KINDS, SUPERVISE_ESCALATIONS } from "../src/asks.js";
 import type { PreparedFile } from "../src/adapters.js";
@@ -32,6 +32,9 @@ import { SimAgents, SimTool, type SimTool as Tool } from "../src/sim.js";
 import type { RunRow } from "../src/journal.js";
 import type { Obj, Value } from "../src/values.js";
 import { baseOf, type WorkerChecker } from "../src/plan.js";
+import { Interpreter } from "../src/interp.js";
+import { Runtime } from "../src/runtime.js";
+import { Suspend, Violation } from "../src/signals.js";
 import { toolUse } from "../src/sim.js";
 import { tickPass } from "../src/tick.js";
 import { closeAll, planChecker, world, type World } from "./helpers.js";
@@ -671,8 +674,84 @@ describe("the role an approval asks is the one the program names (D2)", () => {
     expect(r.state, state(r)).toBe("waiting");
     const opened = await eventsOf(w, "d2", "wait_opened");
     expect((opened[0]!["request"] as Obj)["role"]).toBe("accountant");
+    // The same program of 0.6 asks what it always asked: the parameter's value.
+    const six = await world(IMP_07.replace("mandate @ 0.7", "mandate @ 0.6"), { lock, modules: { "example.lib": lib }, decisions: { keys: new TrustedKeys([ana.publicKey]) } });
+    const s = await six.rt.startRun({ pkg: six.pkg, workflow: "W", runId: "d6", input: { n: { text: "x" } } });
+    expect(s.state, state(s)).toBe("waiting");
+    const asked = await eventsOf(six, "d6", "wait_opened");
+    expect((asked[0]!["request"] as Obj)["role"]).toBe("finance_lead");
+    expect(Object.keys(asked[0]!).sort()).toEqual(["command", "kind", "request"]);
+  });
+
+  it("on an IR handed to the interpreter directly: asks the role definition a contract's own parameter shadows, and refuses a role no definition names", async () => {
+    // The probe of the review (scratchpad probe/p5.mdt), which the check of 0.7 refuses (E1501, shadowed_by): read
+    // as IR alone, linked, and run by an interpreter of its own over the world's journal.
+    const p5 = load(P5, "mdt").program!;
+    const w = await aworld();
+    const asked = async (program: Program, runId: string): Promise<unknown> => {
+      await w.db.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict do nothing", [`sha256:${"5".repeat(64)}`, JSON.stringify(program), JSON.stringify({ modules: {} }), "{}"]);
+      await w.db.tx((tx) => w.rt.journal.createRun(tx, { runId, tenant: "default", packageHash: `sha256:${"5".repeat(64)}`, workflow: "W", input: {}, policy: { tenant: "default" }, limits: {}, manifest: {}, manifestHash: `sha256:${"6".repeat(64)}` }));
+      const { fence } = await w.rt.journal.acquire(runId);
+      const interp = new Interpreter({ journal: w.rt.journal, adapters: w.adapters, program: linkedProgram(program, {}), packageHash: `sha256:${"5".repeat(64)}`, runId, fence, policy: { tenant: "default" }, faults: w.faults, artifacts: w.rt.artifacts, signer: w.rt.signer, trusted: w.rt.trusted, replay: false });
+      try {
+        await interp.runWorkflow("W", { n: { text: "x" } });
+      } catch (e) {
+        if (e instanceof Suspend) return ((await eventsOf(w, runId, "wait_opened"))[0]!["request"] as Obj)["role"];
+        return e;
+      }
+      return "no wait";
+    };
+    expect(await asked(p5, "p5")).toBe("accountant");
+    // Before 0.7 the parameter's value decided, as it always did.
+    expect(await asked({ ...p5, language: "mandate/0.6" } as unknown as Program, "p5six")).toBe("finance_lead");
+    // A role no definition has (the parameter renamed): nobody is asked, and the run stops for a person.
+    const renamed = JSON.parse(JSON.stringify(p5).replaceAll('"name":"accountant","type"', '"name":"approver","type"').replace('{"op":"var","name":"accountant"}', '{"op":"var","name":"approver"}')) as Program;
+    const refused = await asked(renamed, "p5u");
+    expect(refused).toBeInstanceOf(Violation);
+    expect(refused).toMatchObject({ code: "unknown_role", message: expect.stringContaining("names 'approver', which is no role definition, as its role") });
+    expect(await eventsOf(w, "p5u", "wait_opened")).toEqual([]);
   });
 });
+
+describe("two drivers of one run", () => {
+  it("count a question once: the second finds the wait the first opened, under the run's lock", async () => {
+    const w = await aworld(ASKS_MDT, { fails: true });
+    const r = await w.rt.startRun({ pkg: w.pkg, workflow: "Asking", runId: "two", input: { note: "long note" } });
+    expect(r.state).toBe("waiting");
+    const other = new Runtime(w.db, w.adapters, undefined, undefined, { decisions: { keys: new TrustedKeys([ana.publicKey]) } });
+    (other as unknown as { artifacts: unknown }).artifacts = w.rt.artifacts;
+    await Promise.allSettled([w.rt.resume("two"), other.resume("two"), w.rt.resume("two")]);
+    expect((await asksRow(w, "two"))!.settled).toBe(1);
+    expect(await eventsOf(w, "two", "wait_opened")).toHaveLength(1);
+  });
+});
+
+/** The reviewer's probe p5 (D2): a contract of the program whose parameter has a role's name. */
+const P5 = `mandate @ 0.7
+
+module example.probe.p5 @ 0.1
+
+use std.{human, model}
+
+role accountant   "Accountant"
+role finance_lead "Finance lead"
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+type Note = { text: Text }
+
+/// The role that approves is named by a parameter that has a role's name.
+contract C(n: Note, accountant: Text) {
+  accept ok "approved" by human.approve(role: accountant)
+}
+
+workflow W(n: Note) -> Verified<Note, C>
+  caps   ModelStd
+  budget { steps: 2 }
+{
+  verify n against C(n, "finance_lead")
+}
+`;
 
 /** The reviewer's probe pair (D2): a 0.6 module whose contract's parameter has a role's name, and a 0.7 program that verifies against it. */
 const LIB_06 = `mandate @ 0.6

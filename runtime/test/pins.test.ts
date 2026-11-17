@@ -10,7 +10,8 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { load, type LibraryPin, type Lock } from "@mandate/bridge";
+import { check, load, subprogramLinked, type LibraryPin, type Lock, type Program } from "@mandate/bridge";
+import { linkedSubprogram } from "../src/package.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { shownPackage, signDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
@@ -90,6 +91,26 @@ async function parentWith(pin: LibraryPin): Promise<World & { told: Obj[] }> {
 async function attentionEvents(w: World, runId: string): Promise<Array<[string, Obj]>> {
   return (await w.rt.journal.events(runId)).filter((e) => ["stage_started", "stage_ended", "report"].includes(e.type)).map((e) => [e.type, e.data as Obj]);
 }
+
+describe("a sub-program is linked with the version of std.patterns its parent's lock pins, wherever the runtime links one", () => {
+  it("gives the pattern of the pinned version to the sub-program linked into its parent (interp.ts, plan.ts, package.ts)", () => {
+    const parent = check(PARENT, "mdt").program!;
+    const sub = load(`mandate @ 0.7\n\nmodule ${MODULE}.plan_1 @ 0.1\n\nuse ${MODULE}\n\nworkflow Fix() -> Int\n  caps   ${CAPS}\n  budget { tokens: 20k, steps: 40, agents: 4 }\n{\n  1\n}\n`, "mdt").program!;
+    const stagesOf = (lock: Lock | undefined): number => {
+      const p = linkedSubprogram(sub, parent, {}, lock).defs["MakerChecker"] as unknown as { body?: Array<{ op?: string }> } | undefined;
+      expect(p, "the parent's pattern is linked into its sub-program").toBeDefined();
+      return (p!.body ?? []).filter((s) => s.op === "stage").length;
+    };
+    const pinned = (pin: LibraryPin): Lock => ({ modules: {}, libraries: { "std.patterns": pin } }) as unknown as Lock;
+    expect(stagesOf(pinned(ONE))).toBe(0);
+    expect(stagesOf(pinned(TWO))).toBe(2);
+    // A lock that pins none: the version a program of 0.7 reads without a pin, 2.0.0.
+    expect(stagesOf(undefined)).toBe(2);
+    // A parent before 0.7 is linked as before, given no pin whatever its lock says.
+    const six = { ...parent, language: "mandate/0.6" } as unknown as Program;
+    expect(linkedSubprogram(sub, six, {}, pinned(TWO))).toEqual(subprogramLinked(sub, six, {}));
+  });
+});
 
 describe("a lead's sub-program reads std.patterns at the version its parent's lock pins", () => {
   it("with 1.0.0 pinned, is admitted and runs MakerChecker with no stage and no report", async () => {
