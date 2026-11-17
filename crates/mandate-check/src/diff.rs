@@ -23,6 +23,7 @@ use mandate_ir::{
 use crate::caps::{CapVal, show_cap, within};
 use crate::lock_diff::{lock_diff, lock_limits_diff};
 use crate::modules::{Modules, linked_program};
+use crate::report_sig::{Reports, compare_reports, report_records};
 use crate::view_shared::{
     Graph, ProgramRef, VIEW_FORMAT, caps_in, defs_of, duration, is_system, j, j_or_null, js_text,
     json_string, kind_text, method_of, micros_as_units, program_ref, workflow_effects,
@@ -655,6 +656,10 @@ pub enum GovernanceChangeKind {
     /// an effect of a higher class, a contract for a weaker one, another
     /// reviewer, a higher `max_items` (spec/library.md "Patterns").
     ApplicationChanged,
+    /// 0.7: a workflow shows people more: a report added, or one whose
+    /// fields' highest class rose (spec/attention.md "Reports are
+    /// governance"). What a person is shown is part of what they approved.
+    ReportWidened,
 }
 
 impl GovernanceChangeKind {
@@ -676,6 +681,7 @@ impl GovernanceChangeKind {
             GovernanceChangeKind::WaiverAdded => "waiver_added",
             GovernanceChangeKind::WaiverRemoved => "waiver_removed",
             GovernanceChangeKind::ApplicationChanged => "application_changed",
+            GovernanceChangeKind::ReportWidened => "report_widened",
         }
     }
 }
@@ -766,6 +772,9 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
     let (bdefs, adefs) = (defs_of(bp), defs_of(ap));
     let mut names = unique_in_order(bdefs.keys().chain(adefs.keys()).map(str::to_owned));
     sort_utf16(&mut names);
+    // 0.7: the reports of both programs, recorded once, when a workflow in
+    // both makes one.
+    let mut shown: Option<(Reports, Reports)> = None;
     for name in &names {
         let path = format!("/defs/{name}");
         // 0.6: a definition's `doc` is a person's text about it. A changed
@@ -956,6 +965,16 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                 } else {
                     application_changes(&mut out, name, &path, b, a);
                     workflow_changes(&mut out, (lb, la), name, &path, b, a);
+                    // 0.7: what the workflow shows people.
+                    if holds_report(b) || holds_report(a) {
+                        let (was, now) = shown.get_or_insert_with(|| {
+                            (
+                                program_reports(before, modules),
+                                program_reports(after, modules),
+                            )
+                        });
+                        report_changes(&mut out, name, &path, was, now);
+                    }
                 }
             }
             // 0.6: a pattern's body is what its applications do.
@@ -1020,6 +1039,62 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
         }
     }
     out
+}
+
+/// 0.7: what each workflow and pattern of `program` shows people, as its
+/// check would type it: the expansion, linked with `modules` (and the
+/// built-in `std.patterns` its language reads without a pin)
+/// ([`crate::report_sig`]). Empty for a program older than 0.7.
+fn program_reports(program: &Value, modules: Option<&Modules>) -> Reports {
+    let Some(view) = Program::of(program).filter(|p| {
+        p.language()
+            .is_some_and(|l| l.at_least(mandate_ir::Language::V0_7))
+    }) else {
+        return Reports::new();
+    };
+    let with_builtin = crate::library::with_builtin(view, modules, None);
+    let modules = with_builtin.as_ref().or(modules);
+    let expanded = crate::expand::expanded_program(program, modules);
+    let Some(source) = Program::of(expanded.as_ref().unwrap_or(program)) else {
+        return Reports::new();
+    };
+    let linked = crate::modules::link(source, modules).defs;
+    report_records(source, &linked)
+}
+
+/// 0.7: what changed in what the workflow `name` shows people (the
+/// workflow case of [`classify`]): a report added, or one whose highest
+/// class rose, is the governance change `report_widened`; one taken away,
+/// or whose class fell, a behavior change.
+fn report_changes(out: &mut Classified, name: &str, path: &str, was: &Reports, now: &Reports) {
+    let empty: Vec<crate::report_sig::ReportSig> = Vec::new();
+    let (before, after) = (
+        was.get(name).unwrap_or(&empty),
+        now.get(name).unwrap_or(&empty),
+    );
+    let (up, down) = compare_reports(name, before, after);
+    for text in up {
+        out.gov(
+            GovernanceChangeKind::ReportWidened,
+            format!("{path}/body"),
+            text,
+        );
+    }
+    for text in down {
+        out.beh(format!("{path}/body"), text);
+    }
+}
+
+/// Whether the definition `d` holds a `report` statement (0.7).
+fn holds_report(d: &Value) -> bool {
+    match d {
+        Value::Array(items) => items.iter().any(holds_report),
+        Value::Object(m) => {
+            m.get("op").and_then(Value::as_str) == Some("report")
+                || m.iter().any(|(_, x)| holds_report(x))
+        }
+        _ => false,
+    }
 }
 
 /// What the pattern `p` names in `program`: `"local"` for one it defines,

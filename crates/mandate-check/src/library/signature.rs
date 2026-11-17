@@ -39,6 +39,7 @@ use mandate_ir::{
 use crate::caps::{CapVal, cap_covers, show_cap};
 use crate::diff::budget_changes;
 use crate::modules::{Modules, Reach, link_reaching};
+use crate::report_sig::{ReportSig, compare_reports, report_records};
 use crate::stdlib::DataClass;
 use crate::view_shared::{caps_in, effect_info};
 
@@ -88,6 +89,11 @@ pub struct Entry {
     pub class: Option<String>,
     /// A connector's tools: `read_only`, or `write <retry class>`.
     pub tools: BTreeMap<String, String>,
+    /// 0.7: the reports a workflow or a pattern of a module of 0.7 makes,
+    /// each with its role (a pattern's role slot) and the highest class of
+    /// its fields ([`crate::report_sig`]). `None` in a module of 0.6, whose
+    /// signature does not change.
+    pub reports: Option<Vec<ReportSig>>,
 }
 
 impl Entry {
@@ -103,6 +109,7 @@ impl Entry {
             url: None,
             class: None,
             tools: BTreeMap::new(),
+            reports: None,
         }
     }
 
@@ -151,6 +158,13 @@ impl Entry {
                 );
             }
         }
+        // 0.7: what a workflow or a pattern of a module of 0.7 shows.
+        if let Some(reports) = &self.reports {
+            out.insert(
+                "reports",
+                JsValue::Array(reports.iter().map(|r| JsValue::Object(r.to_js())).collect()),
+            );
+        }
         out
     }
 }
@@ -180,7 +194,8 @@ pub struct Widening {
     /// The definition, `<module>.<name>`.
     pub name: String,
     /// What widened: `added`, `kind`, `capability`, `effect`, `budget`,
-    /// `role`, `class`, `shape`, `url`, `connector_class` or `tool`.
+    /// `role`, `report` (0.7), `class`, `shape`, `url`, `connector_class` or
+    /// `tool`.
     pub what: &'static str,
     /// The change, for a person.
     pub text: String,
@@ -304,13 +319,23 @@ fn module_signature(
     let Some(lp) = Program::of(&with_linked) else {
         return;
     };
+    // 0.7: what each workflow and pattern shows, of a module of 0.7; a
+    // module of 0.6 records nothing of it, and its signature is as before.
+    let of_0_7 = view
+        .language()
+        .is_some_and(|l| l.at_least(mandate_ir::Language::V0_7));
+    let reports = if of_0_7 {
+        report_records(program, &linked)
+    } else {
+        crate::report_sig::Reports::new()
+    };
     for (def, d) in view.definitions() {
         if !d.value().get("pub").is_some_and(Value::is_truthy) {
             continue;
         }
         let key = format!("{name}.{def}");
         let value = program.defs().and_then(|x| x.get(def)).unwrap_or(d.value());
-        let entry = match d.kind() {
+        let mut entry = match d.kind() {
             Some(DefKind::Workflow) => {
                 let mut e = Entry::new("workflow");
                 let bounds = workflow_bounds(value);
@@ -376,6 +401,9 @@ fn module_signature(
             }
             _ => continue,
         };
+        if of_0_7 && matches!(entry.kind, "workflow" | "pattern") {
+            entry.reports = Some(reports.get(def).cloned().unwrap_or_default());
+        }
         out.entries.insert(key, entry);
     }
 }
@@ -445,6 +473,14 @@ pub fn widenings(old: &Signature, new: &Signature) -> Vec<Widening> {
         }
         for r in n.roles.difference(&o.roles) {
             w("role", format!("+ {name}: waits for {r}"));
+        }
+        // 0.7: a report added, or one whose highest class rose; a version of
+        // 0.6 before it made none.
+        if let Some(now) = &n.reports {
+            let was = o.reports.as_deref().unwrap_or_default();
+            for text in compare_reports(name, was, now).0 {
+                w("report", text);
+            }
         }
         if n.max_class > o.max_class {
             let shown = |c: Option<DataClass>| c.map_or("none", DataClass::as_str);

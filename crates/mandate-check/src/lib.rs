@@ -66,6 +66,10 @@
 //!   checks) and E1905. Rust only.
 //! - [`attention`]: the attention facts of a workflow of 0.7
 //!   ([`attention_facts`], [`AttentionFacts`], [`Count`]). Rust only.
+//! - [`report_sig`]: what each workflow and pattern of 0.7 shows people, as
+//!   a library's authority signature and the semantic diff record it, and
+//!   the comparison that makes a report added or raised a governance
+//!   change. Rust only.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
 //!   `compiler/src/check/roles.ts`.
 //! - [`lock`]: the lock, `compiler/src/lock.ts`: [`Lock`], [`validate_lock`],
@@ -188,6 +192,7 @@ pub mod modules;
 pub mod patch;
 pub mod path;
 pub mod posix;
+pub mod report_sig;
 pub mod reports;
 pub mod resolve;
 pub mod roles;
