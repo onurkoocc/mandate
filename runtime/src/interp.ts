@@ -1379,18 +1379,14 @@ export class Interpreter {
           const role = arg("role");
           // Its static site is the delegation's, `<delegate>/escalate`, whichever attempt (`#k`) it follows.
           const at = this.site(ctx, path);
-          const answer = await this.wait(
-            `${id}/escalate`,
-            "input",
-            {
-              escalation: { delegate: `${e.agent}.${e.skill}`, fault: f.value(), attempt },
-              question: `${e.agent}.${e.skill} failed with ${show(f.value())}. Answer "retry" to run it again, or anything else to let the failure stand.`,
-              options: ["retry", "fail"],
-              ...(role?.op === "text" ? { role: role.value } : this.asked(role)),
-            },
-            ctx,
-            { kind: "supervise_escalate", path: at, wait: `${at}/escalate` },
-          );
+          // (crates/mandate-check/tests/asks_0_7.rs reads the first line of this call as it is written.)
+          // prettier-ignore
+          const answer = await this.wait(`${id}/escalate`, "input", {
+            escalation: { delegate: `${e.agent}.${e.skill}`, fault: f.value(), attempt },
+            question: `${e.agent}.${e.skill} failed with ${show(f.value())}. Answer "retry" to run it again, or anything else to let the failure stand.`,
+            options: ["retry", "fail"],
+            ...(role?.op === "text" ? { role: role.value } : this.asked(role)),
+          }, ctx, { kind: "supervise_escalate", path: at, wait: `${at}/escalate` });
           if (String(unwrap(answer)).trim().toLowerCase() === "retry") continue;
         }
         throw f;
