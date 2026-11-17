@@ -94,6 +94,8 @@ export const RUST_ONLY = {
   // and a tool's schema digest (the runtime's own `schemaDigest`, byte for byte).
   callableConnectors: { door: "callable_connectors", params: ["program", "modules"] },
   toolSchemaDigest: { door: "tool_schema_digest", params: ["tool"] },
+  // Language 0.7's attention facts of a workflow (spec/attention.md "The facts"): what a run of 0.7 stores at its start.
+  attentionFacts: { door: "attention_facts", params: ["text", "kind", "opts", "workflow"] },
   // Whether a value is the `libraries` member of a configuration: asked of the door that reads one before it resolves
   // anything, in a request that resolves nothing.
   librariesConfigProblems: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now"] },

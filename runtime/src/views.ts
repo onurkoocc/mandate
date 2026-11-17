@@ -31,7 +31,7 @@
 // plain content (G09).
 
 import { atLeast, LANGUAGE_06, architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, rolesNamed, semanticDiff, VIEW_FORMAT, type Block, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/bridge";
-import { eventClass, sectionClass, shows, stepClass, TRACE_KINDS, type Audience, type ViewClass } from "./classes.js";
+import { addressee, eventClass, sectionClass, shows, stepClass, TRACE_KINDS, type Audience, type ViewClass } from "./classes.js";
 import { authorizationId } from "./decisions.js";
 import { costDims, type BudgetReport, type ChangesetRow, type EvidenceRow, type HaltRow } from "./journal.js";
 import type { JournalReport } from "./journal-chain.js";
@@ -414,8 +414,9 @@ function roleView(v: RunView, role: string, events: Stored[]): RoleView {
   if (v.reviews) out["reviews"] = v.reviews.filter((r) => may("reviews", r.role) || (r.escalated !== null && may("reviews", r.escalated.to)));
   if (out["budget"]) out["budget"] = { dimensions: v.budget.dimensions, commands: v.budget.commands.filter((c) => shows(audience, stepClass(c.kind), asked.get(c.command))) };
   if (v.envelope && out["envelope"]) out["envelope"] = { ...v.envelope, amendments: may("envelope.amendments", v.envelope.owner) ? v.envelope.amendments : [] };
-  // What stopped the run is drawn from the events of the classes the role sees, by their types.
-  if (may("exceptions")) out["exceptions"] = exceptionsOf(v, events.filter((e) => shows(audience, eventClass(e.type))), may("exceptions.violations.detail"));
+  // What stopped the run is drawn from the events of the classes the role sees, by their types; an addressed one (a
+  // report, 0.7) only when it is addressed to this role.
+  if (may("exceptions")) out["exceptions"] = exceptionsOf(v, events.filter((e) => shows(audience, eventClass(e.type), undefined, addressee(e.type, e.data))), may("exceptions.violations.detail"));
   const first = ROLE_ORDER.filter((k) => Object.hasOwn(out, k));
   return Object.fromEntries([...first, ...Object.keys(out).filter((k) => !first.includes(k))].map((k) => [k, out[k]])) as unknown as RoleView;
 }
