@@ -1,4 +1,6 @@
 # The build context admits only what the Dockerfile copies.
 *
+!Dockerfile
+!.dockerignore
 !boot.sh
 !run-job.sh

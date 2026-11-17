@@ -91,16 +91,19 @@ ENV NODE22_HOME=/opt/node-${NODE22_VERSION} \
     CI=true \
     HOME=/home/ci
 
-# The entry of the container and the job steps for a commit that has none of its own (docker/README.md): boot.sh extracts
-# the commit that arrives on the standard input and runs the commit's own docker/run-job.sh, or this copy of it.
-USER root
-COPY --chmod=0755 boot.sh run-job.sh /usr/local/lib/mandate-ci/
-
 # No setuid or setgid binary is left in the image: with no-new-privileges they would do nothing, and without them
 # there is nothing for a process of a job to gain.
+USER root
 RUN n="$(find / -xdev \( -perm -4000 -o -perm -2000 \) -type f | wc -l)" \
  && find / -xdev \( -perm -4000 -o -perm -2000 \) -type f -exec chmod a-s {} + \
  && echo "setuid or setgid bits removed from $n files" \
  && test -z "$(find / -xdev \( -perm -4000 -o -perm -2000 \) -type f)"
+
+# The entry of the container, last, so that a rebuild for another checkout's scripts changes nothing before it
+# (docker/README.md): boot.sh makes the checkout of the commit that arrives on the standard input and runs the commit's
+# own docker/run-job.sh, or the copy of it here for a commit that has none. The Dockerfile and .dockerignore are copied
+# in too, so that boot.sh can compute the digest that says whether this image is the one the checkout that started
+# the job built (Dockerfile, .dockerignore and boot.sh decide that; run-job.sh is checked only when its copy is used).
+COPY --chmod=0755 Dockerfile .dockerignore boot.sh run-job.sh /usr/local/lib/mandate-ci/
 
 USER ci
