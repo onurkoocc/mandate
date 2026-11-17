@@ -33,6 +33,8 @@
 //   mandate otel export --endpoint URL [--run R | --tenant T] [--follow] [--json]
 //                                                         the journal as OpenTelemetry spans, without content, posted to
 //                                                         URL/v1/traces from each run's cursor; no credential is sent (spec/boundary.md)
+//   mandate tick [--follow] [--interval 10s] [--no-notify]   the driver loop: deadlines pass, reviews escalate, then the
+//                                                         notifications of 0.7 runs go out (spec/attention.md)
 //   mandate artifact <run> <blob:sha256:…>
 //   mandate show <run> [--format md|html|json]           the run's views (§15): status, evidence, cost, actions
 //   mandate show <run> --role R | --audit                 what a role of the program may see of it; or everything, with
@@ -76,6 +78,8 @@ import { costDims, type HaltRow, type HaltScope, type Limits, type RunRow } from
 import { exportJournal, parseExportJson, publicKeysIn, readExport, verifyExport, type FindingCode } from "./journal-chain.js";
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { otelEndpoint, otelExport, type OtelReport } from "./otel.js";
+import { egressTransport } from "./notify.js";
+import { driveLoop, MAX_INTERVAL_MS, TICK_INTERVAL_MS } from "./tick.js";
 import { libraryModules, refuseRevoked } from "./package.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
@@ -94,7 +98,7 @@ interface Args {
   all: Record<string, string[]>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries", "--waive", "--decline"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries", "--waive", "--decline", "--interval"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -156,6 +160,7 @@ const USAGE = `usage:
   mandate halt --lift (--tenant T | --all) --by WHO
   mandate halt --list [--json]
   mandate otel export --endpoint URL [--run R | --tenant T] [--follow] [--json]
+  mandate tick [--follow] [--interval 10s] [--no-notify]
   mandate denials <run>
   mandate rotate-key
   mandate test <program> [--json] [--lock FILE] [--libraries DIR]
@@ -168,7 +173,7 @@ options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 --libraries DIR is the directory of libraries a lock of 0.6 pins its libraries in (default: libraries.dir of the configuration)
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review", "tick"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -224,6 +229,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "journal") return await journal(a, config, db, out);
     if (cmd === "halt") return await halt(a, config, db, out, (r) => (made = r));
     if (cmd === "otel") return await otel(a, db, out);
+    if (cmd === "tick") return await tick(a, config, db, out, env);
 
     if (cmd === "approve-envelope") {
       // A member of the envelope's owner role signs for the package hash its card shows (`mandate view --card`).
@@ -953,6 +959,77 @@ async function otel(a: Args, db: Db, out: (s: string) => void): Promise<number> 
       if (report.rejected > 0) process.stderr.write(`mandate: the collector rejected ${report.rejected} spans; they are not sent again\n`);
     }
     return report.failed !== undefined ? 1 : 0;
+  } finally {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", interrupt);
+  }
+}
+
+/**
+ * `mandate tick` (spec/attention.md "The driver loop"): one pass, or with `--follow` one pass every `--interval`
+ * (10 s unless given) until SIGINT or SIGTERM. Each run that waits is ticked by a runtime built for its own package,
+ * as every command that may move a run builds one; then, unless `--no-notify`, the notifications of 0.7 runs go out
+ * through the channels of the configuration's `notifications`, one attempt per notification per pass. It prints each
+ * run it moved, and what it gave up; everything of a run it prints passes through `terminalText`. Exit 1 when a run's
+ * tick failed or a channel's way out was not there in the (last) pass. With `--follow`, a pass that fails as a whole is
+ * reported and the next one comes; it ends saying how many passes it made.
+ */
+async function tick(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => void, env: NodeJS.ProcessEnv): Promise<number> {
+  if (a.positional.length) throw new Usage("tick takes no run: mandate tick [--follow] [--interval 10s] [--no-notify]");
+  const follow = a.flags["--follow"] === true;
+  const given = a.flags["--interval"];
+  if (given !== undefined && !follow) throw new Usage("--interval is how long --follow waits between two passes");
+  const m = typeof given === "string" ? /^([1-9][0-9]{0,8})(ms|s|m|h)?$/.exec(given) : null;
+  if (typeof given === "string" && !m) throw new Usage("--interval is a duration: 500ms, 10s, 2m or 1h (a number alone is seconds)");
+  const intervalMs = m ? Number(m[1]) * { ms: 1, s: 1000, m: 60_000, h: 3_600_000 }[(m[2] ?? "s") as "ms" | "s" | "m" | "h"] : TICK_INTERVAL_MS;
+  // Node cuts a longer timer to 1 ms: the loop would pass without pause.
+  if (intervalMs > MAX_INTERVAL_MS) throw new Usage(`--interval is at most ${MAX_INTERVAL_MS} ms (about 24 days)`);
+  const notifications = a.flags["--no-notify"] === true ? undefined : config.notifications;
+  const err = (s: string): void => void process.stderr.write(`mandate: ${s}\n`);
+  const message = (e: unknown): string => terminalText(e instanceof Error ? e.message : String(e));
+  const stop = new AbortController();
+  const interrupt = (): void => stop.abort();
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", interrupt);
+  try {
+    const { last, passes } = await driveLoop(db, {
+      // A runtime for the run's package, as every command that may move a run builds one, closed once the run is
+      // ticked: its gateways' sessions and its checker's worker with it.
+      runtimeFor: async (runId) => {
+        const { rt } = await runtimeFor(db, config, "tick", runId, env);
+        return {
+          rt,
+          close: async () => {
+            await rt.adapters.egress?.close();
+            await rt.checker.close?.();
+          },
+        };
+      },
+      ...(notifications
+        ? {
+            notify: {
+              config: notifications,
+              ...(config.egress?.admin ? { transport: egressTransport({ admin: config.egress.admin }) } : {}),
+              onDead: (d) => err(`notification ${d.id} (run ${terminalText(d.run)}, event ${d.seq}) on channel ${d.channel} given up after ${d.attempts === 1 ? "1 attempt" : `${d.attempts} attempts`}: ${terminalText(d.reason)}`),
+              onFailure: (channel, message) => err(`channel ${channel}: ${terminalText(message)}; its notifications wait for the next pass`),
+            },
+          }
+        : {}),
+      follow,
+      intervalMs,
+      signal: stop.signal,
+      onTicked: (r) => out(`run ${terminalText(r.run)}: ${r.before.state} -> ${r.after.state}, revision ${r.before.revision} -> ${r.after.revision}\n`),
+      onError: (run, e) => err(`run ${terminalText(run)}: ${message(e)}`),
+      onNotifyError: (e) => err(`the notification pass failed: ${message(e)}`),
+      onPassError: (e) => err(`a pass failed: ${message(e)}; the next one comes in ${intervalMs} ms`),
+      onPass: (r) => {
+        if (follow) return;
+        const n = r.notify;
+        out(`tick: ${r.waiting === 1 ? "1 run waiting" : `${r.waiting} runs waiting`}, ${r.moved} moved${r.failed ? `, ${r.failed} failed` : ""}; notifications: ${n ? `${n.sent} sent, ${n.dead} given up, ${n.pending} to try again` : notifications ? "failed" : "off"}\n`);
+      },
+    });
+    if (follow) out(`tick: stopped after ${passes === 1 ? "1 pass" : `${passes} passes`}\n`);
+    return !last || last.failed || last.notify?.failures.length ? 1 : 0;
   } finally {
     process.off("SIGINT", interrupt);
     process.off("SIGTERM", interrupt);
