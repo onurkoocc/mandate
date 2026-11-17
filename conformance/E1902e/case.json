@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1902e",
+  "kind": "compile",
+  "title": "A stage title with a control character is refused: a person reads the title on an approval card (a mutation: the title).",
+  "spec": [
+    "spec/attention.md#titles",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/2/title",
+      "value": "Give it\u0007 back"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1902",
+        "path": "/defs/Greet/body/2/title",
+        "facts": {
+          "workflow": "Greet",
+          "stage": "give",
+          "problem": "title",
+          "rule": "control",
+          "char": "U+0007"
+        }
+      }
+    ]
+  }
+}

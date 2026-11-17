@@ -4,7 +4,8 @@
 //! ```text
 //! load → (stop if no program or an error) → link → (Rust: the import checks
 //!      of `crate::imports`) → resolveNames → roleChecks → (Rust, 0.6: the
-//!      shapes of an envelope, `crate::shapes`) → importedMethods → (Rust,
+//!      shapes of an envelope, `crate::shapes`) → (Rust, 0.7: the stages,
+//!      `crate::stages`) → importedMethods → (Rust,
 //!      0.6: the patterns and applications of `crate::expand`, and the
 //!      expanded program, which every stage after this one reads)
 //!      → staticCheck (only if no error so far)
@@ -326,6 +327,9 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
         &linked.defs,
         Some(&loaded.spans),
     ));
+    // 0.7: where each stage stands and the stages of each body (E1901,
+    // E1902). Rust only; nothing for an older program.
+    diagnostics.extend(crate::stages::stage_checks(program, Some(&loaded.spans)));
     // Before 0.5, a method limit an imported 0.5 capability writes would be
     // read as none (E1804).
     let no_modules = Modules::new();
@@ -465,6 +469,9 @@ fn again_stage(
         Some(&target_linked.defs),
     ));
     again.extend(role_checks(target, Some(spans), Some(&target_linked.defs)));
+    // 0.7: a workflow that applies a pattern has the pattern's stages, held
+    // to the rules of a body written out.
+    again.extend(crate::stages::stage_checks(target, Some(spans)));
     again
 }
 

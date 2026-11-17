@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1902f",
+  "kind": "compile",
+  "title": "A stage title with a bidirectional control, which would show its text in another order than it is written, is refused (a mutation: the title of the pattern's stage post).",
+  "spec": [
+    "spec/attention.md#titles",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/6/title",
+      "value": "Post what was ‮detpecca"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1902",
+        "path": "/defs/BatchWithExceptions/body/6/title",
+        "facts": {
+          "pattern": "BatchWithExceptions",
+          "stage": "post",
+          "problem": "title",
+          "rule": "format",
+          "char": "U+202E"
+        }
+      }
+    ]
+  }
+}

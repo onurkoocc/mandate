@@ -1407,6 +1407,28 @@
             "op",
             "value"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "stage"
+            },
+            "name": {
+              "$ref": "#/$defs/Name"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "name",
+            "title"
+          ]
         }
       ]
     },

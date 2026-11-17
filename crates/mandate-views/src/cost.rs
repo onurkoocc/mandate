@@ -497,7 +497,10 @@ impl<'a> Walk<'a> {
                     let c = self.block_cost(s.body(), times * n);
                     total.add(&c, 1.0);
                 }
-                _ => {}
+                // An `on error` and a test's `run` hand out nothing here; a
+                // stage of 0.7 hands out nothing (spec/attention.md
+                // "`stage`").
+                Some(StmtOp::OnError | StmtOp::Run | StmtOp::Stage) | None => {}
             }
         }
         total

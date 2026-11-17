@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104j",
+  "kind": "compile",
+  "title": "An empty stage title is refused by the schema of 0.7, which holds a title to 1 to 80 code points (a mutation: the title).",
+  "spec": [
+    "spec/attention.md#titles",
+    "spec/attention.md#the-ir"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/0/title",
+      "value": ""
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/BatchWithExceptions/body/0/title",
+        "facts": {
+          "keyword": "minLength"
+        }
+      }
+    ]
+  }
+}

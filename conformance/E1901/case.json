@@ -1,0 +1,44 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1901",
+  "kind": "compile",
+  "title": "A stage moved into the body of a pattern's second map is out of place: a stage marks only the top level of a workflow's or a pattern's body (a mutation: the stage post moved).",
+  "spec": [
+    "spec/attention.md#stage",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/BatchWithExceptions/body/6"
+    },
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/body/6/value/body/0",
+      "value": {
+        "op": "stage",
+        "name": "post",
+        "title": "Post what was accepted"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1901",
+        "path": "/defs/BatchWithExceptions/body/6/value/body/0",
+        "facts": {
+          "stage": "post",
+          "place": "nested"
+        }
+      }
+    ]
+  }
+}
