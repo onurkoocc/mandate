@@ -15,7 +15,8 @@
 // - what the `check_subprogram` door gives besides: the running program of a sub-program that applies a pattern;
 // - the Rust-only doors the runtime and the command line call (doors.ts, RUST_ONLY): `library_verify`, the doors of
 //   `mandate add`, `upgrade` and `publish` (`library_add`, `library_upgrade`, `library_publish`), the authority
-//   signature, and the reading of the configuration's `libraries` member;
+//   signature, and the reading of the configuration's `libraries` member; and, of 0.7, `callable_connectors` (which
+//   connectors a program can call) and `tool_schema_digest` (a tool's schema digest), which the runtime asks;
 // - the shapes 0.7 adds to the IR (spec/ir-0.7.schema.json) and to the lock (spec/lock-0.7.schema.json), as types
 //   alone: the `stage` and `report` statements, `asks` in a budget, `owner` on a workflow; the lock's `role_classes`
 //   and `promotion`. The compiler gives none of them yet (its slices add them one by one), and the runtime refuses a
@@ -443,6 +444,32 @@ export function libraryPublish(request: { source: LibrarySource; published: Publ
 /** `authority_signature`: the authority signature of a library's `pub` definitions, or null when the library does not read. */
 export function authoritySignature(library: LibrarySource, libraries?: LibrarySource[]): Record<string, unknown> | null {
   return rustOnly("authority_signature", { library, ...(libraries ? { libraries } : {}) }) as Record<string, unknown> | null;
+}
+
+/** A connector a program can call: `id` is `<module>.<connector>`, the key of its entry in the lock's `connectors`; `name` is its name in the program. */
+export interface CallableConnector {
+  id: string;
+  name: string;
+}
+
+/**
+ * `callable_connectors` (language 0.7, spec/attention.md "Carry-over from 0.6"): the connectors a program can call,
+ * those the check demands a lock entry for (E1407), by the same function. Give it the program as the package has it
+ * (the one the check reads) with the modules it imports, never the running program: that holds every definition it
+ * imports, which E1407 does not count. A refusal of the door is thrown as an `Error`.
+ */
+export function callableConnectors(program: unknown, modules?: Record<string, unknown>): CallableConnector[] {
+  return rustOnly("callable_connectors", { program, ...(modules ? { modules } : {}) }) as CallableConnector[];
+}
+
+/**
+ * `tool_schema_digest` (language 0.7, spec/attention.md "Carry-over from 0.6"): the lock's `sha256:<hex>` of the
+ * canonical JSON of `{ name, inputSchema, outputSchema }` of an MCP tool, as the runtime's `schemaDigest` gives it.
+ * `tool` is the tool as JSON text (`JSON.stringify` of the tool object held), so that a number keeps the form it has
+ * in JSON. Text that is not a tool, or that nests deeper than 512 levels, is refused: thrown as an `Error`.
+ */
+export function toolSchemaDigest(tool: string): string {
+  return rustOnly("tool_schema_digest", { tool }) as string;
 }
 
 /** What a door says of a `config` it does not read, before the identifiers of its problems. */

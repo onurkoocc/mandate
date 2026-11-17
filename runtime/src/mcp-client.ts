@@ -187,6 +187,11 @@ export interface McpClientOptions {
   /** The server's URL: what each request is POSTed to. */
   url: string;
   fetch: McpFetch;
+  /**
+   * What gives a listed tool its digest, in place of `schemaDigest`: language 0.7's, the compiler's
+   * (connectors.ts). It may throw; the error ends the listing, as no digest.
+   */
+  digest?: (tool: Omit<ListedTool, "digest">) => string;
 }
 
 export interface CallOptions {
@@ -238,7 +243,7 @@ export class McpClient {
         if (typeof name !== "string" || !TOOL_NAME.test(name) || !isObj(inputSchema ?? null) || (outputSchema !== undefined && !isObj(outputSchema))) throw this.refuse(where, "bad_result");
         if (tools.has(name)) throw this.refuse(where, "duplicate_tool");
         const tool: Omit<ListedTool, "digest"> = { name, inputSchema: inputSchema!, ...(outputSchema !== undefined ? { outputSchema } : {}) };
-        tools.set(name, { ...tool, digest: schemaDigest(tool) });
+        tools.set(name, { ...tool, digest: (this.o.digest ?? schemaDigest)(tool) });
       }
       const nextCursor = r["nextCursor"];
       if (nextCursor === undefined) return [...tools.values()];
