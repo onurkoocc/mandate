@@ -65,8 +65,8 @@ const USAGE: &str = "usage: mandate <command> [options]
   explain <code> [--json]
   view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]
   view <file> --card [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]
-  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
-  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]
+  add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]
+  upgrade <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]
   publish <source dir> [--libraries <dir>] [--config <file>] [--json]
   mcp [--module <file>]…   (an MCP server on stdio)
   (the commands that control a run are the Node command line's, not this executable's)

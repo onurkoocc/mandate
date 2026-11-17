@@ -183,8 +183,8 @@ const comparable = (s: string, dir: string): string => s.replaceAll(dir.replaceA
  * other line of the two usage texts is compared as it is (cli-library.test.ts holds the lines of 0.6).
  */
 const LINES_06 = [
-  "  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]\n",
-  "  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]\n",
+  "  add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]\n",
+  "  upgrade <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]\n",
   "  publish <source dir> [--libraries <dir>] [--config <file>] [--json]\n",
   // The control commands of 0.6, which the runtime answers: the compiler's own command line hands on none.
   "  connector pin <program> [--lock FILE] [--module FILE]… [--libraries DIR] [--config FILE]\n",

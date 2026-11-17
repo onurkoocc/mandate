@@ -12,10 +12,18 @@
 //
 // What a later slice changes in what a relabelled 0.6 package needs is changed here, and nowhere else: `lockUnder`
 // is the lock a suite gives a relabelled package, today the lock it was given. After RL5 a 0.7 lock may need a
-// `role_classes` for a role that is shown confidential data (E1909), and after RL6 a 0.7 program without a pin of
-// `std.patterns` resolves 2.0.0, so a lock that pins none may need to pin 1.0.0.
+// `role_classes` for a role that is shown confidential data (E1909).
+//
+// `std.patterns` (RL6, spec/attention.md "Which version"): a program of 0.7 without a pin reads 2.0.0, with its stages
+// and reports, where the same program of 0.6 read 1.0.0; the faithful translation of a program of 0.6 that imports it
+// pins 1.0.0. A package of 0.6 that imports it has a lock that pins it (else E1605, as before 0.7), so the lock it is
+// given already pins 1.0.0 and `lockUnder` gives it back as it is; a check of the program that is given no lock
+// (`world`'s check of its text, in helpers.ts) is given the module of 1.0.0 as `std.patterns`, which stands for a pin
+// of 1.0.0 (`modulesUnder`). That is the one place of the runtime's suites that says so.
 
-import type { Lock, Program } from "@mandate/bridge";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { load, type Lock, type Modules, type Program } from "@mandate/bridge";
 
 /** The language of the suites' own programs. */
 export const WRITTEN = "mandate/0.6";
@@ -65,6 +73,21 @@ export function relabelIr<P extends Pick<Program, "language">>(p: P): P {
 /** The lock a suite gives a relabelled package: the one it was given (see above for what later slices change here). */
 export function lockUnder<L extends Lock | undefined>(lock: L): L {
   return lock;
+}
+
+/** Whether a program's text imports `std.patterns`. */
+const IMPORTS_STD_PATTERNS = /^use std\.patterns\b/m;
+
+/**
+ * The modules a check of a relabelled program is given when it is given no lock: `modules`, and, when the text
+ * imports `std.patterns`, the module of `std.patterns` 1.0.0 (lib/std.patterns/), which stands for a pin of 1.0.0.
+ * Run as itself, a suite's check is given what it was given.
+ */
+export function modulesUnder(text: string, modules: Modules | undefined): Modules | undefined {
+  if (!relabelled() || !IMPORTS_STD_PATTERNS.test(text)) return modules;
+  const file = fileURLToPath(new URL("../../lib/std.patterns/patterns.mdt", import.meta.url));
+  const one = load(readFileSync(file, "utf8"), "mdt").program;
+  return one ? { ...(modules ?? {}), "std.patterns": one } : modules;
 }
 
 /**

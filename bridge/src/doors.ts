@@ -86,8 +86,8 @@ export type DoorBacked = keyof typeof DOOR_BACKED;
 export const RUST_ONLY = {
   libraryVerify: { door: "library_verify", params: ["library", "libraries"] },
   // `mandate add`, `upgrade` and `publish`: each takes its door's input as one request, whose members are these.
-  libraryAdd: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now"] },
-  libraryUpgrade: { door: "library_upgrade", params: ["library", "range", "lock", "versions", "pinned", "libraries", "config", "now", "accept_governance"] },
+  libraryAdd: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now", "language"] },
+  libraryUpgrade: { door: "library_upgrade", params: ["library", "range", "lock", "versions", "pinned", "libraries", "config", "now", "accept_governance", "language"] },
   libraryPublish: { door: "library_publish", params: ["source", "published", "libraries", "now"] },
   authoritySignature: { door: "authority_signature", params: ["library", "libraries"] },
   // Language 0.7's two doors for the runtime's use of connectors (library.ts): which connectors a program can call,
@@ -98,7 +98,7 @@ export const RUST_ONLY = {
   attentionFacts: { door: "attention_facts", params: ["text", "kind", "opts", "workflow"] },
   // Whether a value is the `libraries` member of a configuration: asked of the door that reads one before it resolves
   // anything, in a request that resolves nothing.
-  librariesConfigProblems: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now"] },
+  librariesConfigProblems: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now", "language"] },
 } as const satisfies Record<string, { door: string; params: readonly string[] }>;
 
 /**

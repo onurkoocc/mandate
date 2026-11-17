@@ -1,0 +1,42 @@
+// A program of language 0.7 that applies FanOutMerge of the built-in
+// std.patterns 2.0.0 (spec/attention.md "std.patterns 2.0.0"), which its
+// lock (fan-out.lock.json, of format 0.7) pins. Its expansion has the two
+// stages of the pattern, work and merge, and no report. Only the Rust
+// compiler reads it.
+
+mandate @ 0.7
+
+module example.attention.fanout @ 0.1
+
+use std.{fs, model}
+use std.patterns.{FanOutMerge}
+
+type Repo    = { name: Text, root: Path }
+type Summary = { migrated: List<Text>, notes: Text }
+
+capability RepoRead = fs.read("/work/repos")
+capability SrcWrite = fs.write("/work/repos")
+capability ModelStd = model.infer(tier: standard)
+
+agent Migrator {
+  role   "Moves one repository to the new logging API."
+  caps   RepoRead, SrcWrite, ModelStd
+  budget { tokens: 400k, time: 20m, spend: 0.5 USD, steps: 12 }
+  skill migrate(repo: Repo) -> Inferred<Summary> ! {Fs.Read, Fs.Write, Model}
+}
+
+agent Merger {
+  role   "Merges the summaries of the repositories migrated into one."
+  caps   ModelStd
+  budget { tokens: 100k, spend: 0.5 USD, steps: 4 }
+  skill merge(done: List<Outcome<Inferred<Summary>>>) -> Inferred<Summary> ! {Model}
+}
+
+/// Migrates two repositories side by side, each writing only its own, and
+/// merges what each says.
+workflow MigrateTwo = FanOutMerge<Repo, Summary, Summary>(
+    items: [Repo { name: "billing", root: "billing" }, Repo { name: "search", root: "search" }],
+    work: Migrator.migrate, scope: SrcWrite, part: root,
+    merge: Merger.merge, max_items: 2, concurrency: 2)
+  caps   RepoRead, SrcWrite, ModelStd
+  budget { tokens: 1000k, time: 1h, spend: 2 USD, steps: 40, agents: 3 }

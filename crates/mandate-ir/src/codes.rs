@@ -792,6 +792,12 @@ pub const CODES: &[CodeRow] = &[
         explain: "A `report` (0.7) stands in the body of a workflow or of a pattern, where what it shows is shown a known number of times: not in a map's body, a loop without `max_iter`, a function, an `on error`, `on unmet` or `on budget_exceeded` handler, a test or any other place, and not directly before an `on error`, which would handle the statement before the report. The fact `place` says where it stands. A `report` or a `stage` written in a lead's sub-program is E1705 instead, with the fact `construct`; a sub-program that applies a shape its envelope lists has the pattern's (spec/attention.md \"`report`\", \"Sub-programs and amendments\").",
         reference: Reference::Rust,
     },
+    CodeRow {
+        code: "MDT-E1609",
+        title: "Module of a newer language",
+        explain: "A program of 0.6 or later reads no module written in a newer language than its own: a `use` of such a module (one given to the check, one of a library, or the built-in `std.patterns` 2.0.0, which is of 0.7) is refused at the `use`, and a lock that pins a library written in a newer language (a 0.6 program's lock that pins `std.patterns` 2.0.0) is refused at the pin. Pin a version of the program's language, or write the program in the newer one. A program of 0.1 to 0.5 that imports a module of 0.6 or later is E1603 (spec/attention.md \"A newer module (E1609)\").",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.
@@ -817,6 +823,7 @@ pub const CODES_0_7: &[&str] = &[
     "MDT-E1903",
     "MDT-E1904",
     "MDT-E1905",
+    "MDT-E1609",
 ];
 
 impl CodeRow {

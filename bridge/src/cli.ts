@@ -22,10 +22,10 @@
 //                                          the card a person reads before approving a
 //                                          workflow's envelope, with the package hash
 //                                          the approval binds to (spec/views.md)
-//   mandate add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
+//   mandate add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]
 //                                          pin a library of the operator's directory in the lock, and
 //                                          show its authority signature (language 0.6, spec/library.md)
-//   mandate upgrade <library>[@<range>] [--accept-governance] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
+//   mandate upgrade <library>[@<range>] [--accept-governance] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]
 //                                          pin a newer version; a change that widens the authority
 //                                          signature is shown as a governance change, and the lock is
 //                                          written only with --accept-governance
@@ -123,8 +123,8 @@ function usageText(): string {
       "  explain <code>",
       "  view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
       "  view <file> --card [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
-      "  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]",
-      "  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]",
+      "  add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]",
+      "  upgrade <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]",
       "  publish <source dir> [--libraries <dir>] [--config <file>] [--json]",
       "  mcp [--module <file>]…   (an MCP server on stdio)",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
@@ -243,6 +243,8 @@ function main(argv: string[]): void {
   const format = option(plain, "--format") ?? "md";
   const librariesDir = option(plain, "--libraries");
   const configFile = option(plain, "--config");
+  // 0.7: the program a lock is for (`add`, `upgrade`).
+  const programFile = option(plain, "--program");
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
   const args = plain.filter((a) => !a.startsWith("--"));
   const asJson = flags.has("--json");
@@ -255,6 +257,7 @@ function main(argv: string[]): void {
     ...(librariesDir !== undefined ? { libraries: librariesDir } : {}),
     ...(configFile !== undefined ? { config: configFile } : {}),
     acceptGovernance: flags.has("--accept-governance"),
+    ...(programFile !== undefined ? { program: programFile } : {}),
   };
 
   switch (cmd) {

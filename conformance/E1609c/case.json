@@ -1,0 +1,25 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1609c",
+  "kind": "compile",
+  "title": "A program of 0.7 (fixtures/attention/batch.mdt) whose lock pins std.patterns 1.0.0, a library of 0.6, reads 1.0.0 and checks; its expansion has no stage (crates/mandate-check/tests/patterns_0_7.rs).",
+  "spec": [
+    "spec/attention.md#stdpatterns-200"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/batch.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": true,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

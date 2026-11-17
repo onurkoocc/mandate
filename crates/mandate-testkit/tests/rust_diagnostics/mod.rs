@@ -92,7 +92,48 @@ pub fn result_of_text(
     door: &str,
     text_of: TextOf<'_>,
 ) -> Result<Option<JsValue>, String> {
+    result_of_text_given(id, case, door, text_of, None)
+}
+
+/// [`result_of_text`] of a program of 0.6 relabelled 0.7 by `text_of`: the
+/// program checked (and the parent of a sub-program or an amendment) is
+/// given besides its modules what
+/// [`crate::common::relabelled_modules`] says a relabelled program is given;
+/// and whether it was given something (`std.patterns` 1.0.0).
+///
+/// # Errors
+///
+/// As [`result_of_text`].
+pub fn result_of_relabelled(
+    id: &str,
+    case: &Value,
+    door: &str,
+    text_of: TextOf<'_>,
+) -> Result<Option<(JsValue, bool)>, String> {
+    let given = std::cell::Cell::new(false);
+    let r = result_of_text_given(id, case, door, text_of, Some(&given))?;
+    Ok(r.map(|v| (v, given.get())))
+}
+
+fn result_of_text_given(
+    id: &str,
+    case: &Value,
+    door: &str,
+    text_of: TextOf<'_>,
+    relabelled: Option<&std::cell::Cell<bool>>,
+) -> Result<Option<JsValue>, String> {
     let dir = format!("conformance/{id}");
+    // What the program checked is given besides its modules, when it is a
+    // relabelled one.
+    let more = |text: &str, kind: SourceKind| {
+        let more = relabelled.and_then(|_| {
+            crate::common::relabelled_modules(text, kind, &case_libraries(&dir, case))
+        });
+        if let (Some(given), true) = (relabelled, more.is_some()) {
+            given.set(true);
+        }
+        more
+    };
     if door == "library" {
         let r = run_library_case(&dir, case)?;
         return parse_json(r.text.as_bytes()).map(|v| Some(JsValue::from(&v)));
@@ -122,6 +163,8 @@ pub fn result_of_text(
             // 0.6: a parent whose lock pins libraries is checked with them, and
             // the door is handed their modules as the package carries them.
             let libraries = case_libraries(&dir, case);
+            let modules = crate::common::with_more(Some(&modules), more(&text, kind).as_ref())
+                .unwrap_or(modules);
             let parent = check_with_libraries(&text, kind, Some(&modules), None, &libraries, None)?;
             let modules = with_library_modules(&modules, &libraries)?;
             let (Some(program), true) = (parent.program.as_ref(), parent.ok) else {
@@ -164,6 +207,8 @@ pub fn result_of_text(
                 }
             };
             let revoked = case_config(&dir, case)?.map(|c| c.revoked().clone());
+            let modules = crate::common::with_more(Some(&modules), more(&text, kind).as_ref())
+                .unwrap_or(modules);
             Ok(Some(
                 check_with_libraries(
                     &text,

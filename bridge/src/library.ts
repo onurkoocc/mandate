@@ -375,6 +375,11 @@ export interface LibraryRequest {
   config?: LibrariesConfig;
   /** The time, `YYYY-MM-DDTHH:MM:SSZ`. */
   now: string;
+  /**
+   * 0.7: the language of the program the lock is for (`mandate add --program`), as `mandate/0.7`: which embedded
+   * versions of `std.patterns` may be pinned, and for 0.7 a lock of format 0.7. None is a program of 0.6.
+   */
+  language?: string;
 }
 
 /**

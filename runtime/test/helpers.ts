@@ -6,7 +6,7 @@ import { check, type LibrarySource, type Modules } from "@mandate/bridge";
 import { build, type Plugin } from "esbuild";
 import { expect } from "vitest";
 import { ISSUE } from "./programs.js";
-import { heldUnder, lockUnder } from "./relabel.js";
+import { heldUnder, lockUnder, modulesUnder } from "./relabel.js";
 import type { Clock, ModelAdapter } from "../src/adapters.js";
 import { openDb, type Db } from "../src/db.js";
 import { Faults } from "../src/faults.js";
@@ -85,7 +85,8 @@ export async function world(
   // 0.6: the libraries the program imports are given to its check, and carried by its package. In a run of a suite
   // under another language (relabel.ts) the program is of that language, and its lock the one given for it there.
   heldUnder(src);
-  const r = check(src, "mdt", { ...(o.modules ? { modules: o.modules } : {}), ...(o.libraries ? { libraries: o.libraries } : {}) });
+  const given = modulesUnder(src, o.modules);
+  const r = check(src, "mdt", { ...(given ? { modules: given } : {}), ...(o.libraries ? { libraries: o.libraries } : {}) });
   expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
   const url = process.env["MANDATE_TEST_DATABASE_URL"];
   shared ??= openDb(url, url ? `t_${randomUUID().replaceAll("-", "")}` : undefined);
