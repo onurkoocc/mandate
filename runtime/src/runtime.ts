@@ -24,6 +24,7 @@ import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { costDims, haltedRefusal, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
 import { buildPackage, isPackage06OrLater, isPackage07OrLater, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
+import { tickOpenWaits } from "./tick.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { givenValueProblem, listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
@@ -1380,6 +1381,11 @@ export class Runtime {
    */
   async tick(runId: string): Promise<RunRow> {
     const run = await this.journal.run(runId);
+    // 0.7 (spec/attention.md "The driver loop"): every open wait past its deadline, and a wait decided and not driven on.
+    if (run.state === "waiting" && isPackage07OrLater(await this.packaged(run.package_hash))) {
+      const fit = async (): Promise<void> => (this.driver ? undefined : checkFitness((await this.packaged(run.package_hash)).lock, this.hostProbe));
+      return tickOpenWaits(this, runId, { fit, drive: (id) => this.drive(id) });
+    }
     const w = run.waiting;
     if (run.state !== "waiting" || !isObj(w)) return run;
     const req = w["request"];
