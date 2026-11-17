@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Writes vectors/tool-schema-digest.json: the schema digest of MCP tools that
+// Writes vectors/tool-digest/tool-schema-digest.json: the schema digest of MCP tools that
 // the runtime's own function, `schemaDigest` of runtime/src/mcp-client.ts
 // (built to runtime/dist), gives, so that the door `tool_schema_digest` of the
 // Rust compiler (crates/mandate-check/src/json_doors/connectors.rs) is held to
@@ -164,5 +164,5 @@ const file = {
   vectors: out,
   refused: bad,
 };
-writeFileSync(new URL("vectors/tool-schema-digest.json", root), `${JSON.stringify(file, null, 1)}\n`);
-console.log(`vectors/tool-schema-digest.json: ${out.length} tools, ${bad.length} refused texts`);
+writeFileSync(new URL("vectors/tool-digest/tool-schema-digest.json", root), `${JSON.stringify(file, null, 1)}\n`);
+console.log(`vectors/tool-digest/tool-schema-digest.json: ${out.length} tools, ${bad.length} refused texts`);

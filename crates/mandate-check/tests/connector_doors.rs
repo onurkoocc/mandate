@@ -3,7 +3,7 @@
 //! compiler stands for):
 //!
 //! - `tool_schema_digest` gives, for each tool of
-//!   `vectors/tool-schema-digest.json`, the digest and the canonical text
+//!   `vectors/tool-digest/tool-schema-digest.json`, the digest and the canonical text
 //!   that `schemaDigest` of `runtime/src/mcp-client.ts` gave when
 //!   `scripts/tool-digest-vectors.mjs` wrote the file, and refuses each text
 //!   the file lists as refused;
@@ -29,7 +29,7 @@ use mandate_ir::{JsObject, JsValue, Value, parse, stringify};
 use mandate_syntax::SourceKind;
 use mandate_testkit::{read_json, read_text};
 
-const VECTORS: &str = "vectors/tool-schema-digest.json";
+const VECTORS: &str = "vectors/tool-digest/tool-schema-digest.json";
 
 fn value(v: &JsValue) -> Value {
     parse(&stringify(v).unwrap()).unwrap().value

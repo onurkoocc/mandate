@@ -7,7 +7,7 @@
 //!
 //! - `tool_schema_digest` gives what `schemaDigest` of
 //!   `runtime/src/mcp-client.ts` gives, byte for byte, which the vectors of
-//!   `vectors/tool-schema-digest.json` (written from that function by
+//!   `vectors/tool-digest/tool-schema-digest.json` (written from that function by
 //!   `scripts/tool-digest-vectors.mjs`) hold it to
 //!   (`crates/mandate-check/tests/connector_doors.rs`).
 //! - `callable_connectors` gives the connectors E1407 demands a lock entry

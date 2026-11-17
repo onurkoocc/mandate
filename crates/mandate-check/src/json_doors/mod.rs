@@ -523,7 +523,7 @@ pub static LIBRARY_DOORS: &[Door] = &[
     Door::own(
         "tool_schema_digest",
         connectors::TOOL_SCHEMA_DIGEST,
-        "Language 0.7, which only the Rust compiler reads: no TypeScript function of the compiler stands for it. It gives what schemaDigest of runtime/src/mcp-client.ts gives for a tool, byte for byte (the lock's sha256 of the canonical JSON of { name, inputSchema, outputSchema }), and crates/mandate-check/tests/connector_doors.rs holds it to vectors/tool-schema-digest.json, which scripts/tool-digest-vectors.mjs writes from that function. tool is the JSON text of the tool, not an object, so that a number keeps its JSON form.",
+        "Language 0.7, which only the Rust compiler reads: no TypeScript function of the compiler stands for it. It gives what schemaDigest of runtime/src/mcp-client.ts gives for a tool, byte for byte (the lock's sha256 of the canonical JSON of { name, inputSchema, outputSchema }), and crates/mandate-check/tests/connector_doors.rs holds it to vectors/tool-digest/tool-schema-digest.json, which scripts/tool-digest-vectors.mjs writes from that function. tool is the JSON text of the tool, not an object, so that a number keeps its JSON form.",
         connectors::tool_schema_digest,
     ),
     Door::own(
