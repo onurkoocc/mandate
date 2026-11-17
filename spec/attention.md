@@ -21,7 +21,7 @@ best-effort basis.
 | The facts (`attention_facts`) | RL3, RL4 | not implemented yet |
 | `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | not implemented yet |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | not implemented yet |
-| E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | not implemented yet |
+| E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | not implemented yet |
 | The card of a 0.7 program | RP2 | not implemented yet |
 | The MCP tools of 0.7 (`mcp_tools`); a native `mandate mcp` | RP3, RP4, B9 | not implemented yet |

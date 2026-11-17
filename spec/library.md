@@ -1696,8 +1696,12 @@ The compiler runs in the runtime's process as a WebAssembly module
   the interpreter's authority decisions so that the new coverage rule of
   `tool.call` has one implementation; and, from 0.6, the library doors
   (`library_verify`, `library_add`, `library_upgrade`, `library_publish`,
-  `authority_signature`). A tool's schema digest is no door: the runtime
-  computes it ([The lock binding](#the-lock-binding-and-schema-digests)). A
+  `authority_signature`). In 0.6 a tool's schema digest is no door: the
+  runtime computes it ([The lock binding](#the-lock-binding-and-schema-digests)).
+  From 0.7 the compiler has two doors more, `tool_schema_digest` (the same
+  digest) and `callable_connectors` (the connectors that can be called), which
+  the runtime uses once its own tests show them equal
+  ([attention.md](attention.md#carry-over-from-06)). A
   value such as the current time is an input of the door that needs it.
   The `check` door takes the option `linked` and then also returns
   `linked`, the running program ([Hashes](#hashes-and-what-the-runtime-stores));

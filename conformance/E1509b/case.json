@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1509b",
+  "kind": "compile",
+  "title": "A callee path that only ends in a reserved name (`test.verify`) and a `static` part are not reserved method names: a program of 0.7 with them checks.",
+  "spec": [
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

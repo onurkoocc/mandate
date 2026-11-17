@@ -36,6 +36,97 @@
       }
     },
     {
+      "name": "E1509",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1509",
+            "severity": "error",
+            "message": "Tested.touched is met by a call of `waiver`, a method name the runtime keeps for the evidence records it writes itself: a record of it would be read as a verify's own or as a waiver. Name the verifier another way (spec/attention.md \"Static rules\").",
+            "at": {
+              "path": "/defs/Tested/accept/touched/by",
+              "span": [1, 702, 1, 805]
+            },
+            "docs": "mandate explain MDT-E1509",
+            "facts": {
+              "contract": "Tested",
+              "criterion": "touched",
+              "method": "waiver"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1509a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1509/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1509",
+            "severity": "error",
+            "message": "Held.held is met by a call of `verify`, a method name the runtime keeps for the evidence records it writes itself: a record of it would be read as a verify's own or as a waiver. Name the verifier another way (spec/attention.md \"Static rules\").",
+            "at": {
+              "path": "/defs/Held/invariant/held/by",
+              "span": [1, 1132, 1, 1350]
+            },
+            "docs": "mandate explain MDT-E1509",
+            "facts": {
+              "contract": "Held",
+              "criterion": "held",
+              "method": "verify"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1509b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:47ee9d453fbd5e0f1cfb2ac120ecd764433865df8c948d3344f04f13e193f1d6",
+          "defs": {
+            "Change": "sha256:2b6ee8c7524584586f6da6a10d6a78c63df641b9ae555ec6778119b69bfb6615",
+            "Tested": "sha256:dd17e205fadd258eabd8e3ff534d86e78c9b02e06162bf4e59c33a8c899e450d"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
       "name": "S02i",
       "kind": "compile",
       "door": "check",
