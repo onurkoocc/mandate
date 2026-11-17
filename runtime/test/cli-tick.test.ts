@@ -118,7 +118,8 @@ describe("mandate tick", () => {
 
   it("with --follow, makes a pass every --interval until SIGINT, and says how many", { timeout: 60_000 }, async () => {
     const going = mandate("tick", "--follow", "--interval", "50ms");
-    await pause(600);
+    // Long enough for two passes on a loaded machine, each of which opens nothing for a run with nothing due.
+    await pause(4000);
     process.emit("SIGINT");
     const r = await going;
     expect(r.code, r.err).toBe(0);

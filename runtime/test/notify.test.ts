@@ -20,7 +20,7 @@
 // runtime's simulated one. Every secret is a made-up word.
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readConfig } from "../src/control.js";
 import type { Db, Row } from "../src/db.js";
@@ -69,9 +69,9 @@ const HOOK_SECRET = "made-up-hook-word";
 const HOOK = "https://hooks.acme.example/in";
 const M = "LEAKMARK";
 
-/** A configuration as the operator writes it, read as the runtime reads it. */
+/** A configuration as the operator writes it, read as the runtime reads it: a path relative to the file, or absolute. */
 function config(raw: unknown, where = dir()): NotificationsConfig {
-  return readNotifications(raw, { file: join(where, "mandate.runtime.json"), at: (p) => join(where, p), egress: true });
+  return readNotifications(raw, { file: join(where, "mandate.runtime.json"), at: (p) => resolve(where, p), egress: true });
 }
 
 /**
@@ -516,6 +516,7 @@ describe("the pump", () => {
     const path = join(d, "a-directory.jsonl");
     mkdirSync(path);
     const c = config({ channels: { local: { file: path } }, roles: { platform_lead: { channels: ["local"] } } });
+    expect(c.channels["local"]).toEqual({ file: path });
     await followed(w, ["local"], "o1");
     for (let attempt = 1; attempt <= 5; attempt++) {
       expect(await pass(w, c), `attempt ${attempt}`).toMatchObject({ sent: 0, failed: 1, pending: 1 });
