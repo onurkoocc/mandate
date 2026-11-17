@@ -62,7 +62,7 @@ import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { check, isProgram06, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
-import { CompilerFailure, compilerMode } from "@mandate/bridge/mode";
+import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters } from "./adapters.js";
 import { Connectors } from "./connectors.js";
 import { adaptersFor, anthropicClient, connect, connectorEgress, operatorAdapters, readConfig, replayAdapters, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
@@ -606,11 +606,11 @@ interface Loaded {
  * lock before the program is checked with it: a digest the configuration revokes is never loaded
  * (`library_revoked`), and a library that does not hash to the digest the lock pins is not the one that was pinned
  * (`library_digest_mismatch`). Whatever else is wrong with one is the check's to say. A lock that pins none reads
- * nothing; nor does the reference compiler (MANDATE_COMPILER=ts), which reads no library and says so itself.
+ * nothing.
  */
 function pinned(lock: Lock | undefined, from: () => LibrariesFrom): { libraries: LibrarySource[]; given: LibrariesFrom } {
   const pins = lock && isObj(lock.libraries as unknown as Value) ? lock.libraries! : {};
-  if (!Object.keys(pins).length || compilerMode() === "ts") return { libraries: [], given: {} };
+  if (!Object.keys(pins).length) return { libraries: [], given: {} };
   const given = from();
   const held = { libraries: given.config ?? {} };
   refuseRevoked(lock!, held);

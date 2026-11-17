@@ -59,8 +59,8 @@ jobs:
           node-version: 24.22.1
           cache: npm
       - run: npm ci --ignore-scripts
-      # The runtime's tests load the bridge, which answers with the Rust compiler's module unless MANDATE_COMPILER
-      # says otherwise: the pinned toolchain and the module are built before them, by steps that have no secret.
+      # The runtime's tests load the bridge, which answers with the Rust compiler's module: the pinned toolchain and the
+      # module are built before them, by steps that have no secret.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
       - name: Build the Rust compiler's WebAssembly module

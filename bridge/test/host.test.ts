@@ -3,8 +3,7 @@
 // output the TypeScript gave, byte for byte the same whatever the seed of Rust's HashMap (random bytes, the host's
 // default, and three fixed seeds), and every way a call can fail, each produced for real and classified.
 //
-// It needs the module (`npm run build:wasm`): without it, in `ts` mode (MANDATE_COMPILER=ts), these tests are skipped
-// and say so; in `rust` (the default) and `both` the run does not start without it (test/compiler-setup.ts).
+// It needs the module (`npm run build:wasm`): the run does not start without it (test/compiler-setup.ts).
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -12,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CODES as TS_CODES } from "../../compiler/src/index.js";
-import { EXEMPTIONS } from "../src/compare.js";
+import { EXEMPTIONS } from "./compare.js";
 import { answerOf, MAX_ANSWER_BYTES, requestText, unrepresentable, WasmHost, WASI_IMPORTS } from "../src/wasm/host.js";
 import { CompilerFailure, DoorRefusal } from "../src/wasm/errors.js";
 import { compileModuleBytes, compileModuleFile, modulePath } from "../src/wasm/module.js";

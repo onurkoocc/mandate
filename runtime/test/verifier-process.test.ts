@@ -177,7 +177,7 @@ describe("the verifier process's environment", () => {
   const FIXBUG_LOCK = JSON.parse(readFileSync(here("../../fixtures/fixbug/mandate.lock.json"), "utf8")) as Lock;
 
   /** With these secrets in the runtime's environment, what the verifier process sees: when it creates its key, and when it checks. */
-  async function seen(o: { model: boolean }): Promise<{ init: Record<string, string>; check: Record<string, string>; mode: string }> {
+  async function seen(o: { model: boolean }): Promise<{ init: Record<string, string>; check: Record<string, string>; compiler: { mode: string; module?: { from: string; sha256: string; bytes: number } } }> {
     const dir = mkdtempSync(join(tmpdir(), "mandate-venv-"));
     const file = join(dir, "mandate.runtime.json");
     writeFileSync(file, JSON.stringify({ database: "pglite:db", verifier: { workdir: ".", base: "seed", suites: {}, process: {} }, broker: { "prod_sim/core": { url_env: "MANDATE_PROD_SIM_CORE_URL" } }, ...(o.model ? { model: { provider: "anthropic" } } : {}) }));
@@ -189,7 +189,7 @@ describe("the verifier process's environment", () => {
       verifiers.push(verifier);
       const r = await verifier.check({ method: "test.suite", args: [], named: {}, contract: "C", criterion: "k" });
       expect(r.passed, JSON.stringify(r.detail)).toBe(true);
-      return { init: JSON.parse(readFileSync(join(dir, ".mandate", "verifier.key.env.json"), "utf8")) as Record<string, string>, check: (r.detail as { env: Record<string, string> }).env, mode: (r.detail as { mode: string }).mode };
+      return { init: JSON.parse(readFileSync(join(dir, ".mandate", "verifier.key.env.json"), "utf8")) as Record<string, string>, check: (r.detail as { env: Record<string, string> }).env, compiler: (r.detail as { compiler: { mode: string; module?: { from: string; sha256: string; bytes: number } } }).compiler };
     } finally {
       for (const [k, v] of Object.entries(saved)) {
         if (v === undefined) delete process.env[k];
@@ -214,24 +214,20 @@ describe("the verifier process's environment", () => {
     expect(withModel.check["CLAUDE_API_KEY"]).toBe(SECRETS.CLAUDE_API_KEY);
   });
 
-  it("runs in the compiler mode the runtime's environment names, with the module it names, and in the default mode when it names none", async () => {
-    const saved = { MANDATE_COMPILER: process.env["MANDATE_COMPILER"], MANDATE_WASM: process.env["MANDATE_WASM"] };
+  it("answers with the module the runtime's environment names, and with the bridge's own when it names none", async () => {
+    const saved = { MANDATE_WASM: process.env["MANDATE_WASM"] };
     try {
       // This process reads MANDATE_WASM too, when it answers (readConfig below): the module it names is the real one.
       const wasm = modulePath();
-      const cases: Array<[string | undefined, string | undefined]> = [["ts", undefined], ["rust", undefined], ["both", undefined], [undefined, undefined], ["both", wasm]];
-      for (const [mode, module] of cases) {
-        if (mode === undefined) delete process.env["MANDATE_COMPILER"];
-        else process.env["MANDATE_COMPILER"] = mode;
+      const cases: Array<string | undefined> = [undefined, wasm];
+      for (const module of cases) {
         if (module === undefined) delete process.env["MANDATE_WASM"];
         else process.env["MANDATE_WASM"] = module;
         const got = await seen({ model: false });
-        // The bridge in the process reads the variable it was started with (an unset one is the default, `rust`).
-        expect({ mode, module, runs: got.mode }).toEqual({ mode, module, runs: mode ?? "rust" });
-        for (const env of [got.init, got.check]) {
-          expect(env["MANDATE_COMPILER"], "init and check").toBe(mode);
-          expect(env["MANDATE_WASM"], "init and check").toBe(module);
-        }
+        // The bridge in the process takes the module the variable names, or its own place when there is none; the
+        // identity it gives (what a run records) is the Rust compiler's, `mode: "rust"`.
+        expect({ module, mode: got.compiler.mode, from: got.compiler.module?.from }).toEqual({ module, mode: "rust", from: module === undefined ? "bridge" : "MANDATE_WASM" });
+        for (const env of [got.init, got.check]) expect(env["MANDATE_WASM"], "init and check").toBe(module);
       }
     } finally {
       for (const [k, v] of Object.entries(saved)) {

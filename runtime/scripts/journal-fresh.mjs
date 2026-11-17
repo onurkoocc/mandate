@@ -12,14 +12,13 @@
 //   tampered-report.json   this runtime's report of that (broken: chain_broken at that event)
 //   tampered-seq           the seq of the changed event
 //
-//   npm run build && node runtime/scripts/journal-fresh.mjs <dir> [seed]
+//   npm run build && npm run build:wasm && node runtime/scripts/journal-fresh.mjs <dir> [seed]
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-// The run is made with the reference compiler, which needs no module: CI's rust job runs this before it builds the
-// Rust compiler's module, and the bridge's default is that module. Set before the bridge is loaded, which reads it.
-process.env["MANDATE_COMPILER"] = "ts";
+// The run is made with the runtime, whose compiler is the Rust compiler's module: CI's rust job builds it
+// (`npm run build:wasm`) before it runs this.
 const { check } = await import("@mandate/bridge");
 const { buildPackage, EvidenceSigner, openDb, Runtime, simulate, verifyExport } = await import("../dist/index.js");
 

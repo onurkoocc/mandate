@@ -4,17 +4,12 @@
 // stays at its revision; the decision taken is printed by `mandate decision` and checked by `mandate verify-decision`,
 // which with `--waive` and `--decline` also checks that it decided those items. Every call is a separate CLI call over
 // one PGlite database in a directory, as a person would make it.
-//
-// The Rust compiler alone reads a program of 0.6: with MANDATE_COMPILER=ts these tests are skipped by name.
 
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compilerMode } from "@mandate/bridge/mode";
 import { afterAll, describe, expect, it } from "vitest";
 import { main, shownSafe, terminalDocument, terminalText } from "../src/cli.js";
-
-const needs06 = compilerMode() !== "ts" ? describe : describe.skip;
 
 const dir = mkdtempSync(join(tmpdir(), "mandate-cli-review-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -113,7 +108,7 @@ describe("untrusted text in a terminal", () => {
   });
 });
 
-needs06("mandate review", () => {
+describe("mandate review", () => {
   it("lists the open items, refuses a decision that breaks a rule, takes one that keeps them, and verifies what it took", async () => {
     const ana = await person("ana");
     const ben = await person("ben");

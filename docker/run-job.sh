@@ -58,6 +58,9 @@ job_rust() {
   npm ci --ignore-scripts
   step "npm run build"
   npm run build
+  # The runtime that makes the run below loads the bridge, which answers with the Rust compiler's module.
+  step "Build the Rust compiler's WebAssembly module"
+  npm run build:wasm
   step "Build verify-journal"
   cargo build --locked -p verify-journal
   step "verify-journal verifies a fresh export of a real run, and finds one event changed"
@@ -173,18 +176,8 @@ job_test() {
   rustup toolchain install
   step "Build the Rust compiler's WebAssembly module"
   npm run build:wasm
-  # The default: MANDATE_COMPILER is not set, so the bridge answers with the Rust compiler's module.
   step "npm test"
   npm test
-  # These four steps are removed from ci.yml by a later slice of 0.7; they exist on the commits that have them there.
-  step "The bridge's tests, on the reference compiler alone"
-  MANDATE_COMPILER=ts npm test -w bridge
-  step "The runtime's tests, on the reference compiler alone"
-  MANDATE_COMPILER=ts npm test -w runtime
-  step "The bridge's tests, with the TypeScript and the Rust compilers compared on every call"
-  MANDATE_COMPILER=both npm test -w bridge
-  step "The runtime's tests, with the TypeScript and the Rust compilers compared on every call"
-  MANDATE_COMPILER=both npm test -w runtime
   step "The compiled corpus holds every call the compiler's tests make to a front door"
   MANDATE_CORPUS=1 npm test -w compiler
   # In ci.yml the server is on localhost with a password; here it is the compose service, on the private network of the
