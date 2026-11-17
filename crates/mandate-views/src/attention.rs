@@ -250,8 +250,6 @@ fn plural(n: u64, noun: &str) -> String {
     }
 }
 
-/// A count in words: the number, or `unbounded`.
-
 /// A duration in words, exact: `1 day`, `90 minutes` is `1 hour and 30
 /// minutes`. The deadlines of the facts are milliseconds.
 fn duration_words(ms: i64) -> String {
