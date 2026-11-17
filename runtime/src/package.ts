@@ -59,6 +59,7 @@ import {
   type Program,
 } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
+import type { FactsSource } from "./attention.js";
 import { declaredMethods } from "./criteria.js";
 import { VERIFY, WAIVER } from "./review.js";
 import { Violation } from "./signals.js";
@@ -166,6 +167,11 @@ export interface Verified {
   stored?: Program;
   /** The modules of the package: its own, and those of its libraries. `running` already holds what it sees of them. */
   modules: Modules;
+  /**
+   * 0.7: what the check at load was given (`text`, `kind`, `opts`), with which a run's start asks the compiler for the
+   * attention facts of the workflow it starts (attention.ts). Absent for a program of 0.1 to 0.6, which stores none.
+   */
+  facts?: FactsSource;
 }
 
 /** Whether a run of the package stores its running program: its program applies a pattern, or its lock pins a library. */
@@ -179,7 +185,8 @@ function storesRunning(pkg: Pick<Package, "program" | "lock">): boolean {
  * (a module of one may import another it reaches), `std.patterns`, patterns whose expansion holds only what it
  * runs, connectors with the lock that binds them, the batch commit step, `human.review` and `waive by` (review.ts), and an envelope's
  * `shapes`, which hold a lead's sub-programs (plan.ts); see `notRunYet` and NOT_RUN_YET_06. Of 0.7 every rule of 0.6,
- * and nothing it adds yet: a package of 0.7 that holds what NOT_RUN_YET_07 lists is refused at load by name.
+ * `stage` and `report` with the attention facts a run stores (attention.ts); a package of 0.7 that holds what
+ * NOT_RUN_YET_07 lists is refused at load by name.
  */
 export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5", LANGUAGE_06, LANGUAGE_07];
 
@@ -295,16 +302,14 @@ const has = (o: unknown, k: string): boolean => isObj(o) && o[k] !== undefined;
  * adds", "The IR", "Lock 0.7"; "Refusals", `unsupported_language`). A package of 0.7 that holds one is refused at load,
  * `unsupported_language`, naming each it holds in the table's order, so that a half-built 0.7 never runs; a lead's
  * sub-program of a 0.7 parent that holds one is refused at its check. The slice that implements a construct takes its
- * line out, and nothing else (runtime/test/attention.test.ts holds the list).
+ * line out, and nothing else (runtime/test/attention.test.ts holds the list). `stage` and `report` run (B2: interp.ts,
+ * attention.ts), and are no longer in it.
  *
- * - `stage`, `report`: a statement `{op: "stage"}`, `{op: "report"}`, wherever it stands ("The IR", `Stmt`).
  * - `asks`: a member of a workflow's budget or of its envelope's budget ("The IR", `Budget.asks`; "`asks`").
  * - `lock.role_classes`, `lock.promotion`: the members of a lock of format 0.7 ("Lock 0.7").
  * - `owner`: the member of a workflow definition ("The IR", `Def(workflow).owner`), not an envelope's, which is 0.4's.
  */
 export const NOT_RUN_YET_07: readonly NotRunYet07[] = [
-  { name: "stage", slice: "B2", node: (o) => o["op"] === "stage" },
-  { name: "report", slice: "B2", node: (o) => o["op"] === "report" },
   { name: "asks", slice: "B3", def: (d) => d["kind"] === "workflow" && (has(d["budget"], "asks") || (isObj(d["envelope"]) && has(d["envelope"]["budget"], "asks"))) },
   { name: "lock.role_classes", slice: "B4", lock: (l) => has(l, "role_classes") },
   { name: "owner", slice: "B6", def: (d) => d["kind"] === "workflow" && has(d, "owner") },
@@ -519,7 +524,8 @@ function verified(pkg: Package, o: LoadOptions): Verified {
   // program: expanded, and linked through what each library reaches, with the very definitions that were checked.
   // A run of a program that applies a pattern, or whose lock pins a library, runs that one and stores it; any other
   // runs its program as plain linking gives it, which every resume gives again. Every check below reads what runs.
-  const checked = from06 ? checked06(pkg, modules, o, format) : undefined;
+  const check06 = from06 ? checked06(pkg, modules, o, format) : undefined;
+  const checked = check06?.running;
   const stored = checked && storesRunning(pkg) ? checked : undefined;
   const running = stored ?? plain;
   if (stored) {
@@ -556,7 +562,7 @@ function verified(pkg: Package, o: LoadOptions): Verified {
     const roles = [...new Set(unbound.map((d) => String((d.facts as { role?: unknown } | undefined)?.role)))].sort();
     throw new Violation("unbound_role", `The package's lock binds no member to ${roles.length === 1 ? "role" : "roles"} ${roles.join(", ")} (MDT-E1502).`);
   }
-  return { running, ...(stored ? { stored } : {}), modules: from06 ? linking : modules };
+  return { running, ...(stored ? { stored } : {}), modules: from06 ? linking : modules, ...(isProgram07OrLater(pkg.program) && check06 ? { facts: check06.source } : {}) };
 }
 
 /**
@@ -655,8 +661,11 @@ export function libraryModules(pkg: Pick<Package, "lock" | "libraries">): Module
  * So then E0141 alone is left out of the check with the lock, and the expansion is that of the same check without
  * the lock, which holds the program to every rule but the lock's. A lock that pins models is held to every tier,
  * here and by `unlocked_model_tier`.
+ *
+ * Gives besides (`source`) what the check that gave the running program was given: a run of 0.7 gives the same to
+ * the door of the attention facts at its start, so that the facts are those of the program that check read.
  */
-function checked06(pkg: Package, modules: Modules, o: LoadOptions, format: string): Program | undefined {
+function checked06(pkg: Package, modules: Modules, o: LoadOptions, format: string): { running: Program | undefined; source: FactsSource } {
   const text = canonicalize(pkg.program as unknown as Json);
   const config = o.libraries?.dir !== undefined ? { config: { dir: o.libraries.dir, ...(o.libraries.wait_days !== undefined ? { wait_days: o.libraries.wait_days } : {}), ...(o.libraries.revoked ? { revoked: o.libraries.revoked } : {}) } } : {};
   const read = { modules, ...(pkg.libraries?.length ? { libraries: pkg.libraries } : {}), ...config };
@@ -668,11 +677,12 @@ function checked06(pkg: Package, modules: Modules, o: LoadOptions, format: strin
   if (errors.length) throw refused(errors);
   const r = withLock.ok ? withLock : check(text, "json", given);
   if (!r.ok) throw refused(r.diagnostics.filter((d) => d.severity === "error"));
+  const source: FactsSource = { text, kind: "json", opts: withLock.ok ? { ...given, lock: formatted(pkg.lock, format) } : given };
   const applying = applications(pkg.program);
   if (applying.length && !r.expanded) throw new Violation("load_verification_failed", `The program applies a pattern (${applying.join(", ")}), and the compiler gave no expansion of it.`);
   if (!applying.length && r.expanded) throw new Violation("load_verification_failed", "The program applies no pattern, and the compiler gave an expansion of it.");
   const linked = r.linked as unknown as Program | undefined;
-  if (!isProgram06OrLater(pkg.program)) return undefined;
+  if (!isProgram06OrLater(pkg.program)) return { running: undefined, source };
   if (!linked || !isObj(linked.defs)) throw new Violation("load_verification_failed", `The program is of ${String(pkg.program.language)}, and the compiler gave no running program of it.`);
   // The program's own workflows: a run starts one of these and no other. A workflow the program only imports, which
   // a library may write as an application, is linked as it is written: nothing starts or calls it (0.6), and the
@@ -681,5 +691,5 @@ function checked06(pkg: Package, modules: Modules, o: LoadOptions, format: strin
   if (left.length) throw new Violation("load_verification_failed", `The running program the compiler gave still applies a pattern (${left.join(", ")}).`);
   const missing = Object.keys(pkg.program.defs).filter((n) => !Object.hasOwn(linked.defs, n));
   if (missing.length) throw new Violation("load_verification_failed", `The running program the compiler gave lacks the program's ${missing.sort().join(", ")}.`);
-  return linked;
+  return { running: linked, source };
 }

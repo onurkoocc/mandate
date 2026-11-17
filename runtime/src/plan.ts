@@ -50,10 +50,12 @@ import {
   capsOf,
   governanceChanges,
   hashProgram,
+  isProgram07OrLater,
   LIMITS,
   showCap,
   skeleton,
   subprogramLinked,
+  type AttentionFacts,
   type CapVal,
   type DataClass,
   type Diagnostic,
@@ -71,6 +73,7 @@ import {
 import { CompilerFailure, compilerForWorker, type WorkerCompiler } from "@mandate/bridge/mode";
 import type { Outcome, ToolSpec } from "./adapters.js";
 import { refOf, sha256Of, type ArtifactScope, type ArtifactStore } from "./artifacts.js";
+import { ATTENTION_MEDIA_TYPE, holdsAttention, readFacts, stored } from "./attention.js";
 import type { Admission, CommandRow, Journal } from "./journal.js";
 import { applications, subprogramNotRunYet, type AmendedCheck, type AmendedInput } from "./package.js";
 import { Fault, Suspend, Violation } from "./signals.js";
@@ -422,8 +425,11 @@ export interface PlanHost {
   shared: Shared;
   /** Runs one journaled step of the lead's delegation. */
   step(id: string, request: Value, call: () => Promise<Outcome>, label: string): Promise<Value>;
-  /** Runs an admitted sub-program's workflow to its end and returns its value; `running` is its stored running program, when its admission names one. */
-  run(a: Admission, sub: Program, running?: Program): Promise<Value>;
+  /**
+   * Runs an admitted sub-program's workflow to its end and returns its value; `running` is its stored running program,
+   * when its admission names one, and `attention` its stored attention facts (0.7), when it names them.
+   */
+  run(a: Admission, sub: Program, running?: Program, attention?: AttentionFacts): Promise<Value>;
 }
 
 type Answer = { content: string; is_error?: boolean };
@@ -540,7 +546,7 @@ export class Planner {
       // So is one of a sub-program that holds what this runtime does not run in a sub-program yet (0.6): it is refused
       // by name, `check_failed`, and not run. A sub-program that applies a pattern is read as its check gave it to
       // run: its running program, which is held to the hash the check named it by.
-      const result: SubprogramCheck06 | undefined = "limit" in checked || "failed" in checked ? undefined : checked;
+      const result: (SubprogramCheck06 & { attention?: AttentionFacts | null }) | undefined = "limit" in checked || "failed" in checked ? undefined : checked;
       const running = result?.ok && result.running ? { program: result.running as unknown as Program, hash: hashProgram(result.running as unknown as Json).program } : undefined;
       const misnamed = running !== undefined && running.hash !== result!.running_hash;
       // A running program is what a sub-program that applies a pattern runs as, and nothing else: one given for a
@@ -551,6 +557,10 @@ export class Planner {
       const parentWf = Object.hasOwn(h.parent.defs, h.workflow) ? h.parent.defs[h.workflow] : undefined;
       const shapes = parentWf?.kind === "workflow" ? shapesOf(parentWf.envelope) : undefined;
       const unshaped = result?.ok && !misnamed && !unasked && !unrun.length ? shapeProblem(shapes, result.shape) : undefined;
+      // 0.7: a sub-program whose workflow runs a stage or a report (a shape's, through its expansion) is admitted only
+      // with its attention facts, which label its reports: the checker must give them, of its workflow.
+      const facts = result?.ok && result.program && result.workflow && isProgram07OrLater(h.parent) && holdsAttention(running?.program ?? result.program, result.workflow) ? result.attention : undefined;
+      const unlabelled = result?.ok && result.program && result.workflow && isProgram07OrLater(h.parent) && holdsAttention(running?.program ?? result.program, result.workflow) && (!facts || facts.workflow !== result.workflow);
       const stopped =
         "limit" in checked
           ? limitDiagnostic(checked)
@@ -564,7 +574,9 @@ export class Planner {
                 ? notRunDiagnostic(unrun)
                 : unshaped !== undefined
                   ? failedDiagnostic({ failed: unshaped })
-                  : undefined;
+                  : unlabelled
+                    ? failedDiagnostic({ failed: "the checker gave no attention facts of a sub-program whose workflow runs a stage or a report" })
+                    : undefined;
       const r = stopped ? undefined : result;
       // The errors come first: they are what the lead must act on, and a long list is cut at its end.
       const diagnostics = stopped ? [stopped] : [...r!.diagnostics.filter((d) => d.severity === "error"), ...r!.diagnostics.filter((d) => d.severity !== "error")].map(forLead);
@@ -594,11 +606,14 @@ export class Planner {
       const wf = sub.defs[r!.workflow!];
       // What it runs as, when it applies a pattern: stored with it, and named by its admission.
       const runs = running ? { ...running, bytes: canonical(running.program as unknown as Value) } : undefined;
-      const a: Admission = { ...record, command: `${h.plan}/program/${number}`, hash: r!.hash!, base: String(input["base"]), artifact: refOf(sha256Of(bytes)), workflow: r!.workflow!, ...(runs ? { running: { hash: runs.hash, artifact: refOf(sha256Of(runs.bytes)) } } : {}), ...(r!.shape ? { shape: { pattern: r!.shape.pattern, module: r!.shape.module } } : {}) };
+      // 0.7: its attention facts, stored with it and named by its admission, which its run reads and never asks again.
+      const labels = facts ? stored(facts) : undefined;
+      const a: Admission = { ...record, command: `${h.plan}/program/${number}`, hash: r!.hash!, base: String(input["base"]), artifact: refOf(sha256Of(bytes)), workflow: r!.workflow!, ...(runs ? { running: { hash: runs.hash, artifact: refOf(sha256Of(runs.bytes)) } } : {}), ...(r!.shape ? { shape: { pattern: r!.shape.pattern, module: r!.shape.module } } : {}), ...(labels ? { attention: labels.digest } : {}) };
       try {
         const admitted = await h.journal.admitProgram(h.runId, h.fence, a, wf?.kind === "workflow" ? wf.budget : undefined, digest("request", { kind: "program", request: { plan: a.plan, number, hash: a.hash } }), async (tx) => {
           await h.artifacts.put(h.scope, bytes, PROGRAM_MEDIA_TYPE, tx);
           if (runs) await h.artifacts.put(h.scope, runs.bytes, RUNNING_PROGRAM_MEDIA_TYPE, tx);
+          if (labels) await h.artifacts.put(h.scope, labels.bytes, ATTENTION_MEDIA_TYPE, tx);
         });
         return { admitted, sub };
       } catch (e) {
@@ -643,9 +658,11 @@ export class Planner {
     sub ??= await loadProgram(h, a);
     // What it runs as, when it applies a pattern: what was stored at its admission, and never an expansion made again.
     const running = a.running ? await loadRunning(h, a, a.running) : undefined;
+    // 0.7: its attention facts, as stored at its admission (`facts_mismatch` when they are missing or another).
+    const attention = a.attention !== undefined ? await readFacts(h.artifacts, h.scope, a.attention, `Sub-program ${a.number} of ${a.plan}'s admission`) : undefined;
     let outcome: { ok: Value } | { error: { tag: string; args: Value[] } };
     try {
-      outcome = { ok: await h.run(a, sub, running) };
+      outcome = { ok: await h.run(a, sub, running, attention) };
     } catch (e) {
       // A fault is how the sub-program ended, a budget that ran out among them: what runs inside it is paid from
       // its own reservation and never from the run's (N02). Anything else stops the lead's step where it is.

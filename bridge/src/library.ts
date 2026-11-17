@@ -16,7 +16,8 @@
 // - the Rust-only doors the runtime and the command line call (doors.ts, RUST_ONLY): `library_verify`, the doors of
 //   `mandate add`, `upgrade` and `publish` (`library_add`, `library_upgrade`, `library_publish`), the authority
 //   signature, and the reading of the configuration's `libraries` member; and, of 0.7, `callable_connectors` (which
-//   connectors a program can call) and `tool_schema_digest` (a tool's schema digest), which the runtime asks;
+//   connectors a program can call), `tool_schema_digest` (a tool's schema digest) and `attention_facts` (the
+//   attention facts of a workflow, which a run of 0.7 stores at its start), which the runtime asks;
 // - the shapes 0.7 adds to the IR (spec/ir-0.7.schema.json) and to the lock (spec/lock-0.7.schema.json), as types
 //   alone: the `stage` and `report` statements, `asks` in a budget, `owner` on a workflow; the lock's `role_classes`
 //   and `promotion`. The compiler gives none of them yet (its slices add them one by one), and the runtime refuses a
@@ -470,6 +471,74 @@ export function callableConnectors(program: unknown, modules?: Record<string, un
  */
 export function toolSchemaDigest(tool: string): string {
   return rustOnly("tool_schema_digest", { tool }) as string;
+}
+
+// ── the attention facts (spec/attention.md "The facts") ──────────────────
+
+/** How a value is known (spec/attention.md "Masking and how a value is known"): the level of its type, the weakest wrapper deciding. */
+export type Known = "verified" | "plain" | "model" | "external";
+
+/** A stage of a workflow, by the path of its statement in the running program; `index` its place among its body's stages, from 0. */
+export interface AttentionStage {
+  path: string;
+  name: string;
+  title: string;
+  index: number;
+}
+
+/** A field of a report: its name, its type as the compiler shows it, the data class of its value and how it is known. */
+export interface AttentionField {
+  name: string;
+  type: string;
+  class: DataClass;
+  known: Known;
+}
+
+/** A report of a workflow, by the path of its statement in the running program. */
+export interface AttentionReport {
+  path: string;
+  /** The role it is addressed to: in an expansion, the one the application binds. */
+  role: string;
+  title: string;
+  /** The stage of the top-level statement it stands in, or null. */
+  stage: string | null;
+  /** How many times one run can show it. */
+  multiplicity: number | "unbounded";
+  /** In the order written. */
+  fields: AttentionField[];
+}
+
+/**
+ * The attention facts of one workflow, `mandate/attention/0.1`. A later slice of the compiler adds members beside
+ * these (the question sites, the effect sites, the totals) under the same format; a reader keeps what it is given whole
+ * and reads only the members it knows.
+ */
+export interface AttentionFacts {
+  format: "mandate/attention/0.1";
+  workflow: string;
+  /** The program's hash, as its check gives it. */
+  program: string;
+  stages: AttentionStage[];
+  reports: AttentionReport[];
+  [member: string]: unknown;
+}
+
+/** What `attention_facts` takes: the input of the door `check` (`text`, `kind`, `opts`), and the workflow's name. */
+export interface AttentionFactsInput {
+  text: string;
+  kind: SourceKind;
+  opts?: CheckOptions06 & { claim?: Record<string, unknown> };
+  workflow: string;
+}
+
+/**
+ * `attention_facts` (language 0.7, spec/attention.md "The facts"): the attention facts of a workflow, from the typing
+ * of the check that checks the program (given as the door `check` is given it), by the path of each statement in the
+ * running program. Null when the program does not check, is older than 0.7, or defines no such workflow. A refusal of
+ * the door is thrown as an `Error`.
+ */
+export function attentionFacts(input: AttentionFactsInput): AttentionFacts | null {
+  return rustOnly("attention_facts", { ...input }) as AttentionFacts | null;
 }
 
 /** What a door says of a `config` it does not read, before the identifiers of its problems. */
