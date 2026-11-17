@@ -11,7 +11,7 @@
 // worker that re-runs the workflow body finds earlier results instead of
 // calling the outside world again (R01, R13).
 
-import { BUDGET_DIMENSIONS, budgetAmount, type Budget } from "@mandate/bridge";
+import { BUDGET_DIMENSIONS, budgetAmount, isProgram07OrLater, type Budget } from "@mandate/bridge";
 import type { Cost, Outcome } from "./adapters.js";
 import { ASKS, ASKS_EXHAUSTED, parentReservation, type AskFrom, type AskSite } from "./asks.js";
 import { decisionId, type SignedDecision, type StoredDecision } from "./decisions.js";
@@ -867,7 +867,10 @@ export class Journal {
       { ...cmd, kind: "amendment" },
       request,
       async (tx) => {
-        await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [pkg.hash, json(pkg.program), json(pkg.lock), json(pkg.modules)]);
+        // With whether it holds anything of 0.7 (package.ts `isPackage07OrLater`, which notify.ts reads as `is_07`).
+        const modules = typeof pkg.modules === "object" && pkg.modules !== null && !Array.isArray(pkg.modules) ? Object.values(pkg.modules) : [];
+        const is07 = [pkg.program, ...modules].some(isProgram07OrLater);
+        await tx.query("insert into packages (package_hash, program, lock, modules, is_07) values ($1, $2, $3, $4, $5) on conflict (package_hash) do nothing", [pkg.hash, json(pkg.program), json(pkg.lock), json(pkg.modules), is07]);
         // 0.7: the attention facts of the amended package's workflow, which the run reads once the owner approves it.
         await store?.(tx);
         await this.event(tx, runId, "amendment_requested", requested);

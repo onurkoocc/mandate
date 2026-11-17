@@ -241,15 +241,23 @@ async function dueNow(db: Db, runId: string, now: number, is07: (hash: string) =
   return !!row && WAIT_KINDS.has(String(row["kind"])) && row["state"] !== "waiting" && now - (await lastMoved(db, runId)) >= STALE_DRIVE_MS;
 }
 
-/** Whether the package of hash `hash` is of 0.7 or later (package.ts `isPackage07OrLater`), read from the database once. */
+/**
+ * Whether the package of hash `hash` is of 0.7 or later (package.ts `isPackage07OrLater`), read from the database once:
+ * its `is_07`, written when it was stored, or for a package stored without it, the languages of its program and modules.
+ */
 function packageIs07(db: Db): (hash: string) => Promise<boolean> {
   const known = new Map<string, Promise<boolean>>();
   return (hash) => {
     let k = known.get(hash);
     if (!k) {
       k = db
-        .query<Row>("select program->'language' as language, (select coalesce(jsonb_agg(m.value->'language'), '[]'::jsonb) from jsonb_each(coalesce(p.modules, '{}'::jsonb)) m) as modules from packages p where package_hash = $1", [hash])
-        .then(([p]) => !!p && [p["language"], ...(Array.isArray(p["modules"]) ? (p["modules"] as Value[]) : [])].some((language) => isProgram07OrLater({ language })));
+        .query<Row>(
+          `select p.is_07, case when p.is_07 is null then p.program->'language' end as language,
+                  case when p.is_07 is null then (select coalesce(jsonb_agg(m.value->'language'), '[]'::jsonb) from jsonb_each(case when jsonb_typeof(p.modules) = 'object' then p.modules else '{}'::jsonb end) m) end as modules
+             from packages p where package_hash = $1`,
+          [hash],
+        )
+        .then(([p]) => !!p && (typeof p["is_07"] === "boolean" ? p["is_07"] : [p["language"], ...(Array.isArray(p["modules"]) ? (p["modules"] as Value[]) : [])].some((language) => isProgram07OrLater({ language }))));
       known.set(hash, k);
     }
     return k;

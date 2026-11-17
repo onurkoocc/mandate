@@ -47,6 +47,7 @@ import {
   type Notification,
   type NotificationsConfig,
   type NotifyOptions,
+  type NotifyReport,
   type WebhookTransport,
 } from "../src/notify.js";
 import { Violation } from "../src/signals.js";
@@ -127,11 +128,13 @@ function fakeWay(answer: Answer = () => new Response("ok")) {
   const calls: Call[] = [];
   const opened: string[] = [];
   let ready: (tenant: string) => Promise<void> = async () => undefined;
+  let session: (tenant: string) => Promise<void> = async () => undefined;
   const transport = (): WebhookTransport => ({
     open: (channel, _spec, tenant) => {
       opened.push(`${channel} ${tenant}`);
       return {
         ready: () => ready(tenant),
+        open: () => session(tenant),
         fetch: (async (url: string, init?: RequestInit) => {
           const headers: Record<string, string> = {};
           new Headers(init?.headers).forEach((v, k) => (headers[k] = v));
@@ -145,7 +148,7 @@ function fakeWay(answer: Answer = () => new Response("ok")) {
     },
     close: async () => undefined,
   });
-  return { calls, opened, transport, setReady: (f: (tenant: string) => Promise<void>) => (ready = f) };
+  return { calls, opened, transport, setReady: (f: (tenant: string) => Promise<void>) => (ready = f), setSession: (f: (tenant: string) => Promise<void>) => (session = f) };
 }
 
 /** An answer that never comes: it ends when the request is stopped. */
@@ -660,6 +663,44 @@ describe("the pump", () => {
     expect(await count(w, "select count(*) as n from notify_dead")).toBe(1);
   });
 
+  // The clock moves while pump A's request is in flight, by less than A's hold on its claim (twice the send's deadline,
+  // 20 s), and by more. Within the hold, pump B takes nothing; past it, B takes the claim and sends too, and A, whose
+  // claim is gone, writes nothing after its send: its attempt is not counted, B's is.
+  it.each([
+    [12_000, 1],
+    [25_000, 2],
+  ])("counts an attempt once when the clock moves %i ms during a send, and the claim's holder alone writes: %i sends, one attempt, one dead letter after six", async (jump, sends) => {
+    const w = await ownedRun();
+    const c = config(HOOK_CONFIG);
+    let first: string | undefined;
+    const fail = (id: string): Response => {
+      first ??= id;
+      return id === first ? new Response("no", { status: 500 }) : new Response("ok");
+    };
+    const b = fakeWay(fail);
+    const nested: NotifyReport[] = [];
+    const a = fakeWay(async (id) => {
+      if (!nested.length) {
+        w.clock.advance(jump);
+        nested.push(await pass(w, c, { transport: b.transport }));
+      }
+      return fail(id);
+    });
+    await pass(w, c, { transport: a.transport });
+    expect(a.calls.length + b.calls.length).toBe(sends);
+    expect(b.calls).toHaveLength(sends - 1);
+    expect(await cursorRow(w.db, "hook", "o1")).toMatchObject({ attempts: 1 });
+    // Five more counted attempts, one a pass, each when it is due: the sixth gives it up, once.
+    const dead: unknown[] = [];
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      w.clock.advance(backoffMs(attempt));
+      await pass(w, c, { transport: a.transport, onDead: (d) => dead.push(d) });
+    }
+    expect(dead).toEqual([expect.objectContaining({ attempts: 6 })]);
+    expect(await w.db.query("select attempts from notify_dead")).toEqual([{ attempts: 6 }]);
+    expect([...a.calls, ...b.calls].filter((x) => x.headers[NOTIFICATION_HEADER] === first)).toHaveLength(5 + sends);
+  });
+
   // These two run by the real clock: a send's deadline is a timer's, and the claim must outlast it in the same time.
   it("bounds the whole send by one deadline the claim outlasts: a slow way out and a second pump make one request and one attempt", async () => {
     const w = await ownedRun();
@@ -689,6 +730,16 @@ describe("the pump", () => {
     way.setReady(() => new Promise<void>(() => undefined));
     const r = await pass(w, config(HOOK_CONFIG), { transport: way.transport, now: () => Date.now(), timeoutMs: 50 });
     expect(r).toMatchObject({ sent: 0, failed: 0, dead: 0, pending: 0, failures: [{ channel: "hook" }] });
+    expect(way.calls).toEqual([]);
+    expect(await cursorRow(w.db, "hook", "o1")).toMatchObject({ pending: null, attempts: 0, retry_at: null });
+  });
+
+  it("ends a send whose session is still opening at the deadline, as the way out not being there: no attempt", async () => {
+    const w = await ownedRun();
+    const way = fakeWay();
+    way.setSession(() => new Promise<void>(() => undefined));
+    const r = await pass(w, config(HOOK_CONFIG), { transport: way.transport, now: () => Date.now(), timeoutMs: 50 });
+    expect(r).toEqual({ sent: 0, failed: 0, dead: 0, pending: 0, failures: [{ channel: "hook", message: "the egress proxy did not open a session for hooks.acme.example within 50 ms" }] });
     expect(way.calls).toEqual([]);
     expect(await cursorRow(w.db, "hook", "o1")).toMatchObject({ pending: null, attempts: 0, retry_at: null });
   });
@@ -925,6 +976,87 @@ describe("which runs a pass tells, and when", () => {
     const c = config({ channels: { hook: { webhook: { url: HOOK, credential: "acme_hook" } } }, roles: { accountant: { channels: ["hook"] }, finance_lead: { channels: ["hook"] } } });
     await pass(w, c, { transport: way.transport });
     expect(bodies(way.calls).map((n) => `${n.event} ${n.role} ${n.command}`)).toEqual([`review_escalated finance_lead ${REVIEW_AT}`]);
+  });
+
+  it("tells a review escalated before the pump reached it as the escalation alone: the first role is told nothing; one the pump reached in turn, both in order", async () => {
+    const w = await nworld(REVIEW, "0.7");
+    const c = config({ channels: { hook: { webhook: { url: HOOK, credential: "acme_hook" } } }, roles: { accountant: { channels: ["hook"] }, finance_lead: { channels: ["hook"] } } });
+    await meet(w, c);
+    const told = (way: ReturnType<typeof fakeWay>, run: string): string[] => bodies(way.calls).filter((n) => n.run === run).map((n) => `${n.event} ${n.role} ${n.command}`);
+    // Begun since the channel is in use, and escalated before any pass.
+    await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "late" });
+    w.clock.advance(DAY);
+    await w.rt.tick("late");
+    const way = fakeWay();
+    await pass(w, c, { transport: way.transport });
+    expect(told(way, "late")).toEqual([`review_escalated finance_lead ${REVIEW_AT}`]);
+    // Reached in turn: the request, then the escalation.
+    await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "turn" });
+    await pass(w, c, { transport: way.transport });
+    w.clock.advance(DAY);
+    await w.rt.tick("turn");
+    await pass(w, c, { transport: way.transport });
+    expect(told(way, "turn")).toEqual([`review_requested accountant ${REVIEW_AT}`, `review_escalated finance_lead ${REVIEW_AT}`]);
+  });
+
+  // What the meeting's lock and the look under it protect: a pump that found the channel new, then waited for the lock
+  // while another met it, and a run that began and ended in between. The pump that comes second finds the channel met
+  // and meets nothing; were it to meet the channel again, it would put that run's cursor at its end and tell it nothing.
+  // The race is played without concurrency: the second pump's first look is answered as it would have been before the
+  // first meeting committed.
+  it("tells a run that begins between two meetings of one new channel from its first event", async () => {
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    const c = config(HOOK_CONFIG);
+    await meet(w, c);
+    await endedRun(w, "between");
+    let looked = false;
+    const early: Db = {
+      query: (async (sql: string, p?: unknown[]) => {
+        if (!looked && sql.startsWith("select 1 as met from notify_channels")) {
+          looked = true;
+          return [];
+        }
+        return w.db.query(sql, p);
+      }) as Db["query"],
+      tx: (fn) => w.db.tx(fn),
+      close: () => w.db.close(),
+    };
+    const way = fakeWay();
+    await notifyPass(early, { config: c, transport: way.transport, now: () => w.clock.now() });
+    expect(looked).toBe(true);
+    expect(bodies(way.calls).map((n) => `${n.run} ${n.event} ${n.role}`)).toEqual(["between run_succeeded platform_lead"]);
+    expect(await count(w, "select count(*) as n from notify_channels")).toBe(1);
+  });
+
+  it("knows a package of 0.7 by what it was stored with, and one stored without it by its program, once given its value", async () => {
+    const w = await ownedRun();
+    expect(await w.db.query("select is_07 from packages")).toEqual([{ is_07: true }]);
+    // As a package stored before the column was: no value, and modules that are not an object.
+    await w.db.query("update packages set is_07 = null, modules = 'null'::jsonb");
+    await append(w, "o1", "run_cancelled", {});
+    // A runtime that has not given the packages their value yet reads the program for them, and gives it.
+    const again: Db = { query: ((sql: string, p?: unknown[]) => w.db.query(sql, p)) as Db["query"], tx: (fn) => w.db.tx(fn), close: () => w.db.close() };
+    const way = fakeWay();
+    await notifyPass(again, { config: config(HOOK_CONFIG), transport: way.transport, now: () => w.clock.now() });
+    expect(await w.db.query("select is_07 from packages")).toEqual([{ is_07: true }]);
+    // One that gave them their value before reads the program for a package stored without it since.
+    await w.db.query("update packages set is_07 = null");
+    await append(w, "o1", "run_attention_required", { attention: { violation: "made_up" } });
+    await pass(w, config(HOOK_CONFIG), { transport: way.transport });
+    expect(bodies(way.calls).map((n) => n.event)).toEqual([...OWNED_TOLD.map((t) => t.split(" ")[0]), "run_cancelled", "run_attention_required"]);
+    expect(await w.db.query("select is_07 from packages")).toEqual([{ is_07: null }]);
+    // A package of 0.6 is stored as one.
+    const old = await nworld(REVIEW, "0.6");
+    await old.rt.startRun({ pkg: old.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "six" });
+    expect(await old.db.query("select is_07 from packages")).toEqual([{ is_07: false }]);
+    // Stored without it, its modules a scalar: its program and no module are of 0.7, and nothing of it is told.
+    await old.db.query(`update packages set is_07 = null, modules = '"made-up"'::jsonb`);
+    const six: Db = { query: ((sql: string, p?: unknown[]) => old.db.query(sql, p)) as Db["query"], tx: (fn) => old.db.tx(fn), close: () => old.db.close() };
+    const none = fakeWay();
+    expect(await notifyPass(six, { config: config(HOOK_CONFIG), transport: none.transport, now: () => old.clock.now() })).toMatchObject({ sent: 0, failures: [] });
+    expect(await old.db.query("select is_07 from packages")).toEqual([{ is_07: false }]);
+    expect(none.calls).toEqual([]);
   });
 
   it("visits only the runs with something new past the channel's cursor", async () => {

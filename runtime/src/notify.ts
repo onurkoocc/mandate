@@ -27,7 +27,7 @@
 // - Two adapters: `webhook`, an HTTPS POST that leaves only through the egress proxy, in a gateway session with a
 //   credential by name, as a connector's requests do; and `file`, one JSON line per notification.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { BRIDGE_LANGUAGE_VERSIONS, isProgram07OrLater, type WorkflowDef07 } from "@mandate/bridge";
@@ -342,6 +342,8 @@ export interface WebhookWay {
   fetch: typeof fetch;
   /** Whether the way out holds the channel's credential; `NotifyUnavailable` when it does not answer or does not. */
   ready(): Promise<void>;
+  /** Opens the session the request is sent on, before the request; `NotifyUnavailable` when it cannot be. */
+  open?(): Promise<void>;
 }
 
 /** The ways out of one pass, made per channel and tenant, and closed at the end of the pass. */
@@ -381,6 +383,13 @@ export function egressTransport(o: { admin: string; send?: typeof fetch; timeout
             (way.ready ??= way.link.ready({ [`notification channel ${channel}`]: spec.credential }).catch((x: unknown) => {
               throw new NotifyUnavailable(x instanceof Error ? x.message : String(x));
             })),
+          open: () =>
+            way.gateway.session().then(
+              () => undefined,
+              (x: unknown) => {
+                throw new NotifyUnavailable(x instanceof Error ? x.message : String(x));
+              },
+            ),
         };
       },
       async close() {
@@ -451,11 +460,20 @@ export function webhookNotifier(channel: string, spec: WebhookChannel, way: (ten
       const timeout = AbortSignal.timeout(timeoutMs);
       const stop = signal ? AbortSignal.any([timeout, signal]) : timeout;
       const out = way(n.tenant);
+      // The proxy's answer, then the session: a deadline that passes before the request is sent is the way out not
+      // being there, and no attempt, as nothing reached the receiver.
       try {
         await within(out.ready(), stop);
       } catch (e) {
         if (signal?.aborted) throw new Stopped();
         if (timeout.aborted) throw new NotifyUnavailable(`the egress proxy did not say within ${timeoutMs} ms whether it can serve ${spec.host}`);
+        throw e;
+      }
+      try {
+        if (out.open) await within(out.open(), stop);
+      } catch (e) {
+        if (signal?.aborted) throw new Stopped();
+        if (timeout.aborted) throw new NotifyUnavailable(`the egress proxy did not open a session for ${spec.host} within ${timeoutMs} ms`);
         throw e;
       }
       const body = spec.format === "text" ? JSON.stringify({ text: sentence(n) }) : JSON.stringify(n);
@@ -481,15 +499,29 @@ export function webhookNotifier(channel: string, spec: WebhookChannel, way: (ten
   };
 }
 
-/** The file adapter: one JSON line per notification, appended to `path` (its directory made when missing). */
-export function fileNotifier(channel: string, path: string): Notifier {
+/**
+ * The file adapter: one JSON line per notification, appended to `path` (its directory made when missing), within the
+ * same deadline as a webhook's send: a file system that does not answer is a failed attempt, and the pass goes on. A
+ * write that ends after its deadline may still leave its line, and the next attempt another with the same id (at least
+ * once).
+ */
+export function fileNotifier(channel: string, path: string, timeoutMs = NOTIFY_TIMEOUT_MS): Notifier {
   return {
     name: channel,
-    async send(n) {
+    async send(n, signal) {
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const stop = signal ? AbortSignal.any([timeout, signal]) : timeout;
       try {
-        await mkdir(dirname(path), { recursive: true });
-        await appendFile(path, JSON.stringify(n) + "\n", "utf8");
+        await within(
+          (async () => {
+            await mkdir(dirname(path), { recursive: true });
+            await appendFile(path, JSON.stringify(n) + "\n", "utf8");
+          })(),
+          stop,
+        );
       } catch (e) {
+        if (signal?.aborted) throw new Stopped();
+        if (timeout.aborted) throw new NotifyFailed(`could not append to ${path} within ${timeoutMs} ms`, true);
         throw new NotifyFailed(`could not append to ${path} (${causeOf({ cause: e })})`, true);
       }
     },
@@ -664,17 +696,25 @@ export function backoffMs(n: number): number {
 }
 
 /** The owner roles read so far, by package and workflow: a package's hash names what it holds for good. */
-const KNOWN = new WeakMap<Db, { owners: Map<string, string | null> }>();
+const KNOWN = new WeakMap<Db, { owners: Map<string, string | null>; filled?: boolean }>();
 
 /** The languages of 0.7 or later the bridge reads, as `isProgram07OrLater` holds them. */
 const LANGUAGES_07: readonly string[] = BRIDGE_LANGUAGE_VERSIONS.filter((language) => isProgram07OrLater({ language }));
 
 /**
- * Whether the package `p` holds anything of 0.7 (package.ts `isPackage07OrLater`): its program, or a module it carries,
- * is of a language of `LANGUAGES_07`, given as `$2`. In SQL, so that a run and the package it is of are read in one
- * statement.
+ * Whether the package `p` holds anything of 0.7 (package.ts `isPackage07OrLater`), read from the program: its
+ * language, or that of a module it carries, is one of `LANGUAGES_07`, given as parameter `$n`.
  */
-const OF_07 = `(p.program->>'language' = any($2::text[]) or exists (select 1 from jsonb_each(coalesce(p.modules, '{}'::jsonb)) x where x.value->>'language' = any($2::text[])))`;
+const READ_07 = (n: number): string =>
+  `(p.program->>'language' = any($${n}::text[]) or exists (select 1 from jsonb_each(case when jsonb_typeof(p.modules) = 'object' then p.modules else '{}'::jsonb end) x where x.value->>'language' = any($${n}::text[])))`;
+
+/**
+ * Whether the package `p` holds anything of 0.7: `is_07`, written when the package is stored (runtime.ts `keep`), and
+ * read from the program only for a package stored without it (before the column, or by a runtime that does not write
+ * it), which the first pass of a process gives its value (`notifyPass`). In SQL, so that a run and its package are read
+ * in one statement.
+ */
+const OF_07 = `coalesce(p.is_07, ${READ_07(2)})`;
 
 interface Cursor {
   seq: number;
@@ -693,13 +733,18 @@ const cursorOf = (r: Row): Cursor | undefined =>
 const MEET_LOCK = 1835297107;
 
 /**
- * How long a pump holds the attempt it claimed before another may take it: the deadline of the whole send (the
- * proxy's answer, the session's opening and the request, `webhookNotifier`) and a second. A claim or a next attempt
- * further ahead of now than the larger of this and the largest backoff was made by a clock that has stepped back
- * since, and is taken as due. Pumps and ticks share one clock, or clocks within a few seconds of each other.
+ * How long a pump holds the attempt it claimed before another may take it: twice the deadline of the whole send (the
+ * proxy's answer, the session's opening and the request, `webhookNotifier`). A claim or a next attempt further ahead
+ * of now than the larger of this and the largest backoff, and a few seconds more for clocks apart, was made by a clock
+ * that has stepped back since, and is taken as due. A claim another pump took meanwhile (clocks further apart, or one
+ * that stepped forward) counts nothing twice: the claim carries a token (a random one, not its `retry_at`, which two
+ * pumps whose clocks differ could write alike), and the pump that lost it writes nothing after its send; the receiver
+ * may get the notification twice, with one id (at least once).
  */
-const claimMs = (timeoutMs: number): number => timeoutMs + 1_000;
-const aheadMs = (timeoutMs: number): number => Math.max(backoffMs(NOTIFY_ATTEMPTS - 1), claimMs(timeoutMs));
+const claimMs = (timeoutMs: number): number => 2 * timeoutMs;
+/** How far apart the clocks of pumps may be: a claim just made by a clock this far ahead is not taken as stepped back. */
+const SKEW_MS = 5_000;
+const aheadMs = (timeoutMs: number): number => Math.max(backoffMs(NOTIFY_ATTEMPTS - 1), claimMs(timeoutMs)) + SKEW_MS;
 
 /**
  * One notification pass. For each channel a role names (the channels side by side):
@@ -728,6 +773,12 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
   let cache = KNOWN.get(db);
   if (!cache) KNOWN.set(db, (cache = { owners: new Map() }));
   const owners = cache.owners;
+  // The packages stored before `is_07` was (or by a runtime that does not write it) are given it once, read from their
+  // programs; until then, and for one stored so later, `OF_07` reads the program for them alone.
+  if (!cache.filled) {
+    await db.query(`update packages p set is_07 = ${READ_07(1)} where p.is_07 is null`, [LANGUAGES_07]);
+    cache.filled = true;
+  }
   const transport = o.transport?.();
   const now = o.now ?? Date.now;
   const batch = Math.max(2, o.batch ?? 500);
@@ -805,23 +856,54 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
       await tx.query("insert into notify_channels (channel, at) values ($1, $2) on conflict (channel) do nothing", [channel, now()]);
     });
   };
-  /** Moves the cursor past `seq`, and forgets a notification waiting for its next attempt at or before it. */
+  /** Moves the cursor past `seq` (no notification of it waits), and forgets one waiting for its next attempt, or claimed, at or before it. */
   const cursorTo = async (channel: string, run: string, seq: number): Promise<void> => {
     await db.query(
       `update notify_cursors set seq = $3, at = $4,
          attempts = case when pending is not null and pending <= $3 then 0 else attempts end,
          retry_at = case when pending is not null and pending <= $3 then null else retry_at end,
+         claim = case when pending is not null and pending <= $3 then null else claim end,
          pending = case when pending is not null and pending <= $3 then null else pending end
        where channel = $1 and run_id = $2 and seq < $3`,
       [channel, run, seq, now()],
     );
+  };
+  /**
+   * The writes after a send, each made only while the claim `token` still holds: a pump whose claim another took
+   * (its hold ran out by that other's clock) writes nothing, so its attempt is not counted twice, and the other's is.
+   */
+  const held = {
+    /** Delivered: the cursor moves past it. */
+    sent: async (channel: string, run: string, seq: number, token: string): Promise<boolean> =>
+      (await db.query<Row>("update notify_cursors set seq = $3, at = $4, pending = null, attempts = 0, retry_at = null, claim = null where channel = $1 and run_id = $2 and claim = $5 returning seq", [channel, run, seq, now(), token])).length > 0,
+    /** Failed: one more attempt, and the count; undefined when the claim was lost. */
+    failed: async (channel: string, run: string, token: string): Promise<number | undefined> => {
+      const [r] = await db.query<Row>("update notify_cursors set attempts = attempts + 1, at = $3 where channel = $1 and run_id = $2 and claim = $4 returning attempts", [channel, run, now(), token]);
+      return r ? Number(r["attempts"]) : undefined;
+    },
+    /** To be tried again at `at`, the claim given up. */
+    later: async (channel: string, run: string, at: number, token: string): Promise<void> => {
+      await db.query("update notify_cursors set retry_at = $3, claim = null where channel = $1 and run_id = $2 and claim = $4", [channel, run, at, token]);
+    },
+    /** Given up: the cursor moves past it and the dead letter is written, in one transaction, only by the claim's holder. */
+    dead: async (channel: string, run: string, seq: number, attempts: number, reason: string, token: string): Promise<boolean> =>
+      db.tx(async (tx) => {
+        const moved = await tx.query<Row>("update notify_cursors set seq = $3, at = $4, pending = null, attempts = 0, retry_at = null, claim = null where channel = $1 and run_id = $2 and claim = $5 returning seq", [channel, run, seq, now(), token]);
+        if (!moved.length) return false;
+        await tx.query("insert into notify_dead (channel, run_id, seq, attempts, reason, at) values ($1, $2, $3, $4, $5, $6) on conflict (channel, run_id, seq) do nothing", [channel, run, seq, attempts, reason, now()]);
+        return true;
+      }),
+    /** No attempt (a stop, a way out not there): the claim is given back, and the notification is due again. */
+    back: async (channel: string, run: string, token: string): Promise<void> => {
+      await db.query("update notify_cursors set retry_at = null, claim = null, pending = case when attempts = 0 then null else pending end where channel = $1 and run_id = $2 and claim = $3", [channel, run, token]);
+    },
   };
 
   const pump = async (channel: string): Promise<void> => {
     const c = o.config.channels[channel]!;
     const notifier: Notifier =
       "file" in c
-        ? fileNotifier(channel, c.file)
+        ? fileNotifier(channel, c.file, timeoutMs)
         : webhookNotifier(
             channel,
             c.webhook,
@@ -871,9 +953,18 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
       // Of what came before the channel was met, only what the run still asks is told.
       const start = cur.start;
       const keep = start > cur.seq ? await asksNow(db, run.run, start) : new Set<number>();
+      // The latest question about each wait, up to where the run stands: an earlier one (a review's request, once it was
+      // escalated) is no longer asked of anyone.
+      const after = await s0Of(db, run.run, cur.seq, last);
+      const afterBySeq = new Map(after.map((x) => [x.seq, x]));
+      const latest = new Map<string, number>();
+      for (const x of after) {
+        const q = questionOf(x, afterBySeq.get(x.seq + 1));
+        if (q?.command) latest.set(q.command, x.seq);
+      }
       let cursor = cur.seq;
       let moved = cursor;
-      let claimed: number | undefined;
+      let claimed: string | undefined;
       try {
         pages: while (cursor < last) {
           const page = (await db.query<Row>(`select seq, type, at, ${FACTS} as facts from events where run_id = $1 and seq > $2 and seq <= $3 order by seq limit $4`, [run.run, moved, last, batch])).map(seenOf);
@@ -887,11 +978,15 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
             }
             const n = e.seq <= start && !keep.has(e.seq) ? undefined : notificationOf(channel, e, pair, run, asOf, o.config, admitted);
             // A question is told only while it is still asked: one answered, expired or of a run that ended is passed
-            // over, also when it waited for its next attempt (no dead letter). An outcome is always told. (A question
-            // answered between this and the send may still be told: the receiver finds it decided.)
-            if (n && n.kind === "decision" && !(await stillAsked(run.run, addressOf(e, pair, run, o.config)?.command ?? null))) {
-              moved = e.seq;
-              continue;
+            // over, also when it waited for its next attempt (no dead letter), and so is one a later question about the
+            // same wait replaced (a review's request, once escalated). An outcome is always told. (A question answered
+            // between this and the send may still be told: the receiver finds it decided.)
+            if (n && n.kind === "decision") {
+              const asked = addressOf(e, pair, run, o.config)?.command ?? null;
+              if ((asked !== null && latest.get(asked) !== e.seq) || !(await stillAsked(run.run, asked))) {
+                moved = e.seq;
+                continue;
+              }
             }
             if (!n) {
               moved = e.seq;
@@ -905,54 +1000,48 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
               skipped.add(run.tenant);
               break pages;
             }
-            // The attempt is claimed first, by one pump alone: the one whose conditional update returns the row.
+            // The attempt is claimed first, by one pump alone, with a token of its own: the one whose conditional update
+            // returns the row. Every write after the send is made only while the token still holds (`held`).
+            const token = randomUUID();
             const [claim] = await db.query<Row>(
-              `update notify_cursors set pending = $3, attempts = case when pending = $3 then attempts else 0 end, retry_at = $4 + $5, at = $4
+              `update notify_cursors set pending = $3, attempts = case when pending = $3 then attempts else 0 end, retry_at = $4 + $5, claim = $7, at = $4
                 where channel = $1 and run_id = $2 and seq < $3 and (retry_at is null or retry_at <= $4 or retry_at > $4 + $6)
                 returning attempts`,
-              [channel, run.run, e.seq, now(), claimMs(timeoutMs), aheadMs(timeoutMs)],
+              [channel, run.run, e.seq, now(), claimMs(timeoutMs), aheadMs(timeoutMs), token],
             );
             if (!claim) break pages;
-            claimed = e.seq;
+            claimed = token;
             const failure = await attempt(notifier, n);
             if (failure === undefined) {
+              if (!(await held.sent(channel, run.run, e.seq, token))) break pages;
+              claimed = undefined;
               report.sent++;
               o.onSent?.(channel, n);
             } else {
-              const [kept] = await db.query<Row>("update notify_cursors set attempts = attempts + 1, at = $4 where channel = $1 and run_id = $2 and pending = $3 returning attempts", [channel, run.run, e.seq, now()]);
-              if (!kept) break pages;
-              const attempts = Number(kept["attempts"]);
+              const attempts = await held.failed(channel, run.run, token);
+              // The claim was taken by another pump meanwhile: its attempt is the one counted, and this one writes nothing.
+              if (attempts === undefined) break pages;
               if (failure.retryable && attempts < NOTIFY_ATTEMPTS) {
-                await db.query("update notify_cursors set retry_at = $4 where channel = $1 and run_id = $2 and pending = $3", [channel, run.run, e.seq, now() + backoffMs(attempts)]);
+                await held.later(channel, run.run, now() + backoffMs(attempts), token);
                 claimed = undefined;
                 report.failed++;
                 // The receiver does not answer as it should: the channel is not asked again in this pass.
                 return;
               }
-              await db.query("insert into notify_dead (channel, run_id, seq, attempts, reason, at) values ($1, $2, $3, $4, $5, $6) on conflict (channel, run_id, seq) do nothing", [
-                channel,
-                run.run,
-                e.seq,
-                attempts,
-                failure.reason,
-                now(),
-              ]);
+              if (!(await held.dead(channel, run.run, e.seq, attempts, failure.reason, token))) break pages;
+              claimed = undefined;
               report.dead++;
               o.onDead?.({ channel, run: run.run, seq: e.seq, id: n.id, attempts, reason: failure.reason });
             }
-            await cursorTo(channel, run.run, e.seq);
-            claimed = undefined;
             cursor = moved = e.seq;
           }
           if (moved > cursor) await cursorTo(channel, run.run, moved);
           cursor = moved;
         }
       } catch (e) {
-        // The cursor stands before the notification that was being sent, and its claim is given back, no attempt
-        // counted: it is tried again by the next pass.
-        if (claimed !== undefined) {
-          await db.query("update notify_cursors set retry_at = null, pending = case when attempts = 0 then null else pending end where channel = $1 and run_id = $2 and pending = $3", [channel, run.run, claimed]);
-        }
+        // The cursor stands before the notification that was being sent, and its claim is given back (while it still
+        // holds), no attempt counted: it is tried again by the next pass.
+        if (claimed !== undefined) await held.back(channel, run.run, claimed);
         if (e instanceof Stopped) return;
         if (!(e instanceof NotifyUnavailable)) throw e;
         skipped.add(run.tenant);
