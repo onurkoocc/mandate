@@ -24,7 +24,7 @@ best-effort basis.
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | not implemented yet |
 | The card of a 0.7 program | RP2 | not implemented yet |
-| The MCP tools of 0.7 (`mcp_tools`); a native `mandate mcp` | RP3, RP4, B9 | not implemented yet |
+| The MCP tools of 0.7 (`mcp_tools`); a native `mandate mcp` | RP3, RP4, B9 | the door `mcp_tools` and its data exist (RP3); neither server uses it yet, and the native server is not implemented yet |
 | Stages and reports at run time; the stored facts and `facts_mismatch` | B2 | not implemented yet |
 | `asks` at run time; the bound under the runtime's configuration and `attention_above_asks`; `asks_exhausted` | B3 | not implemented yet |
 | Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | not implemented yet |
@@ -1044,7 +1044,7 @@ tools:
 
 - `check` takes `libraries`, and finds the embedded `std.patterns` by
   default;
-- `project` offers the card and the attention view, with `lock`;
+- `project` offers the card and the attention view, and takes `lock` and `libraries`;
 - `spec` takes two more values of its existing `section` parameter,
   `patterns` and `attention`;
 - the tool list of 0.7 is data from one door of the Rust compiler,
