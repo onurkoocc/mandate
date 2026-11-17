@@ -952,9 +952,10 @@ on does not change what that run shows, masks or counts.
   `/defs/C/…`, a sub-program's in its own program), and the wait in its
   static form. The owner's gate of an effect is the `governance` row of the
   effect's path, whichever suffix it has; an authorization by a role is the
-  effect's row, a `questions` row when the static total counts it, else its
-  `effects` row, `counted: false`, which the configuration must hand to a
-  person. A wait asked in a sub-program records the sub-program's command in
+  effect's row (a change set member's, or the set's), a `questions` row when
+  the static total counts it, else its `effects` row, `counted: false`, which
+  the configuration must hand to a person; a lead's amendment request is the
+  `plans` row of its `plan`, by its path and its wait. A wait asked in a sub-program records the sub-program's command in
   its `commands` row (`inside`).
 - **The `on budget_exceeded` handler.** Its questions, and the pause it falls
   back to, are not counted against `asks` and recur once per episode: their
