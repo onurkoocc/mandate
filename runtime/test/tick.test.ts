@@ -218,6 +218,19 @@ describe("a pass over a 0.6 run", () => {
     expect(await count(w, "select count(*) as n from notify_cursors")).toBe(0);
   });
 
+  it("reports a notification pass that fails as a whole, after the runs were ticked", async () => {
+    const w = await nworld(REVIEW, "0.7");
+    await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "n1" });
+    w.clock.advance(DAY);
+    const errors: string[] = [];
+    // A configuration the reader would refuse, given by hand: its webhook is not https.
+    const config = { channels: { hook: { webhook: { url: "http://hooks.acme.example/in", host: "hooks.acme.example", credential: "c", header: "authorization", template: "Bearer {secret}", format: "mandate" as const } } }, roles: { accountant: { channels: ["hook"], outcomes: false } }, link: null };
+    const r = await tickPass(w.db, { runtimeFor: async () => ({ rt: w.rt }), notify: { config }, onNotifyError: (e) => errors.push((e as Error).message) });
+    expect(r).toEqual({ waiting: 1, moved: 1, failed: 1 });
+    expect(errors).toEqual([expect.stringMatching(/^bad_notification_channel: /)]);
+    expect(await count(w, "select count(*) as n from notify_cursors")).toBe(0);
+  });
+
   it("reports a run whose tick fails and goes on with the next", async () => {
     const w = await nworld(REVIEW, "0.7");
     await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "a" });

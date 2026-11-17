@@ -1006,10 +1006,11 @@ async function tick(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => 
       signal: stop.signal,
       onTicked: (r) => out(`run ${terminalText(r.run)}: ${r.before.state} -> ${r.after.state}, revision ${r.before.revision} -> ${r.after.revision}\n`),
       onError: (run, e) => err(`run ${terminalText(run)}: ${terminalText(e instanceof Error ? e.message : String(e))}`),
+      onNotifyError: (e) => err(`the notification pass failed: ${terminalText(e instanceof Error ? e.message : String(e))}`),
       onPass: (r) => {
         if (follow) return;
         const n = r.notify;
-        out(`tick: ${r.waiting === 1 ? "1 run waiting" : `${r.waiting} runs waiting`}, ${r.moved} moved${r.failed ? `, ${r.failed} failed` : ""}; notifications: ${n ? `${n.sent} sent, ${n.retried} retried, ${n.dead} given up` : "off"}\n`);
+        out(`tick: ${r.waiting === 1 ? "1 run waiting" : `${r.waiting} runs waiting`}, ${r.moved} moved${r.failed ? `, ${r.failed} failed` : ""}; notifications: ${n ? `${n.sent} sent, ${n.retried} retried, ${n.dead} given up` : notifications ? "failed" : "off"}\n`);
       },
     });
     return last.failed || last.notify?.failures.length ? 1 : 0;

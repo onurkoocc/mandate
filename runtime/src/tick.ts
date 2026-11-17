@@ -156,6 +156,8 @@ export interface PassOptions {
   onTicked?: (r: { run: string; before: { state: string; revision: number }; after: RunRow }) => void;
   /** Told of each run whose tick failed; the pass goes on with the next run. */
   onError?: (run: string, e: unknown) => void;
+  /** Told when the notification pass failed as a whole. */
+  onNotifyError?: (e: unknown) => void;
 }
 
 export interface PassReport {
@@ -163,7 +165,7 @@ export interface PassReport {
   waiting: number;
   /** Those whose tick moved them. */
   moved: number;
-  /** Those whose tick failed. */
+  /** Those whose tick failed, and a notification pass that failed as a whole. */
   failed: number;
   notify?: NotifyReport;
 }
@@ -195,7 +197,16 @@ export async function tickPass(db: Db, o: PassOptions, signal?: AbortSignal): Pr
       await made?.close?.().catch(() => undefined);
     }
   }
-  if (o.notify && !signal?.aborted) report.notify = await notifyPass(db, { ...o.notify, ...(signal ? { signal } : {}) });
+  if (o.notify && !signal?.aborted) {
+    // A pass that could not be made (the database, a channel that cannot be used) is reported; the cursors stand where
+    // they were, and the next pass tries again.
+    try {
+      report.notify = await notifyPass(db, { ...o.notify, ...(signal ? { signal } : {}) });
+    } catch (e) {
+      report.failed++;
+      o.onNotifyError?.(e);
+    }
+  }
   return report;
 }
 
