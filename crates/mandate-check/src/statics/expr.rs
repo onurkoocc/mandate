@@ -518,15 +518,18 @@ impl<'a> Checker<'a> {
     fn escalate(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         self.person(frame, path, "escalate", None);
         let at = sub(path, "to");
+        // 0.7: what the person is shown: the message of `human(message, …)`,
+        // or what the escalation is to (`crate::asks`).
         match e
             .to()
             .filter(|t| self.at_least(Language::V0_6) && is_person(*t))
         {
             Some(to) => {
-                self.call_args(to, frame, &at);
+                let first = to.arg_values().iter().position(|a| a.get("name").is_none());
+                self.asked_args(to, frame, &at, path, |i, _| Some(i) == first);
             }
             None => {
-                self.expr_or_unknown(e.to(), frame, &at);
+                self.asked_expr(e.to(), frame, &at, path);
             }
         }
         self.opaque(named("Untrusted", vec![UNKNOWN]))
@@ -545,7 +548,13 @@ impl<'a> Checker<'a> {
                     return v;
                 }
             }
-            None => self.person(frame, path, "pause", None),
+            None => {
+                self.person(frame, path, "pause", None);
+                // 0.7: a pause shows a person nothing of the run's values.
+                if self.at_least(Language::V0_7) {
+                    self.record_asked(path, &[]);
+                }
+            }
         }
         self.opaque(named("Untrusted", vec![UNKNOWN]))
     }
@@ -770,7 +779,16 @@ impl<'a> Checker<'a> {
         } else {
             None
         };
-        let args = self.call_args(e, frame, path);
+        // 0.7: `human.ask` shows a person its question, its first argument
+        // without a name (`crate::asks`).
+        let args = if self.at_least(Language::V0_7)
+            && e.callee().and_then(callee_path).as_deref() == Some("human.ask")
+        {
+            let first = e.arg_values().iter().position(|a| a.get("name").is_none());
+            self.asked_args(e, frame, path, path, |i, _| Some(i) == first)
+        } else {
+            self.call_args(e, frame, path)
+        };
         if held.is_some() {
             self.report_floor = held;
         }
@@ -1305,7 +1323,9 @@ impl<'a> Checker<'a> {
     #[inline(never)]
     fn verify(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         let v = self.operand(e.value_expr(), frame, path, "value");
-        let args = self.call_args(e, frame, path);
+        // 0.7: a person who approves a criterion is shown the contract's
+        // arguments (`crate::asks`).
+        let args = self.asked_args(e, frame, path, path, |_, _| true);
         self.verify_args(e, frame, path, &args);
         let handler = e
             .on_unmet()

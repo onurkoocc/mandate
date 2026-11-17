@@ -1892,7 +1892,14 @@ impl<'a> Checker<'a> {
     /// E0701, E0301), the data it may receive (E0220, E1706), its timeout
     /// and supervision.
     pub(crate) fn delegate(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let args = self.call_args(e, frame, path);
+        // 0.7: under `supervise escalate` a person is shown how the
+        // delegation failed, which is made of what it was handed
+        // (`crate::asks`).
+        let args = if e.supervise().and_then(|s| s.name()) == Some("escalate") {
+            self.asked_args(e, frame, path, path, |_, _| true)
+        } else {
+            self.call_args(e, frame, path)
+        };
         self.delegate_with(e, frame, path, &args)
     }
 
@@ -2216,7 +2223,9 @@ impl<'a> Checker<'a> {
     /// only in a workflow (E0408) with `idempotent_by` (E0403), an
     /// irreversible one after an approval (E0405), and in a map (E1708).
     pub(crate) fn effect_call(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let args = self.call_args(e, frame, path);
+        // 0.7: whoever authorizes the action is shown its parameters
+        // (`crate::asks`).
+        let args = self.asked_args(e, frame, path, path, |_, _| true);
         self.effect_call_with(e, frame, path, &args)
     }
 

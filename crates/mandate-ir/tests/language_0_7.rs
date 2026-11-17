@@ -92,6 +92,7 @@ fn the_0_7_ir_schema_differs_from_the_0_6_one_only_where_listed() {
     assert_eq!(
         differences_of(IR_0_6_SCHEMA_TEXT, IR_0_7_SCHEMA_TEXT),
         [
+            "/$defs/Budget/properties/asks",
             "/$defs/ReportField",
             "/$defs/Stmt/oneOf",
             "/$id",
@@ -397,6 +398,42 @@ fn a_report_is_a_statement_of_the_0_7_schema_alone() {
             !d.is_empty()
                 && d.iter()
                     .all(|l| l.starts_with("MDT-E0104 at /defs/f/body/0")),
+            "{language}: {d:?}"
+        );
+    }
+}
+
+/// `asks` (spec/attention.md "`asks`", "The IR"): a member of a budget in
+/// the 0.7 schema alone, an integer of at least 0. Which budget may hold it
+/// is the check's (E1908), not the schema's; a budget of 0.6 or earlier is
+/// closed without it, and refuses it once, at the member.
+#[test]
+fn asks_is_a_budget_member_of_the_0_7_schema_alone() {
+    let workflow = |language: &str, asks: &str| {
+        format!(
+            r#"{{"language":"{language}","module":"example.minimal","version":"0.1","defs":{{"W":{{"kind":"workflow","params":[],"returns":{{"ref":"Int"}},"caps":[],"budget":{{"steps":1,"asks":{asks}}},"body":[{{"op":"expr","value":{{"op":"int","value":1}}}}]}}}}}}"#
+        )
+    };
+    for n in ["0", "2", "9007199254740991"] {
+        assert_eq!(
+            loaded(&workflow("mandate/0.7", n)),
+            Vec::<String>::new(),
+            "{n}"
+        );
+    }
+    for bad in ["-1", "1.5", "\"2\"", "null"] {
+        assert_eq!(
+            loaded(&workflow("mandate/0.7", bad)),
+            ["MDT-E0104 at /defs/W/budget/asks"],
+            "{bad}"
+        );
+    }
+    for language in ["mandate/0.6", "mandate/0.5", "mandate/0.4"] {
+        let d = loaded(&workflow(language, "2"));
+        assert!(
+            !d.is_empty()
+                && d.iter()
+                    .all(|l| l.starts_with("MDT-E0104 at /defs/W/budget")),
             "{language}: {d:?}"
         );
     }

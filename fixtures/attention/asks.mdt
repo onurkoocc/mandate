@@ -1,0 +1,205 @@
+// A program of language 0.7 with every kind of question a run can put to a
+// person (spec/attention.md "The attention bound"), each workflow declaring
+// in its budget, or its envelope's, the most questions a run of it may ask
+// (`asks`): exactly the bound the compiler computes for it, so that one
+// question more is E1906. It checks; the cases of E1906 to E1908, of E1706
+// and E1709 with `asks`, and the mutations of every kind of site are one
+// change of it each. Only the Rust compiler reads it.
+
+mandate @ 0.7
+
+module example.attention.asks @ 0.1
+
+use std.{human, model, git, component, env}
+
+role accountant      "Accountant"
+role finance_lead    "Finance lead"
+role code_owner      "Code owner"
+role release_manager "Release manager"
+role platform_lead   "Platform lead"
+role api_owner       "API owner"
+role web_owner       "Web owner"
+role architect       "Architect"
+
+type Note   = { text: Text }
+type Change = { files: List<Text> }
+type Plan   = { summary: Text }
+
+component api {
+  repo  "example/api"
+  root  "/work/api"
+  lang  ts
+  owner role "api_owner"
+}
+
+component web {
+  repo  "example/web"
+  root  "/work/web"
+  lang  ts
+  owner role "web_owner"
+}
+
+environment prod {
+  class internal
+  authorize deploy by human(role: "release_manager")
+}
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+capability Pr       = git.pr("example/api")
+capability Ship     = env.deploy(prod)
+capability Repos    = component.repo(api, web)
+
+agent Writer {
+  role   "Writes one note."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill write(t: Text) -> Inferred<Text> ! {Model}
+}
+
+agent Lead {
+  role   "Plans what is left, and writes sub-programs for it."
+  caps   ModelStd
+  budget { tokens: 20k, steps: 4 }
+  skill finish(t: Text) -> Inferred<Text> ! {Model}
+}
+
+/// Three people approve a note: the accountant within a day, the finance
+/// lead and the code owner together, and the release manager keeps it.
+contract Approved(n: Note) {
+  accept checked "The accountant approves the note"
+    by human.approve(role: accountant, deadline: 1d)
+  accept both "The finance lead and the code owner approve it"
+    by human.approve(role: finance_lead) and human.approve(role: code_owner)
+  invariant kept "The release manager keeps it"
+    by human.approve(role: release_manager)
+}
+
+/// The code owner approves a change that names its files.
+contract Ready(c: Change) {
+  accept listed "The change names its files" by static len(c.files) >= 1
+  accept owned "The code owner approves the change" by human.approve(role: code_owner)
+}
+
+/// A change names its files.
+contract Listed(c: Change) {
+  accept listed "The change names its files" by static len(c.files) >= 1
+}
+
+/// A plan says what changes.
+contract Planned(p: Plan) {
+  accept summarized "The plan says what changes" by static len(p.summary) >= 1
+}
+
+/// A short note; a longer one when the accountant or the finance lead
+/// waives it.
+contract Short(n: Note) {
+  accept short "The note is short" by static len(n.text) <= 80
+    waive by accountant, finance_lead
+}
+
+/// Asks the accountant to confirm a text: a question at each call.
+fn confirm(t: Text) -> Untrusted<Text> ! {Human} {
+  human.ask("Confirm {t}", role: accountant)
+}
+
+/// Asks, escalates, pauses, and escalates a delegation that fails up to five
+/// times; then asks one of two roles, whichever branch runs.
+workflow Asking(note: Text) -> Text
+  caps   ModelStd
+  budget { steps: 8, asks: 9 }
+{
+  stage ask "Ask the accountant"
+  let a = human.ask("Is {note} right?", role: accountant)
+  let b = escalate human("Look at {note}", role: finance_lead)
+
+  stage wait "Wait for a person"
+  let c = pause
+  let d = delegate Writer.write(note) supervise escalate(human, role: code_owner)
+  if len(note) > 3 {
+    human.ask("Long: {note}?", role: accountant)
+  } else {
+    human.ask("Short: {note}?", role: finance_lead)
+  }
+  "asked"
+}
+
+/// A function called twice, a question in a loop of two rounds, and four
+/// approvals of a contract.
+workflow Approving(n: Note) -> Verified<Note, Approved>
+  caps   ModelStd
+  budget { steps: 4, asks: 8 }
+{
+  let x = confirm(n.text)
+  let y = confirm(n.text)
+  loop max_iter 2 {
+    human.ask("Once more: {n.text}?", role: accountant)
+  }
+  verify n against Approved(n)
+}
+
+/// An approval, an irreversible merge (the role `owner` decides it), and a
+/// deployment the environment hands to the release manager; each action
+/// may carry a governance-class file, which its owner would approve.
+workflow Releasing(c: Change) -> Text
+  caps   Pr, Ship
+  budget { steps: 6, asks: 5 }
+{
+  let ok = verify c against Ready(c)
+  let merged = effect git.merge(ok) idempotent_by "merge"
+  let shipped = effect deploy(ok, prod) idempotent_by "ship"
+  "released"
+}
+
+/// A change set of two members, each approved by its component's owner, and
+/// the set by the architect.
+workflow Landing(task: Text) -> Text
+  caps   Repos
+  budget { steps: 6, asks: 5 }
+{
+  let plan = verify Plan { summary: task } against Planned(Plan { summary: task })
+  let a = verify Change { files: ["src/a.ts"] } against Listed(Change { files: ["src/a.ts"] })
+  let w = verify Change { files: ["src/w.ts"] } against Listed(Change { files: ["src/w.ts"] })
+  let landed = changeset(plan) {
+    member api = git.merge(a)
+    member web = git.merge(w)
+    order api, web
+    approve role "architect"
+  } idempotent_by task
+  "landed"
+}
+
+/// One question, and a handler that asks the finance lead only if the
+/// budget runs out.
+workflow Handling(note: Text) -> Untrusted<Text>
+  caps   ModelStd
+  budget { steps: 2, asks: 1 }
+{
+  human.ask("Go on with {note}?", role: accountant)
+}
+
+on budget_exceeded in Handling => pause and human.ask("The budget ran out. Raise it?", role: finance_lead)
+
+/// The invoice flow's questions under an envelope: a review that escalates,
+/// an approval, a merge the envelope hands to the release manager, and a
+/// lead that plans the rest, out of what is left of asks.
+workflow Planning(notes: List<Note>, t: Text) -> Inferred<Text>
+  envelope {
+    owner   platform_lead
+    caps    ModelStd, Pr
+    budget  { steps: 40, agents: 4, asks: 5 }
+    approve git.merge by release_manager
+  }
+{
+  stage review "Decide on the notes"
+  let checked = map it in notes max 4 {
+    verify it against Short(it)
+  }
+  let reviewed = human.review(checked, role: accountant, deadline: 1d, escalate_to: finance_lead)
+
+  stage merge "Merge the change"
+  let c = verify Change { files: [t] } against Ready(Change { files: [t] })
+  let merged = effect git.merge(c) idempotent_by t
+
+  stage finish "Plan the rest"
+  plan Lead.finish(t) within envelope
+}

@@ -567,7 +567,10 @@ impl<'a> Checker<'a> {
                 );
             }
         }
-        let plan = self.expr_or_unknown(e.plan(), frame, &format!("{path}/plan"));
+        // 0.7: the set's approver decides on the plan and on every member
+        // (`crate::asks`), each member's approver on its parameters.
+        let mut set_shown: Vec<(Val, Level)> = Vec::new();
+        let plan = self.shown_expr(e.plan(), frame, &format!("{path}/plan"), &mut set_shown);
         if epistemic(&plan.ty).level != Level::Verified {
             self.report(
                 "E1105",
@@ -611,9 +614,19 @@ impl<'a> Checker<'a> {
         for (m, mem) in &member_list {
             let mp = format!("{path}/members/{m}");
             let mut typed: Vec<Val> = Vec::new();
+            let mut member_shown: Vec<(Val, Level)> = Vec::new();
             for (i, a) in mem.arg_values().iter().enumerate() {
                 let at = format!("{mp}/args/{i}/value");
-                typed.push(self.expr_or_unknown(a.get("value").and_then(Expr::of), frame, &at));
+                typed.push(self.shown_expr(
+                    a.get("value").and_then(Expr::of),
+                    frame,
+                    &at,
+                    &mut member_shown,
+                ));
+            }
+            if self.at_least(Language::V0_7) {
+                self.record_asked(&mp, &member_shown);
+                set_shown.extend(member_shown);
             }
             // E0120 from name resolution.
             let Some(comp) = self.def_of(m, DefKind::Component) else {
@@ -678,6 +691,9 @@ impl<'a> Checker<'a> {
         // one a waiver may rest on: it is what lets the set land (E1505).
         if irreversible_member && self.is_waivable(&plan) {
             self.waivable_plan(&plan, &format!("{path}/plan"));
+        }
+        if self.at_least(Language::V0_7) {
+            self.record_asked(path, &set_shown);
         }
         let members: Vec<&str> = member_list.iter().map(|(m, _)| *m).collect();
         let order: Vec<&str> = e

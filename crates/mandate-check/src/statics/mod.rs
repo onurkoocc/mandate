@@ -146,6 +146,9 @@ pub(crate) struct ReviewSource {
     /// Whether what was verified was untrusted content, which a declined
     /// item stays.
     pub(crate) untrusted: bool,
+    /// 0.7: how what was verified was known before it was verified, as a
+    /// review shows its open items (`crate::asks`).
+    pub(crate) level: Level,
 }
 
 /// 0.6: what a `let` bound its name to, as `human.review` reads its source
@@ -496,7 +499,31 @@ pub(crate) struct Checker<'a> {
     /// typing gives it does not say so (a text template is `Text` whatever
     /// it interpolates, a list is of its first item's type). `None` outside
     /// a report's field.
+    ///
+    /// The same floor is set while the typing types what a wait for a
+    /// person shows ([`Checker::asked`]): a question is known as weakly as
+    /// what it is made of.
     pub(crate) report_floor: Option<Level>,
+    /// 0.7: what the typing gave what each wait for a person shows, by the
+    /// path of the construct that opens it (`crate::asks::Asked`). The
+    /// attention bound reads it for each question's `shown` and `known`.
+    pub(crate) asked: crate::asks::AskedMap,
+    /// 0.7: the attention bound of each of the program's own workflows, in
+    /// the order of the definitions, computed once every definition is
+    /// typed (`crate::asks`).
+    pub(crate) bounds: Vec<crate::asks::WorkflowBound>,
+}
+
+/// 0.7: what the one pass of the static checks gives the attention facts:
+/// what its typing gave each field of a report ([`Shown`]), and the
+/// attention bound of each workflow, with what each question shows.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Typing {
+    /// Each report's fields, by the path of the field's value.
+    pub shown: Shown,
+    /// The bound of each of the program's own workflows, in the order of
+    /// the definitions.
+    pub bounds: Vec<crate::asks::WorkflowBound>,
 }
 
 /// 0.7: what the typing of a program gave one field of a report.
@@ -566,23 +593,30 @@ pub fn static_check(
 }
 
 /// [`static_check`], and what its typing gave each field of a report of
-/// 0.7 ([`Shown`]): the one pass, whose diagnostics are those of
-/// [`static_check`], and the fields it typed on the way.
+/// 0.7 and the attention bound of each workflow ([`Typing`]): the one pass,
+/// whose diagnostics are those of [`static_check`], and what it typed on the
+/// way.
 #[must_use]
 pub fn static_check_shown(
     program: Program<'_>,
     spans: Option<&Spans>,
     linked: Option<&Map>,
     claim: Option<&Value>,
-) -> (Vec<Diagnostic>, Shown) {
+) -> (Vec<Diagnostic>, Typing) {
     let (canonical_program, defs) = canonical_parts(program, linked);
     match Program::of(&canonical_program) {
         Some(p) => {
             let mut checker = Checker::new(p, &defs, spans, claim);
             checker.run_passes();
-            (checker.out, checker.shown)
+            (
+                checker.out,
+                Typing {
+                    shown: checker.shown,
+                    bounds: checker.bounds,
+                },
+            )
         }
-        None => (Vec::new(), HashMap::new()),
+        None => (Vec::new(), Typing::default()),
     }
 }
 
@@ -694,6 +728,8 @@ impl<'a> Checker<'a> {
             verified: HashMap::new(),
             shown: HashMap::new(),
             report_floor: None,
+            asked: HashMap::new(),
+            bounds: Vec::new(),
         }
     }
 
@@ -817,6 +853,11 @@ impl<'a> Checker<'a> {
             let usages = w.usages.borrow().clone();
             self.reach(&w.name, w.max, &usages);
         }
+        // 0.7: the attention bound of each workflow, once every definition
+        // it may reach is typed (E1906, E1907; `crate::asks`).
+        if self.at_least(Language::V0_7) {
+            self.attention_bounds();
+        }
     }
 
     /// 0.6: E1307 for a workflow that still applies a pattern when the
@@ -930,7 +971,12 @@ impl<'a> Checker<'a> {
         let frame = self.fn_frame(name, d);
         let base = ptr(&[&"defs", &name]);
         let at = sub(&base, "body");
+        // 0.7: a function's body is typed once, wherever it is first
+        // called; what it holds lowers no floor of the expression that
+        // calls it, whose value is of the function's declared type.
+        let floor = self.report_floor.take();
         self.body(d.body(), &frame, &at, true);
+        self.report_floor = floor;
         let usages = frame.usages();
         self.fn_declared(name, d, &base, &usages);
         self.fn_usage

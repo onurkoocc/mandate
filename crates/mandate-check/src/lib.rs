@@ -66,6 +66,9 @@
 //!   checks) and E1905. Rust only.
 //! - [`attention`]: the attention facts of a workflow of 0.7
 //!   ([`attention_facts`], [`AttentionFacts`], [`Count`]). Rust only.
+//! - [`asks`]: the attention bound of a workflow of 0.7, the questions a run
+//!   can put to people ([`WorkflowBound`], [`SiteKind`]), E1906 to E1908.
+//!   Rust only.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
 //!   `compiler/src/check/roles.ts`.
 //! - [`lock`]: the lock, `compiler/src/lock.ts`: [`Lock`], [`validate_lock`],
@@ -168,6 +171,7 @@
 #![forbid(unsafe_code)]
 
 pub mod amendment;
+pub mod asks;
 pub mod attention;
 pub mod caps;
 pub mod check;
@@ -202,12 +206,13 @@ pub mod view_shared;
 pub mod walk;
 
 pub use amendment::narrowings;
+pub use asks::{SUPERVISE_ESCALATIONS, SiteKind, WorkflowBound, asks_checks};
 pub use attention::{AttentionFacts, Count, attention_facts};
 pub use cost::{CostPart, StaticCost, micros_text, static_cost};
 pub use reports::report_checks;
 pub use stages::stage_checks;
 pub use statics::{
-    Shown, ShownField, lead_classes, static_check, static_check_shown, workflow_nodes,
+    Shown, ShownField, Typing, lead_classes, static_check, static_check_shown, workflow_nodes,
 };
 pub use walk::reads_var;
 

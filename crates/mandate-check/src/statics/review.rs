@@ -657,6 +657,7 @@ impl<'a> Checker<'a> {
                 contract: verify.contract().unwrap_or_default().to_owned(),
                 item: item.clone(),
                 untrusted: *level == Level::Untrusted,
+                level: *level,
             }),
             None => LetMap::NotVerifying,
         }
@@ -687,6 +688,12 @@ impl<'a> Checker<'a> {
             };
         };
         self.review_roles(&src, &roles, path);
+        // 0.7: what the review shows its roles: the map's outcomes, of the
+        // class of what it is given, each open item known as its value was
+        // before it was verified (`crate::asks`).
+        if self.at_least(Language::V0_7) {
+            self.asked_review(path, of.cls, &src);
+        }
         let item = if src.untrusted {
             named("Untrusted", vec![src.item.clone()])
         } else {

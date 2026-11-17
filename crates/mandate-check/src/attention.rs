@@ -69,9 +69,10 @@ use mandate_ir::{
 };
 use mandate_syntax::SourceKind;
 
+use crate::asks::{OnNoAnswer, QuestionFact, SiteKind, WorkflowBound};
 use crate::check::{CheckOptions, check_shown};
 use crate::reports::known_name;
-use crate::statics::{Shown, ShownField};
+use crate::statics::{ShownField, Typing};
 
 /// The format tag of the facts.
 pub const FORMAT: &str = "mandate/attention/0.1";
@@ -302,6 +303,70 @@ pub struct AttentionFacts {
     pub stages: Vec<StageFact>,
     /// Its reports, in the order of the body.
     pub reports: Vec<ReportFact>,
+    /// Its attention bound: the question sites, the effect sites, the
+    /// totals, the declared `asks`, the rows of `on budget_exceeded` and of
+    /// each `plan` ([`crate::asks`]).
+    pub bound: WorkflowBound,
+}
+
+/// A role as the facts write it: its name, or `null` for none.
+fn role_js(role: Option<&str>) -> JsValue {
+    role.map_or(JsValue::Null, JsValue::from)
+}
+
+/// The roles of a tally, by name, the count for no role last.
+fn by_role(t: &crate::asks::Tally, member: &str) -> Vec<JsValue> {
+    let mut rows: Vec<(&Option<String>, &Count)> = t.by_role.iter().collect();
+    rows.sort_by(|(a, _), (b, _)| match (a, b) {
+        (Some(a), Some(b)) => mandate_ir::compare_utf16(a, b),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
+    rows.into_iter()
+        .map(|(r, n)| {
+            JsObject::new()
+                .with("role", role_js(r.as_deref()))
+                .with(member, n.to_js())
+                .into()
+        })
+        .collect()
+}
+
+/// One question site as the facts write it.
+fn question_js(q: &QuestionFact) -> JsValue {
+    let mut o = JsObject::new()
+        .with("path", q.path.as_str())
+        .with("wait", q.wait.as_str())
+        .with("kind", q.kind.as_str())
+        .with("role", role_js(q.role.as_deref()))
+        .with("shown", q.shown.as_str())
+        .with("known", known_name(q.known))
+        .with(
+            "deadline_ms",
+            q.deadline_ms
+                .map_or(JsValue::Null, |ms| JsValue::Number(ms as f64)),
+        )
+        .with("on_no_answer", q.on_no_answer.as_str());
+    if let OnNoAnswer::Escalates { to, deadline_ms } = &q.on_no_answer {
+        o = o.with(
+            "escalates",
+            JsObject::new().with("to", to.as_str()).with(
+                "deadline_ms",
+                deadline_ms.map_or(JsValue::Null, |ms| JsValue::Number(ms as f64)),
+            ),
+        );
+    }
+    o.with(
+        "stage",
+        q.stage.as_deref().map_or(JsValue::Null, JsValue::from),
+    )
+    .with("multiplicity", q.multiplicity.to_js())
+    .with(
+        "only",
+        q.only.map_or(JsValue::Null, |o| JsValue::from(o.as_str())),
+    )
+    .into()
 }
 
 impl AttentionFacts {
@@ -349,12 +414,67 @@ impl AttentionFacts {
                     .into()
             })
             .collect();
+        let b = &self.bound;
+        let questions: Vec<JsValue> = b.questions.iter().map(question_js).collect();
+        let effects: Vec<JsValue> = b
+            .effects
+            .iter()
+            .map(|e| {
+                JsObject::new()
+                    .with("path", e.path.as_str())
+                    .with("effect", e.effect.as_str())
+                    .with("multiplicity", e.multiplicity.to_js())
+                    .with("counted", e.counted)
+                    .with("role", role_js(e.role.as_deref()))
+                    .with("batch", e.batch)
+                    .with(
+                        "stage",
+                        e.stage.as_deref().map_or(JsValue::Null, JsValue::from),
+                    )
+                    .into()
+            })
+            .collect();
+        let plans: Vec<JsValue> = b
+            .plans
+            .iter()
+            .map(|p| {
+                JsObject::new()
+                    .with("path", p.path.as_str())
+                    .with("kind", SiteKind::Plan.as_str())
+                    .with("role", role_js(p.role.as_deref()))
+                    .with("shown", p.shown.as_str())
+                    .with("known", known_name(crate::ty::Level::Inferred))
+                    .with("on_no_answer", OnNoAnswer::RefusedToLead.as_str())
+                    .with(
+                        "stage",
+                        p.stage.as_deref().map_or(JsValue::Null, JsValue::from),
+                    )
+                    .with("multiplicity", p.multiplicity.to_js())
+                    .with("from", "asks_left")
+                    .into()
+            })
+            .collect();
+        let budget_exceeded: Vec<JsValue> = b.budget_exceeded.iter().map(question_js).collect();
+        let totals = JsObject::new()
+            .with("questions", b.asks.total.to_js())
+            .with("by_role", by_role(&b.asks, "questions"))
+            .with("reports", by_role(&b.reports, "reports"));
         JsObject::new()
             .with("format", FORMAT)
             .with("workflow", self.workflow.as_str())
             .with("program", self.program.as_str())
             .with("stages", stages)
             .with("reports", reports)
+            .with("questions", questions)
+            .with("effects", effects)
+            .with("totals", totals)
+            .with(
+                "asks",
+                b.declared
+                    .map_or(JsValue::Null, |n| JsValue::Number(n as f64)),
+            )
+            .with("budget_exceeded", budget_exceeded)
+            .with("plans", plans)
             .into()
     }
 }
@@ -375,8 +495,9 @@ pub fn attention_facts(
         linked: true,
         ..*opts
     };
-    let mut shown = Shown::new();
-    let r = check_shown(text, kind, &opts, Some(&mut shown));
+    let mut typing = Typing::default();
+    let r = check_shown(text, kind, &opts, Some(&mut typing));
+    let shown = &typing.shown;
     if !r.ok {
         return None;
     }
@@ -434,11 +555,17 @@ pub fn attention_facts(
             fields,
         });
     });
+    let bound = typing
+        .bounds
+        .iter()
+        .find(|b| b.workflow == workflow)?
+        .clone();
     Some(AttentionFacts {
         workflow: workflow.to_owned(),
         program: r.hashes.as_ref()?.program.clone(),
         stages,
         reports,
+        bound,
     })
 }
 

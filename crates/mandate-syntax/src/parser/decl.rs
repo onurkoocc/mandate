@@ -1524,14 +1524,25 @@ impl<'a> Parser<'a> {
                 }
                 b.set("time", obj().with("ms", scalar(v, "ms")));
             }
+            // 0.7: the most questions a run may put to people
+            // (spec/attention.md "`asks`"); in an earlier program an
+            // ordinary name, and no field.
+            "asks" if self.language.at_least(Language::V0_7) => {
+                if op != Some("int") {
+                    return Err(bad_budget(key, "an integer", vt));
+                }
+                b.set(key, scalar(v, "value"));
+            }
             _ => return Err(self.unknown_budget_field(key, kt)),
         }
         Ok(())
     }
 
     fn unknown_budget_field(&self, key: &str, kt: &Token) -> Fail {
-        // `atLeast(this.language, "mandate/0.4")`.
-        let fields = if self.language.at_least(Language::V0_4) {
+        // `atLeast(this.language, "mandate/0.4")`; 0.7 knows `asks` too.
+        let fields = if self.language.at_least(Language::V0_7) {
+            "tokens, spend, time, steps, agents or asks"
+        } else if self.language.at_least(Language::V0_4) {
             "tokens, spend, time, steps or agents"
         } else {
             "tokens, spend, time or steps"
