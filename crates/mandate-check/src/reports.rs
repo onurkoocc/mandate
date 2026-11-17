@@ -118,9 +118,11 @@ pub fn report_checks(program: Program<'_>, linked: &Map, spans: Option<&Spans>) 
             Some(DefKind::Pattern) => Some("pattern"),
             _ => None,
         };
-        let pattern = (kind == Some(DefKind::Pattern))
-            .then(|| PatternDef::of(value))
-            .flatten();
+        let pattern = if kind == Some(DefKind::Pattern) {
+            PatternDef::of(value)
+        } else {
+            None
+        };
         let role_slots = pattern.map(|p| {
             p.slots()
                 .filter(|s| s.kind() == Some("role"))
@@ -309,7 +311,12 @@ fn one_report(v: &Value, path: &str, place: Place<'_>, w: &Within<'_>, out: &mut
             names.push(name);
         }
         let Some(e) = f.value() else { continue };
-        if let Some((what, where_at, callee)) = impurity(e, &format!("{at}/value"), w.len_taken) {
+        if let Some(Impure {
+            what,
+            at: where_at,
+            callee,
+        }) = impurity(e, &format!("{at}/value"), w.len_taken)
+        {
             out.report(
                 "E1904",
                 format!(
@@ -347,6 +354,26 @@ fn where_said(place: &str, w: &Within<'_>) -> String {
     }
 }
 
+/// The part of a report's field that makes it impure.
+pub(crate) struct Impure {
+    /// What it is: the fact `what`, an expression's `op`.
+    pub(crate) what: &'static str,
+    /// Its path.
+    pub(crate) at: String,
+    /// For a call, the callee's path.
+    pub(crate) callee: Option<String>,
+}
+
+impl Impure {
+    fn new(what: &'static str, path: &str, callee: Option<String>) -> Impure {
+        Impure {
+            what,
+            at: path.to_owned(),
+            callee,
+        }
+    }
+}
+
 /// The first part of `e` (at `path`) that makes it impure, if one does:
 /// what it is (the fact `what`, an expression's `op`), its path, and for a
 /// call the callee's path. `len_taken`: a function or a slot named `len`
@@ -363,15 +390,11 @@ fn where_said(place: &str, w: &Within<'_>) -> String {
 /// (spec/attention.md "What a field may be"), and two the specification's
 /// list does not name: `try`, which can end the run, and a block, which
 /// holds statements rather than a value.
-pub(crate) fn impurity(
-    e: Expr<'_>,
-    path: &str,
-    len_taken: bool,
-) -> Option<(&'static str, String, Option<String>)> {
+pub(crate) fn impurity(e: Expr<'_>, path: &str, len_taken: bool) -> Option<Impure> {
     let Some(op) = e.op() else {
-        return Some(("unknown", path.to_owned(), None));
+        return Some(Impure::new("unknown", path, None));
     };
-    let impure = |what: &'static str| Some((what, path.to_owned(), None));
+    let impure = |what: &'static str| Some(Impure::new(what, path, None));
     match op {
         ExprOp::Int
         | ExprOp::Dec
@@ -425,7 +448,7 @@ pub(crate) fn impurity(
                 && e.callee()
                     .is_some_and(|c| c.is(ExprOp::Var) && c.name() == Some("len"));
             if !len {
-                return Some(("call", path.to_owned(), callee));
+                return Some(Impure::new("call", path, callee));
             }
             e.arg_values().iter().enumerate().find_map(|(i, a)| {
                 a.get("value")
@@ -509,7 +532,7 @@ fn scalar_or_enum(t: &Ty, env: &dyn TypeEnv) -> bool {
 fn element(t: &Ty) -> Option<(&str, &Ty)> {
     match t {
         Ty::Named(n) if n.args.len() == 1 && (n.name == "Option" || n.name == "List") => {
-            Some((n.name.as_str(), &n.args[0]))
+            n.args.first().map(|x| (n.name.as_str(), x))
         }
         _ => None,
     }
@@ -635,6 +658,7 @@ pub const fn known_name(level: Level) -> &'static str {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::{known, known_name, not_shown};
     use crate::ty::{Ty, TypeEnv, named, named0};

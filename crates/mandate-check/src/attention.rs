@@ -120,7 +120,7 @@ impl Count {
     /// One after the other, or side by side (a sequence, the branches of a
     /// `par`): the sum.
     #[must_use]
-    pub fn add(self, other: Count) -> Count {
+    pub fn plus(self, other: Count) -> Count {
         match (self, other) {
             (Count::Finite(a), Count::Finite(b)) => {
                 a.checked_add(b).map_or(Count::Unbounded, Count::bounded)
@@ -388,7 +388,9 @@ pub fn attention_facts(
         return None;
     }
     // The program's own workflow, as it runs.
-    program.defs()?.get(workflow)?;
+    if program.defs()?.get(workflow).is_none() {
+        return None;
+    }
     let running = r.linked.as_ref()?;
     let d = running.get("defs")?.get(workflow)?;
     if Definition::of(d).kind() != Some(DefKind::Workflow) {
@@ -443,6 +445,7 @@ pub fn attention_facts(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::{Count, sites};
     use mandate_ir::{Value, parse};
@@ -450,18 +453,18 @@ mod tests {
     #[test]
     fn counts_compose_as_the_algebra_says() {
         let (one, two, three) = (Count::ONE, Count::Finite(2), Count::Finite(3));
-        assert_eq!(one.add(two), three);
+        assert_eq!(one.plus(two), three);
         assert_eq!(two.max(three), three);
         assert_eq!(two.times(three), Count::Finite(6));
         assert_eq!(Count::ZERO.times(Count::Unbounded), Count::ZERO);
         assert_eq!(two.times(Count::Unbounded), Count::Unbounded);
-        assert_eq!(two.add(Count::Unbounded), Count::Unbounded);
+        assert_eq!(two.plus(Count::Unbounded), Count::Unbounded);
         assert_eq!(two.max(Count::Unbounded), Count::Unbounded);
         assert_eq!(Count::of(-4), Count::ZERO);
         // Past what a JSON reader holds exactly: unbounded, which bounds it.
         let big = Count::of(9_007_199_254_740_991);
         assert_eq!(big, Count::Finite(9_007_199_254_740_991));
-        assert_eq!(big.add(one), Count::Unbounded);
+        assert_eq!(big.plus(one), Count::Unbounded);
         assert_eq!(big.times(two), Count::Unbounded);
         assert_eq!(Count::Finite(4).to_js().to_js_string(), "4");
         assert_eq!(Count::Unbounded.to_js().to_js_string(), "unbounded");
