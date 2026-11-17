@@ -63,10 +63,26 @@ impl Io for Real {
         Ok(bytes)
     }
 
+    fn read_input_part(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
+        let mut input = std::io::stdin().lock();
+        loop {
+            match input.read(buf) {
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                read => return read.map_err(|e| failure(&e)),
+            }
+        }
+    }
+
     fn write_out(&mut self, text: &str) {
         // A reader that went away is not the command's failure.
+        let _ = self.write_out_part(text);
+    }
+
+    fn write_out_part(&mut self, text: &str) -> Result<(), IoError> {
         let mut out = std::io::stdout().lock();
-        let _ = out.write_all(text.as_bytes()).and_then(|()| out.flush());
+        out.write_all(text.as_bytes())
+            .and_then(|()| out.flush())
+            .map_err(|e| failure(&e))
     }
 
     fn write_err(&mut self, text: &str) {
