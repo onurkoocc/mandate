@@ -405,14 +405,15 @@ export class Runtime {
     return this.drive(runId, true);
   }
 
-  /** Stores a package under its hash; one that is already there is left as it is. */
+  /** Stores a package under its hash, with whether it holds anything of 0.7 (notify.ts reads it); one that is already there is left as it is. */
   private async keep(tx: Tx, pkg: Package): Promise<void> {
-    await tx.query("insert into packages (package_hash, program, lock, modules, libraries) values ($1, $2, $3, $4, $5) on conflict (package_hash) do nothing", [
+    await tx.query("insert into packages (package_hash, program, lock, modules, libraries, is_07) values ($1, $2, $3, $4, $5, $6) on conflict (package_hash) do nothing", [
       pkg.hash,
       JSON.stringify(pkg.program),
       JSON.stringify(pkg.lock),
       JSON.stringify(pkg.modules ?? {}),
       pkg.libraries?.length ? JSON.stringify(pkg.libraries) : null,
+      isPackage07OrLater(pkg),
     ]);
   }
 

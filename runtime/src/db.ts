@@ -218,8 +218,10 @@ create table if not exists notify_cursors (
   pending integer,
   attempts integer not null default 0,
   retry_at bigint,
+  claim text,
   primary key (channel, run_id)
 );
+alter table packages add column if not exists is_07 boolean;
 create table if not exists notify_channels (
   channel text primary key,
   at bigint not null
