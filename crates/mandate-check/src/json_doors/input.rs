@@ -324,6 +324,20 @@ impl<'a> Members<'a> {
             .transpose()
     }
 
+    /// The member `name` (0.7, `std_patterns`), a version of `std.patterns`
+    /// the compiler embeds, such as `"1.0.0"`, when it is there: the version
+    /// a caller that holds no lock says the program's lock pins. Anything
+    /// else is refused, with a fixed message ([`crate::library::embedded_pin`]),
+    /// and never read as another version.
+    pub fn opt_std_patterns(self, name: &str) -> Result<Option<mandate_lib::Version>, DoorError> {
+        self.opt_str(name)?
+            .map(|text| {
+                crate::library::embedded_pin(text)
+                    .map_err(|e| DoorError::bad_input(format!("`{}{name}`: {e}", self.at)))
+            })
+            .transpose()
+    }
+
     /// The member `name`, a data class.
     pub fn data_class(self, name: &str) -> Result<DataClass, DoorError> {
         let tag = self.str(name)?;

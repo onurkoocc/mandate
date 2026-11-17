@@ -699,11 +699,27 @@ the repository pins.
   reads that version when its lock pins none: the given module stands for a
   pin, so that a caller that holds the version a check read (a sub-program's
   parent's, a relabelled program's) can hand it on; any other module of that
-  name is compared with the built-in as before (E1605, `given_differs`). A
-  lead's sub-program reads the version of its parent's language unless its
-  check is handed that module: its check is given no lock. A view given no
-  lock, and no such module, reads the version of the program's language;
-  the card reads the lock's pin.
+  name is compared with the built-in as before (E1605, `given_differs`).
+- **Doors given no lock (`std_patterns`).** Every door that reads
+  `std.patterns` and is given no lock takes one optional input,
+  `std_patterns`, a version such as `"1.0.0"`: the version the lock of the
+  program (or of a sub-program's parent) pins. They are the checks of a
+  sub-program and of an amendment (`i.std_patterns`), `subprogram_linked`,
+  `attention_facts` (`opts.std_patterns`), the views `architecture`,
+  `authority` and `cost`, `program_doc`, `semantic_diff` and `diff_doc`. It
+  is read by `std_patterns_for` alone. A version the compiler does not embed,
+  or one that is not a version, is refused by the door (`bad_input`: `"3.0.0"
+  is not a version of std.patterns this compiler embeds (1.0.0, 2.0.0): a pin
+  of std.patterns is one of them`), never read as the default. A door given a
+  lock reads the lock's pin, and refuses a `std_patterns` that names another
+  (`the lock pins std.patterns 1.0.0, and std_patterns names 2.0.0: give the
+  one the lock pins, or none`). Without it, a door answers as before: the
+  version of the program's language, or the lock's pin where it is given a
+  lock (the views and the diff now read it too, as the card did). What a
+  document says it was generated from does not change with it. The runtime
+  hands the pin of the package's own lock to the check and the facts of a
+  lead's sub-program of a 0.7 package, so that what runs and what is shown is
+  the version the lock pins.
 - **`mandate add`.** `mandate add std.patterns` pins the newest embedded
   version whose language is not newer than the program's, and for a 0.7
   program writes a lock of format `mandate/lock/0.7` (a new lock, or an

@@ -150,6 +150,10 @@ pub struct SubprogramInput<'a> {
     pub lead: DataClass,
     /// What is left of the envelope now.
     pub room: &'a Room,
+    /// 0.7: the version of `std.patterns` the parent's lock pins, which
+    /// the check of the sub-program reads (it is given no lock); `None`: the
+    /// version of the parent's language, as before.
+    pub std_patterns: Option<mandate_lib::Version>,
 }
 
 /// What [`check_subprogram`] gives: `SubprogramCheck`, `{ ok, diagnostics,
@@ -320,7 +324,8 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
     // 0.6: the built-in std.patterns, when the parent imports it, so that a
     // sub-program may apply its patterns (`shapes`).
     if let Some(p) = Program::of(i.parent)
-        && let Some(with_std) = crate::library::with_builtin(p, Some(&modules), None)
+        && let Some(with_std) =
+            crate::library::with_builtin(p, Some(&modules), i.std_patterns.as_ref())
     {
         modules = with_std;
     }
@@ -502,6 +507,10 @@ pub struct AmendmentInput<'a> {
     pub workflow: &'a str,
     /// The new envelope, as IR: a lead's writing, any JSON value, or none.
     pub envelope: Option<&'a Value>,
+    /// 0.7: the version of `std.patterns` the program's lock pins, which
+    /// the check of the amended program reads (it is given no lock); `None`:
+    /// the version of its language, as before.
+    pub std_patterns: Option<mandate_lib::Version>,
 }
 
 /// What [`check_amendment`] gives: `AmendmentCheck`, `{ ok, diagnostics,
@@ -605,8 +614,8 @@ pub fn check_amendment(i: &AmendmentInput<'_>) -> Result<AmendmentCheck, String>
     // 0.6: the program's library modules, handed as modules, linked through
     // what they reach, as its own check links them.
     // The built-in std.patterns too, when the program imports it.
-    let with_std =
-        Program::of(i.parent).and_then(|p| crate::library::with_builtin(p, i.modules, None));
+    let with_std = Program::of(i.parent)
+        .and_then(|p| crate::library::with_builtin(p, i.modules, i.std_patterns.as_ref()));
     let modules = with_std.as_ref().or(i.modules);
     let reach = modules
         .filter(|_| reads_0_6(i.parent))
@@ -668,6 +677,19 @@ fn reads_0_6(program: &Value) -> bool {
 /// parent }).defs }`.
 #[must_use]
 pub fn subprogram_linked(sub: &Value, parent: &Value, modules: Option<&Modules>) -> Value {
+    subprogram_linked_pinned(sub, parent, modules, None)
+}
+
+/// [`subprogram_linked`] whose parent reads `std.patterns` at the version
+/// `std_patterns` (0.7: the version the parent's lock pins); `None` is
+/// [`subprogram_linked`]'s answer.
+#[must_use]
+pub fn subprogram_linked_pinned(
+    sub: &Value,
+    parent: &Value,
+    modules: Option<&Modules>,
+    std_patterns: Option<&mandate_lib::Version>,
+) -> Value {
     let view = opened(sub, parent);
     let mut all = modules.cloned().unwrap_or_default();
     all.insert(
@@ -678,7 +700,7 @@ pub fn subprogram_linked(sub: &Value, parent: &Value, modules: Option<&Modules>)
         parent.clone(),
     );
     if let Some(p) = Program::of(parent)
-        && let Some(with_std) = crate::library::with_builtin(p, Some(&all), None)
+        && let Some(with_std) = crate::library::with_builtin(p, Some(&all), std_patterns)
     {
         all = with_std;
     }

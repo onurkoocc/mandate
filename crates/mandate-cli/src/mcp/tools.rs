@@ -216,6 +216,20 @@ fn view_modules(modules: &JsObject, programs: &[&JsValue]) -> Option<J> {
         .then(|| J::Js(JsValue::Object(modules.clone())))
 }
 
+/// 0.7: the version of `std.patterns` the lock pins (`lock.libraries
+/// ["std.patterns"].version`), when it pins one: what a view door given no
+/// lock is handed as `std_patterns`, so that it shows the version the check
+/// read, as `mandate view` does. The check of the program has held the pin
+/// to an embedded version (E1605) before any view is asked.
+fn std_patterns_of(lock: Option<&J>) -> Option<J> {
+    lock?
+        .get("libraries")?
+        .get("std.patterns")?
+        .get("version")
+        .filter(|v| v.as_jstr().is_some())
+        .cloned()
+}
+
 /// `{ modules, ...(lock ? { lock } : {}), ...(libraries.length ? { libraries } : {}) }`.
 fn check_options(modules: &JsObject, lock: Option<&J>, libraries: Option<&J>) -> JObj {
     JObj::new()
@@ -530,7 +544,8 @@ impl Server {
                     "authority",
                     JObj::new()
                         .with("program", J::Js(p.clone()))
-                        .with_some("modules", view_modules(&linked, &[&p])),
+                        .with_some("modules", view_modules(&linked, &[&p]))
+                        .with_some("std_patterns", std_patterns_of(args.get("lock"))),
                 )?;
                 let remote = JStr::concat(&[who, &JStr::from(" (remote)")]);
                 let delegated = JStr::concat(&[who, &JStr::from(" → ")]);
@@ -573,6 +588,8 @@ impl Server {
         let p = self.program(source, args.get("kind"), modules, lock, libraries)?;
         // 0.7: a view is given the modules of the libraries too.
         let linked = Server::linked(modules, libraries)?;
+        // 0.7: every view reads std.patterns at the version the lock pins.
+        let pin = std_patterns_of(lock);
         let view = args.get("view").and_then(J::as_jstr).and_then(JStr::text);
         match view {
             // 0.6: a workflow that applies a pattern of a module is shown,
@@ -581,20 +598,23 @@ impl Server {
                 "architecture",
                 JObj::new()
                     .with("program", J::Js(p.clone()))
-                    .with_some("modules", view_modules(&linked, &[&p])),
+                    .with_some("modules", view_modules(&linked, &[&p]))
+                    .with_some("std_patterns", pin),
             ),
             Some("authority") => door(
                 "authority",
                 JObj::new()
                     .with("program", J::Js(p.clone()))
-                    .with_some("modules", view_modules(&linked, &[&p])),
+                    .with_some("modules", view_modules(&linked, &[&p]))
+                    .with_some("std_patterns", pin),
             ),
             Some("cost") => door(
                 "cost",
                 JObj::new()
                     .with("program", J::Js(p.clone()))
                     .with_some("lock", lock.cloned())
-                    .with_some("modules", view_modules(&linked, &[&p])),
+                    .with_some("modules", view_modules(&linked, &[&p]))
+                    .with_some("std_patterns", pin),
             ),
             Some("diff") => {
                 let before = str_arg(args, "before")?;
@@ -605,7 +625,8 @@ impl Server {
                     JObj::new()
                         .with("before", J::Js(before.clone()))
                         .with("after", J::Js(p.clone()))
-                        .with_some("modules", view_modules(&linked, &[&before, &p])),
+                        .with_some("modules", view_modules(&linked, &[&before, &p]))
+                        .with_some("std_patterns", pin),
                 )
             }
             // 0.7: the envelope card of one workflow.

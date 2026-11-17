@@ -227,11 +227,12 @@ pub use check::{
 pub use diff::{
     BudgetChanges, Change, Classified, DiffView, GovernanceChangeKind, KindedChange, Locks,
     ScopeDiff, budget_changes, classify, envelope_changes, governance_changes, scope_diff,
-    scope_diffs, semantic_diff, semantic_diff_with, shown_caps, steps, system_changes,
+    scope_diffs, semantic_diff, semantic_diff_pinned, semantic_diff_with, shown_caps, steps,
+    system_changes,
 };
 pub use doors::{
     AmendmentCheck, AmendmentInput, PatchCheck, SubprogramCheck, SubprogramInput, check_amendment,
-    check_patch, check_subprogram, subprogram_linked,
+    check_patch, check_subprogram, subprogram_linked, subprogram_linked_pinned,
 };
 pub use grant::{
     AuthorityContext, Capability, GrantDelegation, GrantInput, GrantOutput, InFlightOverlapInput,

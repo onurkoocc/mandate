@@ -1824,6 +1824,27 @@ pub fn semantic_diff_with(
     locks: Option<Locks<'_>>,
     modules: Option<&Modules>,
 ) -> DiffView {
+    semantic_diff_pinned(before, after, locks, modules, None)
+}
+
+/// [`semantic_diff_with`] where `std.patterns` is read at the version each
+/// program's lock pins, or else at `named` (0.7: a caller that holds no
+/// lock names the version, [`crate::library::embedded_pin`]); with neither,
+/// the version of each program's language, as [`semantic_diff_with`] reads
+/// it.
+#[must_use]
+pub fn semantic_diff_pinned(
+    before: &Value,
+    after: &Value,
+    locks: Option<Locks<'_>>,
+    modules: Option<&Modules>,
+    named: Option<&mandate_lib::Version>,
+) -> DiffView {
+    let pin_of = |lock: Option<&Value>| crate::library::std_patterns_pin(lock).or(named.copied());
+    let (pin_before, pin_after) = (
+        pin_of(locks.and_then(|l| l.before)),
+        pin_of(locks.and_then(|l| l.after)),
+    );
     // 0.6 (B13): one classification of a change for the semantic diff, a
     // patch (`governance_changes`), and an upgrade or a publication of a
     // library (`crate::library::ops`): `classify` with the modules. Before
@@ -1865,11 +1886,11 @@ pub fn semantic_diff_with(
             .map(|(n, a, q)| format!("{n} {a} {}", resolved(q, &a)))
             .collect()
     };
-    let critical = |p: &Value| -> Vec<String> {
+    let critical = |p: &Value, pin: Option<&mandate_lib::Version>| -> Vec<String> {
         // 0.6: a workflow that applies a pattern commits what its expansion
         // does; one this diff cannot expand (its pattern is in a module it
         // is not given) is said to, so that no line says it commits nothing.
-        let expanded = crate::expand::for_views(p, modules);
+        let expanded = crate::expand::for_views_pinned(p, modules, pin);
         let Some(program) = Program::of(expanded.as_ref().unwrap_or(p)) else {
             return Vec::new();
         };
@@ -1890,8 +1911,8 @@ pub fn semantic_diff_with(
         all
     };
     let mut unchanged: Vec<String> = Vec::new();
-    let cb = critical(before);
-    let ca = critical(after);
+    let cb = critical(before, pin_before.as_ref());
+    let ca = critical(after, pin_after.as_ref());
     // What an application's pattern is may change with nothing in the
     // workflow changing (another module, or a pattern the program defines
     // now, or its module pinned to another hash): what it commits is then

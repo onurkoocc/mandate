@@ -142,7 +142,13 @@ which is so only when the Node server's list is the door's frozen list. What
 0.7 adds to the tools (`libraries` of `check`, `project` and `caps_of`, the
 `lock` of `caps_of`, the card, the attention view, the sections `patterns` and
 `attention`, the message for a view that is not one, which names the views of
-0.7) has no Node answer yet and is not here; `tests/mcp.rs` holds it.
+0.7, and the version of `std.patterns` the lock pins, which the native
+`project` hands each view it renders and `caps_of` its authority view as
+`std_patterns` (slice RL6: a program of 0.7 whose lock pins 1.0.0 is shown
+with 1.0.0's expansion), which the Node server must match when its slice
+comes) has no Node answer yet and is not here; `tests/mcp.rs` holds it. No
+recorded conversation holds a program of 0.7 that imports `std.patterns`, so
+the pin changes none of them.
 
 The `section` of `mandate.spec` is found as the text it is: the bridge's server
 compares it with each heading, and makes no regular expression of it. The

@@ -567,6 +567,7 @@ pub fn run_subprogram(
         ops: &case.ops,
         lead: case.lead,
         room: &case.room,
+        std_patterns: None,
     })?;
     Ok(DoorResult {
         observed: Observed {
@@ -596,6 +597,7 @@ pub fn run_amendment(a: &Value, parent: &Value, modules: &Modules) -> Result<Doo
         modules: Some(modules),
         workflow,
         envelope: Some(&envelope),
+        std_patterns: None,
     })?;
     Ok(DoorResult {
         observed: Observed {
