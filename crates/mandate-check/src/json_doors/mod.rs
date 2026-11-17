@@ -523,13 +523,13 @@ pub static LIBRARY_DOORS: &[Door] = &[
     Door::own(
         "tool_schema_digest",
         connectors::TOOL_SCHEMA_DIGEST,
-        "Language 0.6, which only the Rust compiler reads: no TypeScript function of the compiler stands for it. It gives what schemaDigest of runtime/src/mcp-client.ts gives for a tool, byte for byte (the lock's sha256 of the canonical JSON of { name, inputSchema, outputSchema }), and crates/mandate-check/tests/tool_schema_digest.rs holds it to vectors/tool-schema-digest.json, which scripts/tool-digest-vectors.mjs writes from that function. tool is the JSON text of the tool, not an object, so that a number keeps its JSON form.",
+        "Language 0.7, which only the Rust compiler reads: no TypeScript function of the compiler stands for it. It gives what schemaDigest of runtime/src/mcp-client.ts gives for a tool, byte for byte (the lock's sha256 of the canonical JSON of { name, inputSchema, outputSchema }), and crates/mandate-check/tests/connector_doors.rs holds it to vectors/tool-schema-digest.json, which scripts/tool-digest-vectors.mjs writes from that function. tool is the JSON text of the tool, not an object, so that a number keeps its JSON form.",
         connectors::tool_schema_digest,
     ),
     Door::own(
         "callable_connectors",
         connectors::CALLABLE_CONNECTORS,
-        "Language 0.6, which only the Rust compiler reads: no TypeScript function stands for it. The connectors a program can call, [{ id, name }] with id <module>.<connector>: those the check demands a lock entry for (E1407), by the same function (crate::lock::callable_connectors), for the program as the runtime has it at start.",
+        "Language 0.7, which only the Rust compiler reads: no TypeScript function stands for it. The connectors a program can call, [{ id, name }] with id <module>.<connector>: those the check demands a lock entry for (E1407), by the same function (crate::lock::callable_connectors), for the program as the runtime has it at start.",
         connectors::callable_connectors,
     ),
 ];

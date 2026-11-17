@@ -9,7 +9,7 @@
 //!   `runtime/src/mcp-client.ts` gives, byte for byte, which the vectors of
 //!   `vectors/tool-schema-digest.json` (written from that function by
 //!   `scripts/tool-digest-vectors.mjs`) hold it to
-//!   (`crates/mandate-check/tests/tool_schema_digest.rs`).
+//!   (`crates/mandate-check/tests/connector_doors.rs`).
 //! - `callable_connectors` gives the connectors E1407 demands a lock entry
 //!   for, by the function that rule is made of
 //!   ([`crate::lock::callable_connectors`]).
@@ -64,7 +64,7 @@ pub fn tool_canonical(text: &str) -> Result<String, String> {
     let Json::Object(members) = Reader::new(text).document()? else {
         return Err("it is not an object".to_owned());
     };
-    let kept: Vec<(Vec<u16>, Json)> = members
+    let kept: BTreeMap<Vec<u16>, Json> = members
         .into_iter()
         .filter(|(k, _)| {
             ["name", "inputSchema", "outputSchema"]
@@ -86,7 +86,7 @@ enum Json {
     Number(f64),
     Text(Vec<u16>),
     Array(Vec<Json>),
-    Object(Vec<(Vec<u16>, Json)>),
+    Object(BTreeMap<Vec<u16>, Json>),
 }
 
 /// A reader of JSON text, by the grammar of RFC 8259.
@@ -277,7 +277,7 @@ impl<'a> Reader<'a> {
 
     fn object(&mut self, depth: usize) -> Result<Json, String> {
         self.bump();
-        let mut members: Vec<(Vec<u16>, Json)> = Vec::new();
+        let mut members: BTreeMap<Vec<u16>, Json> = BTreeMap::new();
         self.skip_space();
         if self.peek() == Some(b'}') {
             self.bump();
@@ -296,10 +296,7 @@ impl<'a> Reader<'a> {
             self.bump();
             let value = self.value(depth.saturating_add(1))?;
             // `JSON.parse`: a name given twice takes its last value.
-            match members.iter_mut().find(|(k, _)| *k == name) {
-                Some(slot) => slot.1 = value,
-                None => members.push((name, value)),
-            }
+            members.insert(name, value);
             self.skip_space();
             match self.peek() {
                 Some(b',') => self.bump(),
@@ -336,10 +333,9 @@ fn write_json(out: &mut String, v: &Json) {
             out.push(']');
         }
         Json::Object(members) => {
-            let sorted: BTreeMap<&[u16], &Json> =
-                members.iter().map(|(k, x)| (k.as_slice(), x)).collect();
+            // The map is in the order of the names' UTF-16 code units.
             out.push('{');
-            for (i, (name, item)) in sorted.into_iter().enumerate() {
+            for (i, (name, item)) in members.iter().enumerate() {
                 if i > 0 {
                     out.push(',');
                 }

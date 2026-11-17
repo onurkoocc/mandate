@@ -328,3 +328,40 @@ fn the_door_refuses_what_it_does_not_take() {
     );
     assert_eq!(none, Ok("[]".to_owned()));
 }
+
+/// An object of 200 000 members is read in linear time, as `JSON.parse`
+/// reads it (through `tool_canonical`: a request to a door is at most 1 MiB, which
+/// is fewer members): the canonical text is the same as for the members written in order,
+/// and a name given again takes its last value.
+#[test]
+fn a_large_object_is_read_quickly() {
+    let n = 200_000;
+    let members = |reverse: bool| -> String {
+        let ids: Vec<usize> = if reverse {
+            (0..n).rev().collect()
+        } else {
+            (0..n).collect()
+        };
+        ids.iter()
+            .map(|i| format!("\"p{i:06}\":{{\"type\":\"integer\",\"minimum\":{i}}}"))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let tool = |body: &str| format!("{{\"name\":\"wide\",\"inputSchema\":{{{body}}}}}");
+    let start = std::time::Instant::now();
+    let a = tool_canonical(&tool(&members(false))).unwrap();
+    let b = tool_canonical(&tool(&members(true))).unwrap();
+    assert_eq!(a, b, "the order of members is not in the digest");
+    // Every name twice: the last value is the one digested.
+    let twice = format!(
+        "{},{}",
+        members(false).replace("\"minimum\":", "\"minimum\":-"),
+        members(false)
+    );
+    assert_eq!(tool_canonical(&tool(&twice)).unwrap(), a);
+    assert!(
+        start.elapsed().as_secs() < 60,
+        "{:?} for three objects of {n} members",
+        start.elapsed()
+    );
+}
