@@ -847,11 +847,11 @@ fn a_diagnostic_at_the_owner_points_at_the_role_s_name() {
     // The source map has it at the owner's pointer; an envelope's owner
     // keeps the envelope's span, as before.
     let l = load(&text(), SourceKind::Mdt);
-    assert!(l.spans.get("/defs/Describe/owner").is_some());
-    assert!(l.spans.get("/defs/Check/owner").is_some());
+    assert!(l.spans.contains_key("/defs/Describe/owner"));
+    assert!(l.spans.contains_key("/defs/Check/owner"));
     let e = load(ENVELOPED, SourceKind::Mdt);
-    assert!(e.spans.get("/defs/W/envelope/owner").is_none());
-    assert!(e.spans.get("/defs/W/envelope").is_some());
+    assert!(!e.spans.contains_key("/defs/W/envelope/owner"));
+    assert!(e.spans.contains_key("/defs/W/envelope"));
 }
 
 /// An owner names a role outside every scope (`/defs/<W>/owner` is no
