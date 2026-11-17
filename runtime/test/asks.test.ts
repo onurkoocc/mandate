@@ -736,53 +736,94 @@ describe("sub-programs and amendments under a run's asks", () => {
   });
 
   it("holds an amendment that raises the run's bound to the limit: it moves the run's own reservation when it fits, and is refused to the lead as a start would be when it does not (D6)", async () => {
-    // The envelope leaves the pull request to policy (its bound counts the pause and the owner's gate a governance
-    // file would bring: 2); the amendment hands it to the release manager: one question more, 3.
-    const raising = (asks: number, approve?: string): string =>
-      program({ budget: `{ tokens: 200k, steps: 400, agents: 12, asks: ${asks} }`, ...(approve ? { approve } : {}), body: OPENED })
-        .replace("mandate @ 0.4", "mandate @ 0.7")
-        .replace("type Item = { name: Text }", `type Item = { name: Text }\ntype Change = { files: List<Text> }\n\ncontract Listed(c: Change) {\n  accept listed "The change names its files" by static true\n}`);
-    const PR_AT = "/defs/W/body/3/value";
-    for (const [asks, caller] of [
-      [5, undefined],
-      [3, undefined],
-      [5, 2],
-    ] as const) {
-      const amended = (load(raising(asks, "git.open_pr by release_manager"), "mdt").program!.defs["W"] as unknown as { envelope: Value }).envelope;
+    // [the run's declared asks, the amended envelope's, the caller's limit, what the lead is told when it is refused]
+    const cases: Array<[number, number, number | undefined, RegExp | undefined]> = [
+      [5, 5, undefined, undefined],
+      // The amendment raises the envelope's asks with the bound: what is left is counted under the raised limit of 5.
+      [3, 5, undefined, undefined],
+      // asks: 3 leaves 1, which the request itself would take: the growth does not fit.
+      [3, 3, undefined, /can ask 1 more questions than the run's program can now, and the run has 1 left of its asks, one of which this request would take/],
+      // Raised to 3, what is left is still only the request's own question.
+      [2, 3, undefined, /can ask 1 more questions than the run's program can now, and the run has 1 left of its asks, one of which this request would take/],
+      // The caller's limit of 2 is below the amended bound of 3 (which the compiler holds to the declared 5 alone). Such
+      // a growth does not fit either (the run's own reservation and what it asked are its bound now); the lead is told
+      // the bound is above the limit.
+      [5, 5, 2, /can ask 3 questions under the run's configuration, above the run's asks limit of 2/],
+    ];
+    for (const [asks, raised, caller, why] of cases) {
+      const amended = (load(raising(raised, "git.open_pr by release_manager"), "mdt").program!.defs["W"] as unknown as { envelope: Value }).envelope;
       const pr = new SimTool("git.open_pr");
       const w = await planned(checker, [[toolUse("a1", "request_amendment", { envelope: amended, reason: "a person for the pull request" })], finish("asked")], { src: raising(asks), tools: [pr] });
-      const runId = `raise${asks}-${String(caller)}`;
+      const runId = `raise${asks}-${raised}-${String(caller)}`;
       let r = await w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { items: ITEMS }, runId, ...(caller !== undefined ? { limits: { asks: caller } } : {}) });
       expect(r.state, state(r)).toBe("waiting");
       expect((await w.rt.storedFacts(await w.rt.getRun(runId)))!.totals!.questions).toBe(2);
       expect(await asksRow(w, runId)).toEqual({ limit: caller ?? asks, settled: 1, reserved: 1 });
       r = await answerAlice(w, runId);
       const id = `${PLAN_AT}/step/0/tool/0/amendment`;
-      if (asks === 5 && caller === undefined) {
-        // It fits: the request is asked out of what is left (settled 2), and once approved the run's own reservation
-        // grows by the one question the amended program adds, out of what is left.
+      if (!why) {
+        // It fits: the request is asked out of what is left (settled 2), and once approved the limit rises to the
+        // envelope's and the run's own reservation grows by the one question the amended program adds.
         expect(r.state, state(r)).toBe("waiting");
-        expect(await asksRow(w, runId)).toEqual({ limit: 5, settled: 2, reserved: 1 });
+        expect(await asksRow(w, runId)).toEqual({ limit: asks, settled: 2, reserved: 1 });
         const done = await w.rt.decideAmendment(runId, msg(), signDecision(w.alice, await w.rt.shown(runId, "wait"), { kind: "amend", member: "alice", at: new Date(w.adapters.clock.now()) }));
         expect(done.state, state(done)).toBe("waiting");
         expect((await w.rt.storedFacts(await w.rt.getRun(runId)))!.totals!.questions).toBe(3);
         // The pull request now asks the release manager, counted out of that reservation.
         expect((await eventsOf(w, runId, "wait_opened")).at(-1)).toMatchObject({ command: `${PR_AT}/authorize`, site: { kind: "effect", path: PR_AT, wait: `${PR_AT}/authorize` } });
-        expect(await asksRow(w, runId)).toEqual({ limit: 5, settled: 3, reserved: 1 });
+        expect(await asksRow(w, runId)).toEqual({ limit: raised, settled: 3, reserved: 1 });
         expect(pr.executions).toEqual([]);
       } else {
-        // asks: 3 leaves 1, which the request itself would take: the growth does not fit. The caller's limit of 2 is
-        // below the amended bound of 3 (which the compiler holds to the declared 5 alone). Either way the lead is refused as a start would be, and nobody is asked.
+        // The lead is refused as a start would be, and nobody is asked.
         expect(r.state, state(r)).not.toBe("failed");
         expect(refusals(w.told[0])).toEqual([["attention_above_asks", null, { dimension: "asks" }]]);
+        expect(String(((w.told[0]!["diagnostics"] as Obj[])[0]!)["message"])).toMatch(why);
         expect(await eventsOf(w, runId, "amendment_requested")).toEqual([]);
         expect((await eventsOf(w, runId, "wait_opened")).map((d) => d["command"])).not.toContain(id);
         expect(await eventsOf(w, runId, "package_amended")).toEqual([]);
-        expect((await asksRow(w, runId))!.settled).toBe(1);
+        expect(await asksRow(w, runId)).toEqual({ limit: caller ?? asks, settled: 1, reserved: 1 });
       }
     }
   });
+
+  it("checks an amendment's growth again when the owner approves it: if what was left was taken since the request, the approval does not take effect, and the amendment ends refused (D6)", async () => {
+    const amended = (load(raising(5, "git.open_pr by release_manager"), "mdt").program!.defs["W"] as unknown as { envelope: Value }).envelope;
+    const pr = new SimTool("git.open_pr");
+    const w = await planned(checker, [[toolUse("a1", "request_amendment", { envelope: amended, reason: "a person for the pull request" })], finish("asked")], { src: raising(5), tools: [pr] });
+    let r = await w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { items: ITEMS }, runId: "taken" });
+    r = await answerAlice(w, "taken");
+    expect(r.state, state(r)).toBe("waiting");
+    expect(await asksRow(w, "taken")).toEqual({ limit: 5, settled: 2, reserved: 1 });
+    const pkg = (await w.rt.getRun("taken")).package_hash;
+    // What another lead's admission would reserve, while this one waits (a sibling of a `par`): the 2 that were left.
+    await w.db.query("insert into reservations (run_id, command_id, dimension, amount, state) values ($1, $2, $3, $4, 'active')", ["taken", "/defs/W/body/9/value/admitted/1", ASKS, 2]);
+    const id = `${PLAN_AT}/step/0/tool/0/amendment`;
+    const done = await w.rt.decideAmendment("taken", msg(), signDecision(w.alice, await w.rt.shown("taken", "wait"), { kind: "amend", member: "alice", at: new Date(w.adapters.clock.now()) }));
+    expect(done.state, state(done)).not.toBe("failed");
+    // The decision is received; the amendment ends refused, and nothing of it takes effect: the package, the limit,
+    // the facts in force and the run's own reservation are as they were.
+    expect(await eventsOf(w, "taken", "decision_received")).toEqual([expect.objectContaining({ command: id })]);
+    expect(await eventsOf(w, "taken", "package_amended")).toEqual([]);
+    const [cmd] = await w.db.query<Obj>("select state, error from commands where run_id = $1 and command_id = $2", ["taken", id]);
+    expect([cmd!["state"], cmd!["error"]]).toEqual(["failed", { tag: "Rejected", args: ["attention_above_asks"] }]);
+    expect(w.told[0]).toMatchObject({ amended: false, declined: { reason: "attention_above_asks", by: null } });
+    expect((await w.rt.getRun("taken")).package_hash).toBe(pkg);
+    expect((await w.rt.storedFacts(await w.rt.getRun("taken")))!.totals!.questions).toBe(2);
+    expect(await asksRow(w, "taken")).toEqual({ limit: 5, settled: 2, reserved: 3 });
+    expect((await eventsOf(w, "taken", "wait_opened")).map((d) => d["command"])).not.toContain(`${PR_AT}/authorize`);
+  });
 });
+
+/**
+ * The plan program the D6 tests amend, of 0.7, declaring `asks`. The envelope leaves the pull request to policy (its
+ * bound counts the pause and the owner's gate a governance file would bring: 2); an amendment with `approve` hands it
+ * to the release manager: one question more, 3.
+ */
+const raising = (asks: number, approve?: string): string =>
+  program({ budget: `{ tokens: 200k, steps: 400, agents: 12, asks: ${asks} }`, ...(approve ? { approve } : {}), body: OPENED })
+    .replace("mandate @ 0.4", "mandate @ 0.7")
+    .replace("type Item = { name: Text }", `type Item = { name: Text }\ntype Change = { files: List<Text> }\n\ncontract Listed(c: Change) {\n  accept listed "The change names its files" by static true\n}`);
+const PR_AT = "/defs/W/body/3/value";
 
 /** The body of the plan program the D6 test amends: its own pause, the lead, then a pull request after it. */
 const OPENED = `  let first = pause

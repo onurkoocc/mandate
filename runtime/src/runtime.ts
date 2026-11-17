@@ -1371,10 +1371,19 @@ export class Runtime {
       const dims = (b: Budget07 | undefined): Record<string, number> => ({ ...costDims(b), ...(amended && typeof b?.asks === "number" ? { [ASKS]: b.asks } : {}) });
       const before = dims(was?.kind === "workflow" ? was.envelope?.budget : undefined);
       const limits = Object.fromEntries(Object.entries(dims(wf.envelope.budget)).filter(([dim, amount]) => amount > (before[dim] ?? amount)));
+      // 0.7 (D6): what the amended program adds to the run's own reservation must still fit what is left of `asks`
+      // under the limit the approval gives, under the run's lock: since the request, a sub-program another lead
+      // admitted may have taken the room. If it does not fit, the approval does not take effect: the amendment ends
+      // refused, as a start above the limit would be, and the run keeps its package, its limits and its reservation.
+      const grows = typeof boundNext === "number" ? boundNext - (typeof boundNow === "number" ? boundNow : boundNext) : 0;
+      const room = grows > 0 ? (await this.journal.budget(runId, tx))[ASKS] : undefined;
+      if (room && grows > Math.max(room.limit, limits[ASKS] ?? room.limit) - room.settled - room.reserved) {
+        return { state: "failed", error: { tag: "Rejected", args: ["attention_above_asks"] } };
+      }
       const moved = await this.journal.amendRun(tx, runId, at.commandId, to, limits);
       // The run's own questions are bounded by the amended program's bound from here on: its reservation moves by what
-      // the bound moves by, up by what is left of the run's `asks` at most.
-      if (typeof boundNext === "number") await this.journal.moveParentAsks(tx, run, boundNext - (typeof boundNow === "number" ? boundNow : boundNext));
+      // the bound moves by (which fits, as checked above).
+      if (grows !== 0) await this.journal.moveParentAsks(tx, run, grows);
       await this.journal.event(tx, runId, "package_amended", {
         from: run.package_hash,
         to,

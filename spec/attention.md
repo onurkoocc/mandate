@@ -997,12 +997,26 @@ on does not change what that run shows, masks or counts.
   the amended workflow, stored with it. Under an `asks` limit, one whose bound
   under the configuration is above the limit it would have, or whose growth
   over the run's own bound does not fit what is left with the request itself,
-  is refused to the lead (`attention_above_asks`), and nobody is asked. Once
+  is refused to the lead (`attention_above_asks`), and nobody is asked. The
+  limit it would have is the run's, raised to the amended envelope's `asks`
+  when the amendment raises that, and what is left is counted under it, as
+  the approval raises the limit before the reservation moves. Once
   approved, the facts in force are the amended workflow's
   (`package_amended`'s `attention`): the run, its resumes and its replays read
   them from then on, and the run's own reservation moves by what its bound
-  moves by, up by what is left at most. A sub-program in flight keeps its
-  reservation.
+  moves by. A sub-program in flight keeps its reservation.
+- **An approval whose room was taken.** Between the request and the
+  decision, another lead of the run (a sibling in a `par`) may admit a
+  sub-program out of what was left. The approval checks the growth again, in
+  the transaction that takes it, under the run's lock; the reservation is
+  never moved by less than the growth. If the growth no longer fits, the
+  approval does not take effect: the amendment's command ends failed with
+  `Rejected(attention_above_asks)`, the decision is recorded
+  (`decision_received`), and nothing else is written: no `package_amended`,
+  and the run keeps its package, its limits, its facts and its reservation.
+  The decider's call returns the run as it is then; the lead is told
+  `amended: false` with `declined: { reason: "attention_above_asks", by:
+  null }`, as for an amendment that ended unanswered.
 - **A raise.** `raise-limits` may raise a run's `asks` up to the declared
   value, and no further (`above_program_budget`). A run whose workflow
   declares none was limited by its caller alone, and its limit is raised as
@@ -1286,7 +1300,7 @@ PGlite and on PostgreSQL.
 | Name | When |
 |---|---|
 | `facts_mismatch` | At a resume or a replay: the stored facts are missing or do not hash to the manifest's |
-| `attention_above_asks` | At a start, when an `asks` limit applies: the bound under the runtime's configuration (the static total plus the effect sites its configuration hands to a person) is above it, or unbounded. Also a diagnostic to a lead whose amendment request would raise the run's bound above its limit, or beyond what is left |
+| `attention_above_asks` | At a start, when an `asks` limit applies: the bound under the runtime's configuration (the static total plus the effect sites its configuration hands to a person) is above it, or unbounded. Also a diagnostic to a lead whose amendment request would raise the run's bound above its limit, or beyond what is left; and the reason an approved amendment ends refused (`Rejected(attention_above_asks)`) when its growth no longer fits what is left at the approval |
 | `unsupported_limit` | At a start: a caller's `asks` limit for a package of 0.1 to 0.6, whose runs count no questions |
 | `unknown_role` | In a run of 0.7, an approval whose `role:` or `distinct_from:` names no role definition (a value of the run would choose who decides); the run stops for a person, and nobody is asked |
 | `bad_promotion` | `promote`: the from-run did not succeed, is not of the same package and workflow, or is not in the mode directly below `to` |

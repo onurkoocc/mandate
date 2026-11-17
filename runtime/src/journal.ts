@@ -798,6 +798,7 @@ export class Journal {
   /**
    * Moves the run's own reservation of `asks` by `delta` (0.7: an amendment that changes its program's bound, D6 of
    * slice B3), in the caller's transaction: up by what is left of the run's `asks` at most, down to none at least.
+   * The caller checks under the same lock that a move up fits (`Runtime.decideAmendment`), so it is not cut short.
    * Returns how far it moved. A run without an `asks` row has none.
    */
   async moveParentAsks(tx: Tx, run: Pick<RunRow, "run_id" | "workflow">, delta: number): Promise<number> {
@@ -1054,8 +1055,9 @@ export class Journal {
     });
   }
 
-  async budget(runId: string): Promise<Record<string, { limit: number; settled: number; reserved: number }>> {
-    const rows = await this.db.query<Row>(
+  /** A run's budget rows, per dimension: the limit, what was settled and what is reserved; in `tx` when one is given. */
+  async budget(runId: string, tx?: Tx): Promise<Record<string, { limit: number; settled: number; reserved: number }>> {
+    const rows = await (tx ?? this.db).query<Row>(
       `select b.dimension, b.limit_value, b.settled,
          coalesce((select sum(amount) from reservations r where r.run_id = b.run_id and r.dimension = b.dimension and r.state = 'active'), 0) as reserved
        from budgets b where b.run_id = $1 order by b.dimension`,

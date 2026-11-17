@@ -547,7 +547,9 @@ export class Planner {
    * undefined when the run has none or it fits (D6 of slice B3). The limit it would have is the run's, raised to the
    * new envelope's `asks` when the amendment raises that (as `Runtime.decideAmendment` raises it). Its bound under the
    * configuration is held to that limit, as a start's is; and what it adds to the run's own reservation, with the one
-   * question the request is, to what is left of the run's `asks`.
+   * question the request is, to what is left of the run's `asks` under that limit. The first check decides only the
+   * reason the lead is given: the run's own reservation and what it asked are its bound now, so a bound above the limit
+   * is a growth that does not fit either. `Runtime.decideAmendment` checks the growth again when the owner approves.
    */
   private async aboveAsks(amended: AttentionFacts, was: Envelope, to: Envelope): Promise<string | undefined> {
     const h = this.h;
@@ -561,7 +563,8 @@ export class Planner {
     if (bound > limit) return `The amended workflow can ask ${bound} questions under the run's configuration, above the run's asks limit of ${limit}: it is not asked for, as a run with that bound would not start (attention_above_asks).`;
     const now = h.facts ? boundUnder(h.facts, h.authorize) : undefined;
     const grows = typeof now === "number" ? bound - now : bound;
-    const left = row.limit - row.settled - row.reserved;
+    // What is left under the limit it would have: an approval raises the limit before the reservation moves.
+    const left = limit - row.settled - row.reserved;
     if (grows > 0 && grows > left - 1) return `The amended workflow can ask ${grows} more questions than the run's program can now, and the run has ${Math.max(left, 0)} left of its asks, one of which this request would take: it is not asked for (attention_above_asks).`;
     return undefined;
   }
