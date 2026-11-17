@@ -559,8 +559,9 @@ export class Planner {
       const unshaped = result?.ok && !misnamed && !unasked && !unrun.length ? shapeProblem(shapes, result.shape) : undefined;
       // 0.7: a sub-program whose workflow runs a stage or a report (a shape's, through its expansion) is admitted only
       // with its attention facts, which label its reports: the checker must give them, of its workflow.
-      const facts = result?.ok && result.program && result.workflow && isProgram07OrLater(h.parent) && holdsAttention(running?.program ?? result.program, result.workflow) ? result.attention : undefined;
-      const unlabelled = result?.ok && result.program && result.workflow && isProgram07OrLater(h.parent) && holdsAttention(running?.program ?? result.program, result.workflow) && (!facts || facts.workflow !== result.workflow);
+      const labelled = !!(result?.ok && result.program && result.workflow && isProgram07OrLater(h.parent) && holdsAttention(running?.program ?? result.program, result.workflow));
+      const facts = labelled && result!.attention?.workflow === result!.workflow ? result!.attention : undefined;
+      const unlabelled = labelled && !facts;
       const stopped =
         "limit" in checked
           ? limitDiagnostic(checked)
