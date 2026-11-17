@@ -10,7 +10,7 @@
 //!   application binds. The fact `problem` says which (`title`,
 //!   `duplicate_field`, `role`).
 //! - **E1904, field not shown**: a field's expression is pure
-//!   ([`impurity`], an allow-list over the kinds of expression, here), and
+//!   (`impurity`, an allow-list over the kinds of expression, here), and
 //!   its type is one a person can be shown ([`not_shown`], which the static
 //!   checks apply to the type their typing gives the field, `problem:
 //!   "type"`).

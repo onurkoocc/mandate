@@ -388,9 +388,7 @@ pub fn attention_facts(
         return None;
     }
     // The program's own workflow, as it runs.
-    if program.defs()?.get(workflow).is_none() {
-        return None;
-    }
+    program.defs()?.get(workflow)?;
     let running = r.linked.as_ref()?;
     let d = running.get("defs")?.get(workflow)?;
     if Definition::of(d).kind() != Some(DefKind::Workflow) {
