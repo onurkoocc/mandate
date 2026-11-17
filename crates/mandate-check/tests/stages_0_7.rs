@@ -303,3 +303,40 @@ fn a_patterns_stages_are_held_to_the_rules_in_its_expansion() {
         Some("duplicate")
     );
 }
+
+/// A stage in the body of an agent's skill is out of place: an agent has no
+/// stages, so `place` is the kind of what holds it, `agent`.
+#[test]
+fn a_stage_in_an_agents_skill_is_out_of_place() {
+    let text = workflow("  stage draft \"Write\"\n  delegate Greeter.greet(name)").replace(
+        "skill greet(name: Text) -> Inferred<Text> ! {Model}",
+        "skill greet(name: Text) -> Inferred<Text> ! {Model} {\n    stage inner \"In a skill\"\n    \"hello\"\n  }",
+    );
+    let r = checked(&text, None);
+    assert_eq!(
+        shown(&r),
+        [
+            "MDT-E1901 at /defs/Greeter/skills/greet/body/0: Stage 'inner' stands in agent Greeter; a stage marks only the top level of a workflow's or a pattern's body."
+        ]
+    );
+    assert_eq!(facts(&r, 0), r#"{"stage":"inner","place":"agent"}"#);
+    assert!(!r.ok);
+}
+
+/// A stage in a workflow's handler is nested in the workflow, not the top
+/// level of its body.
+#[test]
+fn a_stage_in_a_workflows_handler_is_out_of_place() {
+    let text = workflow(
+        "  stage draft \"Write\"\n  let line = delegate Greeter.greet(name)\n  line",
+    ) + "\non budget_exceeded in W => map n in [1, 2] max 2 {\n  stage rescue \"In a handler\"\n  n\n}\n";
+    let r = checked(&text, None);
+    assert_eq!(
+        shown(&r),
+        [
+            "MDT-E1901 at /defs/W/on/0/then/body/0: Stage 'rescue' stands inside a statement or a member of workflow W, not at the top level of its body; a stage marks only the top level of a workflow's or a pattern's body."
+        ]
+    );
+    assert_eq!(facts(&r, 0), r#"{"stage":"rescue","place":"nested"}"#);
+    assert!(!r.ok);
+}

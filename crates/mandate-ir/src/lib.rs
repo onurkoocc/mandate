@@ -157,7 +157,7 @@ pub use diag::{
 pub use expr::{Arg, ChangesetMember, Expr, OnUnmet, SwitchCase};
 pub use hash::{
     HashDomain, LIBRARY_HASH_VERSION, ProgramHashes, RUNTIME_HASH_VERSION, domain_hash,
-    hash_program, package_hash,
+    hash_program, package_hash, sha256_of,
 };
 pub use jcs::{canonicalize, compare_utf16, write_json_string};
 pub use js_value::{JsObject, JsValue, JsonText, stringify, stringify_pretty};

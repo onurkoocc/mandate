@@ -930,6 +930,8 @@ impl<'a> Checker<'a> {
     fn check_contract(&mut self, name: &str, d: Definition<'a>, base: &str) {
         // 0.6: what a person approves is never waived (E1504).
         self.check_waivers(name, d, base);
+        // 0.7: a method name the runtime keeps for its own records (E1509).
+        self.check_reserved_methods(name, d, base);
         let mut frame = self.body_frame(Where::Contract, name, d.params(), None, None);
         for (i, r) in d.require().iter().enumerate() {
             let at = format!("{base}/require/{i}");

@@ -38,10 +38,11 @@ use std::rc::Rc;
 
 use mandate_ir::{
     Criterion, DefKind, Definition, Envelope, Expr, ExprOp, JsObject, JsValue, Language, Map, Stmt,
-    StmtOp, Tier, TierBy, TypeExpr, TypeForm, Value, canonicalize,
+    StmtOp, Tier, TierBy, TypeExpr, TypeForm, Value, Verifier, VerifierForm, canonicalize,
 };
 
 use super::{Checker, Frame, LetMap, MapSite, ReviewSource, Usage, Val, Where, callee_is, sub_i};
+use crate::caps::callee_path;
 use crate::ty::{
     Level, Ty, UNKNOWN, epistemic, from_type_expr, named, named0, text_ty, unalias, with_level,
 };
@@ -130,6 +131,26 @@ fn asks_approval(v: &Value) -> bool {
                 || o.iter().any(|(_, x)| asks_approval(x))
         }
         _ => false,
+    }
+}
+
+/// The reserved method name (`verify` or `waiver`) a verifier declares, in
+/// the order of its parts: a call whose callee path is exactly that name.
+/// `declaredMethods` and `partMethod` of runtime/src/criteria.ts, for the
+/// two names of `reservedMethods` (runtime/src/package.ts).
+fn reserved_method(by: &Value) -> Option<&'static str> {
+    let v = Verifier::of(by)?;
+    if v.has(VerifierForm::All) {
+        return v.all().iter().find_map(reserved_method);
+    }
+    if v.has(VerifierForm::Static) {
+        return None;
+    }
+    let call = v.call().filter(|c| c.is(ExprOp::Call))?;
+    match call.callee().and_then(callee_path)?.as_str() {
+        "verify" => Some("verify"),
+        "waiver" => Some("waiver"),
+        _ => None,
     }
 }
 
@@ -365,6 +386,41 @@ impl<'a> Checker<'a> {
                             .with("contract", name)
                             .with("criterion", cn)
                             .with("waive", roles),
+                    ),
+                );
+            }
+        }
+    }
+
+    /// E1509 (0.7): a criterion whose verifier's callee path is `verify` or
+    /// `waiver`, the methods the runtime writes its own evidence records
+    /// under (the runtime refuses such a package at load, `reserved_method`:
+    /// `reservedMethods` of runtime/src/package.ts). It names the same
+    /// criteria: a verifier that is, or has among its `all` parts, a call
+    /// whose callee path is exactly one of the two. Once per criterion, at
+    /// its `by`. A program of 0.6 or older has no such check.
+    pub(crate) fn check_reserved_methods(&mut self, name: &str, d: Definition<'a>, base: &str) {
+        if !self.at_least(Language::V0_7) {
+            return;
+        }
+        let accept: Vec<(&'a str, &'a Value)> = d.accept().collect();
+        let invariant: Vec<(&'a str, &'a Value)> = d.invariant().collect();
+        for (group, criteria) in [("accept", accept), ("invariant", invariant)] {
+            for (cn, c) in criteria {
+                let Some(method) = c.get("by").and_then(reserved_method) else {
+                    continue;
+                };
+                self.report(
+                    "E1509",
+                    format!(
+                        "{name}.{cn} is met by a call of `{method}`, a method name the runtime keeps for the evidence records it writes itself: a record of it would be read as a verify's own or as a waiver. Name the verifier another way (spec/attention.md \"Static rules\")."
+                    ),
+                    &format!("{base}/{group}/{cn}/by"),
+                    Some(
+                        JsObject::new()
+                            .with("contract", name)
+                            .with("criterion", cn)
+                            .with("method", method),
                     ),
                 );
             }

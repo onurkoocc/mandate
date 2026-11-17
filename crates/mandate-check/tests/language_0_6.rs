@@ -18,7 +18,7 @@ use mandate_check::{
     semantic_diff,
 };
 use mandate_ir::codes::{self, Reference};
-use mandate_ir::{JsValue, Value, hash_program, parse};
+use mandate_ir::{JsValue, Language, Value, hash_program, parse};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::read_text;
 
@@ -295,8 +295,9 @@ fn a_changed_doc_is_a_behavior_change_and_never_a_governance_one() {
 
 #[test]
 fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
+    // The codes of 0.7 come after them, in the order they were added.
     let rust: Vec<&codes::CodeRow> = codes::iter()
-        .filter(|r| r.reference == Reference::Rust)
+        .filter(|r| r.reference == Reference::Rust && r.since() == Some(Language::V0_6))
         .collect();
     assert_eq!(
         rust.iter().map(|r| r.code).collect::<Vec<_>>(),
@@ -333,11 +334,7 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
             "MDT-E1307",
             // The shapes of an envelope (RL9).
             "MDT-E1710",
-            "MDT-E1711",
-            // Then the codes of 0.7 (`CODES_0_7`), after every code of 0.6:
-            // the stages (RL2 of 0.7).
-            "MDT-E1901",
-            "MDT-E1902"
+            "MDT-E1711"
         ]
     );
     for row in &rust {
@@ -354,10 +351,12 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
     let keys: Vec<&str> = table.as_object().unwrap().keys().collect();
     let all: Vec<&str> = codes::iter().map(|r| r.code).collect();
     assert_eq!(keys, all, "every row, in the table's order");
+    let later = codes::CODES_0_7.len();
     assert_eq!(
-        &keys[keys.len().saturating_sub(rust.len())..],
+        &keys[keys.len().saturating_sub(rust.len() + later)..keys.len().saturating_sub(later)],
         rust.iter().map(|r| r.code).collect::<Vec<_>>().as_slice()
     );
+    assert_eq!(&keys[keys.len().saturating_sub(later)..], codes::CODES_0_7);
 }
 
 /// A module of `language` for the module-path tests: a record, a record

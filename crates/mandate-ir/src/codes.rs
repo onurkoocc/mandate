@@ -755,6 +755,13 @@ pub const CODES: &[CodeRow] = &[
         explain: "Every name an envelope's `shapes` lists (0.6) is a pattern the program defines, or one a `use` list brings from a module the check is given or from a library (`std.patterns` among them). A name that names no definition, or a definition of another kind, is refused at the name; the facts name the workflow, the shape and, when it is one, the kind and the module. A list that is empty or names a pattern twice is refused when it is read (E0104 in IR, E0101 or E0121 in the text) (spec/library.md \"shapes\").",
         reference: Reference::Rust,
     },
+    // The codes of 0.7 (`CODES_0_7`), after those of 0.6, in the order they were added.
+    CodeRow {
+        code: "MDT-E1509",
+        title: "Criterion method name reserved",
+        explain: "A criterion of a contract of 0.7 whose verifier's callee path is `verify` or `waiver`, alone or as one of the parts joined by `and`: those two method names are the runtime's own, under which it writes its own evidence records, and the runtime refuses such a package at load (`reserved_method`). A program of 0.6 keeps the refusal at load only (spec/attention.md \"Static rules\").",
+        reference: Reference::Rust,
+    },
     CodeRow {
         code: "MDT-E1901",
         title: "Stage out of place",
@@ -785,7 +792,7 @@ pub fn iter() -> impl Iterator<Item = &'static CodeRow> {
 /// A slice of 0.7 that adds a code lists it here, and the gates of 0.7 hold
 /// it to a conformance case of 0.7 that expects it; a code of the Rust that
 /// is not listed is of 0.6, and is held to a case of 0.6.
-pub const CODES_0_7: &[&str] = &["MDT-E1901", "MDT-E1902"];
+pub const CODES_0_7: &[&str] = &["MDT-E1509", "MDT-E1901", "MDT-E1902"];
 
 impl CodeRow {
     /// The language version that added the code, for a row of the Rust
