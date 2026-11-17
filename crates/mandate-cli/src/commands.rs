@@ -22,9 +22,8 @@ use crate::libraries::Given;
 use crate::{Io, IoErrorKind};
 
 /// The commands of the Node command line that this executable does not
-/// have: `mcp`, and `CONTROL` of `bridge/src/cli.ts` (the runtime's).
-const NOT_HERE: [&str; 28] = [
-    "mcp",
+/// have: `CONTROL` of `bridge/src/cli.ts` (the runtime's).
+const NOT_HERE: [&str; 27] = [
     "run",
     "status",
     "approve",
@@ -69,7 +68,8 @@ const USAGE: &str = "usage: mandate <command> [options]
   add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
   upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]
   publish <source dir> [--libraries <dir>] [--config <file>] [--json]
-  (mcp and the commands that control a run are the Node command line's, not this executable's)
+  mcp [--module <file>]…   (an MCP server on stdio)
+  (the commands that control a run are the Node command line's, not this executable's)
 ";
 
 /// A command that ended before its end, with its exit status; what it had
@@ -160,6 +160,8 @@ impl<'a> Cli<'a> {
             "add" => self.add(&a, false),
             "upgrade" => self.add(&a, true),
             "publish" => self.publish(&a),
+            // The server reads no file: its modules are read here, before it starts.
+            "mcp" => Ok(crate::mcp::serve(&mut *self.io, JsObject::from(&modules))),
             _ => Err(self.usage()),
         }
     }
