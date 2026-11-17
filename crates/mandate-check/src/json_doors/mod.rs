@@ -95,6 +95,7 @@ mod front;
 pub mod input;
 mod library;
 mod lock;
+mod mcp_tools;
 mod patch;
 mod program;
 mod tables;
@@ -486,7 +487,7 @@ pub static DOORS: &[Door] = &[
 const LIBRARY_NOTE: &str = "Language 0.6, which only the Rust compiler reads: no TypeScript function stands for it, and crates/mandate-check/tests/library_doors.rs holds it to the compiler's functions (crate::library).";
 
 /// The library doors of language 0.6 (spec/library.md "The bridge"), and
-/// those of 0.7 (`tool_schema_digest`, `callable_connectors`,
+/// those of 0.7 (`tool_schema_digest`, `callable_connectors`, `mcp_tools`,
 /// `attention_facts`, spec/attention.md), in a
 /// table of their own, since no TypeScript function stands for them and
 /// [`DOORS`] is held to the TypeScript call for call. It is committed as
@@ -534,6 +535,12 @@ pub static LIBRARY_DOORS: &[Door] = &[
         connectors::CALLABLE_CONNECTORS,
         "Language 0.7, which only the Rust compiler reads: no TypeScript function stands for it. The connectors a program can call, [{ id, name }] with id <module>.<connector>: those the check demands a lock entry for (E1407), by the same function (crate::lock::callable_connectors), for the program as the runtime has it at start.",
         connectors::callable_connectors,
+    ),
+    Door::own(
+        "mcp_tools",
+        mcp_tools::MCP_TOOLS,
+        "Language 0.7, which only the Rust compiler reads: no TypeScript function stands for it. The tools of the MCP servers of a language, { language, tools, modern }: tools is the tools member of the result of tools/list, unchanged, for both servers and both protocol eras, and modern is what the modern era adds beside it ({ ttlMs, cacheScope }). language is required, mandate/0.1 to mandate/0.7: those up to 0.6 give the frozen list (the tables door's TOOLS), 0.7 the frozen list and the changes spec/attention.md names (crates/mandate-check/tests/mcp_tools.rs holds the set of differences), and vectors/mcp-tools/mcp-tools-0.7.json holds the output.",
+        mcp_tools::mcp_tools,
     ),
     Door::own(
         "attention_facts",

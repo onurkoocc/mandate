@@ -12,7 +12,7 @@
 //! documents with their Markdown and HTML, the card, the ACS target), then
 //! the library doors of language 0.6, `mandate_check::json_doors::LIBRARY_DOORS`
 //! (`library_verify`, `library_add`, `library_upgrade`, `library_publish`,
-//! `authority_signature`, `tool_schema_digest`, `callable_connectors`,
+//! `authority_signature`, `tool_schema_digest`, `callable_connectors`, `mcp_tools`,
 //! `attention_facts`, which no
 //! TypeScript function stands for), then
 //! the one door of this crate, `doors`. [`tables`] gives the four, [`doors`]
