@@ -616,6 +616,16 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `E1908` to `E1908e` | `asks` in an agent's, a delegation's, a map's, a plan's, a skill's and a function's budget (a mutation each) | E1908 |
 | `E1706c` to `E1706e` | Under an envelope that limits `asks` (the room's `left.asks`): a sub-program whose static total does not fit what is left, one whose declared `asks` does not, and one whose total is unbounded and that declares none | E1706 |
 | `E1709e` to `E1709g` | An amendment that lowers the envelope's `asks`, leaves it out, and adds it to an envelope that had none | E1709 |
+| `A04` | A 0.7 program whose workflow written out and whose application of a pattern each have an owner checks with a 0.7 lock that has `role_classes` and `promotion: "required"` (`fixtures/attention/owner.mdt`) | — |
+| `E1910` | An owner on a workflow that has an envelope (a mutation: the owner added) | E1910 |
+| `E1910a`, `E1910b` | With `promotion: "required"`, a workflow written out and an application with neither an owner nor an envelope (a mutation each: the owner line removed) | E1910 |
+| `E1911`, `E1911a` | A 0.7 lock's `role_classes`, and its `promotion`, with a program of 0.6 (a mutation each: the program relabelled 0.6) | E1911 |
+| `E1705d` | An owner a lead writes in its sub-program | E1705 |
+| `E1501c` | A workflow's owner that no role definition has (a mutation: the owner) | E1501 |
+| `E1502b` | With a lock, a workflow's owner that the lock binds to nobody (a mutation: a role added and named) | E1502 |
+| `E0140e`, `E0140f` | `role_classes`, and `promotion`, in a lock of 0.6, refused at its root | E0140 |
+| `E0140g` | A class in `role_classes` for a role `roles` does not name | E0140 |
+| `E0140h` | A class in `role_classes` that is no data class | E0140 |
 
 ## What the Rust crates run
 

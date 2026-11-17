@@ -922,6 +922,151 @@
       "plans": []
     }
   },
+  "fixtures/attention/owner.mdt": {
+    "Describe": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Describe",
+      "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+      "stages": [
+        {
+          "path": "/defs/Describe/body/0",
+          "name": "write",
+          "title": "Write the line",
+          "index": 0
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Describe/body/2",
+          "role": "accountant",
+          "title": "Line written",
+          "stage": "write",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "effects": [],
+      "totals": {
+        "questions": 0,
+        "by_role": [],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Describe",
+          "wait": "/defs/Describe/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Check": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Check",
+      "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+      "stages": [
+        {
+          "path": "/defs/Check/body/0",
+          "name": "write",
+          "title": "Write the line",
+          "index": 0
+        },
+        {
+          "path": "/defs/Check/body/3",
+          "name": "check",
+          "title": "Check the line",
+          "index": 1
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Check/body/2",
+          "role": "accountant",
+          "title": "Line written",
+          "stage": "write",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/Check/body/4/value",
+          "wait": "/defs/Check/body/4/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "model",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "check",
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 1,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Check",
+          "wait": "/defs/Check/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
   "fixtures/attention/reports.mdt": {
     "MatchAll": {
       "format": "mandate/attention/0.1",

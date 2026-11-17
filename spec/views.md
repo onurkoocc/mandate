@@ -204,6 +204,7 @@ its path, and as `detail` the text shown here:
 | `waiver_added` | 0.6: a criterion that a role may now waive that it could not before (`waive by` added, or a role added to it) |
 | `waiver_removed` | 0.6: a role may no longer waive a criterion (`waive by` taken away, or a role taken from it) |
 | `application_changed` | 0.6: a workflow's application of a pattern came, went or changed (its pattern, type arguments or slot arguments), or a pattern a workflow applies changed ([`library.md`](library.md#patterns)) |
+| `owner_changed` | 0.7: a workflow's `owner` added, removed or changed, or a new workflow with one: who approves its card and signs its promotions changed, as `envelope_changed` says for an envelope's owner ([`attention.md`](attention.md#owner)) |
 
 The diff also compares the two versions' locks: a member added or removed,
 a key added to or removed from a member, a member added to or removed from
