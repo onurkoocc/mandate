@@ -22,7 +22,7 @@ import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { attentionFacts, hashProgram, load, type AttentionFacts, type AttentionFactsInput, type Json, type Program } from "@mandate/bridge";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ASKS, SITE_KINDS, SUPERVISE_ESCALATIONS } from "../src/asks.js";
 import type { PreparedFile } from "../src/adapters.js";
 import { limits } from "../src/cli.js";
@@ -31,8 +31,11 @@ import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import { SimAgents, SimTool, type SimTool as Tool } from "../src/sim.js";
 import type { RunRow } from "../src/journal.js";
 import type { Obj, Value } from "../src/values.js";
+import { baseOf, type WorkerChecker } from "../src/plan.js";
+import { toolUse } from "../src/sim.js";
 import { tickPass } from "../src/tick.js";
-import { closeAll, world, type World } from "./helpers.js";
+import { closeAll, planChecker, world, type World } from "./helpers.js";
+import { CAPS, finish, ITEMS, MODULE, planned, program, refusals, type Planned } from "./planning.js";
 import { BATCH, DAY, fileChannels, lines, nworld, REVIEW, REVIEW_AT, scratch, type NWorld } from "./notify-world.js";
 
 afterAll(closeAll);
@@ -75,6 +78,12 @@ async function answer(w: World, runId: string, value = "yes"): Promise<RunRow> {
   if (kind === "input") return w.rt.submitInput(runId, msg(), { value, signed: await sign(w, runId, "answer", payloadOf.answer(value)) });
   if (kind === "decision") return w.rt.decideAction(runId, msg(), { signed: await sign(w, runId, "approve") });
   throw new Error(`run ${runId} waits on ${String(kind)}`);
+}
+
+/** Alice, the platform lead of a planned world (planning.ts), answers the input its run waits on. */
+async function answerAlice(w: Planned, runId: string, value = "go on"): Promise<RunRow> {
+  const signed = signDecision(w.alice, await w.rt.shown(runId, "wait"), { kind: "answer", member: "alice", payload: payloadOf.answer(value), at: new Date(w.adapters.clock.now()) });
+  return w.rt.submitInput(runId, msg(), { value, signed });
 }
 
 /** Answers waits until the run stops waiting, or `k` of them. */
@@ -536,6 +545,110 @@ describe("a review past asks", () => {
     await w.rt.tick("rc");
     expect(await eventsOf(w, "rc", "review_escalated")).toHaveLength(1);
     expect(await asksRow(w, "rc")).toEqual({ limit: 2, settled: 2, reserved: 0 });
+  });
+});
+
+// ── sub-programs and amendments ─────────────────────────────────────────
+
+/** The plan program of planning.ts in 0.7: its own question first (a pause), then the lead, under `asks: n`. */
+const planning = (asks: number): string =>
+  program({ budget: `{ tokens: 200k, steps: 400, agents: 12, asks: ${asks} }`, body: "  let first = pause\n  plan Lead.finish(items) within envelope" }).replace("mandate @ 0.4", "mandate @ 0.7");
+const PLAN_AT = "/defs/W/body/1/value";
+
+/** The definitions of a sub-program of 0.7, as the operations a lead sends. */
+function ops07(defs: string): Value[] {
+  const r = load(`mandate @ 0.7\n\nmodule ${MODULE}.plan_1 @ 0.1\n\nuse ${MODULE}\n\n${defs}\n`, "mdt");
+  expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
+  return Object.entries((r.program as Program).defs).map(([name, d]) => ({ op: "add", path: `/defs/${name}`, value: d as unknown as Value }));
+}
+const base07 = (n: number): string => baseOf(MODULE, n, "mandate/0.7" as never);
+const submit07 = (n: number, defs: string) => [toolUse(`s${n}`, "submit_program", { base: base07(n), ops: ops07(defs) })];
+/** A sub-program that pauses `k` times: its static total is `k`. */
+const pausing = (k: number): string => `workflow Fix() -> Text\n  caps   ${CAPS}\n  budget { tokens: 20k, steps: 40, agents: 4 }\n{\n${Array.from({ length: k }, (_, i) => `  let p${i} = pause`).join("\n")}\n  "fixed"\n}`;
+
+describe("sub-programs and amendments under a run's asks", () => {
+  let checker: WorkerChecker;
+  beforeAll(async () => {
+    checker = await planChecker();
+  }, 60_000);
+  afterAll(() => checker.close());
+
+  it("reserves a sub-program's bound at its admission out of what is left, counts its questions out of that, and releases the rest when it ends", async () => {
+    const w = await planned(checker, [submit07(1, pausing(1)), finish("planned")], { src: planning(3) });
+    let r = await w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { items: ITEMS }, runId: "p" });
+    // The run's own pause: its bound is 1, reserved at the start and asked now.
+    expect(r.state, state(r)).toBe("waiting");
+    expect(await asksRow(w, "p")).toEqual({ limit: 3, settled: 1, reserved: 0 });
+    r = await answerAlice(w, "p");
+    // The sub-program reserved its 1 out of the 2 left, and asked it: settled 2, nothing reserved now.
+    expect(r.state, state(r)).toBe("waiting");
+    const [admitted] = await eventsOf(w, "p", "program_admitted");
+    expect(admitted!["reservation"]).toMatchObject({ asks: 1 });
+    expect(await asksRow(w, "p")).toEqual({ limit: 3, settled: 2, reserved: 0 });
+    const held = await w.db.query<{ command_id: string; amount: unknown; state: string }>("select command_id, amount, state from reservations where run_id = $1 and dimension = 'asks' order by command_id", ["p"]);
+    expect(held.map((h) => [h.command_id, Number(h.amount), h.state])).toEqual([
+      ["/defs/W", 0, "active"],
+      [`${PLAN_AT}/program/1`, 0, "active"],
+    ]);
+    // The sub-program's pause is tagged with its own program's site, and counted out of its reservation.
+    const opened = await eventsOf(w, "p", "wait_opened");
+    expect(opened.at(-1)).toMatchObject({ command: `${PLAN_AT}/program/1/defs/Fix/body/0/value`, site: { kind: "pause", path: "/defs/Fix/body/0/value" } });
+    r = await answerAlice(w, "p");
+    expect(r.state, state(r)).toBe("succeeded");
+    expect(await asksRow(w, "p")).toEqual({ limit: 3, settled: 2, reserved: 0 });
+    expect(w.told[0]).toMatchObject({ admitted: true, number: 1, result: "fixed" });
+    // Its reservation was released when it ended, with what it did not use (none, here).
+    const ended = await w.db.query<{ state: string }>("select state from reservations where run_id = $1 and command_id = $2 and dimension = 'asks'", ["p", `${PLAN_AT}/program/1`]);
+    expect(ended.map((e) => e.state)).toEqual(["released"]);
+  });
+
+  it("refuses a sub-program that does not fit what is left of asks (E1706, dimension asks), and asks nothing of it", async () => {
+    const w = await planned(checker, [submit07(1, pausing(2)), finish("refused")], { src: planning(2) });
+    let r = await w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { items: ITEMS }, runId: "f" });
+    r = await answerAlice(w, "f");
+    expect(r.state, state(r)).toBe("succeeded");
+    expect(w.told[0]).toMatchObject({ admitted: false, room: { left: { asks: 1 } } });
+    expect(refusals(w.told[0])).toEqual([["MDT-E1706", "/defs/Fix", { dimension: "asks", asked: 2, left: 1 }]]);
+    expect(await eventsOf(w, "f", "program_admitted")).toEqual([]);
+    expect(await asksRow(w, "f")).toEqual({ limit: 2, settled: 1, reserved: 0 });
+  });
+
+  it("counts a lead's amendment request out of what is left, and refuses it to the lead when none is left", async () => {
+    for (const [asks, asked] of [
+      [1, false],
+      [2, true],
+    ] as const) {
+      let envelope: Value = null;
+      const w = await planned(checker, [() => [toolUse("a1", "request_amendment", { envelope, reason: "more tokens" })], finish("asked")], { src: planning(asks) });
+      const env = (w.pkg.program.defs["W"] as unknown as { envelope: Obj }).envelope;
+      envelope = { ...env, budget: { ...(env["budget"] as Obj), tokens: 300_000 } } as unknown as Value;
+      const runId = `a${asks}`;
+      let r = await w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { items: ITEMS }, runId });
+      r = await answerAlice(w, runId);
+      const id = `${PLAN_AT}/step/0/tool/0/amendment`;
+      if (!asked) {
+        // Nothing is left: the request is not asked, and the lead is told so.
+        expect(r.state, state(r)).toBe("succeeded");
+        expect(w.told[0]).toMatchObject({ amended: false, declined: { reason: "asks_exhausted", by: null } });
+        await refusedAt(w, runId, id, "plan");
+        expect(await eventsOf(w, runId, "amendment_requested")).toEqual([]);
+        expect(await asksRow(w, runId)).toEqual({ limit: 1, settled: 1, reserved: 0 });
+      } else {
+        // One is left: the request is asked, counted, and tagged with its plan.
+        expect(r.state, state(r)).toBe("waiting");
+        expect((await eventsOf(w, runId, "wait_opened")).at(-1)).toMatchObject({ command: id, kind: "amendment", site: { kind: "plan", path: PLAN_AT } });
+        expect(await asksRow(w, runId)).toEqual({ limit: 2, settled: 2, reserved: 0 });
+        // Approved, the run reads the amended workflow's facts from then on (D6).
+        const before = await w.rt.storedFacts(await w.rt.getRun(runId));
+        const amended = await w.rt.decideAmendment(runId, msg(), signDecision(w.alice, await w.rt.shown(runId, "wait"), { kind: "amend", member: "alice", at: new Date(w.adapters.clock.now()) }));
+        expect(amended.state, state(amended)).toBe("succeeded");
+        const [moved] = await eventsOf(w, runId, "package_amended");
+        expect(moved!["attention"]).toMatch(/^sha256:/);
+        const after = await w.rt.storedFacts(await w.rt.getRun(runId));
+        expect(after!.program).not.toBe(before!.program);
+        expect(after!.totals).toEqual(before!.totals);
+      }
+    }
   });
 });
 
