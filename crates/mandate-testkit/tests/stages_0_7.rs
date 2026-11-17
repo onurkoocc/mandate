@@ -222,7 +222,7 @@ fn mark(program: &str, text: &str) -> Result<(String, Marks), String> {
         let mut places = Places::seeded(&format!("{program}\u{0}{name}"));
         let mut chosen = vec![0];
         for (k, a) in at.iter().enumerate().skip(1) {
-            if a.is_some() && places.next() % 3 == 0 {
+            if a.is_some() && places.next().is_multiple_of(3) {
                 chosen.push(k);
             }
         }
