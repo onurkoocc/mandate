@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, capsOf, check, domainHash, hashProgram, isProgram06OrLater, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { atLeast, callableConnectors, capsOf, check, domainHash, hashProgram, isProgram06OrLater, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters, Cost, EgressNeed, RunComponents, RunMode, ToolAdapter } from "./adapters.js";
 import { Connectors, ConnectorWrite, connectorsOf } from "./connectors.js";
@@ -203,6 +203,13 @@ class Refused extends Error {
 }
 
 /** A package as a run uses it: the linked program, the lock, and whether its decisions must be signed. */
+/** A package as it is: its hash, its program and the modules it links, what the compiler is asked which connectors it can call of. */
+interface PackageSource {
+  hash: string;
+  program: Program;
+  modules: Modules;
+}
+
 interface Loaded {
   program: Program;
   lock: Lock;
@@ -238,6 +245,8 @@ export class Runtime {
   private readonly packages = new Map<string, Package>();
   /** The modules of a stored package's libraries, as loaded again from their text, by package hash. */
   private readonly linkingCache = new Map<string, Modules>();
+  /** The connectors a package of 0.7 can call, by package hash (callableOf). */
+  private readonly callableCache = new Map<string, ReadonlySet<string>>();
 
   constructor(
     readonly db: Db,
@@ -309,10 +318,11 @@ export class Runtime {
     }
     // 0.6: the connectors the package can call, bound by its lock. A run that reaches their servers (`read_only`,
     // `live`) starts only where their requests have a way out, and the proxy is asked for their credentials too.
-    const connectors = isPackage06OrLater(o.pkg) ? this.connectorsFor(linked, o.pkg.lock, this.adapters) : undefined;
+    const connectors = isPackage06OrLater(o.pkg) ? this.connectorsFor(linked, o.pkg.lock, this.adapters, { hash: o.pkg.hash, program: o.pkg.program, modules: verified.modules }) : undefined;
     // Every declared tool is bound now, in every mode: one that cannot be (`bad_connector`) starts nothing.
     connectors?.bindAll();
-    const reaches = connectors !== undefined && (o.mode ?? "live") !== "design" ? connectors : undefined;
+    // 0.7: a package whose connectors none can be called binds none, and needs no way out for them.
+    const reaches = connectors?.any && (o.mode ?? "live") !== "design" ? connectors : undefined;
     if (reaches) {
       if (!this.adapters.connectors) {
         throw new Violation("no_egress_for_connector", `The package can call ${reaches.names().join(", ")}; a connector's requests leave only through the egress proxy, and this runtime's configuration names none (egress.admin).`);
@@ -735,10 +745,38 @@ export class Runtime {
    * a package of 0.1 to 0.5, and for one that holds no connector. Building it reaches no server. Their requests leave
    * by `adapters.connectors`, and a design run's samples come from `adapters.samples`.
    */
-  private connectorsFor(program: Program, lock: Lock, adapters: Adapters): Connectors | undefined {
+  private connectorsFor(program: Program, lock: Lock, adapters: Adapters, from: PackageSource): Connectors | undefined {
     if (!isProgram06OrLater(program) || !connectorsOf(program).length) return undefined;
     const samples = adapters.samples;
-    return new Connectors({ program, lock, transport: adapters.connectors, samples: samples?.tool ? (name) => samples.tool!(name) : undefined });
+    const callable = this.callableOf(from);
+    return new Connectors({ program, lock, transport: adapters.connectors, samples: samples?.tool ? (name) => samples.tool!(name) : undefined, ...(callable ? { callable } : {}) });
+  }
+
+  /**
+   * Language 0.7 (spec/attention.md "Carry-over from 0.6"): the lock keys of the connectors the compiler says the
+   * package can call, those E1407 demands a lock entry for; undefined for a package of 0.1 to 0.6, which binds every
+   * connector its program declares. The compiler is given the package as it has it (its program and the modules it
+   * links), never the running program, whose definitions hold what the modules it imports declare. A refusal of
+   * the door starts nothing (`bad_connector`): the runtime does not guess which connectors can be called.
+   */
+  private callableOf(from: PackageSource): ReadonlySet<string> | undefined {
+    if (!isPackage07OrLater({ program: from.program, modules: from.modules })) return undefined;
+    const known = this.callableCache.get(from.hash);
+    if (known) return known;
+    let ids: Set<string>;
+    try {
+      ids = new Set(callableConnectors(from.program, from.modules).map((c) => c.id));
+    } catch (e) {
+      if (e instanceof CompilerFailure) throw e;
+      throw new Violation("bad_connector", `The compiler could not say which connectors the package can call: ${e instanceof Error ? e.message : String(e)}.`);
+    }
+    this.callableCache.set(from.hash, ids);
+    return ids;
+  }
+
+  /** A loaded package as the compiler is asked about it: as packaged, with the modules it links. */
+  private sourceOf(hash: string, loaded: Loaded): PackageSource {
+    return { hash, program: loaded.source, modules: loaded.modules };
   }
 
   /**
@@ -747,11 +785,11 @@ export class Runtime {
    * run stops.
    */
   private async connectorsAtResume(run: RunRow, loaded: Loaded, fence: number): Promise<Connectors | undefined> {
-    const connectors = this.connectorsFor(loaded.program, loaded.lock, this.adapters);
+    const connectors = this.connectorsFor(loaded.program, loaded.lock, this.adapters, this.sourceOf(run.package_hash, loaded));
     const mode = isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? run.manifest["mode"] : "live";
     // As at the start: every declared tool is bound before the run goes on, in every mode.
     connectors?.bindAll();
-    if (!connectors || mode === "design") return connectors;
+    if (!connectors?.any || mode === "design") return connectors;
     if (!this.adapters.connectors) throw new Violation("no_egress_for_connector", `Run ${run.run_id} can call ${connectors.names().join(", ")}; a connector's requests leave only through the egress proxy, and this runtime's configuration names none (egress.admin).`);
     try {
       await connectors.verifySchemas();
@@ -771,7 +809,7 @@ export class Runtime {
     const run = await this.journal.run(runId);
     if (isPackage06OrLater(await this.packaged(run.package_hash))) {
       const loaded = await this.loaded(run.package_hash, run);
-      const write = this.connectorsFor(loaded.program, loaded.lock, this.adapters)?.write(effect);
+      const write = this.connectorsFor(loaded.program, loaded.lock, this.adapters, this.sourceOf(run.package_hash, loaded))?.write(effect);
       if (write) return { tool: write };
     }
     return { tool: this.adapters.tools[effect] };
@@ -799,7 +837,7 @@ export class Runtime {
 
   private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[], bound?: Connectors): Interpreter {
     const wf = Object.hasOwn(loaded.program.defs, run.workflow) ? loaded.program.defs[run.workflow] : undefined;
-    const connectors = bound ?? this.connectorsFor(loaded.program, loaded.lock, adapters);
+    const connectors = bound ?? this.connectorsFor(loaded.program, loaded.lock, adapters, this.sourceOf(run.package_hash, loaded));
     // The limit is the package's language's: a 0.5 program's run has one by default, an earlier one's only when configured.
     const violationLimit = this.violationLimit ?? (atLeast(loaded.source.language, "mandate/0.5") ? VIOLATION_LIMIT : undefined);
     return new Interpreter({

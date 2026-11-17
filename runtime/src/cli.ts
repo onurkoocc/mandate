@@ -63,7 +63,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { check, isProgram06OrLater, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { callableConnectors, check, isProgram06OrLater, isProgram07OrLater, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters } from "./adapters.js";
 import { Connectors } from "./connectors.js";
@@ -719,7 +719,9 @@ async function connectorPin(a: Args, out: (s: string) => void, env: NodeJS.Proce
   try {
     // Binding refuses a connector the lock has no entry for (`bad_connector`, naming E1407: the operator writes its
     // credential's name and URL first), and one whose entry names another URL than the one it declares.
-    const connectors = new Connectors({ program: linked, lock: raw, transport: egress.connectors });
+    // 0.7: only the connectors the compiler says can be called are pinned, with its digests (connectors.ts).
+    const callable = isProgram07OrLater(r.program as Program) ? new Set(callableConnectors(r.program, read.libraries ? { ...modules, ...libraryModules({ lock: raw, libraries: read.libraries }) } : modules).map((c) => c.id)) : undefined;
+    const connectors = new Connectors({ program: linked, lock: raw, transport: egress.connectors, ...(callable ? { callable } : {}) });
     if (!connectors.any) {
       out("the program holds no connector; nothing to pin\n");
       return 0;
