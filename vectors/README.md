@@ -101,6 +101,46 @@ which holds what the `explain` door answers for it. The `codes` door gives the
 whole table, so its stored call is compared without these rows (`rust_only`,
 "What they do not reach" below).
 
+## mcp/
+
+What the Node MCP server (`serveStdio` of `bridge/src/mcp.ts`, the server of
+the Node command line's `mandate mcp`) writes on its standard output for each
+of a set of recorded conversations, byte for byte, so that the native server
+(`mandate mcp` of `crates/mandate-cli`, spec/attention.md "The MCP server") is
+held to it. Each file is one conversation, `{ "format":
+"mandate/vectors/mcp/0.1", name, about, args, input, output, tools_list }`:
+
+- `args`: the arguments after `mandate`, the modules the server is started
+  with among them (`--module <file>`, a path from the repository root);
+- `input`: the bytes of standard input as parts, each `{ line }` (a text and a
+  line feed), `{ text }`, `{ hex }` (bytes, for those that are not UTF-8) or `{
+  repeat, count }` (a text that many times, for a line too long to write out);
+- `output`: what the server wrote, one element a line without its line feed;
+  a line longer than 64 KiB is `{ sha256, bytes }`, `sha256:` and the hex
+  SHA-256 of its UTF-8, and its length;
+- `tools_list`: the index of each output line that answers `tools/list`.
+
+They are written by `node scripts/mcp-vectors.mjs` from the built bridge
+(CI runs every `scripts/*-vectors.mjs` and fails when the tree changes) and
+read by `crates/mandate-cli/tests/mcp.rs` (in memory, whole and in reads of
+one byte or 4093) and `crates/mandate-cli/tests/mcp_process.rs` (through the
+executable). The conversations cover both protocol eras, every tool with a
+passing and a failing program of 0.5, 0.6 and 0.7, each view of 0.6, each
+message limit, how lines are split and skipped, what `JSON.parse` and
+`JSON.stringify` do to numbers, names given twice, array-index names and lone
+surrogates, and the failures of a door in the bridge's words.
+
+The lines of `tools_list` are the one place the two servers differ until slice
+B9 moves the Node server to the door `mcp_tools`: the Node server serves the
+frozen tool list, the native one the list of 0.7. There the native line must be
+the Node line with the list of 0.7 (the door's `tools` for `mandate/0.7`, as it
+writes them) in the place of the frozen list (the door's for `mandate/0.6`),
+which is so only when the Node server's list is the door's frozen list. What
+0.7 adds to the tools (`libraries`, the card, the attention view, the sections
+`patterns` and `attention`, the message for a view that is not one, which names
+the views of 0.7) has no Node answer yet and is not here; `tests/mcp.rs` holds
+it.
+
 ## authority/
 
 `authority/cases.json` is `{ "format": "mandate/vectors/authority/0.1",

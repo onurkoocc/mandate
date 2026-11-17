@@ -883,7 +883,7 @@ fn request_js(v: &JsValue, at: &str, depth: usize) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::panic)]
+    #![allow(clippy::unwrap_used, clippy::panic, clippy::arithmetic_side_effects)]
 
     use super::{J, JStr, KEPT_DEPTH, parse, stringify};
 

@@ -723,7 +723,7 @@ fn what_is_not_a_command_of_this_executable_is_refused() {
         assert_eq!(io.out, "");
     }
     for cmd in [
-        "mcp", "run", "resume", "status", "approve", "journal", "test", "egress",
+        "run", "resume", "status", "approve", "journal", "test", "egress",
     ] {
         let code = mandate(&mut io, &[cmd, "x"]);
         assert_eq!(code, 2, "{cmd}");

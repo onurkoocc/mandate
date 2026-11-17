@@ -1,0 +1,53 @@
+{
+ "format": "mandate/vectors/mcp/0.1",
+ "name": "explain",
+ "about": "mandate.explain: a code with and without its prefix, a code of 0.6 and 0.7, codes it does not know, and arguments it refuses",
+ "args": [
+  "mcp"
+ ],
+ "input": [
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":40,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"E0320\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":41,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"MDT-E0130\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":42,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"E9999\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":43,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":44,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":7},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":45,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"E1601\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":46,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"W0504\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":47,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"mdt-e0320\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":48,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":49,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"E0320\",\"modules\":[\"not a module\"]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  }
+ ],
+ "output": [
+  "{\"jsonrpc\":\"2.0\",\"id\":40,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"code\\\": \\\"MDT-E0320\\\",\\n  \\\"title\\\": \\\"Overlapping writes in par\\\",\\n  \\\"explain\\\": \\\"Two branches of a par block can write the same scope. Write capabilities (fs.write, git.*) must be disjoint across branches; read capabilities may be shared (C5).\\\"\\n}\"}],\"structuredContent\":{\"code\":\"MDT-E0320\",\"title\":\"Overlapping writes in par\",\"explain\":\"Two branches of a par block can write the same scope. Write capabilities (fs.write, git.*) must be disjoint across branches; read capabilities may be shared (C5).\"},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":41,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"code\\\": \\\"MDT-E0130\\\",\\n  \\\"title\\\": \\\"Stale base\\\",\\n  \\\"explain\\\": \\\"An IR patch was written against a program hash that is no longer current. Re-read the program and rebase the patch (S12).\\\"\\n}\"}],\"structuredContent\":{\"code\":\"MDT-E0130\",\"title\":\"Stale base\",\"explain\":\"An IR patch was written against a program hash that is no longer current. Re-read the program and rebase the patch (S12).\"},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":42,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"unknown code E9999\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":43,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"code must be a string\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":44,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"code must be a string\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":45,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"code\\\": \\\"MDT-E1601\\\",\\n  \\\"title\\\": \\\"Malformed library\\\",\\n  \\\"explain\\\": \\\"A library is a manifest (`mandate.library.json`: `library`, `name`, `version`, `modules`, `requires`, strict JSON) and the module files it lists, each a module of language 0.6 named with the library's name, no two with one name, none defining an `extern` (a library is data and runs no code), each checking with the modules of its own library and of the libraries it requires. `std` and the names under it are the compiler's own. The facts name the library and the problem (`manifest`, `reserved_name`, `missing_file`, `unlisted_file`, `module_does_not_load`, `not_0_6`, `extern`, `module_does_not_check`, `directory_mismatch`, `index`, \u2026) (spec/library.md \\\\\\\"The manifest\\\\\\\").\\\"\\n}\"}],\"structuredContent\":{\"code\":\"MDT-E1601\",\"title\":\"Malformed library\",\"explain\":\"A library is a manifest (`mandate.library.json`: `library`, `name`, `version`, `modules`, `requires`, strict JSON) and the module files it lists, each a module of language 0.6 named with the library's name, no two with one name, none defining an `extern` (a library is data and runs no code), each checking with the modules of its own library and of the libraries it requires. `std` and the names under it are the compiler's own. The facts name the library and the problem (`manifest`, `reserved_name`, `missing_file`, `unlisted_file`, `module_does_not_load`, `not_0_6`, `extern`, `module_does_not_check`, `directory_mismatch`, `index`, \u2026) (spec/library.md \\\"The manifest\\\").\"},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":46,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"code\\\": \\\"MDT-W0504\\\",\\n  \\\"title\\\": \\\"Budget below the computed upper bound\\\",\\n  \\\"explain\\\": \\\"An agent loop's declared tokens or spend is less than its steps times the per-call upper bound from the lock file: the locked input and output limits, priced as if nothing hits the cache (\u00a78.6, K12). The skill may run out of budget before it can finish. The facts carry the bound.\\\"\\n}\"}],\"structuredContent\":{\"code\":\"MDT-W0504\",\"title\":\"Budget below the computed upper bound\",\"explain\":\"An agent loop's declared tokens or spend is less than its steps times the per-call upper bound from the lock file: the locked input and output limits, priced as if nothing hits the cache (\u00a78.6, K12). The skill may run out of budget before it can finish. The facts carry the bound.\"},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":47,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"unknown code mdt-e0320\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":48,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"unknown code \"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":49,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"a module does not load: modules[0]: MDT-E0101 Expected 'module' but found 'not'.\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}"
+ ],
+ "tools_list": []
+}
