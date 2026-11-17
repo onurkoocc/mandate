@@ -37,14 +37,33 @@ pub struct BaseComparison {
     pub removes_criterion: bool,
     /// The new version adds a waiver the base does not have.
     pub adds_waiver: bool,
+    /// 0.7: the new version changes who approves a workflow's card and signs
+    /// its promotions (its `owner` added, removed or another role). Only a
+    /// module of 0.7 has an `owner`, so a library of 0.6 never sets it, and
+    /// its facts do not name it.
+    pub changes_owner: bool,
 }
 
 impl BaseComparison {
-    /// Whether any of the three holds: the new version must then be a major
-    /// one above its base.
+    /// Whether any of them holds: the new version must then be a major one
+    /// above its base.
     #[must_use]
     pub const fn requires_major(&self) -> bool {
-        self.widens_authority || self.removes_criterion || self.adds_waiver
+        self.widens_authority || self.removes_criterion || self.adds_waiver || self.changes_owner
+    }
+
+    /// The facts of a refusal: the three of 0.6, and `changes_owner` when it
+    /// holds, so that what a library of 0.6 is told does not change.
+    fn facts(&self, o: JsObject) -> JsObject {
+        let o = o
+            .with("widens_authority", self.widens_authority)
+            .with("removes_criterion", self.removes_criterion)
+            .with("adds_waiver", self.adds_waiver);
+        if self.changes_owner {
+            o.with("changes_owner", true)
+        } else {
+            o
+        }
     }
 }
 
@@ -174,22 +193,18 @@ impl PublishProblem {
                 version,
                 base: against,
                 comparison,
-            } => base
-                .with("version", version.to_string())
-                .with("base", against.to_string())
-                .with("widens_authority", comparison.widens_authority)
-                .with("removes_criterion", comparison.removes_criterion)
-                .with("adds_waiver", comparison.adds_waiver),
+            } => comparison.facts(
+                base.with("version", version.to_string())
+                    .with("base", against.to_string()),
+            ),
             PublishProblem::NextNeedsMajor {
                 version,
                 next,
                 comparison,
-            } => base
-                .with("version", version.to_string())
-                .with("next", next.to_string())
-                .with("widens_authority", comparison.widens_authority)
-                .with("removes_criterion", comparison.removes_criterion)
-                .with("adds_waiver", comparison.adds_waiver),
+            } => comparison.facts(
+                base.with("version", version.to_string())
+                    .with("next", next.to_string()),
+            ),
         }
     }
 }

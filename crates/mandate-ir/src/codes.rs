@@ -813,7 +813,7 @@ pub const CODES: &[CodeRow] = &[
     CodeRow {
         code: "MDT-E1910",
         title: "Owner misplaced or missing",
-        explain: "`owner r` (0.7) names the role that approves the card of a workflow without an envelope and signs its promotions. A workflow with an envelope writes none, since its envelope's `owner` has that place: one written beside an envelope is refused at the `owner` (`problem: \"with_envelope\"`). With a lock whose `promotion` is `\"required\"`, every workflow of the program has an `owner` or an envelope, since nobody could promote one with neither: such a workflow is refused at itself (`problem: \"no_owner\"`). Facts: `workflow`, `problem`, and beside an envelope the role the `owner` names (`owner`) (spec/attention.md \"`owner`\").",
+        explain: "`owner r` (0.7) names the role that approves the card of a workflow without an envelope and signs its promotions. A workflow written out with an envelope writes none, since its envelope's `owner` has that place: one written beside an envelope is refused at the `owner` (`problem: \"with_envelope\"`); a workflow that applies a pattern has no envelope at all (E1307). With a lock whose `promotion` is `\"required\"`, every workflow of the program has an `owner` or an envelope, since nobody could promote one with neither: such a workflow is refused at itself (`problem: \"no_owner\"`). Facts: `workflow`, `problem`, and beside an envelope the role the `owner` names (`owner`) (spec/attention.md \"`owner`\").",
         reference: Reference::Rust,
     },
     CodeRow {

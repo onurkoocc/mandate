@@ -1263,7 +1263,7 @@ same way, by gates of its own beside those of 0.6:
   to `E1904v` and `E1905` to `E1905g`, and the attention bound (slice RL4): `E1906` to `E1906p`,
   `E1907`, `E1907a`, `E1908` to `E1908e`, `E1706c` to `E1706e` and `E1709e` to `E1709g`, and the
   owner and the lock of 0.7 (slice RL5): `A04`, `E1910` to `E1910b`, `E1911`, `E1911a`, `E1705d`,
-  `E1501c`, `E1502b` and `E0140e` to `E0140h`
+  `E1501c`, `E1502b`, `E0140e` to `E0140h`, `E1307f` and `L11`
   (`conformance/README.md`, "Cases of 0.7").
 - **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (six today,
   `asks.mdt`, `minimal.mdt`, `owner.mdt` (with its lock of 0.7), `reports.mdt`, `shapes.mdt` and `stages.mdt`, 73 outputs), the digest of each output text, made

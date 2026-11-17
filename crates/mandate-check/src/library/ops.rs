@@ -115,6 +115,15 @@ impl Comparison {
             widens_authority: !self.widenings.is_empty(),
             removes_criterion: has(GovernanceChangeKind::CriterionRemoved),
             adds_waiver: has(GovernanceChangeKind::WaiverAdded),
+            // 0.7: who approves a workflow's card and signs its promotions,
+            // which only a module of 0.7 names (`owner_changed` is of a
+            // workflow's own `owner`). The signature counts an owner only
+            // when it is a role new to the workflow, so this reads the
+            // classifier's change instead. A change of an envelope's owner
+            // (`envelope_changed`), the same gap since 0.6, is left as it is:
+            // what a library of 0.6 is told at its publication does not
+            // change.
+            changes_owner: has(GovernanceChangeKind::OwnerChanged),
         }
     }
 }
@@ -766,17 +775,50 @@ impl Publication {
     }
 }
 
-/// The E1607 of a publication.
+/// The E1607 of a publication. A comparison that changes a workflow's
+/// owner (0.7) says so; the words of every other refusal are those of 0.6.
 fn e1607(library: &str, problem: &mandate_lib::PublishProblem) -> Diagnostic {
+    let what = |c: &mandate_lib::BaseComparison, of: &str| {
+        if c.changes_owner {
+            format!(
+                "widens the authority signature of {of}, removes one of its criteria, adds a waiver or changes a workflow's owner"
+            )
+        } else {
+            format!(
+                "widens the authority signature of {of}, removes one of its criteria or adds a waiver"
+            )
+        }
+    };
+    let would = |c: &mandate_lib::BaseComparison, of: &str| {
+        if c.changes_owner {
+            format!(
+                "would widen the authority signature of {of}, remove one of its criteria, add a waiver or change a workflow's owner"
+            )
+        } else {
+            format!(
+                "would widen the authority signature of {of}, remove one of its criteria or add a waiver"
+            )
+        }
+    };
     let text = match problem {
         mandate_lib::PublishProblem::AlreadyPublished { version } => {
             format!("Version {version} of library {library} is already published.")
         }
-        mandate_lib::PublishProblem::NeedsMajor { version, base, .. } => format!(
-            "Version {version} of library {library} widens the authority signature of {base}, removes one of its criteria or adds a waiver, and is not a major version above it."
+        mandate_lib::PublishProblem::NeedsMajor {
+            version,
+            base,
+            comparison,
+        } => format!(
+            "Version {version} of library {library} {}, and is not a major version above it.",
+            what(comparison, &base.to_string())
         ),
-        mandate_lib::PublishProblem::NextNeedsMajor { version, next, .. } => format!(
-            "Version {next} of library {library}, published above {version} with its MAJOR, would widen the authority signature of {version}, remove one of its criteria or add a waiver: {version} cannot be published below it."
+        mandate_lib::PublishProblem::NextNeedsMajor {
+            version,
+            next,
+            comparison,
+        } => format!(
+            "Version {next} of library {library}, published above {version} with its MAJOR, {}: {version} cannot be published below it.",
+            would(comparison, &version.to_string())
         ),
     };
     diagnostic(

@@ -182,7 +182,9 @@ impl<'a> Lock<'a> {
     /// format (an older lock has no `role_classes`, and so every role may be
     /// shown `internal`). What E1909 compares each question's `shown`, each
     /// escalation's and each report field's class with, and what the
-    /// runtime's mask caps a value at.
+    /// runtime's mask caps a value at. It is for a lock that
+    /// [`validate_lock`] passed: it reads the lock as it is, and an entry
+    /// that is no class (which that refuses, E0140) reads as `internal`.
     #[must_use]
     pub fn role_class(self, role: &str) -> DataClass {
         own(self.role_classes(), role)

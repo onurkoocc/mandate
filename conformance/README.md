@@ -626,6 +626,8 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `E0140e`, `E0140f` | `role_classes`, and `promotion`, in a lock of 0.6, refused at its root | E0140 |
 | `E0140g` | A class in `role_classes` for a role `roles` does not name | E0140 |
 | `E0140h` | A class in `role_classes` that is no data class | E0140 |
+| `E1307f` | An application with an owner and an envelope: E1307 at the envelope, and no E1910 (a mutation: an envelope added) | E1307 |
+| `L11` | `mandate publish` of a library of 0.7 whose workflow's owner changed to a role it already asks, as a minor version (`changes_owner`) | E1607 |
 
 ## What the Rust crates run
 
