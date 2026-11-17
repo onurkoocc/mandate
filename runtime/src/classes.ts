@@ -60,6 +60,8 @@ export const EVENT_CLASSES: Readonly<Record<string, ViewClass>> = {
   violation: "S1",
   budget_exceeded: "S1",
   guarantee_lowered: "S1",
+  // S1 of 0.7: a question past the run's `asks`, which was not asked (spec/attention.md "Events").
+  asks_exhausted: "S1",
   // S2: the run and its steps begun and ended, and what they cost.
   run_accepted: "S2",
   run_running: "S2",

@@ -726,11 +726,8 @@ describe("the pump", () => {
     ]);
   });
 
-  it("sends no event outside the S0 and S1 lists; asks_exhausted joins them once slice B3 gives it its class", () => {
-    for (const [type, kind] of Object.entries(NOTIFIED)) {
-      if (type === "asks_exhausted") expect(Object.hasOwn(EVENT_CLASSES, type), "B3 adds asks_exhausted to EVENT_CLASSES as S1; then this line goes").toBe(false);
-      else expect(EVENT_CLASSES[type], type).toBe(kind === "decision" ? "S0" : "S1");
-    }
+  it("sends no event outside the S0 and S1 lists, asks_exhausted (S1) among them", () => {
+    for (const [type, kind] of Object.entries(NOTIFIED)) expect(EVENT_CLASSES[type], type).toBe(kind === "decision" ? "S0" : "S1");
     expect(Object.keys(NOTIFIED).sort()).toEqual(["amendment_requested", "asks_exhausted", "budget_exceeded", "review_escalated", "review_requested", "run_attention_required", "run_cancelled", "run_failed", "run_succeeded", "wait_opened"]);
   });
 

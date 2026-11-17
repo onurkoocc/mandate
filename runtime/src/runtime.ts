@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, attentionFacts, callableConnectors, capsOf, check, domainHash, hashProgram, isProgram06OrLater, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type AttentionFacts, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { atLeast, attentionFacts, callableConnectors, capsOf, check, domainHash, hashProgram, isProgram06OrLater, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type AttentionFacts, type Budget07, type Def, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program, type WorkflowDef } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters, Cost, EgressNeed, RunComponents, RunMode, ToolAdapter } from "./adapters.js";
 import { Connectors, ConnectorWrite, connectorsOf } from "./connectors.js";
@@ -21,10 +21,11 @@ import { Faults } from "./faults.js";
 import { checkFitness, systemProbe, type HostProbe } from "./fitness.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
-import { costDims, haltedRefusal, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
+import { costDims, haltedRefusal, Journal, limitDims, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
+import { ASKS, asksLimit, boundUnder } from "./asks.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
 import { buildPackage, isPackage06OrLater, isPackage07OrLater, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
-import { tickOpenWaits } from "./tick.js";
+import { escalationRefused, tickOpenWaits } from "./tick.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { givenValueProblem, listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
@@ -305,6 +306,8 @@ export class Runtime {
     // 0.7: the attention facts of the workflow, asked of the compiler with what the check at load was given, which the
     // run stores and reads from then on (spec/attention.md "The stored facts"). None given refuses the start.
     const facts = verified.facts ? factsAtStart(this.attentionFacts, verified.facts, o.workflow) : undefined;
+    // 0.7: the run's `asks` limit, and the bound under the runtime's configuration it is held to (asks.ts).
+    const asks = this.asksAtStart(o, wf, facts?.facts);
     const linked = verified.running;
     // The input is a value of the workflow's parameter types, as a model's answer is of its type: a Path in it keeps the Path rule (K68).
     const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
@@ -351,7 +354,7 @@ export class Runtime {
     const seen = isPackage06OrLater(o.pkg) ? verified.running : undefined;
     const lowered = this.remoteGuarantees(seen ?? o.pkg.program);
     const runId = o.runId ?? randomUUID();
-    const limits = minLimits(costDims(workflowBounds(wf).budget), costDims(o.limits));
+    const limits = { ...minLimits(costDims(workflowBounds(wf).budget), costDims(o.limits)), ...(asks ? { [ASKS]: asks.limit } : {}) };
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
     // A halted scope starts nothing (spec/boundary.md "Violations and halt"). Asked here so that nothing is prepared
     // for a run that will not start; what decides is asked again where the run is created.
@@ -388,7 +391,7 @@ export class Runtime {
         const halt = await this.journal.holdOffHalts(tx, policy.tenant);
         if (halt) throw haltedRefusal(halt, `Run ${runId} does not start`);
         await this.keep(tx, o.pkg);
-        await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
+        await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash, ...(asks ? { asksReserved: asks.reserved } : {}) });
         // The running program the run runs from here on, its resumes and its replays: never one made again (spec/library.md).
         if (expanded) await this.artifacts.put({ tenant: policy.tenant, runId }, canonical(expanded.program as unknown as Value), EXPANDED_MEDIA_TYPE, tx);
         // 0.7: the attention facts the run shows from here on, in its resumes and its replays: never asked again.
@@ -403,6 +406,36 @@ export class Runtime {
     }
     this.packages.set(o.pkg.hash, o.pkg);
     return this.drive(runId, true);
+  }
+
+  /**
+   * 0.7 (spec/attention.md "`asks` at run time"): the run's `asks` limit, the declared `asks` of its workflow (or of
+   * its envelope) and the caller's `--limit asks=N` taken together, the smaller of the two; with neither, none, and the
+   * run has no such row. With a limit, the bound under the runtime's configuration (the static total of the facts, and
+   * the effect sites `authorize` hands to a person that the total does not count) is held to it: one above it, or
+   * unbounded, refuses the start before anything is written (`attention_above_asks`). The bound is what the run
+   * reserves for its own program's questions (`reserved`). A package of 0.1 to 0.6 counts no questions: a caller's
+   * `asks` limit for one is refused (`unsupported_limit`).
+   */
+  private asksAtStart(o: StartOptions, wf: Def, facts: AttentionFacts | undefined): { limit: number; reserved: number } | undefined {
+    const caller = o.limits?.asks;
+    if (caller !== undefined && (!Number.isSafeInteger(caller) || caller < 0)) throw new Violation("invalid_limit", "The asks limit is a whole number of at least 0.");
+    if (!facts) {
+      if (caller !== undefined) throw new Violation("unsupported_limit", "The run is limited in asks, which only a run of a package of mandate/0.7 or later counts: a run of an earlier package puts no bound on its questions.");
+      return undefined;
+    }
+    const declared = (workflowBounds(wf as WorkflowDef).budget as Budget07 | undefined)?.asks;
+    const limit = asksLimit(declared, caller);
+    if (limit === undefined) return undefined;
+    const bound = boundUnder(facts, o.authorize);
+    if (typeof bound !== "number") {
+      throw new Violation("attention_above_asks", `The run's questions are more than the bound can count${bound === undefined ? " (its facts give no total)" : ""}, under the runtime's configuration, and its asks limit is ${limit}: it does not start (spec/attention.md "\`asks\` at run time").`);
+    }
+    if (bound > limit) {
+      const added = bound - (facts.totals!.questions as number);
+      throw new Violation("attention_above_asks", `The run can ask ${bound} questions under the runtime's configuration (${String(facts.totals!.questions)} in the program, and ${added} the configuration hands to a person), above its asks limit of ${limit}: it does not start (spec/attention.md "\`asks\` at run time").`);
+    }
+    return { limit, reserved: bound };
   }
 
   /** Stores a package under its hash; one that is already there is left as it is. */
@@ -979,11 +1012,18 @@ export class Runtime {
    * manifest names as `attention`: undefined for a run whose manifest names none (every run of 0.1 to 0.6). Facts that
    * are missing, or whose bytes do not hash to that digest, are not read: `facts_mismatch`. They are never asked of the
    * compiler again: one upgraded while the run goes on does not change what the run shows.
+   *
+   * After an amendment the owner approved (D6 of slice B3), the facts in force are those of the amended workflow,
+   * stored with the lead's request and named by the run's latest `package_amended` (`attention`): the run reads them
+   * from there on, at every resume and replay. The facts of each earlier package stay stored, named where they were.
    */
   async storedFacts(run: RunRow): Promise<AttentionFacts | undefined> {
     const named = isObj(run.manifest) ? run.manifest["attention"] : undefined;
     if (named === undefined) return undefined;
-    return readFacts(this.artifacts, { tenant: run.tenant, runId: run.run_id }, named, `Run ${run.run_id}'s manifest`);
+    const scope = { tenant: run.tenant, runId: run.run_id };
+    const [amended] = await this.db.query<Row>("select data->'attention' as attention from events where run_id = $1 and type = 'package_amended' and data ? 'attention' order by seq desc limit 1", [run.run_id]);
+    if (amended) return readFacts(this.artifacts, scope, amended["attention"], `Run ${run.run_id}'s amendment`);
+    return readFacts(this.artifacts, scope, named, `Run ${run.run_id}'s manifest`);
   }
 
   /** The package's program with its imported modules linked in: what the interpreter runs. Never hashed. */
@@ -1301,6 +1341,15 @@ export class Runtime {
     const to = typeof asked["package"] === "string" ? asked["package"] : undefined;
     const next = approve && to !== undefined ? await this.packaged(to) : undefined;
     const prev = next && typeof asked["from"] === "string" ? await this.packaged(asked["from"]) : undefined;
+    // 0.7 (D6 of slice B3): the facts of the amended workflow, stored with the request, and those in force now, read
+    // before the transaction too; the run's own reservation of `asks` moves by what the bound under the configuration
+    // moves by.
+    const seen = await this.journal.run(runId);
+    const amended = approve && typeof asked["attention"] === "string" ? await readFacts(this.artifacts, { tenant: seen.tenant, runId }, asked["attention"], `The amendment at ${at.commandId}`) : undefined;
+    const now = amended ? await this.storedFacts(seen) : undefined;
+    const authorize = (seen.policy as unknown as Policy).authorize;
+    const boundNow = now ? boundUnder(now, authorize) : undefined;
+    const boundNext = amended ? boundUnder(amended, authorize) : undefined;
     const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "amendment", { signed } as unknown as Value, { signed, kinds: ["amend", "decline"] }, async (tx, request, run, who) => {
       const r = isObj(request) ? request : {};
       const deadline = r["deadline"];
@@ -1314,9 +1363,14 @@ export class Runtime {
       // A limit rises in the dimensions the amendment raises, to what the new envelope gives. In any other the run
       // keeps the limit it has, also one its caller set below the envelope: that is a raise's to lift, not this.
       const was = prev?.program.defs[run.workflow];
-      const before = costDims(was?.kind === "workflow" ? was.envelope?.budget : undefined);
-      const limits = Object.fromEntries(Object.entries(costDims(wf.envelope.budget)).filter(([dim, amount]) => amount > (before[dim] ?? amount)));
+      // 0.7: `asks` rises with the envelope's, as every other dimension does.
+      const dims = (b: Budget07 | undefined): Record<string, number> => ({ ...costDims(b), ...(amended && typeof b?.asks === "number" ? { [ASKS]: b.asks } : {}) });
+      const before = dims(was?.kind === "workflow" ? was.envelope?.budget : undefined);
+      const limits = Object.fromEntries(Object.entries(dims(wf.envelope.budget)).filter(([dim, amount]) => amount > (before[dim] ?? amount)));
       const moved = await this.journal.amendRun(tx, runId, at.commandId, to, limits);
+      // The run's own questions are bounded by the amended program's bound from here on: its reservation moves by what
+      // the bound moves by, up by what is left of the run's `asks` at most.
+      if (typeof boundNext === "number") await this.journal.moveParentAsks(tx, run, boundNext - (typeof boundNow === "number" ? boundNow : boundNext));
       await this.journal.event(tx, runId, "package_amended", {
         from: run.package_hash,
         to,
@@ -1327,6 +1381,7 @@ export class Runtime {
         superseded: moved.superseded,
         by: who.by,
         ...who.signed,
+        ...(amended ? { attention: String(asked["attention"]) } : {}),
       });
       return { state: "succeeded", result: { approved: true, package: to, by: who.by, ...who.signed } };
     });
@@ -1346,8 +1401,12 @@ export class Runtime {
     const seen = await this.journal.run(runId);
     const loaded = await this.loaded(seen.package_hash, seen);
     const wf = loaded.program.defs[seen.workflow];
-    const program = costDims(wf?.kind === "workflow" ? workflowBounds(wf).budget : undefined);
-    const wanted = costDims(r.limits);
+    // 0.7: `asks` too, up to the declared value and no further; a run whose workflow declares none was limited by its
+    // caller alone, and is raised as any other such limit is, with no ceiling of the program's.
+    const declared = wf?.kind === "workflow" ? (workflowBounds(wf).budget as Budget07 | undefined)?.asks : undefined;
+    const program: Record<string, number> = { ...costDims(wf?.kind === "workflow" ? workflowBounds(wf).budget : undefined), ...(typeof declared === "number" ? { [ASKS]: declared } : {}) };
+    if (r.limits.asks !== undefined && (!Number.isSafeInteger(r.limits.asks) || r.limits.asks < 0)) throw new Violation("invalid_limit", "The asks limit is a whole number of at least 0.");
+    const wanted = limitDims(r.limits);
     const signed = "signed" in r ? r.signed : undefined;
     await this.deciding(runId, msg, () => this.db.tx(async (tx) => {
       const run = await this.journal.lock(tx, runId);
@@ -1361,11 +1420,12 @@ export class Runtime {
       for (const [dim, limit] of Object.entries(wanted)) {
         if (dim in program && limit > program[dim]!) {
           const enveloped = wf?.kind === "workflow" && !!wf.envelope;
+          const what = dim === ASKS ? `asks: ${program[dim]}` : `a ${dim} budget of ${program[dim]}`;
           throw new Violation(
             "above_program_budget",
             enveloped
-              ? `${run.workflow}'s envelope gives a ${dim} budget of ${program[dim]}; raising the run to ${limit} needs an amendment of the envelope, which its owner approves (spec/envelope.md).`
-              : `${run.workflow} declares a ${dim} budget of ${program[dim]}; raising the run to ${limit} needs a new program version (§13.2).`,
+              ? `${run.workflow}'s envelope gives ${what}; raising the run to ${limit} needs an amendment of the envelope, which its owner approves (spec/envelope.md).`
+              : `${run.workflow} declares ${what}; raising the run to ${limit} needs a new program version (§13.2).`,
           );
         }
       }
@@ -1439,7 +1499,7 @@ export class Runtime {
       const run = await this.journal.lock(tx, runId);
       const w = isObj(run.waiting) ? run.waiting : {};
       if (run.state !== "waiting" || w["command"] !== command) return undefined;
-      const [row] = await tx.query<Row>("select kind, state, result from commands where run_id = $1 and command_id = $2", [runId, command]);
+      const [row] = await tx.query<Row>("select kind, state, result, inside from commands where run_id = $1 and command_id = $2", [runId, command]);
       if (row && row["kind"] === REVIEW && row["state"] !== "waiting") return "decided";
       const req = row && isObj((row["result"] ?? null) as Value) ? (row["result"] as Obj) : undefined;
       if (!row || row["kind"] !== REVIEW || row["state"] !== "waiting" || !req) return undefined;
@@ -1449,7 +1509,9 @@ export class Runtime {
       if (!q || typeof deadline !== "number" || typeof ms !== "number" || now < deadline) return undefined;
       const role = String(req["role"]);
       const to = req["escalate_to"];
-      if (typeof to === "string" && to !== role && req["escalated"] === undefined) {
+      // The escalation is a question, counted in this transaction (spec/attention.md "Counting"); a run of 0.1 to 0.6
+      // has no `asks` limit, and counts nothing. Past the limit it is not made, and the review expires below.
+      if (typeof to === "string" && to !== role && req["escalated"] === undefined && !(await escalationRefused(this.journal, tx, run, command, row["inside"]))) {
         const next: Obj = { ...req, role: to, deadline: now + ms, escalated: { from: role, at: now } };
         await tx.query("update commands set result = $3 where run_id = $1 and command_id = $2 and state = 'waiting'", [runId, command, JSON.stringify(next)]);
         await this.journal.event(tx, runId, "review_escalated", { command, from: role, to, deadline: now + ms });

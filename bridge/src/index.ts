@@ -32,7 +32,7 @@ export { pinnedLibraries } from "./libraries.js";
 export type { CallableConnector, LibraryChange, LibraryPublished, LibraryRequest, LibraryResolved, PublishedAgainst, PublishedVersion } from "./library.js";
 export type { Apply, Check06, CheckOptions06, CheckResult06, CheckSubprogram06, SubprogramCheck06, SubprogramInput07, ConnectorBinding, ConnectorDef, ConnectorTool, Criterion06, Def06, Documented, Envelope06, LanguageVersion, LibrariesConfig, LibraryPin, LibrarySource, LibraryVerified, Lock, PatternDef, Program06, Shape06, Slot, SlotArg, WorkflowDef06 } from "./library.js";
 export type { Budget07, Envelope07, Lock07, Promotion, ReportField, ReportStmt, StageStmt, Stmt07, WorkflowDef07 } from "./library.js";
-export type { AttentionFacts, AttentionFactsInput, AttentionField, AttentionReport, AttentionStage, Known } from "./library.js";
+export type { AttentionCount, AttentionEffect, AttentionFacts, AttentionFactsInput, AttentionField, AttentionPlan, AttentionQuestion, AttentionReport, AttentionSiteKind, AttentionStage, AttentionTotals, Known } from "./library.js";
 
 /**
  * A view or a diff of a program that takes the modules besides, last (doors.ts): the Rust's alone, for a program of

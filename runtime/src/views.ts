@@ -30,9 +30,10 @@
 // that came from a model, a tool or a person's answer is shown as untrusted
 // plain content (G09).
 
-import { atLeast, LANGUAGE_06, architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, rolesNamed, semanticDiff, VIEW_FORMAT, type Block, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/bridge";
+import { atLeast, LANGUAGE_06, architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, rolesNamed, semanticDiff, VIEW_FORMAT, type Block, type Budget07, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/bridge";
 import { addressee, eventClass, sectionClass, shows, stepClass, TRACE_KINDS, type Audience, type ViewClass } from "./classes.js";
 import { authorizationId } from "./decisions.js";
+import { ASKS } from "./asks.js";
 import { costDims, type BudgetReport, type ChangesetRow, type EvidenceRow, type HaltRow } from "./journal.js";
 import type { JournalReport } from "./journal-chain.js";
 import type { Runtime } from "./runtime.js";
@@ -640,7 +641,9 @@ async function decisionViews(rt: Runtime, runId: string, events: Event[], comman
 function envelopeView(program: Program, workflow: string, budget: BudgetReport, events: Event[], startedAt: number): EnvelopeView | null {
   const wf = Object.hasOwn(program.defs, workflow) ? program.defs[workflow] : undefined;
   if (wf?.kind !== "workflow" || !wf.envelope) return null;
-  const gives = costDims(wf.envelope.budget);
+  // 0.7: an envelope's `asks` is a dimension of the run's budget too (the runtime's own, not the ledger's).
+  const asks = (wf.envelope.budget as Budget07 | undefined)?.asks;
+  const gives: Record<string, number> = { ...costDims(wf.envelope.budget), ...(typeof asks === "number" ? { [ASKS]: asks } : {}) };
   const amendments: EnvelopeView["amendments"] = [];
   for (const e of events) {
     if (e.type !== "package_amended" || !isObj(e.data)) continue;
