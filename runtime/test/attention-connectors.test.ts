@@ -13,9 +13,14 @@
 // gateways. No network; no secret.
 
 import { CompilerFailure, withCompiler } from "@mandate/bridge/mode";
-import { callableConnectors, check, toolSchemaDigest, type LibrarySource, type Lock, type Program } from "@mandate/bridge";
+import { callableConnectors, check, load, toolSchemaDigest, type LibrarySource, type Lock, type Program } from "@mandate/bridge";
 import { readFileSync } from "node:fs";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { shownPackage, signDecision } from "../src/decisions.js";
+import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
+import { baseOf, type WorkerChecker } from "../src/plan.js";
+import { MxcAdapter } from "../src/sandbox.js";
+import { SimSandboxHost, toolUse } from "../src/sim.js";
 import { Connectors } from "../src/connectors.js";
 import { McpClient, schemaDigest, type McpFetch } from "../src/mcp-client.js";
 import { buildPackage, verifyPackage } from "../src/runtime.js";
@@ -23,7 +28,8 @@ import { Violation } from "../src/signals.js";
 import type { Obj, Value } from "../src/values.js";
 import { MODULES } from "../../bridge/test/wasm-bytes.js";
 import { declaredErp, declaredMailbox, fakeErp, fakeMailbox, FakeMcp } from "./fake-mcp.js";
-import { closeAll, world, type World } from "./helpers.js";
+import { closeAll, planChecker, world, type World } from "./helpers.js";
+import { leadChat } from "./planning.js";
 
 afterAll(closeAll);
 
@@ -32,6 +38,7 @@ const read = (path: string): string => readFileSync(new URL(`../../${path}`, imp
 const ERP = "acme.connectors.erp";
 const MAIL = "acme.connectors.mailbox";
 const KV = "example.kv.kv";
+const KV_PLAN = "test.plan.kv";
 const ZERO = `sha256:${"0".repeat(64)}`;
 
 /** A program's text as the language says: its header. */
@@ -467,5 +474,94 @@ describe("a package of 0.6", () => {
     expect(asked).toHaveBeenCalled();
     expect(asked.mock.results.every((x) => x.type === "return" && x.value === undefined)).toBe(true);
     expect(buildPackage(w.pkg.program as never, w.pkg.lock).hash).toBe(w.pkg.hash);
+  });
+});
+
+// ── a lead's sub-program ────────────────────────────────────────────────
+
+/**
+ * A parent whose envelope grants the connector's tool and whose workflow has no `caps` of its own: the connector can be
+ * called only through the envelope's capability, by a sub-program its lead submits (`plan … within envelope`).
+ */
+const PLANNING = `mandate @ 0.7
+
+module test.plan @ 0.1
+
+use std.{model, tool}
+
+role platform_lead "Platform lead"
+
+type Item = { name: Text }
+
+/// A store of words.
+connector kv = mcp("https://kv.example.com/mcp")
+  version "1.0"
+  class   internal
+{
+  tool all() -> Untrusted<Map<Text, Text>>
+    read_only
+}
+
+capability Kv       = tool.call(kv, all)
+capability ModelStd = model.infer(tier: standard)
+
+agent Lead {
+  role   "Plans what is left."
+  caps   ModelStd
+  budget { tokens: 60k, steps: 30 }
+  skill finish(items: List<Item>) -> Inferred<Text> ! {Model}
+}
+
+workflow W(items: List<Item>) -> Inferred<Text>
+  envelope {
+    owner   platform_lead
+    caps    ModelStd, Kv
+    budget  { tokens: 200k, steps: 400, agents: 12 }
+  }
+{
+  plan Lead.finish(items) within envelope
+}
+`;
+
+/** The sub-program the lead sends: a workflow that reads the store. */
+const SUB = `mandate @ 0.7
+
+module test.plan.plan_1 @ 0.1
+
+use test.plan
+
+workflow Read() -> Untrusted<Map<Text, Text>>
+  caps   Kv
+  budget { tokens: 20k, steps: 40, agents: 4, time: 10m }
+{
+  kv.all()
+}
+`;
+
+describe("a lead's sub-program (0.7)", () => {
+  let checker: WorkerChecker;
+  beforeAll(async () => {
+    checker = await planChecker();
+  }, 60_000);
+  afterAll(async () => {
+    await checker.close();
+  });
+
+  it("calls a connector the parent's envelope grants: the door counts the envelope's capability, so the connector is bound", async () => {
+    const alice = EvidenceSigner.generate();
+    const lock = { modules: {}, members: { alice: { keys: [alice.keyId] } }, roles: { platform_lead: ["alice"] }, connectors: { [KV_PLAN]: { credential: "made-up", url: "https://kv.example.com/mcp", tools: { all: ZERO } } } } as unknown as Lock;
+    const w = await world(PLANNING, { lock, decisions: { keys: new TrustedKeys([alice.publicKey]) }, plan: { checker } });
+    // The compiler counts it, though no workflow's own `caps` and no agent's names it.
+    expect(callableConnectors(w.pkg.program, w.pkg.modules)).toEqual([{ id: KV_PLAN, name: "kv" }]);
+    const ops = Object.entries(load(SUB, "mdt").program!.defs).map(([name, d]) => ({ op: "add", path: `/defs/${name}`, value: d as unknown as Value }));
+    const { chat } = leadChat([[toolUse("s1", "submit_program", { base: baseOf("test.plan", 1, "mandate/0.7" as never), ops })], [toolUse("done", "finish", { result: "done" })]]);
+    w.adapters.loop = { chat, sandbox: new MxcAdapter({ host: new SimSandboxHost(), schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
+    w.adapters.samples = { tool: () => ({ result: { a: "x" } }) } as never;
+    await w.rt.approveEnvelope(w.pkg, signDecision(alice, shownPackage(w.pkg.hash, "platform_lead"), { kind: "envelope", member: "alice", at: new Date(w.adapters.clock.now()) }));
+    const r = await w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { items: [{ name: "a" }] }, runId: "p7", mode: "design" });
+    expect(r.state, JSON.stringify(r.error ?? r.attention)).toBe("succeeded");
+    // The sub-program's read of the store ran, from the sample: its tool is in the journal.
+    const reads = (await w.db.query("select command_id, label, result, inside from commands where run_id = 'p7' and kind = 'read'")) as Array<{ command_id: string; label: string; result: unknown; inside: string | null }>;
+    expect(reads).toEqual([expect.objectContaining({ label: "tool kv.all", result: { a: "x" }, inside: "/defs/W/body/0/value/program/1" })]);
   });
 });
