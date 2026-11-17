@@ -32,6 +32,7 @@ import { isObj, type Obj, type Value } from "../src/values.js";
 import { world as egressWorld, type World as EgressWorld } from "./egress-world.js";
 import { declaredErp, declaredMailbox, INJECTION, type FakeMcp } from "./fake-mcp.js";
 import { closeAll, world, type World } from "./helpers.js";
+import { lockUnder, relabel } from "./relabel.js";
 
 afterAll(closeAll);
 
@@ -44,7 +45,8 @@ function fixtureLibrary(dir: string): LibrarySource {
   return { manifest, files };
 }
 
-const SOURCE = read("fixtures/library/invoices.mdt");
+/** The acceptance program, as the language under test writes it (relabel.ts): of 0.6, or relabelled by test/superset-0.7/. */
+const SOURCE = relabel(read("fixtures/library/invoices.mdt"));
 const LIB = fixtureLibrary("acme.connectors");
 const ERP = "acme.connectors.erp";
 const MAIL = "acme.connectors.mailbox";
@@ -217,7 +219,7 @@ async function acceptance(o: { s?: Servers; transport?: false; matcher?: "loop" 
   const s = o.s ?? servers();
   const ana = EvidenceSigner.generate();
   const ben = EvidenceSigner.generate();
-  const { lock: _format, ...fixture } = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
+  const { lock: _format, ...fixture } = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string });
   // The lock as the fixture writes it, with the digests the servers list and the members' real keys.
   const lock = {
     ...fixture,
@@ -637,7 +639,7 @@ const libraryOf = (c: ReturnType<typeof card>): { reviews: Obj[]; commits: Obj[]
 
 describe("the acceptance program's card", () => {
   it("states the most items, the spend bound against the budget, one batch decision, and an action per accepted invoice", () => {
-    const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock;
+    const lock = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock);
     const r = check(SOURCE, "mdt", { libraries: [LIB], lock });
     expect(r.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(SOURCE.trimEnd().split("\n").length).toBeLessThan(50);
@@ -660,7 +662,7 @@ describe("the acceptance program's card", () => {
 
 describe("the acceptance program's budget", () => {
   it("a budget too small for 60 items is refused: by the check (E0501), and by the runtime at load for a package changed past it; nothing is sent", async () => {
-    const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock;
+    const lock = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock);
     const small = check(SOURCE.replace("spend: 20 USD", "spend: 17 USD"), "mdt", { libraries: [LIB], lock });
     expect(small.diagnostics.filter((d) => d.severity === "error").map((d) => d.code)).toEqual(["MDT-E0501"]);
     expect(check(SOURCE.replace("spend: 20 USD", "spend: 18 USD"), "mdt", { libraries: [LIB], lock }).diagnostics.filter((d) => d.severity === "error")).toEqual([]);

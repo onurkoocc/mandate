@@ -6,6 +6,7 @@ import { check, type LibrarySource, type Modules } from "@mandate/bridge";
 import { build, type Plugin } from "esbuild";
 import { expect } from "vitest";
 import { ISSUE } from "./programs.js";
+import { heldUnder, lockUnder } from "./relabel.js";
 import type { Clock, ModelAdapter } from "../src/adapters.js";
 import { openDb, type Db } from "../src/db.js";
 import { Faults } from "../src/faults.js";
@@ -81,7 +82,9 @@ export async function world(
   src: string,
   o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock; lock?: Lock; realModel?: ModelAdapter; modules?: Modules; decisions?: RuntimeOptions["decisions"]; plan?: RuntimeOptions["plan"]; hostProbe?: RuntimeOptions["hostProbe"]; libraries?: LibrarySource[]; config?: RuntimeOptions["libraries"] } = {},
 ): Promise<World> {
-  // 0.6: the libraries the program imports are given to its check, and carried by its package.
+  // 0.6: the libraries the program imports are given to its check, and carried by its package. In a run of a suite
+  // under another language (relabel.ts) the program is of that language, and its lock the one given for it there.
+  heldUnder(src);
   const r = check(src, "mdt", { ...(o.modules ? { modules: o.modules } : {}), ...(o.libraries ? { libraries: o.libraries } : {}) });
   expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
   const url = process.env["MANDATE_TEST_DATABASE_URL"];
@@ -91,7 +94,7 @@ export async function world(
   const sim = simulate(o);
   if (o.realModel) sim.adapters.model = o.realModel;
   const faults = new Faults();
-  return { ...sim, rt: new Runtime(db, sim.adapters, faults, undefined, { decisions: o.decisions ?? UNSIGNED.decisions, ...(o.plan ? { plan: o.plan } : {}), ...(o.hostProbe ? { hostProbe: o.hostProbe } : {}), ...(o.config ? { libraries: o.config } : {}) }), db, pkg: buildPackage(r.program!, o.lock ?? LOCK, o.modules, o.libraries), faults };
+  return { ...sim, rt: new Runtime(db, sim.adapters, faults, undefined, { decisions: o.decisions ?? UNSIGNED.decisions, ...(o.plan ? { plan: o.plan } : {}), ...(o.hostProbe ? { hostProbe: o.hostProbe } : {}), ...(o.config ? { libraries: o.config } : {}) }), db, pkg: buildPackage(r.program!, lockUnder(o.lock ?? LOCK), o.modules, o.libraries), faults };
 }
 
 const TABLES = ["otel_cursors", "halts", "journal_anchors", "decisions", "changesets", "workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];

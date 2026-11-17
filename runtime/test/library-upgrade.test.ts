@@ -25,6 +25,7 @@ import type { RunRow } from "../src/journal.js";
 import { buildPackage, type Package } from "../src/runtime.js";
 import { Crash, Violation } from "../src/signals.js";
 import { closeAll, world, type World } from "./helpers.js";
+import { relabel } from "./relabel.js";
 
 afterAll(closeAll);
 
@@ -35,7 +36,7 @@ afterAll(() => {
 });
 
 /** A program that uses the library's type, connector and capability in a workflow of its own. */
-const STOCK = `mandate @ 0.6
+const STOCK = relabel(`mandate @ 0.6
 
 module example.stock @ 0.1
 
@@ -49,7 +50,7 @@ workflow Stock() -> Untrusted<List<Item>>
 {
   store.list_items()
 }
-`;
+`);
 
 const ITEMS = [{ id: "a", size: 1 }];
 /** The binding of the library's connector: a design run asks no server, so its digests are never compared. */

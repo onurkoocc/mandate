@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, capsOf, check, domainHash, hashProgram, isProgram06, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { atLeast, capsOf, check, domainHash, hashProgram, isProgram06OrLater, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters, Cost, EgressNeed, RunComponents, RunMode, ToolAdapter } from "./adapters.js";
 import { Connectors, ConnectorWrite, connectorsOf } from "./connectors.js";
@@ -22,7 +22,7 @@ import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { costDims, haltedRefusal, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
-import { buildPackage, isPackage06, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
+import { buildPackage, isPackage06OrLater, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { givenValueProblem, listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
@@ -291,7 +291,7 @@ export class Runtime {
     const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
     // 0.6: what a run is started with holds none of the members the runtime's own values are known by, at any depth,
     // as a person's answer holds none: a Verified value is made by a verify of the run, never handed in.
-    const given = isPackage06(o.pkg) ? givenValueProblem(input) : undefined;
+    const given = isPackage06OrLater(o.pkg) ? givenValueProblem(input) : undefined;
     if (given) throw new Violation(given.reason, `The input of ${o.workflow} is not taken. ${given.message}`);
     for (const p of wf.params) {
       if (!Object.hasOwn(input, p.name)) continue;
@@ -308,7 +308,7 @@ export class Runtime {
     }
     // 0.6: the connectors the package can call, bound by its lock. A run that reaches their servers (`read_only`,
     // `live`) starts only where their requests have a way out, and the proxy is asked for their credentials too.
-    const connectors = isPackage06(o.pkg) ? this.connectorsFor(linked, o.pkg.lock, this.adapters) : undefined;
+    const connectors = isPackage06OrLater(o.pkg) ? this.connectorsFor(linked, o.pkg.lock, this.adapters) : undefined;
     // Every declared tool is bound now, in every mode: one that cannot be (`bad_connector`) starts nothing.
     connectors?.bindAll();
     const reaches = connectors !== undefined && (o.mode ?? "live") !== "design" ? connectors : undefined;
@@ -319,7 +319,7 @@ export class Runtime {
       need.connectors = reaches.credentials();
     }
     // A batch commit step is authorized by policy, never by a person: a policy that hands a person an effect a map's body commits starts nothing.
-    if (isPackage06(o.pkg)) refusePersonInMap(wf, o.authorize);
+    if (isPackage06OrLater(o.pkg)) refusePersonInMap(wf, o.authorize);
     await this.adapters.egress?.ready(need);
     await this.validateBindings(linked, o.workflow);
     await this.validateExecutor(o.pkg);
@@ -328,7 +328,7 @@ export class Runtime {
     const approved = approval ? { package: o.pkg.hash, member: approval.record.member, role: approval.record.role ?? null, key: approval.record.key, decision: approval.decision_id } : undefined;
     // 0.6: what the run runs, so that a remote agent or a component a library or an expansion brings is seen; before
     // 0.6, the program as packaged, as it was.
-    const seen = isPackage06(o.pkg) ? verified.running : undefined;
+    const seen = isPackage06OrLater(o.pkg) ? verified.running : undefined;
     const lowered = this.remoteGuarantees(seen ?? o.pkg.program);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(workflowBounds(wf).budget), costDims(o.limits));
@@ -735,7 +735,7 @@ export class Runtime {
    * by `adapters.connectors`, and a design run's samples come from `adapters.samples`.
    */
   private connectorsFor(program: Program, lock: Lock, adapters: Adapters): Connectors | undefined {
-    if (!isProgram06(program) || !connectorsOf(program).length) return undefined;
+    if (!isProgram06OrLater(program) || !connectorsOf(program).length) return undefined;
     const samples = adapters.samples;
     return new Connectors({ program, lock, transport: adapters.connectors, samples: samples?.tool ? (name) => samples.tool!(name) : undefined });
   }
@@ -768,7 +768,7 @@ export class Runtime {
    */
   private async toolOf(runId: string, effect: string): Promise<{ tool: ToolAdapter | undefined }> {
     const run = await this.journal.run(runId);
-    if (isPackage06(await this.packaged(run.package_hash))) {
+    if (isPackage06OrLater(await this.packaged(run.package_hash))) {
       const loaded = await this.loaded(run.package_hash, run);
       const write = this.connectorsFor(loaded.program, loaded.lock, this.adapters)?.write(effect);
       if (write) return { tool: write };
@@ -784,7 +784,7 @@ export class Runtime {
    */
   private async namesConnector(runId: string, effect: string): Promise<boolean> {
     const run = await this.journal.run(runId);
-    if (!isPackage06(await this.packaged(run.package_hash))) return false;
+    if (!isPackage06OrLater(await this.packaged(run.package_hash))) return false;
     const dot = effect.indexOf(".");
     if (dot <= 0) return false;
     let program: Program;
@@ -958,14 +958,14 @@ export class Runtime {
     const rows = await this.journal.evidence(runId);
     // A waiver (0.6) is held to the review decision it names and the failed record it waives (review.ts); in a run of
     // 0.1 to 0.5 one holds nothing.
-    const v06 = isProgram06(program);
-    const facts = v06 && rows.some((e) => e.method === WAIVER) ? await waiverFacts(this.journal, runId, { contract: contractOf, keys: this.decisionKeys, lock, trusted: this.trusted }) : undefined;
+    const from06 = isProgram06OrLater(program);
+    const facts = from06 && rows.some((e) => e.method === WAIVER) ? await waiverFacts(this.journal, runId, { contract: contractOf, keys: this.decisionKeys, lock, trusted: this.trusted }) : undefined;
     // A verify's own record (0.6) is of the contract whole, and no criterion's check: it holds by its signature.
     const holds = (e: (typeof rows)[number], record: EvidenceRecord): boolean =>
       record.method === WAIVER || e.method === WAIVER
         ? !!facts && record.method === e.method && !waiverProblem(record, facts)
         : record.method === VERIFY || e.method === VERIFY
-          ? v06 && record.method === e.method && record.criterion === WHOLE
+          ? from06 && record.method === e.method && record.criterion === WHOLE
           : !recordProblem(record, { ...e, run: runId }, declared(record), rule) && !approvalProblem(record, decisions, this.decisionKeys, lock, signed);
     return rows.map((e) => ({
       evidence_id: e.evidence_id,
@@ -1081,9 +1081,9 @@ export class Runtime {
     const at = "signed" in i ? named(i.signed) : i;
     // 0.6: an answer holds none of the members the runtime's own values are known by, at any depth: a person's answer
     // that looked like a Verified value would otherwise reach a step that takes one. Refused by name, and the wait stays.
-    const v06 = isPackage06(await this.packaged((await this.journal.run(runId)).package_hash));
+    const from06 = isPackage06OrLater(await this.packaged((await this.journal.run(runId)).package_hash));
     const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "input", i as unknown as Value, { signed, kinds: ["answer"], payload: payloadOf.answer(i.value) }, async () => {
-      const why = v06 ? givenValueProblem(i.value) : undefined;
+      const why = from06 ? givenValueProblem(i.value) : undefined;
       if (why) throw new Refused({ reason: why.reason, message: `The answer is not taken. ${why.message}` }, signed, at.commandId);
       return { state: "succeeded", result: i.value };
     });

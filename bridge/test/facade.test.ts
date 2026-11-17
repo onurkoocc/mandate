@@ -146,6 +146,8 @@ needs("the facade on the Rust compiler", () => {
     expect(differ).toEqual(["LANGUAGE_VERSION", "LANGUAGE_VERSIONS"]);
     expect(RUST_ONLY_LANGUAGES).toEqual(["mandate/0.6", "mandate/0.7"]);
     expect(tables["LANGUAGE_VERSIONS"]).toEqual([...compiler.LANGUAGE_VERSIONS, ...RUST_ONLY_LANGUAGES]);
+    // The bridge's own list of the versions it reads (library.ts), which `atLeast` orders by, is the Rust's.
+    expect(bridge.BRIDGE_LANGUAGE_VERSIONS).toEqual(tables["LANGUAGE_VERSIONS"]);
     expect([compiler.LANGUAGE_VERSION, tables["LANGUAGE_VERSION"]]).toEqual(["mandate/0.5", RUST_ONLY_LANGUAGES.at(-1)]);
   });
 
