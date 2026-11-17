@@ -4,7 +4,8 @@ name: supply-chain
 # that have no CVE, and audits these workflows with zizmor. Runs on every pull
 # request, on main, and daily, so an advisory published after a merge still
 # turns the badge red. Both tools run from images pinned by digest; neither
-# needs an install or a token.
+# needs an install or a token. Exceptions for the osv check live in osv-scanner.toml,
+# each for one advisory and each with an expiry date.
 
 on:
   pull_request:
