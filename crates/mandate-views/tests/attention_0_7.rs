@@ -165,7 +165,7 @@ fn the_invoice_flow_reads_as_the_spec_says() {
     ));
     assert_eq!(
         line(&text, "| accountant | ana "),
-        "| accountant | ana | up to confidential | Decide on the exceptions | Waive or decline the open items of a batch: one decision about the whole batch | 1 decision | 1 day from when it is asked | It goes to finance\\_lead, who has 1 day of their own |"
+        "| accountant | ana | up to confidential | Decide on the exceptions | Waive or decline the open items of the batch (Fits.same may be waived); one decision about up to 20 items | 1 decision | 1 day from when it is asked | It goes to finance\\_lead, who has 1 day of their own |"
     );
     assert_eq!(
         line(&text, "| finance\\_lead | ben "),
@@ -341,6 +341,78 @@ fn an_unbounded_question_says_why_and_the_bound_says_so() {
 }
 
 #[test]
+fn a_verify_row_and_a_review_row_say_what_only_their_facts_hold() {
+    // The contract and the criterion of a verify, the criteria that may be
+    // waived and the items of a review: in the sentence of the row and in
+    // its JSON; every other row has null for them.
+    let v = view(ASKS, "Approving", None);
+    let verify = v
+        .questions
+        .iter()
+        .find(|r| r.kind == SiteKind::Verify)
+        .unwrap();
+    assert_eq!(verify.contract.as_deref(), Some("Approved"));
+    assert!(
+        verify.what.starts_with("Approve the criterion "),
+        "{}",
+        verify.what
+    );
+    assert!(
+        verify.what.contains("of the contract Approved"),
+        "{}",
+        verify.what
+    );
+    let js = verify.to_js();
+    assert_eq!(js.get_member("contract"), &JsValue::from("Approved"));
+    assert_eq!(js.get_member("items"), &JsValue::Null);
+    assert_eq!(js.get_member("waivable"), &JsValue::Null);
+
+    let lock = read_json(VIEW_LOCK).unwrap();
+    let v = view_of_text(&read_text(VIEW).unwrap(), "Settle", Some(&lock));
+    let reviews: Vec<_> = v
+        .questions
+        .iter()
+        .filter(|r| r.kind == SiteKind::Review)
+        .collect();
+    assert_eq!(reviews.len(), 2, "the review and its escalation");
+    let first = reviews[0];
+    assert_eq!(
+        first.what,
+        "Waive or decline the open items of the batch (Fits.same may be waived); one decision about up to 20 items"
+    );
+    assert_eq!(reviews[1].what, "The same decision");
+    let js = first.to_js();
+    assert_eq!(stringify(js.get_member("items")).unwrap(), "20");
+    assert_eq!(
+        stringify(js.get_member("waivable")).unwrap(),
+        "[\"Fits.same\"]"
+    );
+    assert_eq!(js.get_member("contract"), &JsValue::Null);
+    assert_eq!(js.get_member("criterion"), &JsValue::Null);
+    // The same two members are in the whole view's JSON, row by row.
+    let all = stringify(&v.to_js()).unwrap();
+    assert!(all.contains("\"waivable\":[\"Fits.same\"]"), "{all}");
+
+    // A review that no criterion may be waived in, and one nothing bounds.
+    use mandate_check::asks::Detail;
+    use mandate_check::attention::Count;
+    assert_eq!(
+        mandate_views::detail_words(&Detail::Review {
+            items: Count::Finite(1),
+            waivable: vec![]
+        }),
+        "Decline the open items of the batch (no criterion may be waived); one decision about up to 1 item"
+    );
+    assert!(
+        mandate_views::detail_words(&Detail::Review {
+            items: Count::Unbounded,
+            waivable: vec!["A.b".to_owned(), "A.c".to_owned()]
+        })
+        .starts_with("Waive or decline the open items of the batch (A.b, A.c may be waived); one decision about as many items")
+    );
+}
+
+#[test]
 fn rows_say_what_each_kind_asks_with_the_names_the_facts_give() {
     let text = md(ASKS, "Releasing", None);
     assert!(line(&text, "| owner |").contains("Authorize the effect git.merge"));
@@ -355,7 +427,7 @@ fn rows_say_what_each_kind_asks_with_the_names_the_facts_give() {
     assert!(text.contains("Take a case the workflow escalates"));
     assert!(text.contains("Take a delegation that its supervision escalates"));
     let text = md(ASKS, "Approving", None);
-    assert!(line(&text, "| accountant | no lock was given | no lock was given | outside any stage | Approve a criterion").contains("1 day from when it is asked"));
+    assert!(line(&text, "| accountant | no lock was given | no lock was given | outside any stage | Approve the criterion ").contains("1 day from when it is asked"));
     assert!(text.contains("Past the deadline the criterion is unmet"));
 }
 
@@ -478,6 +550,10 @@ fn the_structure_has_its_members_in_order() {
             "deadline_ms",
             "on_no_answer",
             "escalates_to",
+            "contract",
+            "criterion",
+            "items",
+            "waivable",
             "when",
             "what",
             "at_most_text",

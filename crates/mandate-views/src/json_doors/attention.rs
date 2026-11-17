@@ -36,7 +36,8 @@ pub(super) const ATTENTION: &[&str] = &["text", "kind", "opts", "workflow", "for
 ///   "configuration": "…", "uncounted_effects": [ { "effect", "at_most" } ],
 ///   "questions": [ { "kind", "role", "members", "notified", "class", "shown", "known", "stage",
 ///                    "only", "effect", "at_most", "unbounded_because", "deadline_ms",
-///                    "on_no_answer", "escalates_to", "when", "what", "at_most_text",
+///                    "on_no_answer", "escalates_to", "contract", "criterion", "items",
+///                    "waivable", "when", "what", "at_most_text",
 ///                    "deadline", "if_no_answer" } ],
 ///   "reports": [ { "role", "stage", "when", "title", "at_most",
 ///                  "fields": [ { "name", "type", "class", "known", "known_text" } ] } ] }

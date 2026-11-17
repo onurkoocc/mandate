@@ -12,11 +12,12 @@
 //! runtime read) and the lock, and computes nothing the facts hold: every
 //! number is a count, a deadline or a total the facts give, written in words;
 //! every role is a role the facts name, with the members and the class the
-//! lock gives it. What the facts do not carry is not said: the contract a
-//! question asks about, the criterion that may be waived, how many items a
-//! review decides on, and what the run does after a question nobody answered
-//! are not in them, so the view does not show them (a fixed sentence per kind
-//! of question stands in their place, [`what_is_asked`]).
+//! lock gives it. What the facts do not carry is not said: what the run does
+//! after a question nobody answered is not in them, so the view does not show
+//! it. A `verify` row says its contract and criterion and a review row the
+//! criteria that may be waived and how many items it decides on, as the facts
+//! hold them ([`detail_words`]; the other kinds have a fixed sentence,
+//! [`what_is_asked`]).
 //!
 //! # The structure, `mandate/view/0.1`, kind `attention`
 //!
@@ -37,13 +38,13 @@
 //! body, then each `plan`, then the rows of `on budget_exceeded`): `{ kind,
 //! role, members, notified, class, shown, known, stage, only, effect,
 //! at_most, per_time, unbounded_because, deadline_ms, on_no_answer,
-//! escalates_to, when, what, at_most_text, deadline, if_no_answer }`. The last
+//! escalates_to, contract, criterion, items, waivable, when, what, at_most_text, deadline, if_no_answer }`. The last
 //! five are the words the table's cells hold; the others are what the facts and
 //! the lock give. The Markdown and the HTML are made from the same structure
 //! by the document model ([`crate::doc`]), which escapes everything an author
 //! wrote.
 
-use mandate_check::asks::{OnNoAnswer, Only, QuestionFact, SiteKind};
+use mandate_check::asks::{Detail, OnNoAnswer, Only, QuestionFact, SiteKind};
 use mandate_check::attention::{AttentionFacts, Count};
 use mandate_check::reports::known_name;
 use mandate_check::ty::{Level, show};
@@ -175,6 +176,15 @@ pub struct ViewRow {
     pub on_no_answer: OnNoAnswer,
     /// Whether it is a `plan` row.
     pub plan: bool,
+    /// For a `verify`: the contract whose criterion it approves.
+    pub contract: Option<String>,
+    /// For a `verify`: the criterion it approves.
+    pub criterion: Option<String>,
+    /// For a review: the most items its one decision is about.
+    pub items: Option<Count>,
+    /// For a review: the criteria its roles may waive, as
+    /// `Contract.criterion`.
+    pub waivable: Option<Vec<String>>,
     /// The words of the "When" cell.
     pub when: String,
     /// The words of the "What is asked" cell.
@@ -333,6 +343,39 @@ pub fn what_is_asked(kind: SiteKind, effect: Option<&str>) -> String {
     }
 }
 
+/// What a `verify` row or a review row asks, with what the facts say only of
+/// these rows: the criterion and its contract, the criteria that may be waived
+/// and how many items the one decision is about (spec/attention.md, "The
+/// invoice flow"). [`what_is_asked`] is the sentence for the kind alone.
+#[must_use]
+pub fn detail_words(detail: &Detail) -> String {
+    match detail {
+        Detail::Verify {
+            contract,
+            criterion,
+        } => format!(
+            "Approve the criterion {criterion} of the contract {contract}, which the workflow checks"
+        ),
+        Detail::Review { items, waivable } => {
+            let what = if waivable.is_empty() {
+                "Decline the open items of the batch (no criterion may be waived)".to_owned()
+            } else {
+                format!(
+                    "Waive or decline the open items of the batch ({} may be waived)",
+                    waivable.join(", ")
+                )
+            };
+            let about = match items {
+                Count::Finite(n) => format!("up to {}", plural(*n, "item")),
+                Count::Unbounded => {
+                    "as many items as the batch has, which nothing bounds".to_owned()
+                }
+            };
+            format!("{what}; one decision about {about}")
+        }
+    }
+}
+
 /// What happens when nobody answers, one fixed sentence for each outcome of
 /// the facts (exhaustive, no catch-all arm). `deadline_ms` is the deadline
 /// of the role it goes to, for an escalation.
@@ -452,6 +495,10 @@ pub fn attention_view_of(
             unbounded: None,
             deadline_ms: None,
             plan: true,
+            contract: None,
+            criterion: None,
+            items: None,
+            waivable: None,
             when,
             what: what_is_asked(SiteKind::Plan, None),
             at_most: "out of what is left of asks".to_owned(),
@@ -619,7 +666,20 @@ fn row_of(
     let what = if escalated && q.kind == SiteKind::Review {
         "The same decision".to_owned()
     } else {
-        what_is_asked(q.kind, effect.as_deref())
+        match &q.detail {
+            Some(d) => detail_words(d),
+            None => what_is_asked(q.kind, effect.as_deref()),
+        }
+    };
+    let (contract, criterion, items, waivable) = match &q.detail {
+        Some(Detail::Verify {
+            contract,
+            criterion,
+        }) => (Some(contract.clone()), Some(criterion.clone()), None, None),
+        Some(Detail::Review { items, waivable }) => {
+            (None, None, Some(*items), Some(waivable.clone()))
+        }
+        None => (None, None, None, None),
     };
     let at_most = match (q.kind, q.multiplicity) {
         (_, m) if budget => format!("not bounded ({} each time it runs out)", times_words(m)),
@@ -662,6 +722,10 @@ fn row_of(
         unbounded: q.unbounded.map(str::to_owned),
         deadline_ms: q.deadline_ms,
         plan: false,
+        contract,
+        criterion,
+        items,
+        waivable,
         what,
         at_most,
         deadline,
@@ -837,6 +901,13 @@ impl ViewRow {
             )
             .with("on_no_answer", self.on_no_answer.as_str())
             .with("escalates_to", escalates_to)
+            .with("contract", opt_str(self.contract.as_deref()))
+            .with("criterion", opt_str(self.criterion.as_deref()))
+            .with("items", self.items.map_or(JsValue::Null, count_js))
+            .with(
+                "waivable",
+                self.waivable.as_deref().map_or(JsValue::Null, strings),
+            )
             .with("when", self.when.as_str())
             .with("what", self.what.as_str())
             .with("at_most_text", self.at_most.as_str())

@@ -94,8 +94,8 @@ pub use architecture::{
 pub use attention::{
     AttentionView, ViewBound, ViewEffect, ViewField, ViewOwner, ViewReport, ViewRow, ViewStage,
     attention_blocks, attention_doc, attention_doc_blocks, attention_program_doc,
-    attention_section, attention_view, attention_view_of, attention_views_js, has_attention,
-    if_no_answer, known_text, what_is_asked, workflow_names,
+    attention_section, attention_view, attention_view_of, attention_views_js, detail_words,
+    has_attention, if_no_answer, known_text, what_is_asked, workflow_names,
 };
 pub use authority::{
     AuthorityRow, AuthorityView, authority, authority_blocks, authority_pinned, authority_with,
