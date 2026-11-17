@@ -1,0 +1,38 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1903c",
+  "kind": "compile",
+  "title": "Two fields of one report with one name are refused in IR, at the second (a mutation: the field note renamed draft; the text refuses the same as E0121).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#titles",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/3/fields/4/name",
+      "value": "draft"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1903",
+        "path": "/defs/Greet/body/3/fields/4/name",
+        "facts": {
+          "role": "accountant",
+          "problem": "duplicate_field",
+          "field": "draft"
+        }
+      }
+    ]
+  }
+}

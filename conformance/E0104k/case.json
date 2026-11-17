@@ -1,0 +1,45 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104k",
+  "kind": "compile",
+  "title": "A report in the IR of a program of 0.6 is refused: the statements of the schemas of 0.1 to 0.6 are closed (a mutation: one statement added).",
+  "spec": [
+    "spec/attention.md#the-ir",
+    "spec/attention.md#report"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/minimal.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Greet/body/0",
+      "value": {
+        "op": "report",
+        "role": "accountant",
+        "title": "Greeting",
+        "fields": [
+          {
+            "name": "n",
+            "value": {
+              "op": "int",
+              "value": 1
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/Greet/body/0"
+      }
+    ]
+  }
+}

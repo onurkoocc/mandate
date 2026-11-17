@@ -1,0 +1,72 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1904f",
+  "kind": "compile",
+  "title": "A report's field that holds a change set is refused: a field is pure (a mutation: a component added, and the field words lands a change to it).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/core",
+      "value": {
+        "kind": "component",
+        "repo": "acme/erp",
+        "root": "/",
+        "lang": "rust",
+        "owner": "accountant"
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/3/fields/3/value",
+      "value": {
+        "op": "changeset",
+        "plan": {
+          "op": "var",
+          "name": "line"
+        },
+        "members": {
+          "core": {
+            "effect": "git.merge",
+            "args": [
+              {
+                "value": {
+                  "op": "var",
+                  "name": "line"
+                }
+              }
+            ]
+          }
+        },
+        "order": [
+          "core"
+        ],
+        "approver": "accountant"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1904",
+        "path": "/defs/Greet/body/3/fields/3/value",
+        "facts": {
+          "role": "accountant",
+          "field": "words",
+          "problem": "impure",
+          "what": "changeset"
+        }
+      }
+    ]
+  }
+}

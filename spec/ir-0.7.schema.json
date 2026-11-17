@@ -1429,7 +1429,54 @@
             "name",
             "title"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "report"
+            },
+            "role": {
+              "$ref": "#/$defs/Name"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "fields": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "$ref": "#/$defs/ReportField"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "role",
+            "title",
+            "fields"
+          ]
         }
+      ]
+    },
+    "ReportField": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Name"
+        },
+        "value": {
+          "$ref": "#/$defs/Expr"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value"
       ]
     },
     "Verifier": {

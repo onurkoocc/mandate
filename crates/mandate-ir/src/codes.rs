@@ -764,7 +764,25 @@ pub const CODES: &[CodeRow] = &[
     CodeRow {
         code: "MDT-E1902",
         title: "Malformed stage list",
-        explain: "The stages of one body (0.7) have names of their own, the body starts with one when it has any, each is followed by at least one statement, and the statement directly after one is not `on error`. Its title is constant text of 1 to 80 characters (Unicode scalar values, which the schema holds too) with no C0 or C1 control, format character (Cf) or bidirectional control, since a person reads it on an approval card. The fact `problem` says which rule (`duplicate`, `before_first`, `empty`, `on_error`, `title`); a workflow that applies a pattern is held to them on its expansion (spec/attention.md \"`stage`\", \"Titles\").",
+        explain: "The stages of one body (0.7) have names of their own, the body starts with one when it has any, each is followed by at least one statement, and the statement directly after one is not `on error`. Its title is constant text of 1 to 80 characters (Unicode scalar values, which the schema holds too) with no C0 or C1 control, format character (Cf), bidirectional control, line separator (U+2028) or paragraph separator (U+2029), since a person reads it on one line of an approval card. The fact `problem` says which rule (`duplicate`, `before_first`, `empty`, `on_error`, `title`, with `rule` `length`, `control`, `format` or `separator` for a title); a workflow that applies a pattern is held to them on its expansion (spec/attention.md \"`stage`\", \"Titles\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1903",
+        title: "Malformed report",
+        explain: "A `report` (0.7) has a title that follows the title rules of a stage's (1 to 80 characters, no control, format, bidirectional, line or paragraph separator character), fields with names of their own (the text refuses two of one name as E0121, so this is the IR's), and in a pattern a role that is one of the pattern's role slots, which each application binds to a role of its own. The fact `problem` says which (`title`, with `rule` and `char`; `duplicate_field`, with `field`; `role`, with the pattern's role `slots`); a workflow that applies a pattern is held to them on its expansion (spec/attention.md \"`report`\", \"Titles\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1904",
+        title: "Report field not shown",
+        explain: "A field of a `report` (0.7) is shown to a person on the strength of what the compiler says of it, so it is pure and of a type a person can read. Pure: literals, names, fields, lists, sets, text, operators, ranges, records and `switch`, and of calls only the built-in `len`; a delegation, spawn, await, inference, verification, effect, change set, map, plan, escalation, pause, `try`, block, `human.*` call, tool call, function call or any other call is refused at the part that holds it (`problem: \"impure\"`, `what`, `callee`). Its type is `Int`, `Dec`, `Bool`, `Text`, `Money`, `Duration`, `Time`, an enum, an `Option` or a `List` of one of these, or a record of these one level deep, each optionally inside `Verified`, `Inferred` or `Untrusted`; any other type, or one the check does not know, is refused at the field (`problem: \"type\"`, `type`) (spec/attention.md \"What a field may be\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1905",
+        title: "Report out of place",
+        explain: "A `report` (0.7) stands in the body of a workflow or of a pattern, where what it shows is shown a known number of times: not in a map's body, a loop without `max_iter`, a function, an `on error`, `on unmet` or `on budget_exceeded` handler, a test or any other place, and not directly before an `on error`, which would handle the statement before the report. The fact `place` says where it stands. A `report` or a `stage` written in a lead's sub-program is E1705 instead, with the fact `construct`; a sub-program that applies a shape its envelope lists has the pattern's (spec/attention.md \"`report`\", \"Sub-programs and amendments\").",
         reference: Reference::Rust,
     },
 ];
@@ -785,7 +803,13 @@ pub fn iter() -> impl Iterator<Item = &'static CodeRow> {
 /// A slice of 0.7 that adds a code lists it here, and the gates of 0.7 hold
 /// it to a conformance case of 0.7 that expects it; a code of the Rust that
 /// is not listed is of 0.6, and is held to a case of 0.6.
-pub const CODES_0_7: &[&str] = &["MDT-E1901", "MDT-E1902"];
+pub const CODES_0_7: &[&str] = &[
+    "MDT-E1901",
+    "MDT-E1902",
+    "MDT-E1903",
+    "MDT-E1904",
+    "MDT-E1905",
+];
 
 impl CodeRow {
     /// The language version that added the code, for a row of the Rust

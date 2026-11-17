@@ -5,7 +5,8 @@
 //! load → (stop if no program or an error) → link → (Rust: the import checks
 //!      of `crate::imports`) → resolveNames → roleChecks → (Rust, 0.6: the
 //!      shapes of an envelope, `crate::shapes`) → (Rust, 0.7: the stages,
-//!      `crate::stages`) → importedMethods → (Rust,
+//!      `crate::stages`, and the reports, `crate::reports`) →
+//!      importedMethods → (Rust,
 //!      0.6: the patterns and applications of `crate::expand`, and the
 //!      expanded program, which every stage after this one reads)
 //!      → staticCheck (only if no error so far)
@@ -248,6 +249,21 @@ fn with_exact_span(d: Diagnostic, spans: &Spans) -> Diagnostic {
 /// `roleLockChecks` and `moduleLockChecks`).
 #[must_use]
 pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResult {
+    check_shown(text, kind, opts, None)
+}
+
+/// [`check`], and, given `shown`, what the static checks' typing gave each
+/// field of a report of 0.7 ([`crate::statics::Shown`]), written into it:
+/// the one pass of the static checks, which the attention facts read
+/// (`crate::attention`). The result is [`check`]'s, whether `shown` is
+/// given or not.
+#[must_use]
+pub(crate) fn check_shown(
+    text: &str,
+    kind: SourceKind,
+    opts: &CheckOptions<'_>,
+    shown: Option<&mut crate::statics::Shown>,
+) -> CheckResult {
     let loaded = load(text, kind);
     let mut diagnostics = loaded.diagnostics.clone();
     let program_value = match &loaded.program {
@@ -330,6 +346,14 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
     // 0.7: where each stage stands and the stages of each body (E1901,
     // E1902). Rust only; nothing for an older program.
     diagnostics.extend(crate::stages::stage_checks(program, Some(&loaded.spans)));
+    // 0.7: each report's title and role, what its fields may hold, and
+    // where it stands (E1903 to E1905); its role is a role site, held to
+    // E1501 above. Rust only; nothing for an older program.
+    diagnostics.extend(crate::reports::report_checks(
+        program,
+        &linked.defs,
+        Some(&loaded.spans),
+    ));
     // Before 0.5, a method limit an imported 0.5 capability writes would be
     // read as none (E1804).
     let no_modules = Modules::new();
@@ -396,9 +420,15 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
     // Static checks assume every name resolves.
     if !has_errors(&diagnostics) {
         diagnostics.extend(
-            static_check(target, &loaded.spans, &target_linked.defs, opts.claim)
-                .into_iter()
-                .map(back),
+            static_check(
+                target,
+                &loaded.spans,
+                &target_linked.defs,
+                opts.claim,
+                shown,
+            )
+            .into_iter()
+            .map(back),
         );
     }
     // `opts.lock && !hasErrors(diagnostics)`: a lock that is falsy is none.
@@ -469,9 +499,14 @@ fn again_stage(
         Some(&target_linked.defs),
     ));
     again.extend(role_checks(target, Some(spans), Some(&target_linked.defs)));
-    // 0.7: a workflow that applies a pattern has the pattern's stages, held
-    // to the rules of a body written out.
+    // 0.7: a workflow that applies a pattern has the pattern's stages and
+    // reports, held to the rules of a body written out.
     again.extend(crate::stages::stage_checks(target, Some(spans)));
+    again.extend(crate::reports::report_checks(
+        target,
+        &target_linked.defs,
+        Some(spans),
+    ));
     again
 }
 
@@ -519,14 +554,24 @@ fn lock_stage(
 /// constants, functions, contracts, recursion, budgets, the node count), the
 /// authority (capabilities, agents, workflows, par, delegation, map,
 /// effects, envelopes) and the system model (providers, reads, change
-/// sets).
+/// sets). Given `shown`, what its typing gave each field of a report is
+/// written into it (0.7).
 fn static_check(
     program: Program<'_>,
     spans: &Spans,
     defs: &Map,
     claim: Option<&Value>,
+    shown: Option<&mut crate::statics::Shown>,
 ) -> Vec<Diagnostic> {
-    crate::statics::static_check(program, Some(spans), Some(defs), claim)
+    match shown {
+        None => crate::statics::static_check(program, Some(spans), Some(defs), claim),
+        Some(into) => {
+            let (found, typed) =
+                crate::statics::static_check_shown(program, Some(spans), Some(defs), claim);
+            *into = typed;
+            found
+        }
+    }
 }
 
 /// What a check reads of the libraries (`crate::library::for_check`), and

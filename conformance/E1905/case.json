@@ -1,0 +1,50 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1905",
+  "kind": "compile",
+  "title": "A report in a map's body is refused: it would be shown once for every item (a mutation: a report added to the body of the pattern's first map).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/body/4/value/body/0",
+      "value": {
+        "op": "report",
+        "role": "reviewer",
+        "title": "Moved",
+        "fields": [
+          {
+            "name": "n",
+            "value": {
+              "op": "int",
+              "value": 1
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1905",
+        "path": "/defs/BatchWithExceptions/body/4/value/body/0",
+        "facts": {
+          "role": "reviewer",
+          "title": "Moved",
+          "place": "map"
+        }
+      }
+    ]
+  }
+}

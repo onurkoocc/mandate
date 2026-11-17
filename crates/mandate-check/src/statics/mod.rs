@@ -485,7 +485,37 @@ pub(crate) struct Checker<'a> {
     /// wrappers peeled, and how it was known (`human.review` reads the
     /// one a review's source map ends with).
     pub(crate) verified: HashMap<String, (Ty, Level)>,
+    /// 0.7: what the typing gave each field of a report, by the path of
+    /// the field's value: its type, its data class and how it is known
+    /// (spec/attention.md "What is shown"). The attention facts read it
+    /// ([`Shown`]).
+    pub(crate) shown: Shown,
+    /// 0.7: while a report's field is typed, the weakest level of every
+    /// value typed for it (but what `len` counts): a field is known as
+    /// weakly as the weakest thing it is made of, also where the type the
+    /// typing gives it does not say so (a text template is `Text` whatever
+    /// it interpolates, a list is of its first item's type). `None` outside
+    /// a report's field.
+    pub(crate) report_floor: Option<Level>,
 }
+
+/// 0.7: what the typing of a program gave one field of a report.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShownField {
+    /// Its type, [`Val::ty`].
+    pub ty: Ty,
+    /// Its data class, [`Val::cls`].
+    pub cls: DataClass,
+    /// How it is known: the level of its type, the weakest wrapper deciding
+    /// ([`crate::reports::known`]).
+    pub known: Level,
+}
+
+/// 0.7: what the typing of a program gave each field of its reports, by the
+/// path of the field's value (`/defs/W/body/i/fields/j/value`). The pass
+/// that checks a workflow fills it ([`static_check_shown`]); the attention
+/// facts read it (`crate::attention`).
+pub type Shown = HashMap<String, ShownField>;
 
 impl TypeEnv for Checker<'_> {
     fn type_def(&self, name: &str) -> Option<&Value> {
@@ -532,6 +562,27 @@ pub fn static_check(
     match Program::of(&canonical_program) {
         Some(p) => Checker::new(p, &defs, spans, claim).run(),
         None => Vec::new(),
+    }
+}
+
+/// [`static_check`], and what its typing gave each field of a report of
+/// 0.7 ([`Shown`]): the one pass, whose diagnostics are those of
+/// [`static_check`], and the fields it typed on the way.
+#[must_use]
+pub fn static_check_shown(
+    program: Program<'_>,
+    spans: Option<&Spans>,
+    linked: Option<&Map>,
+    claim: Option<&Value>,
+) -> (Vec<Diagnostic>, Shown) {
+    let (canonical_program, defs) = canonical_parts(program, linked);
+    match Program::of(&canonical_program) {
+        Some(p) => {
+            let mut checker = Checker::new(p, &defs, spans, claim);
+            checker.run_passes();
+            (checker.out, checker.shown)
+        }
+        None => (Vec::new(), HashMap::new()),
     }
 }
 
@@ -641,6 +692,8 @@ impl<'a> Checker<'a> {
             recursive: HashSet::new(),
             leads: Vec::new(),
             verified: HashMap::new(),
+            shown: HashMap::new(),
+            report_floor: None,
         }
     }
 
@@ -1206,6 +1259,13 @@ impl<'a> Checker<'a> {
             if s.is_some_and(|s| s.op() == Some(StmtOp::Stage)) {
                 continue;
             }
+            // 0.7: a report is typed, and is no statement of the block's
+            // value either: it changes no value of the run (an `on error`
+            // never follows one, E1905).
+            if let Some(s) = s.filter(|s| s.op() == Some(StmtOp::Report)) {
+                self.report_stmt(s, &mut frame, &path);
+                continue;
+            }
             if let Some(s) = s.filter(|s| s.op() == Some(StmtOp::OnError)) {
                 self.after_error(s, &mut frame, &path, &mut last, bound);
                 continue;
@@ -1280,7 +1340,13 @@ impl<'a> Checker<'a> {
             .enumerate()
             .rev()
             .filter_map(|(i, s)| Some((i, Stmt::of(s)?)))
-            .find(|(_, s)| !typed || !matches!(s.op(), Some(StmtOp::OnError | StmtOp::Stage)));
+            .find(|(_, s)| {
+                !typed
+                    || !matches!(
+                        s.op(),
+                        Some(StmtOp::OnError | StmtOp::Stage | StmtOp::Report)
+                    )
+            });
         let last_index = stmts.len().checked_sub(1);
         let Some((i, tail)) = tail.filter(|(i, _)| typed || Some(*i) == last_index) else {
             return;
@@ -1298,7 +1364,8 @@ impl<'a> Checker<'a> {
                 | StmtOp::Return
                 | StmtOp::OnError
                 | StmtOp::Run
-                | StmtOp::Stage,
+                | StmtOp::Stage
+                | StmtOp::Report,
             )
             | None => {}
         }
@@ -1328,10 +1395,72 @@ impl<'a> Checker<'a> {
                 None
             }
             Some(StmtOp::Expr) => Some(self.expr_or_unknown(s.value(), frame, &sub(path, "value"))),
+            // 0.7: a report's fields are typed, each held to a type a
+            // person can be shown (E1904); it has no value, binds nothing
+            // and opens no scope. Where it stands, its title and what its
+            // fields may hold are `crate::reports`' (E1903 to E1905).
+            Some(StmtOp::Report) => {
+                self.report_stmt(s, frame, path);
+                None
+            }
             // 0.7: a stage has no value, binds nothing and opens no scope;
             // where it stands and what it is named are E1901 and E1902
             // (`crate::stages`).
             Some(StmtOp::Stage) | None => None,
+        }
+    }
+
+    /// 0.7: a `report` (spec/attention.md "`report`"): each field's value
+    /// typed in `frame`, as every expression is, and held to a type a person
+    /// can be shown (E1904, [`crate::reports::not_shown`]). What the typing
+    /// gives of each field, its type and its data class, is kept by the
+    /// field's path ([`Checker::shown`]): the attention facts read it there
+    /// ([`crate::attention`]), so that what a person is told of a field is
+    /// what this pass found, and nothing computed a second way.
+    fn report_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+        let role = s.role().unwrap_or_default();
+        let title = s.title().unwrap_or_default();
+        for (i, f) in s.fields().iter().enumerate() {
+            let Some(f) = mandate_ir::ReportField::of(f) else {
+                continue;
+            };
+            let at = format!("{path}/fields/{i}/value");
+            // The weakest level of what the field is made of: from
+            // verified up, lowered by each value typed for it.
+            let outer = self.report_floor.replace(Level::Verified);
+            let v = self.expr_or_unknown(f.value(), frame, &at);
+            let floor = std::mem::replace(&mut self.report_floor, outer);
+            if let Some(why) = crate::reports::not_shown(&v.ty, self) {
+                let name = f.name().unwrap_or_default();
+                let shown = crate::ty::show(&v.ty);
+                self.report(
+                    "E1904",
+                    format!(
+                        "Field '{name}' of the report \"{title}\" to {role} is of type {shown}, which a person is not shown: {why}. A field is of a type a person can read: Int, Dec, Bool, Text, Money, Duration, Time, an enum, an Option or a List of one of these, or a record of these one level deep, each of them optionally inside Verified, Inferred or Untrusted (spec/attention.md \"report\")."
+                    ),
+                    &at,
+                    Some(
+                        JsObject::new()
+                            .with("role", role)
+                            .with("field", name)
+                            .with("problem", "type")
+                            .with("type", shown.as_str()),
+                    ),
+                );
+            }
+            let typed = crate::reports::known(&v.ty, self);
+            let known = match floor {
+                Some(f) if crate::ty::level_rank(f) > crate::ty::level_rank(typed) => f,
+                _ => typed,
+            };
+            self.shown.insert(
+                at,
+                ShownField {
+                    ty: v.ty,
+                    cls: v.cls,
+                    known,
+                },
+            );
         }
     }
 
@@ -1645,12 +1774,13 @@ impl<'a> Checker<'a> {
     /// blocks, a delegation, effect, inference, verification, map or plan
     /// each, and the body of every function it calls that is not on a
     /// cycle (once per call, so a diamond of calls counts each path). A
-    /// stage of 0.7 is no node: it counts toward no limit
-    /// (spec/attention.md "`stage`").
+    /// stage and a report of 0.7 are no nodes: neither counts toward any
+    /// limit, and a report's pure fields hold nothing that would
+    /// (spec/attention.md "`stage`", "`report`").
     pub(crate) fn count_nodes(&self, stmts: &'a [Value], seen: &[&'a str]) -> f64 {
         let mut n = 0.0;
         for s in stmts.iter().filter_map(Stmt::of) {
-            if s.op() == Some(StmtOp::Stage) {
+            if matches!(s.op(), Some(StmtOp::Stage | StmtOp::Report)) {
                 continue;
             }
             n += 1.0;
@@ -1670,7 +1800,8 @@ impl<'a> Checker<'a> {
                     | StmtOp::OnError
                     | StmtOp::Run
                     | StmtOp::Expr
-                    | StmtOp::Stage,
+                    | StmtOp::Stage
+                    | StmtOp::Report,
                 )
                 | None => {}
             }

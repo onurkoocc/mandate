@@ -174,7 +174,7 @@ pub use schema::{
     ir_schema_0_6, ir_schema_0_7, ir_schema_errors, ir_schema_of, lock_schema, lock_schema_0_6,
     lock_schema_0_7, lock_schema_errors, lock_schema_of,
 };
-pub use stmt::{CallSpec, Pattern, Stmt};
+pub use stmt::{CallSpec, Pattern, ReportField, Stmt};
 pub use tags::{
     DefKind, ExprOp, Language, PatternKind, ReadSource, StmtOp, TemplatePart, TierBy, TypeForm,
     VerifierForm,

@@ -88,6 +88,7 @@
 
 use mandate_ir::{JsObject, JsValue, Value};
 
+mod attention;
 mod authority;
 mod front;
 pub mod input;
@@ -517,7 +518,16 @@ pub static LIBRARY_DOORS: &[Door] = &[
         LIBRARY_NOTE,
         library::authority_signature,
     ),
+    Door::own(
+        "attention_facts",
+        attention::ATTENTION_FACTS,
+        ATTENTION_NOTE,
+        attention::attention_facts,
+    ),
 ];
+
+/// The note of the door of the attention facts (language 0.7).
+const ATTENTION_NOTE: &str = "Language 0.7, which only the Rust compiler reads: the attention facts of a workflow (spec/attention.md, The facts), from the typing of the check that checks it, with the input of the door check and the workflow's name; null when the program does not check. No TypeScript function stands for it, and crates/mandate-testkit/tests/attention_0_7.rs holds it to the fixtures of 0.7.";
 
 /// The library door named `name`.
 #[must_use]

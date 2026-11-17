@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "A03",
+  "kind": "compile",
+  "title": "A lead's sub-program that applies a shape its envelope lists has the stages and the report of the pattern through its expansion, which no lead wrote, and is admitted.",
+  "spec": [
+    "spec/attention.md#sub-programs-and-amendments",
+    "spec/library.md#shapes"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "parent.mdt",
+    "kind": "mdt"
+  },
+  "subprogram": {
+    "workflow": "Run",
+    "defs": {
+      "file": "sub.mdt",
+      "kind": "mdt"
+    },
+    "room": {
+      "left": {
+        "tokens": 50000,
+        "steps": 100,
+        "agents": 10,
+        "spend:USD": 10000000
+      },
+      "time_left_ms": 1800000
+    }
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

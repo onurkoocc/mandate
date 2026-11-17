@@ -335,9 +335,12 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
             "MDT-E1710",
             "MDT-E1711",
             // Then the codes of 0.7 (`CODES_0_7`), after every code of 0.6:
-            // the stages (RL2 of 0.7).
+            // the stages (RL2 of 0.7), the reports (RL3).
             "MDT-E1901",
-            "MDT-E1902"
+            "MDT-E1902",
+            "MDT-E1903",
+            "MDT-E1904",
+            "MDT-E1905"
         ]
     );
     for row in &rust {

@@ -28,7 +28,8 @@ use crate::patch::{GovernanceChange, PatchOp, apply_ops, apply_patch};
 use crate::shapes::{Shape, shapes_of, subprogram_shape_of};
 use crate::stdlib::DataClass;
 use crate::subprogram::{
-    Room, containment, language_of, opened, skeleton, subprogram_shape, subprogram_workflow,
+    Room, containment, language_of, opened, skeleton, subprogram_attention, subprogram_shape,
+    subprogram_workflow,
 };
 
 /// `JSON.stringify(value)`: the text a door checks.
@@ -289,6 +290,9 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         i.number,
         parent_language,
     ));
+    // 0.7: no stage and no report in what the lead wrote (E1705); those of
+    // a listed shape come through its expansion, which this does not read.
+    diagnostics.extend(subprogram_attention(&sub));
     if has_errors(&diagnostics) {
         return Ok(SubprogramCheck::refused(diagnostics));
     }

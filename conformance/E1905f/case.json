@@ -1,0 +1,56 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1905f",
+  "kind": "compile",
+  "title": "A report in a test is refused (a mutation: a test whose body reports).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/tests",
+      "value": {
+        "greets": {
+          "body": [
+            {
+              "op": "report",
+              "role": "accountant",
+              "title": "Moved",
+              "fields": [
+                {
+                  "name": "n",
+                  "value": {
+                    "op": "int",
+                    "value": 1
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1905",
+        "path": "/tests/greets/body/0",
+        "facts": {
+          "role": "accountant",
+          "title": "Moved",
+          "place": "test"
+        }
+      }
+    ]
+  }
+}
