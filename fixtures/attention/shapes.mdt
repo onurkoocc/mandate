@@ -1,0 +1,60 @@
+// A program of language 0.7 whose envelope lists a shape of its own
+// (spec/attention.md "Sub-programs and amendments"): a pattern with stages,
+// a report to its reviewer and a question to the same role. A lead's
+// sub-program that applies it runs them (shapes.plans/noted.mdt): the
+// pattern's text is the program's, which a person approved, so no lead wrote
+// them. Its envelope limits asks, so the sub-program's question comes out of
+// what is left of the run's. It checks; only the Rust compiler reads it.
+
+mandate @ 0.7
+
+module example.attention.shapes @ 0.1
+
+use std.{human, model}
+
+role accountant    "Accountant"
+role platform_lead "Platform lead"
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+agent Writer {
+  role   "Writes one note."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill write(t: Text) -> Inferred<Text> ! {Model}
+}
+
+agent Lead {
+  role   "Plans what is left, and writes sub-programs for it."
+  caps   ModelStd
+  budget { tokens: 20k, steps: 4 }
+  skill finish(t: Text) -> Inferred<Text> ! {Model}
+}
+
+/// Writes a note on a topic, tells the reviewer it did, and asks the
+/// reviewer about it.
+pattern Noted(
+  work:     skill(Text) -> Inferred<Text>,
+  reviewer: role,
+  topic:    const Text
+) -> Untrusted<Text>
+{
+  stage write "Write the note"
+  let w = delegate work(topic)
+  report to reviewer "Note written" { words: len(w) }
+
+  stage ask "Ask about it"
+  human.ask("Is {w} right?", role: reviewer)
+}
+
+/// A lead plans the rest; each sub-program it writes applies Noted.
+workflow Planning(t: Text) -> Inferred<Text>
+  envelope {
+    owner   platform_lead
+    caps    ModelStd
+    budget  { steps: 40, agents: 4, asks: 3 }
+    shapes  [Noted]
+  }
+{
+  plan Lead.finish(t) within envelope
+}

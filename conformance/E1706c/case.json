@@ -1,0 +1,44 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1706c",
+  "kind": "compile",
+  "title": "Under an envelope that limits asks, a sub-program that declares none reserves its static total, and one that does not fit what is left of the run's asks is not admitted.",
+  "spec": [
+    "spec/attention.md#sub-programs-and-amendments",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "subprogram": {
+    "workflow": "Planning",
+    "defs": {
+      "file": "sub.mdt",
+      "kind": "mdt"
+    },
+    "room": {
+      "left": {
+        "steps": 40,
+        "agents": 4,
+        "asks": 0
+      }
+    }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1706",
+        "path": "/defs/Finish",
+        "facts": {
+          "dimension": "asks",
+          "asked": 1,
+          "left": 0
+        }
+      }
+    ]
+  }
+}

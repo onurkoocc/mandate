@@ -183,6 +183,6 @@ pub use text::{
     is_js_whitespace, sort_utf16, trim, trim_end, trim_start, unique_in_order, utf16_len,
 };
 pub use type_expr::{Param, TypeExpr, Variant};
-pub use types::{BUDGET_DIMENSIONS, WorkflowBounds, budget_amount, workflow_bounds};
+pub use types::{BUDGET_DIMENSIONS, WorkflowBounds, budget_amount, budget_asks, workflow_bounds};
 pub use validate::{Loaded, Spans, load_json, nearest_span, validate_ir};
 pub use value::{Int, Map, Value};

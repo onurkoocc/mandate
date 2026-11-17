@@ -17,8 +17,8 @@ best-effort basis.
 | Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | the compiler's part implemented (RL1); the runtime's gates not implemented yet |
 | `stage`: grammar, IR, printer; E1901, E1902 | RL2 | read and checked by the compiler since RL2; the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
 | `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3, but for E1705 for `owner`, which is RL5's; the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
-| `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | not implemented yet |
-| The facts (`attention_facts`) | RL3, RL4 | the door and its stages and reports implemented (RL3, `mandate/attention/0.1`, `vectors/README.md`); the question sites, the effect sites and the totals not implemented yet (RL4) |
+| `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`); the runtime refuses a package that declares `asks` (`unsupported_language`) until its slice B3 |
+| The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
 | `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | not implemented yet |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented but for the acceptance fixture: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program` (RL6); the acceptance fixture not written yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
@@ -221,9 +221,16 @@ nobody.
   wrapper decides, around the value and around its elements or fields, and a
   field is known no better than the weakest value it is made of, where its
   type does not say so: a text that interpolates a model's output, or a list
-  typed by its first item, is a model's output. A count is the exception:
+  typed by its first item, is a model's output. The level travels with the
+  value as its class does: a name a `let` binds is known as what it was bound
+  to, a template no better than the weakest part it interpolates, a list or a
+  record than its weakest item or field, and a function's result no better
+  than what it returns and what its call hands it (so `let k = "{v}"` with `v`
+  a tool's output, then a field `k`, is outside content). A verification
+  starts it again: a verified value is verified. A count is the exception:
   what `len` counts does not lower the level, since a count is the run's own,
-  while the class of what is counted stays the count's class.
+  while the class of what is counted stays the count's class. The same holds
+  for what a question shows (`known`, below).
 
 ### Titles
 
@@ -324,6 +331,18 @@ E1509 brings to the check what the runtime already refuses at load
 (`reserved_method`, [`library.md`](library.md#the-wait-and-the-decision)):
 the methods `verify` and `waiver` are the runtime's own. In a 0.6 program it
 stays a refusal at load only.
+
+**The class of a function's result.** In 0.7 a call of a function is of the
+data class of what the function returns, typed in its body with its
+parameters of their declared types (its last value and every `return`'s),
+as well as of its arguments' class. Before 0.7 it is of its arguments' class
+alone, so a function that reads classified data itself (a `data.read` of an
+environment's declared read) and returns it as an unclassified type such as
+`Text` hands back a value of a lower class than the data, and every rule that
+reads a value's class reads that lower one (E0220 for a model's
+`max_class`, among them). A program of 0.1 to 0.6 is checked as before; in
+0.7 such a value keeps its class, and the rules refuse what they refuse for
+the data itself.
 
 Every new code has at least one conformance case of language `mandate/0.7`,
 a passing program, one patch and the one code expected, and a test fails on a
@@ -426,17 +445,85 @@ Each question site records, beside its count:
 
 | Fact | Holds |
 |---|---|
+| `kind` | Which row of the table above it is: `verify`, `ask`, `escalate`, `pause`, `supervise_escalate`, `effect`, `changeset`, `governance`, `review` or `plan` |
+| `wait` | The wait in its static form (below) |
 | `role` | The role asked, or none |
-| `shown` | The highest data class of what the wait shows: the contract's arguments, the question's text, the review's map outcomes, the effect's parameters |
-| `known` | How what it shows is known: `verified`, `plain`, `model` or `external`, from the level of its type |
+| `shown` | The highest data class of what the wait shows: the contract's arguments, the question's text, the review's map outcomes, the effect's parameters; in a function or a contract, at least the class of what its calls and `verify`s hand it, through every caller |
+| `known` | How what it shows is known: `verified`, `plain`, `model` or `external`, from the level of its type and of what it is made of, through bindings and functions' results (as a report's field, above); in a function or a contract, no better than what its calls and `verify`s hand it |
 | `deadline_ms` | Its deadline, when a constant `deadline:` gives one |
 | `on_no_answer` | What happens when nobody answers: `waits`, `unmet`, `escalates { to, deadline_ms }`, `declined` or `refused_to_lead` |
-| `stage` | The stage it stands in, if any |
+| `stage` | The stage it stands in, if any; for a site in a function or a contract, the stage of its calls when they all stand in one |
 | `multiplicity` | How many times it can be asked |
+| `contract`, `criterion` | A `verify` row only: the contract and the criterion whose approval it is, by their names as the program writes them |
+| `items` | A review's rows only: the most items its one decision is about, the bound of the map whose outcomes it reviews (its `max`, else the envelope's `agents`), or `"unbounded"` |
+| `waivable` | A review's rows only: the criteria its roles may waive, as `Contract.criterion`, in the order of the program (`accept` before `invariant`); empty when the contract has no `waive by` |
 
 A review with `escalate_to` records `escalates` for its first role and
 `declined` for the role it escalates to, and one without `escalate_to`
 records `declined`; a lead's amendment request records `refused_to_lead`.
+A `plans` row records the `path` and the `wait` of the amendment request.
+
+The role a question names is a role definition, and nothing a run computes:
+in 0.7, a `role:` of `human.ask`, `human.approve`, `human(…)` or `supervise
+escalate`, a review's `role:` or `escalate_to:`, or an approval's
+`distinct_from:` whose name a parameter or a binding in scope also has is
+E1501 (`shadowed_by`), since a run would read that name's value instead.
+The rule holds for every definition a question of the program reaches, the
+contracts its `verify`s reach and the functions its calls reach, through
+any number of others, whatever module defines them and whatever language
+that module is written in: a module of 0.1 to 0.6 is checked on its own, or
+imported by a program of its own language, as before, and a program of 0.7
+that reaches such a question is refused where its own text reaches it (the
+`verify` or the call), with the definition, its module and the path in it
+(`definition`, `module`, `at`). E0502 for a cycle in another module's
+definitions, and E1907 for a question in one, are reported in the same way.
+
+**The static form of a wait.** `wait` is the site's IR path in the running
+program and the part the runtime adds for the wait it opens there:
+`/contract/<group>/<criterion>[/all/i]/call` after a `verify` for an
+approval, `/escalate` after a delegation, `/authorize` after an effect or a
+change set's member (`…/members/<m>/authorize`) or a change set,
+`/governance` for an owner's gate that comes before another role's
+authorization (one that takes the place of a policy is at `/authorize`),
+`/amendment` after a `plan` for a lead's amendment request, and nothing for
+`human.ask`, `escalate`, `pause` and a review. `kind` and `wait` name one
+site, but for a review and its `only: on_escalation` row, which share the
+review's wait; a `plans` row's `wait` names it among the plans. A run's
+command id is not this text: it adds a loop's iteration (`@i`), a restarted
+branch's round (`#allN`), a map's item (`[i]`) and a delegation's attempt
+(`#k`, before `/escalate`); a function's site stands under its call
+(`<call>>f/…` for `/defs/f/…`), a contract's under its `verify`
+(`<verify>/contract/require/i/…` and `<verify>/contract/<group>/<criterion>/…`
+for `/defs/C/require/i/…` and `/defs/C/<group>/<criterion>/by/…`), a
+handler's under its episode (`/defs/W/on/i@n/…`), a lead's amendment request
+under the turn and the tool call it is made in
+(`<plan>/step/<n>/tool/<k>/amendment` for `<plan>/amendment`,
+`runtime/src/plan.ts` and `runtime/src/loop.ts`), and a sub-program's under
+its command (`<plan>/program/<n>…`). The runtime tags each wait it opens with
+its static site, its kind and its static wait, and the facts are the list
+those tags are held to.
+
+**Under the runtime's configuration the suffix does not name the row.** The
+table chooses `/governance` or `/authorize` from the role the program names.
+The runtime's configuration (`StartRun.authorize`) may hand an action the
+program leaves to policy to a person, or one a person authorizes to policy
+(an envelope's `approve` it cannot change), and then the suffix of the wait
+the runtime opens is not the one the facts record: `authorization()` in
+`runtime/src/interp.ts` opens `<effect>/governance` for the owner before
+another person's `<effect>/authorize`, and `<effect>/authorize` for the owner
+alone when the action would otherwise go to policy. So a run tags each wait
+from what `authorization()` decides, not from its command id, by this rule:
+the owner's gate of an effect is the `governance` row of that effect's path,
+whichever suffix its wait has; an authorization by a role is the effect's
+row (the change-set member's, the set's): a `questions` row when the static
+total counts it, else the effect's `effects` row. When the role that
+authorizes is the owner, one wait is both, and it is the effect's row. The
+facts serve the rule as they are: among the rows of kind `effect`,
+`changeset` and `governance`, a kind and a path name one row, and every
+effect and every member of a change set has one `effects` row by its path,
+counted or not, a batch commit step's among them; a change set's own
+approval is always a `questions` row, which the configuration does not
+change.
 
 ### Sub-programs and amendments
 
@@ -864,7 +951,9 @@ interface Shown { value: Value | { $masked: DataClass }; class: DataClass; known
   Either way it carries `class` and `known`. The audit view sees every value.
 - **`known`** is the level of the value's type: `verified` for `Verified`,
   `plain` for a value the run computed or was given, `model` for `Inferred`,
-  `external` for `Untrusted`. The weakest wrapper decides.
+  `external` for `Untrusted`. The weakest wrapper decides, and a value is
+  known no better than what it is made of where its type does not say so
+  ([What is shown](#report)).
 - **Where.** In the role view's `waiting`, `reviews` and `reports`; in the
   `WatchRun` projections of `wait_opened` and `report`; in `ListWaits`; and
   in what `mandate decide` and `mandate watch` print.

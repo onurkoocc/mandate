@@ -289,12 +289,14 @@ fn the_door_gives_the_facts_of_the_function_and_null_without_them() {
     let older = read_text("fixtures/library/minimal.mdt").unwrap();
     assert_eq!(call(&older, "Greet"), "null");
     // A program of 0.7 with no stage and no report has facts, and no stage
-    // and no report in them.
+    // and no report in them; after them, the members of the attention bound
+    // (RL4): no question, no effect, no declared asks, and the pause the
+    // budget's running out falls back to.
     let minimal = read_text("fixtures/attention/minimal.mdt").unwrap();
     assert_eq!(
         call(&minimal, "Greet"),
         format!(
-            r#"{{"format":"mandate/attention/0.1","workflow":"Greet","program":"{}","stages":[],"reports":[]}}"#,
+            r#"{{"format":"mandate/attention/0.1","workflow":"Greet","program":"{}","stages":[],"reports":[],"questions":[],"effects":[],"totals":{{"questions":0,"by_role":[],"reports":[]}},"asks":null,"budget_exceeded":[{{"path":"/defs/Greet","wait":"/defs/Greet/on/budget_exceeded","kind":"pause","role":null,"shown":"public","known":"plain","deadline_ms":null,"on_no_answer":"waits","stage":null,"multiplicity":1,"only":"budget_exceeded"}}],"plans":[]}}"#,
             checked(&minimal, None).hashes.unwrap().program
         )
     );

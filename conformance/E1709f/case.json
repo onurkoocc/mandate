@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1709f",
+  "kind": "compile",
+  "title": "An amendment that leaves out the envelope's asks is refused: it would leave the run's limit with nothing above it.",
+  "spec": [
+    "spec/attention.md#sub-programs-and-amendments",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "amendment": {
+    "workflow": "Spare",
+    "patch": [
+      {
+        "op": "remove",
+        "path": "/budget/asks"
+      }
+    ]
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1709",
+        "path": "/defs/Spare/envelope/budget",
+        "facts": {
+          "dimension": "asks",
+          "was": 2,
+          "asked": null
+        }
+      }
+    ]
+  }
+}

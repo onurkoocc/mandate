@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906",
+  "kind": "compile",
+  "title": "A workflow that can ask more questions than its budget's asks is refused: Asking can ask 9, and its budget allows 8 (a mutation: asks 9 becomes 8).",
+  "spec": [
+    "spec/attention.md#the-attention-bound",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Asking/budget/asks",
+      "value": 8
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Asking/budget/asks",
+        "facts": {
+          "workflow": "Asking",
+          "asks": 8,
+          "total": 9
+        }
+      }
+    ]
+  }
+}

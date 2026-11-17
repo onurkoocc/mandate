@@ -70,6 +70,7 @@ impl<'a> Checker<'a> {
             cls: DataClass::Restricted,
             waivable: true,
             silent: true,
+            made: crate::ty::Level::Verified,
         }
     }
 
@@ -106,6 +107,7 @@ impl<'a> Checker<'a> {
             cls: a.cls.max(b.cls),
             waivable: a.waivable || b.waivable,
             silent: a.silent || b.silent || apart,
+            made: crate::ty::weaker_level(a.made, b.made),
         }
     }
 

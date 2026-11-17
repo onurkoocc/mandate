@@ -1,0 +1,16 @@
+// A sub-program the lead of shapes.mdt might write (spec/attention.md
+// "Sub-programs and amendments"): an application of Noted, the shape its
+// parent's envelope lists. It runs the pattern's stages, its report to the
+// accountant and its one question, which its admission reserves of the run's
+// asks: it declares none, so its static total, 1. Only its definitions are
+// the lead's patch; the header is the skeleton's.
+
+mandate @ 0.7
+
+module example.attention.shapes.plan_1 @ 0.1
+
+use example.attention.shapes
+
+workflow Rest = Noted(work: Writer.write, reviewer: accountant, topic: "the rest")
+  caps   ModelStd
+  budget { steps: 4, agents: 1 }

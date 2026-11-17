@@ -37,9 +37,62 @@ pub(super) const ATTENTION_FACTS: &[&str] = &["text", "kind", "opts", "workflow"
 /// Every `path` is in the running program (the expansion, for a workflow
 /// that applies a pattern), the path of the statement a run runs.
 /// `multiplicity` is an integer or `"unbounded"`, `known` one of `verified`,
-/// `plain`, `model`, `external`, `stage` a stage's name or `null`. A later
-/// slice adds members (the question sites, the effect sites, the totals);
-/// these keep their names and meanings.
+/// `plain`, `model`, `external`, `stage` a stage's name or `null`.
+///
+/// After `reports`, the attention bound ([`crate::asks`], RL4), members
+/// added beside those above, which keep their names and meanings:
+///
+/// ```json
+/// { "questions": [ { "path", "wait", "kind", "role", "shown", "known", "deadline_ms",
+///                    "on_no_answer", "escalates"?, "stage", "multiplicity", "only",
+///                    "contract"?, "criterion"?, "items"?, "waivable"? } ],
+///   "effects":   [ { "path", "effect", "multiplicity", "counted", "role", "batch", "stage" } ],
+///   "totals":    { "questions", "by_role": [ { "role", "questions" } ], "reports": [ { "role", "reports" } ] },
+///   "asks":      2,
+///   "budget_exceeded": [ <a question, "only": "budget_exceeded"> ],
+///   "plans":     [ { "path", "wait", "kind": "plan", "role", "shown", "known", "on_no_answer",
+///                    "stage", "multiplicity", "from": "asks_left" } ] }
+/// ```
+///
+/// A `verify` row alone has `contract` and `criterion`, the names of the
+/// contract and the criterion whose approval it is, as the program writes
+/// them; a review's rows alone have `items`, the most items its one decision
+/// is about (the bound of the map it reviews: its `max`, else the envelope's
+/// `agents`; or `"unbounded"`), and `waivable`, the criteria its roles may
+/// waive as `Contract.criterion`, in the order of the program. A `plans`
+/// row's `wait` is `<plan>/amendment`, the static form of its amendment
+/// request (a run's id is `<plan>/step/<n>/tool/<k>/amendment`).
+///
+/// `kind` is one of a closed list, one name for each row of the table of
+/// sites ([`crate::asks::SiteKind`]), which the runtime tags every wait it
+/// opens with: `verify`, `ask`, `escalate`, `pause`, `supervise_escalate`,
+/// `effect`, `changeset`, `governance`, `review`, `plan`. `wait` is the wait
+/// in its static form: the site's IR path and the part the runtime adds
+/// (`/contract/<group>/<criterion>[/all/i]/call`, `/authorize`,
+/// `/governance`, `/escalate`), not a run's command id, which adds
+/// iterations (`@i`, `#allN`, `[i]`, an attempt's `#k`) and stands a
+/// function's site under its call (`<call>>f/…`), a contract's under its
+/// `verify` (`<verify>/contract/…`) and a sub-program's under its command
+/// (`<plan>/program/<n>…`); `kind` and `wait` name one row (a review and its
+/// `only: on_escalation` row share the review's wait). Under the runtime's
+/// configuration an authorization's suffix does not name its row: the
+/// owner's gate is the `governance` row of the effect's path, and an
+/// authorization by a role the effect's `questions` row, else its `effects`
+/// row (spec/attention.md "The static form of a wait"). `on_no_answer` is
+/// one of `waits`, `unmet`, `escalates` (with `escalates: { to,
+/// deadline_ms }`), `declined`, `refused_to_lead`; `only` is `null`,
+/// `on_escalation`, `governance_file` or `budget_exceeded`. A count is an
+/// integer, or the string `"unbounded"`. `asks` is the declared `asks`, or
+/// `null`.
+///
+/// For a lead's sub-program the runtime passes, at its admission, `text`
+/// the sub-program as its check reads it (`opened(sub, parent)`, as JSON,
+/// `kind: "json"`), `opts.modules` with its parent under the parent's
+/// module (and the modules the parent's check is given), `opts.claim` the
+/// claim its check is given (`{ envelope, lead }`), and `workflow` its one
+/// workflow: the facts are then of the program it runs as (`running` of
+/// `check_subprogram`), with the stages, reports and questions of a listed
+/// shape it applies.
 pub(super) fn attention_facts(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, ATTENTION_FACTS)?;
     let text = a.str("text")?;

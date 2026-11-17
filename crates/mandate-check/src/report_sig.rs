@@ -172,7 +172,9 @@ pub fn report_records(program: Program<'_>, linked: &Map) -> Reports {
         .definitions()
         .any(|(_, d)| d.kind() == Some(DefKind::Workflow) && holds_report(d.value()));
     let shown = if typed {
-        crate::statics::static_check_shown(program, None, Some(linked), None).1
+        crate::statics::static_check_shown(program, None, Some(linked), None)
+            .1
+            .shown
     } else {
         crate::statics::Shown::new()
     };

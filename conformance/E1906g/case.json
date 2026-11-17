@@ -1,0 +1,80 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906g",
+  "kind": "compile",
+  "title": "A change set counts 1 for each member's authorization, 1 for each member's owner's gate, and 1 for the set's approver (a mutation: a second change set in Landing).",
+  "spec": [
+    "spec/attention.md#what-counts-as-a-question",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Landing/body/4",
+      "value": {
+        "op": "let",
+        "name": "again",
+        "value": {
+          "op": "changeset",
+          "plan": {
+            "op": "var",
+            "name": "plan"
+          },
+          "members": {
+            "api": {
+              "effect": "git.merge",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "a"
+                  }
+                }
+              ]
+            },
+            "web": {
+              "effect": "git.merge",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "w"
+                  }
+                }
+              ]
+            }
+          },
+          "order": [
+            "api",
+            "web"
+          ],
+          "approver": "architect",
+          "idempotent_by": {
+            "op": "text",
+            "value": "again"
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Landing/budget/asks",
+        "facts": {
+          "workflow": "Landing",
+          "asks": 5,
+          "total": 10
+        }
+      }
+    ]
+  }
+}

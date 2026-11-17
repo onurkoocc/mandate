@@ -1,0 +1,91 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1907a",
+  "kind": "compile",
+  "title": "A question in a function that calls itself, in a workflow that declares asks, is refused beside the recursion: the bound cannot count it (a mutation: confirm calls itself).",
+  "spec": [
+    "spec/attention.md#the-algebra",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/confirm/body",
+      "value": [
+        {
+          "op": "let",
+          "name": "a",
+          "value": {
+            "op": "call",
+            "callee": {
+              "op": "field",
+              "of": {
+                "op": "var",
+                "name": "human"
+              },
+              "name": "ask"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "text",
+                  "value": "Confirm it"
+                }
+              },
+              {
+                "name": "role",
+                "value": {
+                  "op": "var",
+                  "name": "accountant"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "op": "expr",
+          "value": {
+            "op": "call",
+            "callee": {
+              "op": "var",
+              "name": "confirm"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "var",
+                  "name": "t"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0502",
+        "path": "/defs/confirm"
+      },
+      {
+        "code": "MDT-E1907",
+        "path": "/defs/confirm/body/0/value",
+        "facts": {
+          "workflow": "Approving",
+          "kind": "ask",
+          "why": "recursion",
+          "asks": 8
+        }
+      }
+    ]
+  }
+}

@@ -15,8 +15,8 @@
 //! missing against one that is there.
 
 use mandate_ir::{
-    BUDGET_DIMENSIONS, Diagnostic, Expr, JsObject, JsValue, Location, Map, Value, budget_amount,
-    ptr,
+    BUDGET_DIMENSIONS, Diagnostic, Expr, JsObject, JsValue, Language, Location, Map, Value,
+    budget_amount, budget_asks, ptr,
 };
 
 use crate::caps::{CapOptions, CapVal, cap_covers, caps_of, show_cap};
@@ -77,6 +77,57 @@ fn max_class(envelope: &Value) -> Option<&str> {
         .get("spawn")
         .and_then(|s| s.get("max_class"))
         .and_then(Value::as_str)
+}
+
+/// 0.7: E1709 for an amendment whose budget drops `asks`, adds it where the
+/// envelope had none, or lowers it (spec/attention.md "Sub-programs and
+/// amendments"); `at` is the envelope's path.
+fn asks_narrowed(
+    no: &mut impl FnMut(String, &str, JsObject),
+    at: &str,
+    has_budget: bool,
+    before: &Value,
+    after: &Value,
+) {
+    let was = budget_asks(before.get("budget"));
+    let asked = budget_asks(after.get("budget"));
+    match (was, asked) {
+        (Some(b), None) => no(
+            format!(
+                "The amendment's budget names no asks, and the envelope gives {b}. An amendment names every dimension the envelope names."
+            ),
+            &if has_budget {
+                format!("{at}/budget")
+            } else {
+                at.to_owned()
+            },
+            JsObject::new()
+                .with("dimension", "asks")
+                .with("was", b as f64)
+                .with("asked", JsValue::Null),
+        ),
+        (Some(b), Some(a)) if a < b => no(
+            format!(
+                "The amendment gives {a} asks, and the envelope gives {b}. An amendment only raises a budget."
+            ),
+            &format!("{at}/budget/asks"),
+            JsObject::new()
+                .with("dimension", "asks")
+                .with("was", b as f64)
+                .with("asked", a as f64),
+        ),
+        (None, Some(a)) => no(
+            format!(
+                "The amendment limits asks to {a}, and the envelope does not limit it. An amendment adds no limit."
+            ),
+            &format!("{at}/budget/asks"),
+            JsObject::new()
+                .with("dimension", "asks")
+                .with("was", JsValue::Null)
+                .with("asked", a as f64),
+        ),
+        _ => {}
+    }
 }
 
 /// E1709: what `after` takes away from `before`, the envelope of
@@ -178,6 +229,13 @@ pub fn narrowings(
                 .with("was", JsValue::Null)
                 .with("asked", *a as f64),
         );
+    }
+
+    // 0.7: `asks`, the most questions the run may put to people, is a
+    // dimension of its own, not one of the ledger's, held as each of them:
+    // left out, added, or lowered, it narrows the envelope.
+    if opts.language.is_some_and(|l| l.at_least(Language::V0_7)) {
+        asks_narrowed(&mut no, &at, has_budget, before, after);
     }
 
     // How many delegations at once, and how high a data class they may

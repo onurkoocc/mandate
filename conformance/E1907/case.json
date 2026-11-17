@@ -1,0 +1,75 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1907",
+  "kind": "compile",
+  "title": "A question in a loop without max_iter, in a workflow that declares asks, is refused: the bound cannot count it (a mutation: Asking's first question in a loop until a condition).",
+  "spec": [
+    "spec/attention.md#the-algebra",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Asking/body/1",
+      "value": {
+        "op": "loop",
+        "until": {
+          "op": "bool",
+          "value": true
+        },
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "human"
+                },
+                "name": "ask"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "text",
+                    "value": "Is it right?"
+                  }
+                },
+                {
+                  "name": "role",
+                  "value": {
+                    "op": "var",
+                    "name": "accountant"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1907",
+        "path": "/defs/Asking/body/1/body/0/value",
+        "facts": {
+          "workflow": "Asking",
+          "kind": "ask",
+          "why": "loop",
+          "asks": 9
+        }
+      }
+    ]
+  }
+}

@@ -619,6 +619,18 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `L10c` | `mandate publish` of a minor version whose report's highest class rises (internal to confidential) | E1607 |
 | `L10d` | `mandate upgrade` to a version whose workflow's report is taken away: no governance change, written | — |
 | `L10e` | `mandate publish` of a minor version whose pattern addresses its report to its other role slot | E1607 |
+| `E1906` | A workflow whose attention bound is above its budget's `asks` (`fixtures/attention/asks.mdt`, whose workflows declare their exact bounds; a mutation: `asks` 9 becomes 8) | E1906 |
+| `E1906a` to `E1906j` | One question more of each kind of site, against the exact bound: `human.ask`, `escalate`, `pause`, `supervise escalate` (5), a `human.approve` of a criterion, an effect the program hands to a person (with its owner's gate), a change set, the owner's gate of an action that may carry a governance-class file, a review, a review's escalation (a mutation each) | E1906 |
+| `E1906k` to `E1906p` | The algebra: a loop's `max_iter` multiplies, a function counts at each call, `if` takes the larger branch, `supervise restart_all` counts a `par`'s branches twice, a `verify`'s `on unmet` and a statement's `on error` count beside it (a mutation each) | E1906 |
+| `E1907` to `E1907b` | A question in a loop without `max_iter`, in a function that calls itself (with E0502), and in what a recursion through a contract's `require` reaches (with E0502), in a workflow that declares `asks` | E1907 |
+| `S04b` | In 0.7 a cycle of calls through two contracts' `require` is a call cycle | E0502 |
+| `E1501c` | In 0.7 an approval's role that a parameter of its contract also names is refused, since a run reads the role in the contract's scope (a mutation of `fixtures/attention/asks.mdt`) | E1501 |
+| `E1501d` | In 0.7 the same of a contract of another module, of 0.6, that the program's `verify` reaches: refused at the `verify`, with the contract, its module and the place in it (`E1501d/lib.mdt`; a mutation: the contract) | E1501 |
+| `S04c`, `E1907c` | In 0.7 a cycle through a contract of another module, of 0.6, refused where the program reaches it, and with `asks` declared the question the cycle reaches (`cyc.mdt`; a mutation each: the contract) | E0502, E1907 |
+| `E0220h` | In 0.7 a call of a function is of the class of what it returns: a confidential row the function reads and returns as `Text`, handed to a model allowed public data (a mutation) | E0220 |
+| `E1908` to `E1908e` | `asks` in an agent's, a delegation's, a map's, a plan's, a skill's and a function's budget (a mutation each) | E1908 |
+| `E1706c` to `E1706e` | Under an envelope that limits `asks` (the room's `left.asks`): a sub-program whose static total does not fit what is left, one whose declared `asks` does not, and one whose total is unbounded and that declares none | E1706 |
+| `E1709e` to `E1709g` | An amendment that lowers the envelope's `asks`, leaves it out, and adds it to an envelope that had none | E1709 |
 
 Of these, `E1609`, `E1609a` and `E1603b` are cases of 0.7 whose program
 declares an older version: E1609 refuses a program of 0.6 that reads what
@@ -661,13 +673,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 479, passed 479, pending 0
+conformance cases: ran 517, passed 517, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 354 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
+  of them 392 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
 ```
 
-(495 cases: 479 `compile`, 265 of them of language 0.6 and 89 of 0.7, and 16 `journal`; no case
+(533 cases: 517 `compile`, 265 of them of language 0.6 and 127 of 0.7, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

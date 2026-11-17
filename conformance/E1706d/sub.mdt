@@ -1,0 +1,13 @@
+mandate @ 0.7
+
+module example.attention.asks.plan_1 @ 0.1
+
+use example.attention.asks
+
+workflow Finish() -> Untrusted<Text>
+  caps   ModelStd
+  budget { steps: 4, agents: 1, asks: 3 }
+{
+  let w = delegate Writer.write("the rest")
+  human.ask("Is {w} done?", role: accountant)
+}

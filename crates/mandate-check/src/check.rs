@@ -19,7 +19,7 @@
 //! [`crate::doors`].
 
 use mandate_ir::{
-    Diagnostic, JsObject, JsValue, Location, Map, Program, ProgramHashes, Spans, Value, has_errors,
+    Diagnostic, JsObject, JsValue, Location, Program, ProgramHashes, Spans, Value, has_errors,
     hash_program,
 };
 use mandate_syntax::{SourceKind, load};
@@ -259,16 +259,17 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
 }
 
 /// [`check`], and, given `shown`, what the static checks' typing gave each
-/// field of a report of 0.7 ([`crate::statics::Shown`]), written into it:
-/// the one pass of the static checks, which the attention facts read
-/// (`crate::attention`). The result is [`check`]'s, whether `shown` is
-/// given or not.
+/// field of a report of 0.7 and the attention bound of each workflow
+/// ([`crate::statics::Typing`]), written into it: the one pass of the
+/// static checks, which the attention facts and a sub-program's reservation
+/// read (`crate::attention`, `crate::asks`). The result is [`check`]'s,
+/// whether `shown` is given or not.
 #[must_use]
 pub(crate) fn check_shown(
     text: &str,
     kind: SourceKind,
     opts: &CheckOptions<'_>,
-    shown: Option<&mut crate::statics::Shown>,
+    shown: Option<&mut crate::statics::Typing>,
 ) -> CheckResult {
     let loaded = load(text, kind);
     let mut diagnostics = loaded.diagnostics.clone();
@@ -360,6 +361,9 @@ pub(crate) fn check_shown(
         &linked.defs,
         Some(&loaded.spans),
     ));
+    // 0.7: `asks` only in a workflow's budget or an envelope's (E1908).
+    // Rust only; nothing for an older program.
+    diagnostics.extend(crate::asks::asks_checks(program, Some(&loaded.spans)));
     // Before 0.5, a method limit an imported 0.5 capability writes would be
     // read as none (E1804).
     let no_modules = Modules::new();
@@ -426,15 +430,9 @@ pub(crate) fn check_shown(
     // Static checks assume every name resolves.
     if !has_errors(&diagnostics) {
         diagnostics.extend(
-            static_check(
-                target,
-                &loaded.spans,
-                &target_linked.defs,
-                opts.claim,
-                shown,
-            )
-            .into_iter()
-            .map(back),
+            static_check(target, &loaded.spans, target_linked, opts.claim, shown)
+                .into_iter()
+                .map(back),
         );
     }
     // `opts.lock && !hasErrors(diagnostics)`: a lock that is falsy is none.
@@ -560,24 +558,26 @@ fn lock_stage(
 /// constants, functions, contracts, recursion, budgets, the node count), the
 /// authority (capabilities, agents, workflows, par, delegation, map,
 /// effects, envelopes) and the system model (providers, reads, change
-/// sets). Given `shown`, what its typing gave each field of a report is
-/// written into it (0.7).
+/// sets). Given `shown`, what its typing gave each field of a report, and
+/// the attention bound of each workflow, are written into it (0.7).
 fn static_check(
     program: Program<'_>,
     spans: &Spans,
-    defs: &Map,
+    linked: &crate::modules::Linked,
     claim: Option<&Value>,
-    shown: Option<&mut crate::statics::Shown>,
+    shown: Option<&mut crate::statics::Typing>,
 ) -> Vec<Diagnostic> {
-    match shown {
-        None => crate::statics::static_check(program, Some(spans), Some(defs), claim),
-        Some(into) => {
-            let (found, typed) =
-                crate::statics::static_check_shown(program, Some(spans), Some(defs), claim);
-            *into = typed;
-            found
-        }
+    let (found, typed) = crate::statics::static_check_from(
+        program,
+        Some(spans),
+        Some(&linked.defs),
+        claim,
+        &linked.origin,
+    );
+    if let Some(into) = shown {
+        *into = typed;
     }
+    found
 }
 
 /// What a check reads of the libraries (`crate::library::for_check`), and

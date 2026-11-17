@@ -911,6 +911,10 @@ fn budget(b: &Value) -> Printed {
     if b.get("agents").is_some() {
         parts.push(format!("agents: {}", show(b, "agents")));
     }
+    // 0.7: no program before 0.7 has it (its schema closes a budget).
+    if b.get("asks").is_some() {
+        parts.push(format!("asks: {}", show(b, "asks")));
+    }
     Ok(format!("budget {{ {} }}", parts.join(", ")))
 }
 

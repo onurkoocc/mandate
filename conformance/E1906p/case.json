@@ -1,0 +1,68 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906p",
+  "kind": "compile",
+  "title": "A statement with on error counts its own and its handler's questions (a mutation: Handling's delegation asks when it fails).",
+  "spec": [
+    "spec/attention.md#the-algebra",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Handling/body/1",
+      "value": {
+        "op": "on_error",
+        "pattern": {
+          "p": "wild"
+        },
+        "then": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "human"
+            },
+            "name": "ask"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "It failed; what now?"
+              }
+            },
+            {
+              "name": "role",
+              "value": {
+                "op": "var",
+                "name": "accountant"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Handling/budget/asks",
+        "facts": {
+          "workflow": "Handling",
+          "asks": 1,
+          "total": 2
+        }
+      }
+    ]
+  }
+}

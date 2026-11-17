@@ -1272,7 +1272,7 @@ held by what a person writes and by what the Rust writes:
   `diagnostic-vectors.test.ts`, `diff-vectors.test.ts`) skip them, and each checks
   that what it skipped is exactly the directories whose `case.json` names 0.6, read
   as plain JSON, and that there are `RUST_ONLY_CASES` of them
-  (`compiler/test/cases-runner.ts`, 343 today, of 0.6 and 0.7): a case of 0.6 added or taken away
+  (`compiler/test/cases-runner.ts`, 392 today, of 0.6 and 0.7): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
   version, `mandate/0.8`, E0103, whose list has 0.6 and 0.7), `E0140` (a 0.5 lock that carries `libraries`),
@@ -1332,24 +1332,26 @@ same way, by gates of its own beside those of 0.6:
 - **Conformance cases of 0.7**, `"language": "mandate/0.7"`, written by hand and
   skipped and counted by the TypeScript runners as those of 0.6 are
   (`RUST_ONLY_LANGUAGES` is `mandate/0.6` and `mandate/0.7`, and `RUST_ONLY_CASES`
-  counts both, 343 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
+  counts both, 392 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
   unknown field of a 0.7 program, E0104), `S02k` and `S02l` (a 0.7 program with a lock
   of format 0.6, and of 0.7), `E0140d` (an unknown field of a 0.7 lock, E0140), `E1509` to `E1509b`
   (slice RL7), the stages (slice RL2): `A01` to `A01b`, `E0101h`, `E0104h` to `E0104j`, `E1901` to
   `E1901b` and `E1902` to `E1902g`, and the reports (slice RL3): `A02` to `A02b`, `A03`, `E0101i`,
   `E0104k` to `E0104o`, `E0121g`, `E1501b`, `E1502a`, `E1705b`, `E1705c`, `E1903` to `E1903e`, `E1904`
-  to `E1904v` and `E1905` to `E1905g`, and `std.patterns` 2.0.0 (slice RL6): `E1609` to `E1609c`,
-  `E1603b` and `L10` to `L10e` (`conformance/README.md`, "Cases of 0.7").
-- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (six today,
-  `minimal.mdt`, `reports.mdt`, `stages.mdt`, and `batch.mdt`, `fan-out.mdt` and `maker-checker.mdt`,
-  which apply the patterns of `std.patterns` 2.0.0 with their locks; 81 outputs), the digest of each output text, made
+  to `E1904v` and `E1905` to `E1905g`, `std.patterns` 2.0.0 (slice RL6): `E1609` to `E1609c`,
+  `E1603b` and `L10` to `L10e`, and the attention bound (slice RL4): `E1906` to `E1906p`,
+  `E1907` to `E1907b`, `E1908` to `E1908e`, `E1706c` to `E1706e`, `E1709e` to `E1709g`, `E1501c`, `E1501d`, `S04b`, `S04c`, `E1907c` and `E0220h`
+  (`conformance/README.md`, "Cases of 0.7").
+- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (eight today,
+  `asks.mdt`, `minimal.mdt`, `reports.mdt`, `shapes.mdt`, `stages.mdt`, and `batch.mdt`, `fan-out.mdt` and `maker-checker.mdt`,
+  which apply the patterns of `std.patterns` 2.0.0 with their locks; 106 outputs), the digest of each output text, made
   by the code of `golden/0.6.json` (`crates/mandate-testkit/tests/golden_0_7.rs`).
 - **`diagnostics-0.7/`**: the whole result of every compile case of 0.7 and of the
   checks and `load` of every 0.7 program, in the layout of `diagnostics-0.6/`
   (`crates/mandate-testkit/tests/diagnostics_0_7.rs`; the code is shared with
   `diagnostics_0_6.rs`, `tests/rust_diagnostics/`).
 - **`attention-0.7/facts.json`**: the attention facts of every workflow of every 0.7
-  program of `fixtures/attention/` (eight workflows today), as the door `attention_facts`
+  program of `fixtures/attention/` (18 workflows today), and of a sub-program, as the door `attention_facts`
   gives them with the program's modules, `{ "<program>": { "<workflow>": <facts> } }`
   (`crates/mandate-testkit/tests/attention_0_7.rs`, which also holds the door to the
   function, `mandate_check::attention_facts`). Their shape is below ("The attention facts").
@@ -1362,7 +1364,12 @@ output of `golden/0.6.json`), and every compile case of 0.6 whose program declar
 0.6 (251 of 265: the five library cases have no program, and nine cases of 0.6 hold a
 program of another version), with the whole result of its door; only the version's
 text may differ, and the hashes, each only as a renaming. It also checks that every
-code 0.7 adds (`CODES_0_7`: E1509, E1901 to E1905) has a case of 0.7 that expects it.
+code 0.7 adds (`CODES_0_7`: E1509, E1901 to E1908) has a case of 0.7 that expects it.
+`crates/mandate-testkit/tests/asks_0_7.rs` holds the attention bound on generated
+programs (240 programs, 908 counts): a body of the constructs of the table of sites,
+`if`, `switch`, `loop max_iter n`, `par` (`restart_all` nested through calls), `on error`, a contract's `require`, a map's body and calls, against the generator's own count, role by
+role; the body in a loop of k rounds is k times it, an `if` of two bodies the larger,
+a body moved into a function called twice twice it.
 `crates/mandate-testkit/tests/stages_0_7.rs` checks that a stage changes nothing but
 where the statements after it stand: each of those 0.6 programs, relabelled 0.7 and
 with stage markers put into the top level of each body of a workflow written out and
@@ -1432,10 +1439,138 @@ for `MatchAll` of `fixtures/attention/reports.mdt` (the program hash shortened):
   model's output is a model's output), but for a count `len` gives, which is `plain`.
 - Every list is an array, since the canonical form sorts an object's members and the
   order is the order a person reads; a consumer that looks a node up builds its index
-  from `path`. A later slice adds members (the question sites, the effect sites, the
-  totals, the declared `asks`) and changes none of these; a consumer ignores a member it
-  does not know. The facts are no part of the IR or of any hash, and asking for them
-  changes nothing `check` gives.
+  from `path`. The members of the attention bound (RL4, below) came after these, which
+  they did not change; a consumer ignores a member it does not know. The facts are no
+  part of the IR or of any hash, and asking for them changes nothing `check` gives.
+
+After `reports`, the attention bound (spec/attention.md "The attention bound",
+`crates/mandate-check/src/asks.rs`): every question a run can put to a person, every
+effect site, the totals, the declared `asks`, and the rows out of the total. For
+`Planning` of `fixtures/attention/asks.mdt` (a review that escalates, an approval, a
+merge the envelope hands to a person, a `plan`; the program hash, the paths of the
+second review row and the governance row shortened):
+
+```json
+{
+  "questions": [
+    { "path": "/defs/Planning/body/2/value", "wait": "/defs/Planning/body/2/value", "kind": "review",
+      "role": "accountant", "shown": "public", "known": "plain", "deadline_ms": 86400000,
+      "on_no_answer": "escalates", "escalates": { "to": "finance_lead", "deadline_ms": 86400000 },
+      "stage": "review", "multiplicity": 1, "only": null, "items": 4, "waivable": ["Short.short"] },
+    { "path": "…/body/2/value", "wait": "…", "kind": "review", "role": "finance_lead", "shown": "public",
+      "known": "plain", "deadline_ms": 86400000, "on_no_answer": "declined", "stage": "review",
+      "multiplicity": 1, "only": "on_escalation", "items": 4, "waivable": ["Short.short"] },
+    { "path": "/defs/Planning/body/4/value", "wait": "/defs/Planning/body/4/value/contract/accept/owned/call",
+      "kind": "verify", "role": "code_owner", "shown": "public", "known": "plain", "deadline_ms": null,
+      "on_no_answer": "waits", "stage": "merge", "multiplicity": 1, "only": null,
+      "contract": "Ready", "criterion": "owned" },
+    { "path": "/defs/Planning/body/5/value", "wait": "/defs/Planning/body/5/value/authorize", "kind": "effect",
+      "role": "release_manager", "shown": "public", "known": "verified", "deadline_ms": null,
+      "on_no_answer": "waits", "stage": "merge", "multiplicity": 1, "only": null },
+    { "path": "…/body/5/value", "wait": "/defs/Planning/body/5/value/governance", "kind": "governance",
+      "role": "owner", "shown": "public", "known": "verified", "deadline_ms": null, "on_no_answer": "waits",
+      "stage": "merge", "multiplicity": 1, "only": "governance_file" }
+  ],
+  "effects": [
+    { "path": "/defs/Planning/body/5/value", "effect": "git.merge", "multiplicity": 1, "counted": true,
+      "role": "release_manager", "batch": false, "stage": "merge" }
+  ],
+  "totals": {
+    "questions": 5,
+    "by_role": [ { "role": "accountant", "questions": 1 }, { "role": "code_owner", "questions": 1 },
+                 { "role": "finance_lead", "questions": 1 }, { "role": "owner", "questions": 1 },
+                 { "role": "release_manager", "questions": 1 } ],
+    "reports": []
+  },
+  "asks": 5,
+  "budget_exceeded": [
+    { "path": "/defs/Planning", "wait": "/defs/Planning/on/budget_exceeded", "kind": "pause", "role": null,
+      "shown": "public", "known": "plain", "deadline_ms": null, "on_no_answer": "waits", "stage": null,
+      "multiplicity": 1, "only": "budget_exceeded" }
+  ],
+  "plans": [
+    { "path": "/defs/Planning/body/7/value", "wait": "/defs/Planning/body/7/value/amendment",
+      "kind": "plan", "role": "platform_lead", "shown": "public",
+      "known": "model", "on_no_answer": "refused_to_lead", "stage": "finish", "multiplicity": 1,
+      "from": "asks_left" }
+  ]
+}
+```
+
+- `questions`: one row for each place a run can ask, in the order of a depth-first
+  walk; a site of a function or a contract is at its own path in the definition
+  (`/defs/f/body/…`, `/defs/C/require/…`), once, with the times every call of it can
+  reach it in all, the stage of its calls when they all stand in one (else `null`), and
+  the highest class and the weakest level of every call. `kind` is one of a **closed list**,
+  one name for each row of the table of sites, which the runtime tags every wait it
+  opens with: `verify` (a `human.approve` of a criterion, `accept` or `invariant`, of the
+  contract a `verify` checks against), `ask` (`human.ask`), `escalate`, `pause` (without
+  `then`), `supervise_escalate` (`multiplicity` 5 for each run of the delegation),
+  `effect` (an effect the program hands to a person: the envelope's `approve E by r`, an
+  environment's `by human` tier, `owner` for an irreversible one), `changeset` (a
+  member's authorization, at `…/members/<m>`, and the set's approver), `governance` (the
+  owner's gate of an action that may carry a governance-class file: every effect and
+  member but a connector's write tool and a batch commit step, marked `only:
+  "governance_file"`, since only the action's `prepare` says which files it carries),
+  `review` (and its escalation, `only: "on_escalation"`), `plan` (a lead's amendment
+  request, in `plans`). `wait` is the wait in its **static** form: the site's IR path
+  and the part the runtime adds for the wait (`/contract/<group>/<criterion>[/all/i]/call`,
+  `/authorize`, `/governance`, `/escalate`), or nothing; with `kind` it names one row (a
+  review and its `only: "on_escalation"` row share the review's wait), and the runtime
+  tags each wait it opens with this static site. A run's command id is not this text
+  (spec/attention.md "What each question records"): it adds iterations (`@i`, `#allN`,
+  `[i]`, a delegation's attempt `#k` before `/escalate`), a function's site stands under
+  its call (`<call>>f/…`), a contract's under its `verify` (`<verify>/contract/…`), a
+  handler's under its episode (`/defs/W/on/i@n/…`), and a sub-program's under its command
+  (`<plan>/program/<n>…`). `role` the role asked, or `null`; `shown` the highest data
+  class of what it shows (the contract's arguments, the question's text, the review's
+  map outcomes, the effect's parameters, at least the lead's class in a sub-program, and
+  in a function or a contract at least what its calls and `verify`s hand it, through
+  every caller) and `known` how that is known, both as the static checks' typing gave
+  them, with the floor of a report's field; `deadline_ms` from a
+  constant `deadline:`; `on_no_answer` one of `waits`, `unmet` (an approval with a
+  deadline), `escalates` (with `escalates: { to, deadline_ms }`, the escalated deadline
+  counted from the escalation), `declined`, `refused_to_lead`; `multiplicity` as a
+  report's; `only` `null`, `on_escalation` or `governance_file`. A `verify` row alone
+  has `contract` and `criterion`, the names whose approval it is, as written; a review's
+  rows alone have `items`, the most items its one decision is about (the bound of the
+  map it reviews: its `max`, else the envelope's `agents`; or `"unbounded"`), and
+  `waivable`, the criteria its roles may waive as `Contract.criterion`, in the order of
+  the program (`[]` when none); no other row has these members. `known` is no better
+  than what the value is made of, through bindings, templates and functions' results,
+  as a report's field (spec/attention.md "What is shown"). Under the runtime's
+  configuration an authorization's suffix does not name its row: the owner's gate is
+  the `governance` row of the effect's path whichever suffix its wait has, and an
+  authorization by a role the effect's row here, else its `effects` row (one by path).
+- `effects`: every effect site, an `effect` or a change set's member: `effect` its name,
+  `counted` whether the total counts its authorization (the program hands it to `role`),
+  `batch` a batch commit step, which never asks a person whatever the runtime's
+  configuration says. At the start of a run the runtime adds the `multiplicity` of each
+  site with `counted: false` and `batch: false` that its configuration hands to a
+  person.
+- `totals`: `questions` the total `T` (the larger branch of an `if`, so the roles'
+  counts may add up to more), `by_role` `A`, each role by name and `null` (no role)
+  last, `reports` `R`, the reports to each role. A count is an integer, or the string
+  `"unbounded"` (a loop without `max_iter`, a recursion, a count past 2^53 − 1), which no
+  reader takes for a number.
+- `asks`: the `asks` the workflow's budget declares, or its envelope's; `null` without.
+- `budget_exceeded`: the questions of the `on budget_exceeded` handler, or without one
+  the pause the runtime falls back to (at `/defs/<W>`, waiting at
+  `/defs/<W>/on/budget_exceeded`): `only: "budget_exceeded"`, out of the total, asked
+  each time the budget runs out (`multiplicity` per time).
+- `plans`: each `plan`, a row of its own, out of what is left of `asks`: each sub-program
+  is held at its admission (its declared `asks`, or its static total), each amendment
+  request counted when the lead asks it, decided by the envelope's owner. `wait` is
+  `<plan>/amendment`, the static form of the request's wait; a run's command id puts
+  the lead's turn and tool call between, `<plan>/step/<n>/tool/<k>/amendment`.
+
+`facts.json` holds, beside the programs, the facts of a lead's sub-program that applies
+a listed shape (`fixtures/attention/shapes.plans/noted.mdt`, under `Planning` of
+`shapes.mdt`), as the runtime asks for them at its admission: the door given the
+sub-program as its check reads it (`opened(sub, parent)`, `kind: "json"`), its parent
+among `opts.modules`, and `opts.claim` `{ envelope, lead }`; its paths are in the
+program it runs as (`running` of `check_subprogram`), the pattern's stages, its report
+to the role the application binds, and its question.
 
 ## Where the Rust compiler is not held to the TypeScript
 
@@ -1456,7 +1591,7 @@ the compiler's order. The gates that do this:
 | diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
 | diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
 | corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 | `crates/mandate-testkit/tests/corpus.rs` |
-| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 468: the TypeScript's 125, and 265 of language 0.6 and 78 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
+| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 517: the TypeScript's 125, and 265 of language 0.6 and 127 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
 | tool schema digests | the digest `schemaDigest` of `runtime/src/mcp-client.ts` (built to `runtime/dist`) gives for 34 MCP tools written as JSON text (no `outputSchema`, `outputSchema` empty or null, member order, nested and deep schemas, non-ASCII and astral names and strings, members sorted by UTF-16, lone surrogates, numbers JSON writes differently from their text, empty objects, a member given twice), with the canonical text it hashes, and 29 texts the door must refuse; written by `scripts/tool-digest-vectors.mjs` (found by the `scripts/*-vectors.mjs` loop of CI and `docker/run-job.sh`) | 34 tools, 29 refused | `crates/mandate-check/tests/connector_doors.rs` (door `tool_schema_digest`) |

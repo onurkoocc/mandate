@@ -717,6 +717,27 @@ pub const FAMILIES: &[Family] = &[
         ported: true,
         reference: Reference::Rust,
     },
+    Family {
+        glob: "*MDT-E1906*",
+        codes: "E1906",
+        stage: "Rust only: the attention bound of a 0.7 workflow against its declared asks (crates/mandate-check/src/asks.rs), at the end of the static checks, once every definition is typed; on an expansion, reported at the application",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
+        glob: "*MDT-E1907*",
+        codes: "E1907",
+        stage: "Rust only: a question the attention bound cannot count, in a 0.7 workflow that declares asks (crates/mandate-check/src/asks.rs), at the end of the static checks",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
+        glob: "*MDT-E1908*",
+        codes: "E1908",
+        stage: "Rust only: asks in a budget that is neither a workflow's nor an envelope's (asks_checks, crates/mandate-check/src/asks.rs), after the reports",
+        ported: true,
+        reference: Reference::Rust,
+    },
 ];
 
 /// The family of `code` (`MDT-E0120`), when the table has one.

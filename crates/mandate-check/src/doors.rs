@@ -339,7 +339,10 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         c.insert("lead", i.lead.as_str());
         Value::Object(c)
     };
-    let checked = check(
+    // 0.7: the one pass gives the sub-program's attention bound too, which
+    // its admission reserves of the run's `asks`.
+    let mut typing = crate::statics::Typing::default();
+    let checked = crate::check::check_shown(
         &json_text(&view),
         SourceKind::Json,
         &CheckOptions {
@@ -352,6 +355,7 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             linked: reach.is_some() && applies_a_pattern(&sub),
             ..CheckOptions::default()
         },
+        Some(&mut typing),
     );
     // A name the sub-program defines and its parent already has is
     // reported once, at the definition the lead wrote.
@@ -437,6 +441,18 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             .unwrap_or_default();
         if let Some(view_program) = Program::of(&view) {
             let defs = link_reaching(view_program, Some(&modules), reach.as_ref()).defs;
+            // 0.7: what its admission reserves of the run's `asks`.
+            let v0_7 = view_program
+                .language()
+                .is_some_and(|l| l.at_least(mandate_ir::Language::V0_7));
+            let asks = typing
+                .bounds
+                .iter()
+                .find(|b| v0_7 && b.workflow == workflow)
+                .map(|b| crate::subprogram::AsksClaim {
+                    declared: b.declared,
+                    total: b.asks.total,
+                });
             diagnostics.extend(containment(
                 &defs,
                 &workflow,
@@ -445,6 +461,7 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
                 CapOptions {
                     language: view_program.language(),
                 },
+                asks,
             ));
         }
     }
