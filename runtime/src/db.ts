@@ -209,6 +209,22 @@ create table if not exists otel_cursors (
   at bigint not null,
   primary key (endpoint, run_id)
 );
+create table if not exists notify_cursors (
+  channel text not null,
+  run_id text not null,
+  seq integer not null,
+  at bigint not null,
+  primary key (channel, run_id)
+);
+create table if not exists notify_dead (
+  channel text not null,
+  run_id text not null,
+  seq integer not null,
+  attempts integer not null,
+  reason text not null,
+  at bigint not null,
+  primary key (channel, run_id, seq)
+);
 create index if not exists runs_tenant_state on runs (tenant, state);
 `;
 
