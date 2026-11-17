@@ -1209,9 +1209,9 @@ here. A package of 0.1 to 0.5 runs as above.*
 
 - **The compiler** is called through the bridge, as an in-process
   WebAssembly module, for every language version
-  ([`library.md`](library.md#the-bridge)): `MANDATE_COMPILER=rust` (the
-  default), `ts` or `both`. A 0.6 package is refused under `ts`
-  (`unsupported_language`), at load and at a resume or a replay. A failure
+  ([`library.md`](library.md#the-bridge)); there is no other compiler
+  behind the bridge (the modes of 0.6, which could name the TypeScript
+  compiler or compare the two, are gone). A failure
   of the module while a run is driven stops the run for a person
   (`compiler_failed`); at load it refuses the package
   (`load_verification_failed`).

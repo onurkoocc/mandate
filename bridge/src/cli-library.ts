@@ -23,7 +23,6 @@ import {
   libraryPublish,
   libraryUpgrade,
   LOCK_FORMAT_06,
-  NoReference,
   parseStrictJson,
   type Diagnostic,
   type LibrariesConfig,
@@ -175,28 +174,11 @@ function neededDir(io: Io, dir: string | undefined): string {
 }
 
 /**
- * Whether the compiler behind the entry point reads 0.6: asked of the entry point itself (this file, like the
- * command line, reaches the compiler through it alone), whose reader of a libraries member is a refusal by name
- * where it does not.
- */
-function reads06(): boolean {
-  try {
-    librariesConfigProblems({ dir: "." });
-    return true;
-  } catch (e) {
-    if (e instanceof NoReference) return false;
-    throw e;
-  }
-}
-
-/**
  * What a check of a program with `lock` is given: the libraries the lock pins, read from the directory, and the
- * configuration's `libraries`. A lock that pins none reads no configuration and no directory. Where the compiler is
- * the reference (MANDATE_COMPILER=ts), which reads no library, nothing is read either: its check says what it does
- * not read.
+ * configuration's `libraries`. A lock that pins none reads no configuration and no directory.
  */
 export function given(io: Io, a: LibraryArgs, lock: unknown): Given {
-  if (!pinsLibraries(lock) || !reads06()) return { libraries: [] };
+  if (!pinsLibraries(lock)) return { libraries: [] };
   const c = config(io, a);
   const dir = librariesDir(a, c);
   return { libraries: dir !== undefined ? pinnedIn(io.fs, lock, dir) : [], ...(c?.libraries ? { config: c.libraries } : {}) };
@@ -344,18 +326,13 @@ function publish(io: Io, a: LibraryArgs, usage: () => Stop): number {
 /**
  * Runs `mandate add`, `upgrade` or `publish` and gives its exit status: 0 when the lock or the version was written,
  * 1 when a diagnostic is an error or nothing was written, 2 on a usage error or a file that cannot be read or
- * written. Where the compiler is the reference (MANDATE_COMPILER=ts), which reads no library, the command is refused
- * by name, with 2.
+ * written.
  */
 export function libraryCommand(cmd: "add" | "upgrade" | "publish", a: LibraryArgs, io: Io, usage: () => Stop): number {
   try {
     return cmd === "publish" ? publish(io, a, usage) : add(io, a, cmd === "upgrade", usage);
   } catch (e) {
     if (e instanceof Stop) return e.code;
-    if (e instanceof NoReference) {
-      io.err(`mandate: ${e.message}\n`);
-      return 2;
-    }
     throw e;
   }
 }

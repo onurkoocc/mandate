@@ -1,16 +1,14 @@
-// `both` mode: every call of a door-backed function asks the two compilers and compares what they give. The Rust's
-// result is what the caller gets, so that `both` is `rust` with the TypeScript as its witness; a difference throws
-// a CompilerDivergence that names the function and shows the two, and is kept besides, so that a caller that
-// catches it does not hide it (the test setup of the bridge and of the runtime fails a test that made one).
+// Test support: how the Rust compiler's answers are held to the reference compiler's, in bridge/test/roundtrip.test.ts
+// and bridge/test/facade.test.ts. Nothing in the bridge itself compares: one compiler, the Rust's, answers.
 //
-// The two agree when both give the same value (same.ts: the same kinds, members in the same order, Maps, Sets and
-// undefined told apart), or both throw: the TypeScript throws where the Rust's door refuses its input (`bad_input`,
-// which rust.ts throws as an Error), and where the TypeScript throws an Error of its own making (not a TypeError of
-// an input outside its types) the two messages are the same. A CompilerFailure of the Rust is not a refusal: it is
-// thrown as it is, in `both` as in `rust`.
+// A call is asked of the two compilers and what they give is compared. The two agree when both give the same value
+// (same.ts: the same kinds, members in the same order, Maps, Sets and undefined told apart), or both throw: the
+// TypeScript throws where the Rust's door refuses its input (`bad_input`, which rust.ts throws as an Error), and
+// where the TypeScript throws an Error of its own making (not a TypeError of an input outside its types) the two
+// messages are the same.
 //
-// What the TypeScript cannot be asked: an input of language 0.6 (`isV06`, the one place that says what that is),
-// which only the Rust reads. The TypeScript is not run for it, and the call is counted under `language-0.6`.
+// What the TypeScript cannot be asked: an input of language 0.6 (`LANGUAGE_06`, the one place that says what that
+// is), which only the Rust reads.
 //
 // What the two are known to answer differently: the entries of vectors/README.md, "Where the Rust compiler is not
 // held to the TypeScript", each a named rule below that says which functions and which shape of input or outcome
@@ -18,10 +16,9 @@
 // after) or covers (on the inputs of its shape, the outcomes are not compared). Each counts the calls it excused,
 // and `exemptionCounts()` gives the counts; no other difference is excused.
 
-import { writeSync } from "node:fs";
-import { DOOR_BACKED, type DoorBacked } from "./doors.js";
+import { DOOR_BACKED, type DoorBacked } from "../src/doors.js";
 import { difference } from "./same.js";
-import { toWellFormed } from "./text.js";
+import { toWellFormed } from "../src/text.js";
 
 /** What one compiler did with a call: gave a value, or threw. */
 export type Outcome = { value: unknown } | { threw: unknown };
@@ -49,27 +46,9 @@ export function takeDivergences(): CompilerDivergence[] {
   return divergences.splice(0);
 }
 
-/** Keeps a divergence another thread found (a worker's check, mode.ts). */
-export function keepDivergence(d: CompilerDivergence): void {
-  keep(d);
-}
-
-let watching = false;
-
-/**
- * Keeps a divergence, and makes sure a process that ends with one still kept says so: a child process (the bundled
- * command line, a verifier) whose code caught it ends with exit status 70 and the divergences on its standard error,
- * so the test that started it sees it fail. A test file's own divergences are taken by its setup after each test.
- */
+/** Keeps a divergence, so that a test that caught it does not hide it: the divergences since the last take. */
 function keep(d: CompilerDivergence): void {
   divergences.push(d);
-  if (watching) return;
-  watching = true;
-  process.on("exit", (code) => {
-    if (!divergences.length) return;
-    writeSync(2, `mandate bridge: ${divergences.length} call(s) the TypeScript and the Rust compilers answered differently, which nothing took:\n${divergences.map((x) => x.message).join("\n")}\n`);
-    if (code === 0) process.exitCode = 70;
-  });
 }
 
 // ── the input of language 0.6 ───────────────────────────────────────────
@@ -404,18 +383,6 @@ const counts: Record<string, number> = Object.fromEntries([...EXEMPTIONS.map((e)
 /** How many calls each exemption excused, how many calls of language 0.6 skipped the TypeScript, how many were compared. */
 export function exemptionCounts(): Record<string, number> {
   return { ...counts };
-}
-
-/** Adds a worker's counts (mode.ts). */
-export function addCounts(more: Record<string, number>): void {
-  for (const [k, n] of Object.entries(more)) if (Number.isSafeInteger(n)) counts[k] = (counts[k] ?? 0) + n;
-}
-
-/** The counts since they were last taken, taken: what a worker sends the thread that started it. */
-export function takeCounts(): Record<string, number> {
-  const out = Object.fromEntries(Object.entries(counts).filter(([, n]) => n > 0));
-  for (const k of Object.keys(counts)) counts[k] = 0;
-  return out;
 }
 
 /** Counts one use of a rule outside a call of the facade: the test of the constants (`tables`). */

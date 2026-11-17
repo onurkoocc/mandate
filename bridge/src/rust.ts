@@ -1,5 +1,6 @@
-// The Rust side of the facade: every door-backed function (doors.ts) with the name and the signature of its
-// TypeScript counterpart (ts.ts), answered by the door of the Rust compiler's module (wasm/call.ts).
+// The facade: every door-backed function (doors.ts) with the name and the signature of its TypeScript counterpart
+// (ts.ts, which gives the signatures and nothing else here), answered by the door of the Rust compiler's module
+// (wasm/call.ts).
 //
 // Its arguments become the door's input, one member a parameter, by the parameter's name: an argument that is
 // undefined is left out (the door then takes the parameter's default, as the TypeScript does), a Set is sent as an
@@ -15,8 +16,9 @@
 // What the request cannot carry is a CompilerFailure too (`unrepresentable`), and is never changed to fit, but in
 // one place: a document given to `toMarkdown` or `toHtml` can hold text a model wrote, and a lone UTF-16 surrogate
 // in it, which a request cannot hold, is sent as U+FFFD (the TypeScript writes it through as it is). That is the
-// one difference of the rendering functions, named in compare.ts (`rendering-lone-surrogate`).
+// one difference of the rendering functions, named in vectors/README.md ("A lone UTF-16 surrogate in a document").
 
+import type { CODES as ReferenceCodes } from "@mandate/compiler";
 import type * as ts from "./ts.js";
 import { DOOR_BACKED, type DoorBacked } from "./doors.js";
 import { toWellFormed } from "./text.js";
@@ -139,3 +141,21 @@ export const cardDoc = door<typeof ts.cardDoc>("cardDoc", { output: orUndefined 
 export const acsTarget = door<typeof ts.acsTarget>("acsTarget");
 export const toMarkdown = door<typeof ts.toMarkdown>("toMarkdown", { prepare: { doc: wellFormed } });
 export const toHtml = door<typeof ts.toHtml>("toHtml", { prepare: { doc: wellFormed } });
+
+/**
+ * CODES: the module's table of codes (the door `codes`), which explains every code the Rust gives, those it has from
+ * language 0.6 on included; read when it is first looked into, and kept.
+ */
+export function rustCodes(): typeof ReferenceCodes {
+  let table: Record<string, unknown> | undefined;
+  const rows = (): Record<string, unknown> => (table ??= rustCall("codes", {}) as Record<string, unknown>);
+  return new Proxy({} as typeof ReferenceCodes, {
+    get: (_t, k) => (typeof k === "string" && Object.hasOwn(rows(), k) ? rows()[k] : undefined),
+    has: (_t, k) => typeof k === "string" && Object.hasOwn(rows(), k),
+    ownKeys: () => Reflect.ownKeys(rows()),
+    getOwnPropertyDescriptor: (_t, k) => {
+      const d = Reflect.getOwnPropertyDescriptor(rows(), k);
+      return d ? { ...d, configurable: true } : undefined;
+    },
+  });
+}
