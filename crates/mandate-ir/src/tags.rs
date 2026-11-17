@@ -190,6 +190,7 @@ tags! {
         Run = "run",
         Expr = "expr",
         Stage = "stage",
+        Report = "report",
     }
 }
 
@@ -197,8 +198,8 @@ impl StmtOp {
     /// The language version that added the statement. Every statement of
     /// the schema of 0.1 to 0.5 is of 0.1 (`SINCE.ops` in `validate.ts`
     /// lists none), and 0.6 adds none; a statement 0.7 adds
-    /// (spec/attention.md: `stage`) is of 0.7, and the schemas of 0.1 to 0.6
-    /// do not have it.
+    /// (spec/attention.md: `stage`, `report`) is of 0.7, and the schemas of
+    /// 0.1 to 0.6 do not have it.
     #[must_use]
     pub const fn since(self) -> Language {
         match self {
@@ -210,7 +211,7 @@ impl StmtOp {
             | StmtOp::OnError
             | StmtOp::Run
             | StmtOp::Expr => Language::V0_1,
-            StmtOp::Stage => Language::V0_7,
+            StmtOp::Stage | StmtOp::Report => Language::V0_7,
         }
     }
 }

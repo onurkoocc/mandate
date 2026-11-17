@@ -266,6 +266,53 @@ pub fn subprogram_shape(
     out
 }
 
+/// 0.7, E1705: what a sub-program may show (spec/attention.md "What a
+/// sub-program may show"). A `stage` or a `report` written in the
+/// sub-program's own text is refused, each at its place, with the fact
+/// `construct` (`stage`, `report`): what a person is shown is written by the
+/// program's author and named on the approved card, never by a lead. A
+/// sub-program whose workflow applies a pattern the envelope's `shapes`
+/// lists has that pattern's stages and reports through its expansion, which
+/// no lead wrote: this reads the sub-program as the lead wrote it, never its
+/// expansion. Nothing for a sub-program older than 0.7, whose schema has
+/// neither.
+#[must_use]
+pub fn subprogram_attention(sub: &Value) -> Vec<Diagnostic> {
+    let language = sub
+        .get("language")
+        .and_then(Value::as_str)
+        .and_then(Language::from_tag);
+    if !language.is_some_and(|l| l.at_least(Language::V0_7)) {
+        return Vec::new();
+    }
+    let mut out: Vec<Diagnostic> = Vec::new();
+    let mut entries: Vec<(&str, &Value)> = sub
+        .get("defs")
+        .and_then(Value::as_object)
+        .map(|d| d.iter().collect())
+        .unwrap_or_default();
+    entries.sort_by(|(a, _), (b, _)| compare_utf16(a, b));
+    for (name, d) in entries {
+        let at = ptr(&[&"defs", &name]);
+        for (construct, what) in [("stage", "a stage"), ("report", "a report")] {
+            let mut found: Vec<String> = Vec::new();
+            nodes(d, construct, &at, &mut found);
+            sort_utf16(&mut found);
+            for path in found {
+                out.push(diagnostic(
+                    "E1705",
+                    format!(
+                        "A sub-program cannot write {what} ('{name}'): what a person is shown is written by the program a person approved, and a sub-program shows only the stages and reports of a pattern its envelope's shapes list (spec/attention.md \"Sub-programs and amendments\")."
+                    ),
+                    &path,
+                    JsObject::new().with("def", name).with("construct", construct),
+                ));
+            }
+        }
+    }
+    out
+}
+
 /// The name of a sub-program's one workflow, once [`subprogram_shape`] has
 /// passed it: `subprogramWorkflow(sub)`, the first definition (in the order
 /// of `Object.keys`) that is a workflow.

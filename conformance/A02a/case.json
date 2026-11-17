@@ -1,0 +1,20 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "A02a",
+  "kind": "compile",
+  "title": "In a program of 0.7, report and to are ordinary names wherever a report's shape does not follow them: a field, a parameter, a variable at the start of a statement.",
+  "spec": [
+    "spec/attention.md#version-gating",
+    "spec/attention.md#report"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "text": "mandate @ 0.7\n\nmodule example.attention.names @ 0.1\n\ntype Note = { report: Text, to: Text }\n\nfn title_of(report: Note) -> Text ! {} {\n  report.to\n}\n\nfn next(report: Int, to: Int) -> Int ! {} {\n  let n = report + to\n  report\n}\n",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

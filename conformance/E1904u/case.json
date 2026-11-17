@@ -1,0 +1,60 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1904u",
+  "kind": "compile",
+  "title": "A report's field of a type a person is not shown, a range, whose type the check does not know, is refused (a mutation: the field words).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/3/fields/3/value",
+      "value": {
+        "op": "range",
+        "from": {
+          "op": "int",
+          "value": 1
+        },
+        "to": {
+          "op": "int",
+          "value": 3
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1904",
+        "path": "/defs/Greet/body/3/fields/3/value",
+        "facts": {
+          "role": "accountant",
+          "field": "words",
+          "problem": "type",
+          "type": "?"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Greeted/accept/said/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

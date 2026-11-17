@@ -331,8 +331,9 @@ impl<'a> Subst<'a> {
                         bound.push(n.to_owned());
                     }
                 }
-                // Bind nothing for what follows; a stage of 0.7 opens no
-                // scope either (spec/attention.md "`stage`").
+                // Bind nothing for what follows; a stage and a report of
+                // 0.7 open no scope either (spec/attention.md "`stage`",
+                // "`report`").
                 Some(
                     StmtOp::If
                     | StmtOp::Loop
@@ -340,7 +341,8 @@ impl<'a> Subst<'a> {
                     | StmtOp::OnError
                     | StmtOp::Run
                     | StmtOp::Expr
-                    | StmtOp::Stage,
+                    | StmtOp::Stage
+                    | StmtOp::Report,
                 )
                 | None => {}
             }
@@ -834,6 +836,36 @@ impl<'a> Subst<'a> {
             // 0.7: a stage is copied as the pattern writes it: its name and
             // its title are the pattern's, and no slot stands in either.
             "stage" => return v.clone(),
+            // 0.7: a report's role is one of the pattern's role slots
+            // (E1903), and the role the application binds to it takes its
+            // place; its fields' expressions are substituted as any are,
+            // and its title is the pattern's (spec/attention.md "`report`").
+            "report" => {
+                let bound = v
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .and_then(|r| self.binding(r))
+                    .and_then(|b| match &b.bound {
+                        Bound::Role(r) => Some((b, r.clone())),
+                        _ => None,
+                    });
+                if let Some((b, _)) = bound {
+                    self.arg(&sub(path, "role"), b, false);
+                }
+                let mut out = Map::new();
+                for (k, x) in m.iter() {
+                    let value = match k {
+                        "role" => match &bound {
+                            Some((_, r)) => Value::from(r.as_str()),
+                            None => x.clone(),
+                        },
+                        "op" | "title" => x.clone(),
+                        _ => self.node(x, &sub(path, k), &sub(pp, k), scope, d1),
+                    };
+                    out.insert(k, value);
+                }
+                return Value::Object(out);
+            }
             _ => {}
         }
         // Every other statement and expression, member by member; names and

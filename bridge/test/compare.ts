@@ -95,6 +95,20 @@ function text06(text: unknown, kind?: unknown): boolean {
 }
 /** Options with a `language`, a `lock` or `modules` of 0.6 or later. */
 const opts06 = (o: unknown): boolean => obj(o) && (rustOnly(o["language"]) || lock06(o["lock"]) || modules06(o["modules"]));
+/** The statements only language 0.7 has (spec/attention.md "The IR"). */
+const STMTS_07 = new Set(["stage", "report"]);
+/**
+ * Definitions that hold a statement only 0.7 has, anywhere: the definitions of a program of 0.7, which carry no
+ * language of their own. A report names the role it is addressed to (a role site), which the reference compiler
+ * does not read.
+ */
+function defs07(v: unknown, depth = 0): boolean {
+  if (depth > 128) return false;
+  if (Array.isArray(v)) return v.some((x) => defs07(x, depth + 1));
+  if (!obj(v)) return false;
+  if (typeof v["op"] === "string" && STMTS_07.has(v["op"])) return true;
+  return Object.values(v).some((x) => defs07(x, depth + 1));
+}
 /** A capability, or a list of them, of a constructor only 0.6 and later have, anywhere in `v`. */
 function caps06(v: unknown, depth = 0): boolean {
   if (depth > 8) return false;
@@ -123,7 +137,8 @@ export const RUST_ONLY_INPUT: Record<DoorBacked, (a: unknown[]) => boolean> = {
   link: (a) => program06(a[0]) || modules06(a[1]),
   linkedProgram: (a) => program06(a[0]) || modules06(a[1]),
   references: () => false,
-  rolesNamed: () => false,
+  // Definitions have no language, but a `stage` or a `report` among them is 0.7's (a report is a role site).
+  rolesNamed: (a) => defs07(a[0]),
   programRef: (a) => program06(a[0]),
   leadClasses: (a) => program06(a[0]),
   workflowBounds: (a) => caps06(a[0]),

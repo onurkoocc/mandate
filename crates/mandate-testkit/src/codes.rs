@@ -689,6 +689,27 @@ pub const FAMILIES: &[Family] = &[
         ported: true,
         reference: Reference::Rust,
     },
+    Family {
+        glob: "*MDT-E1903*",
+        codes: "E1903",
+        stage: "Rust only: the reports of a 0.7 program, each title, the names of its fields and a pattern's role slot (report_checks, crates/mandate-check/src/reports.rs), after the stages, and again on what an expansion writes",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
+        glob: "*MDT-E1904*",
+        codes: "E1904",
+        stage: "Rust only: the fields of a 0.7 report, pure (report_checks, crates/mandate-check/src/reports.rs, after the stages and again on an expansion) and of a type a person is shown (the static checks' typing, statics::report_stmt)",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
+        glob: "*MDT-E1905*",
+        codes: "E1905",
+        stage: "Rust only: where a 0.7 report stands (report_checks, crates/mandate-check/src/reports.rs), after the stages, and again on what an expansion writes",
+        ported: true,
+        reference: Reference::Rust,
+    },
 ];
 
 /// The family of `code` (`MDT-E0120`), when the table has one.

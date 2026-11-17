@@ -581,6 +581,34 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `E1902d` | An `on error` directly after a stage (a mutation: a handler added) | E1902 |
 | `E1902e` | A stage title with a control character (a mutation: the title) | E1902 |
 | `E1902f` | A stage title with a bidirectional control (a mutation: the title) | E1902 |
+| `E1902g` | A stage title with a line separator, U+2028 (a mutation: the title) | E1902 |
+| `A02` | A 0.7 program with reports checks (`fixtures/attention/reports.mdt`): a pattern reporting to its role slot, applied; a workflow reporting what a model wrote, a contract verified, a connector gave and the run counted, in a branch and a bounded loop | — |
+| `A02a` | `report` and `to` are ordinary names in a 0.7 program wherever a report's shape does not follow them | — |
+| `A02b` | Before 0.7 a report line is ordinary names: in a 0.6 program, `report to accountant` is three expressions | E0120 |
+| `A03` | A lead's sub-program that applies a listed shape has the pattern's stages and report through its expansion, and is admitted | — |
+| `E0101i` | A report title with an interpolation | E0101 |
+| `E0104k` | A report in the IR of a 0.6 program (a mutation: one statement added) | E0104 |
+| `E0104l` | A report title of 81 characters (a mutation) | E0104 |
+| `E0104m` | An empty report title (a mutation) | E0104 |
+| `E0104n` | A report of seventeen fields (a mutation) | E0104 |
+| `E0104o` | A report of no field (a mutation) | E0104 |
+| `E0121g` | Two fields of one report with one name, in the text | E0121 |
+| `E1501b` | A report to a name no role definition has (a mutation: the role) | E1501 |
+| `E1502a` | With a lock, a report to a role the lock binds to nobody | E1502 |
+| `E1705b` | A stage a lead writes in its sub-program | E1705 |
+| `E1705c` | A report a lead writes in its sub-program | E1705 |
+| `E1903` | A report title with a control character (a mutation: the title) | E1903 |
+| `E1903a` | A pattern's report title with a bidirectional control (a mutation: the title) | E1903 |
+| `E1903b` | A report title with a paragraph separator, U+2029 (a mutation: the title) | E1903 |
+| `E1903c` | Two fields of one report with one name, in IR (a mutation: a field renamed) | E1903 |
+| `E1903d` | A pattern's report to a role definition, not a role slot (a mutation: the role) | E1903 |
+| `E1903e` | A pattern's report to a slot of another kind (a mutation: the role) | E1903 |
+| `E1904` to `E1904l` | A report's field that holds a delegation, a spawn, an await, an inference, a verification, an effect (in a pattern), a change set, a map, a plan, an escalation, a pause, a `try` or a block (a mutation each: the field) | E1904 |
+| `E1904m` to `E1904p` | A report's field that calls `human.ask`, a function of the program, a connector's tool, a built-in other than `len` (a mutation each) | E1904 |
+| `E1904q` | The part of a field that is not pure is refused where it stands: `len` of a delegation (a mutation) | E1904 |
+| `E1904r` to `E1904u` | A report's field of a type a person is not shown: a set, a list of lists, a record two levels deep, a range the check cannot type (a mutation each) | E1904 |
+| `E1904v` | A pattern's report field of a type not shown, refused on the expansion at the application (a mutation) | E1904 |
+| `E1905` to `E1905g` | A report in a map's body, a loop without `max_iter`, a function, an `on error`, an `on unmet` and an `on budget_exceeded` handler, a test, and directly before an `on error` (a mutation each) | E1905 |
 
 ## What the Rust crates run
 
@@ -618,13 +646,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 415, passed 415, pending 0
+conformance cases: ran 468, passed 468, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 290 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
+  of them 343 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
 ```
 
-(431 cases: 415 `compile`, 265 of them of language 0.6 and 25 of 0.7, and 16 `journal`; no case
+(484 cases: 468 `compile`, 265 of them of language 0.6 and 78 of 0.7, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

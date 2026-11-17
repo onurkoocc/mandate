@@ -1,0 +1,57 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1904v",
+  "kind": "compile",
+  "title": "A pattern's report field of a type a person is not shown is refused in the expansion of the workflow that applies it, at the application (a mutation: the pattern's first report shows the list of items itself).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules",
+    "spec/library.md#expansion"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/2/fields/0/value",
+      "value": {
+        "op": "var",
+        "name": "items"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Greeted/accept/said/by/static"
+      },
+      {
+        "code": "MDT-E1904",
+        "path": "/defs/MatchAll/apply",
+        "facts": {
+          "role": "accountant",
+          "field": "items",
+          "problem": "type",
+          "type": "Untrusted<List<Invoice>>",
+          "pattern": "BatchWithExceptions",
+          "pattern_path": "/defs/BatchWithExceptions/body/2/fields/0/value",
+          "expanded_path": "/defs/MatchAll/body/2/fields/0/value"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

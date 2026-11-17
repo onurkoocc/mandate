@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104m",
+  "kind": "compile",
+  "title": "An empty report title is refused by the schema of 0.7 (a mutation: the title).",
+  "spec": [
+    "spec/attention.md#the-ir",
+    "spec/attention.md#report"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/3/title",
+      "value": ""
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/Greet/body/3/title",
+        "facts": {
+          "keyword": "minLength"
+        }
+      }
+    ]
+  }
+}

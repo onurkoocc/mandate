@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1903a",
+  "kind": "compile",
+  "title": "A report title with a bidirectional control, which would show its text in another order than it is written, is refused, in a pattern's report too (a mutation: the title of the pattern's last report).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#titles",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/9/title",
+      "value": "Batch ‮enod"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1903",
+        "path": "/defs/BatchWithExceptions/body/9/title",
+        "facts": {
+          "role": "reviewer",
+          "problem": "title",
+          "rule": "format",
+          "char": "U+202E"
+        }
+      }
+    ]
+  }
+}

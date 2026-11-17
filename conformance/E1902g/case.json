@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1902g",
+  "kind": "compile",
+  "title": "A stage title with a line separator, which breaks the line a person reads it on in some renderers, is refused (a mutation: the title of Greet's second stage).",
+  "spec": [
+    "spec/attention.md#stage",
+    "spec/attention.md#titles"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/2/title",
+      "value": "Give it back"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1902",
+        "path": "/defs/Greet/body/2/title",
+        "facts": {
+          "workflow": "Greet",
+          "stage": "give",
+          "problem": "title",
+          "rule": "separator",
+          "char": "U+2028"
+        }
+      }
+    ]
+  }
+}

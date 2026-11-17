@@ -20,7 +20,8 @@
 //!   first ("at once") unless it has a group of keywords and the schema uses
 //!   one of them; then, in this order, `$ref`, `const`, `enum`, `oneOf`; for a
 //!   number `maximum`, `minimum`; for a string `maxLength`, `minLength`,
-//!   `pattern`; for an array `minItems`, `items` (by index), `uniqueItems`; for
+//!   `pattern`; for an array `maxItems` (which only the schema of 0.7 uses, for
+//!   the fields of a `report`), `minItems`, `items` (by index), `uniqueItems`; for
 //!   an object `minProperties`, `required` (in the list's order),
 //!   `propertyNames`, `additionalProperties` (in the document's order),
 //!   `properties` (in the schema's order), `discriminator`. A group's keywords
@@ -266,6 +267,7 @@ struct Node {
     max_length: Option<usize>,
     min_length: Option<usize>,
     pattern: Option<(Pattern, String)>,
+    max_items: Option<usize>,
     min_items: Option<usize>,
     items: Option<usize>,
     unique_items: Option<bool>,
@@ -287,7 +289,10 @@ impl Node {
                 self.max_length.is_some() || self.min_length.is_some() || self.pattern.is_some()
             }
             Group::Array => {
-                self.min_items.is_some() || self.items.is_some() || self.unique_items.is_some()
+                self.max_items.is_some()
+                    || self.min_items.is_some()
+                    || self.items.is_some()
+                    || self.unique_items.is_some()
             }
             Group::Object => {
                 self.min_properties.is_some()
@@ -476,6 +481,7 @@ impl<'a> Builder<'a> {
                     })?;
                     node.pattern = Some((pattern, source.to_owned()));
                 }
+                "maxItems" => node.max_items = Some(count(v, &here)?),
                 "minItems" => node.min_items = Some(count(v, &here)?),
                 "items" => {
                     let p = format!("{}/items", node.path);
@@ -1036,6 +1042,14 @@ impl Run<'_> {
     }
 
     fn array(&mut self, node: &Node, items: &[Value], name: Option<&str>) {
+        // `limitItems` is one keyword definition, `maxItems` before `minItems`.
+        if let Some(limit) = node.max_items
+            && items.len() > limit
+        {
+            let params = JsObject::new().with("limit", limit);
+            let message = format!("must NOT have more than {limit} items");
+            self.error(node, "maxItems", params, message, name);
+        }
         if let Some(limit) = node.min_items
             && items.len() < limit
         {
