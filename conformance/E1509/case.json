@@ -1,0 +1,65 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1509",
+  "kind": "compile",
+  "title": "A criterion of a program of 0.7 whose verifier calls `waiver` is refused: the runtime keeps the name for its own records (a mutation: a function added and the call renamed to it).",
+  "spec": [
+    "spec/attention.md#static-rules",
+    "spec/attention.md#carry-over-from-06"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/waiver",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "c",
+            "type": {
+              "ref": "Change"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Bool"
+        },
+        "effects": [],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "bool",
+              "value": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Tested/accept/touched/by/call/callee/name",
+      "value": "waiver"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1509",
+        "path": "/defs/Tested/accept/touched/by",
+        "facts": {
+          "contract": "Tested",
+          "criterion": "touched",
+          "method": "waiver"
+        }
+      }
+    ]
+  }
+}

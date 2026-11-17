@@ -25,7 +25,7 @@ import {
   grant,
   hashProgram,
   inFlightOverlap,
-  isProgram06,
+  isProgram06OrLater,
   leadClasses,
   mapScopes,
   modelTiers,
@@ -279,11 +279,6 @@ export interface InterpOptions {
    * 0.5, which has none, and nothing of it is read then.
    */
   connectors?: Connectors;
-}
-
-/** Whether a program is of 0.6: what 0.6 adds at run time (the batch commit step, the escaping of a task's data) is read only then. */
-function is06(program: Program): boolean {
-  return isProgram06(program);
 }
 
 /** The turns of the actions of one operation (`Interpreter.alone`), by what the interpreters of one run share. */
@@ -932,7 +927,7 @@ export class Interpreter {
     }
     // 0.6: one wait for a person about the outcomes of a map that verifies; a connector's tool of that name is a tool
     // call first (above), as the compiler reads it.
-    if (p === "human.review" && is06(this.o.program)) return this.review(e, ctx, path);
+    if (p === "human.review" && isProgram06OrLater(this.o.program)) return this.review(e, ctx, path);
     if (p === "quote" || p === "peek") return this.expr(e.args[0]!.value, ctx, `${path}/args/0/value`);
     if (p === "len") {
       const v = unwrap(await this.expr(e.args[0]!.value, ctx, `${path}/args/0/value`));
@@ -1151,7 +1146,7 @@ export class Interpreter {
     // 0.6: a person's answer is a value of their own, never one of the runtime's: it holds none of the members the
     // runtime's own values are known by (a Verified value and its evidence among them), at any depth. The control API
     // refuses one when it is given (`reserved_value`); one the journal holds anyway stops the run here.
-    const why = kind === "input" && is06(this.o.program) ? givenValueProblem(answer) : undefined;
+    const why = kind === "input" && isProgram06OrLater(this.o.program) ? givenValueProblem(answer) : undefined;
     if (why) throw new Violation(why.reason, `The answer at ${id} is not taken. ${why.message}`);
     return answer;
   }
@@ -1181,7 +1176,7 @@ export class Interpreter {
     // The tier is read from the envelope the run has now. An `infer` records its request, which names no tier.
     const tier = this.tierFor(e.using, ctx);
     // 0.6 (B28): the adapter escapes `<` and `>` in the input it quotes for the model; an earlier package's request is the bytes it was.
-    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}), ...(is06(this.o.program) ? { escape: true } : {}) };
+    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}), ...(isProgram06OrLater(this.o.program) ? { escape: true } : {}) };
     return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.checkedInfer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
   }
 
@@ -1441,7 +1436,7 @@ export class Interpreter {
         ...(lead ? { brief: planBrief(this.o.plan!.parent, under.envelope!) } : {}),
         ...(offered?.refused.length ? { refused: offered.refused } : {}),
         // 0.6 (B28): `<` and `>` are escaped in the data the task hands the model; an earlier package sends the bytes it sent.
-        ...(is06(this.o.program) ? { escape: true } : {}),
+        ...(isProgram06OrLater(this.o.program) ? { escape: true } : {}),
       };
       const toolOf = (name: string): BoundTool | undefined => offered?.byName.get(name);
       const planner = lead?.planner(
@@ -1646,7 +1641,7 @@ export class Interpreter {
     let unmet: string[] = [];
     let evidence: string[] = [];
     // 0.6 (B25): every record of this verify names, by its digest, the value it was given (`subject.value`).
-    const bound = is06(this.o.program) ? { value: valueDigest(subject), failed: {} as Record<string, string[]> } : undefined;
+    const bound = isProgram06OrLater(this.o.program) ? { value: valueDigest(subject), failed: {} as Record<string, string[]> } : undefined;
     const requires: boolean[] = [];
     for (let i = 0; i < (c.require ?? []).length; i++) {
       const held = truthy(unwrap(await this.expr(c.require![i]!, cctx, `${path}/contract/require/${i}`)));
@@ -1741,7 +1736,7 @@ export class Interpreter {
       const { pos, named } = call.op === "call" ? await this.args(symbolic, ctx, `${path}/call`) : { pos: [], named: {} };
       const system = this.systemFacts();
       // 0.6 (B28): the verifier is told to escape what it quotes for a model; an earlier package's request is the bytes it was.
-      const req = { method, args: pos, named, contract, criterion: name, ...(system ? { system } : {}), ...(is06(this.o.program) ? { escape: true as const } : {}) };
+      const req = { method, args: pos, named, contract, criterion: name, ...(system ? { system } : {}), ...(isProgram06OrLater(this.o.program) ? { escape: true as const } : {}) };
       const verifier = this.o.adapters.verifier;
       const r = await this.command(
         `${path}/call`,
@@ -2017,7 +2012,7 @@ export class Interpreter {
       if (!this.o.connectors!.grantsWrite(this.available(ctx), write)) throw new Violation("authority_denied", `${e.name} at ${path}: no capability of ${ctx.workflow} gives a call of ${write.scope}.`);
     }
     // 0.6: a critical effect in a map's body is a batch commit step (spec/library.md "The batch commit step").
-    const batch = ctx.map !== undefined && info.critical && is06(this.o.program) ? ctx.map : undefined;
+    const batch = ctx.map !== undefined && info.critical && isProgram06OrLater(this.o.program) ? ctx.map : undefined;
     // A design run touches nothing: the effect is recorded as what it would have been (doc 9 §5.2).
     if (mode === "design") return this.simulated(e.name, plain(pos), path);
     // An item of a batch commit step that was refused a person (`authorization`) is read as it was recorded.
@@ -2072,7 +2067,7 @@ export class Interpreter {
     batch?: string,
   ): Promise<{ tool: ToolAdapter; action: ActionRow; receipt?: undefined } | { tool: ToolAdapter; action?: undefined; receipt: Value }> {
     // INV-13: a parameter declared Verified<T, C> must carry evidence for C at run time too.
-    if (!is06(this.o.program)) {
+    if (!isProgram06OrLater(this.o.program)) {
       for (const [i, t] of info.params.entries()) {
         if (!("ref" in t) || t.ref !== "Verified") continue;
         const v = pos[i];
@@ -2200,7 +2195,7 @@ export class Interpreter {
     // INV-13 at run time: the plan was verified, and its evidence holds.
     if (!isObj(plan) || !("$verified" in plan)) throw new Fault("PolicyDenied", [{ changeset: path, reason: "unverified_plan" }]);
     // 0.6: a plan a person may waive part of never lets a set land that commits an effect that cannot be undone (E1505).
-    const undone = is06(this.o.program) && Object.values(e.members).some((m) => this.effectInfo(m.effect).irreversible);
+    const undone = isProgram06OrLater(this.o.program) && Object.values(e.members).some((m) => this.effectInfo(m.effect).irreversible);
     if (!this.o.replay) await this.checkVerified("changeset", plan, undone);
     const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
     const mode = this.o.mode ?? "live";
@@ -2451,20 +2446,20 @@ export class Interpreter {
     const ids = Array.isArray(v["$evidence"]) ? v["$evidence"].map(String) : [];
     const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
     const c = this.def(contract);
-    const v06 = is06(this.o.program);
+    const from06 = isProgram06OrLater(this.o.program);
     // 0.6: what a person may waive part of never reaches an effect that cannot be undone, nor is what makes one allowed
     // (E1505): a value verified against such a contract, or one that rests on a waiver record, is refused here, before
     // its evidence is read any further and before anything is prepared.
     const waived = rows.some((r) => r.method === WAIVER);
-    if (v06 && irreversible && (waived || waiversOf(c).size > 0)) {
+    if (from06 && irreversible && (waived || waiversOf(c).size > 0)) {
       throw new Violation("waived_irreversible", `${effect} cannot be undone, and it received a value verified against ${contract}, which ${waived ? "rests on a person's waiver" : "a person may waive part of"}: a waiver does not clear what cannot be undone (MDT-E1505).`);
     }
     // A person's approval holds only while the decision it names is the one they signed (H04); so does a waiver (0.6).
     const approved = this.o.decisions;
     const decisions = approved && rows.some((r) => r.method === "human.approve") ? new Map((await this.o.journal.decisions(this.o.runId)).map((d) => [d.decision_id, d])) : new Map<string, StoredDecision>();
-    const facts = v06 && waived && approved ? await (this.waivers ??= waiverFacts(this.o.journal, this.o.runId, { contract: (n) => this.def(n), keys: approved.keys, lock: approved.lock, trusted: this.o.trusted })) : undefined;
+    const facts = from06 && waived && approved ? await (this.waivers ??= waiverFacts(this.o.journal, this.o.runId, { contract: (n) => this.def(n), keys: approved.keys, lock: approved.lock, trusted: this.o.trusted })) : undefined;
     // 0.6 (B25): every record the value rests on names, in its subject, the digest of the value the effect is given.
-    const value = v06 ? valueDigest(v["$verified"] ?? null) : undefined;
+    const value = from06 ? valueDigest(v["$verified"] ?? null) : undefined;
     const problems: string[] = [];
     const found = new Set(rows.map((r) => r.evidence_id));
     for (const id of ids) if (!found.has(id)) problems.push(`${id} is not evidence of this run`);
@@ -2474,36 +2469,36 @@ export class Interpreter {
     for (const r of rows) {
       const record = r.record as unknown as EvidenceRecord | null;
       // A verify's own record (0.6) says what it did not meet: one that met less rests on waivers, held below.
-      if (!r.passed && !(v06 && r.method === VERIFY)) problems.push(`${r.evidence_id} did not pass`);
+      if (!r.passed && !(from06 && r.method === VERIFY)) problems.push(`${r.evidence_id} did not pass`);
       if (r.contract !== contract) problems.push(`${r.evidence_id} is evidence for ${r.contract}`);
       if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
-      else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion || (v06 && record.method !== r.method)) problems.push(`${r.evidence_id} does not match its signed record`);
+      else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion || (from06 && record.method !== r.method)) problems.push(`${r.evidence_id} does not match its signed record`);
       else {
         // A waiver is held to the review decision it names (review.ts); a run of 0.1 to 0.5 has none, and one in it covers nothing.
         const why =
           record.method === WAIVER
-            ? !v06
+            ? !from06
               ? "a waiver covers nothing in a run of a package of 0.1 to 0.5"
               : facts
                 ? waiverProblem(record, facts)
                 : "a waiver rests on a signed review decision, and this run checks none"
-            : v06 && record.method === VERIFY
+            : from06 && record.method === VERIFY
               ? record.criterion === WHOLE
                 ? undefined
                 : "a verify's record is of the contract whole"
               : (recordProblem(record, { ...r, run: this.o.runId }, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined));
         if (why) problems.push(`${r.evidence_id}: ${why}`);
-        if (v06 && subjectValue(record) !== value) problems.push(`${r.evidence_id} is evidence for another value than the one ${effect} is given`);
+        if (from06 && subjectValue(record) !== value) problems.push(`${r.evidence_id} is evidence for another value than the one ${effect} is given`);
         // 0.6: every record, the verify's own and a waiver among them, is this run's, under a package it ran under,
         // and of the mode it runs in: one copied from another run, or from a design run into a live one, holds nothing.
-        if (v06 && record.run !== this.o.runId) problems.push(`${r.evidence_id} is a record of another run`);
-        if (v06 && record.package !== this.o.packageHash && !(this.o.earlier ?? []).some((e) => e.hash === record.package)) problems.push(`${r.evidence_id} is a record of another package than this run's`);
-        if (v06 && (record.mode ?? "live") !== (this.o.mode ?? "live")) problems.push(`${r.evidence_id} is a record of a ${record.mode ?? "live"} run, and this run is ${this.o.mode ?? "live"}`);
+        if (from06 && record.run !== this.o.runId) problems.push(`${r.evidence_id} is a record of another run`);
+        if (from06 && record.package !== this.o.packageHash && !(this.o.earlier ?? []).some((e) => e.hash === record.package)) problems.push(`${r.evidence_id} is a record of another package than this run's`);
+        if (from06 && (record.mode ?? "live") !== (this.o.mode ?? "live")) problems.push(`${r.evidence_id} is a record of a ${record.mode ?? "live"} run, and this run is ${this.o.mode ?? "live"}`);
       }
     }
     const criteria = c?.kind === "contract" ? [...Object.keys(c.accept), ...Object.keys(c.invariant ?? {})] : [];
     if (c?.kind !== "contract") problems.push(`${contract} is not a contract of this program`);
-    if (v06) {
+    if (from06) {
       // 0.6: the value rests on one verify of it, whose own record says what that verify came to: every `require`
       // held, what it did not meet, and the records of its criteria. Every other record is one of that verify's, for
       // the same contract arguments: passing records it lists, and waivers of failed records it lists. A criterion

@@ -90,6 +90,7 @@ use mandate_ir::{JsObject, JsValue, Value};
 
 mod attention;
 mod authority;
+mod connectors;
 mod front;
 pub mod input;
 mod library;
@@ -97,6 +98,8 @@ mod lock;
 mod patch;
 mod program;
 mod tables;
+
+pub use connectors::tool_canonical;
 
 /// A door: the input object in, the output value or the error out.
 pub type DoorFn = fn(&Value) -> Result<JsValue, DoorError>;
@@ -517,6 +520,18 @@ pub static LIBRARY_DOORS: &[Door] = &[
         library::AUTHORITY_SIGNATURE,
         LIBRARY_NOTE,
         library::authority_signature,
+    ),
+    Door::own(
+        "tool_schema_digest",
+        connectors::TOOL_SCHEMA_DIGEST,
+        "Language 0.7, which only the Rust compiler reads: no TypeScript function of the compiler stands for it. It gives what schemaDigest of runtime/src/mcp-client.ts gives for a tool, byte for byte (the lock's sha256 of the canonical JSON of { name, inputSchema, outputSchema }), and crates/mandate-check/tests/connector_doors.rs holds it to vectors/tool-digest/tool-schema-digest.json, which scripts/tool-digest-vectors.mjs writes from that function. tool is the JSON text of the tool, not an object, so that a number keeps its JSON form.",
+        connectors::tool_schema_digest,
+    ),
+    Door::own(
+        "callable_connectors",
+        connectors::CALLABLE_CONNECTORS,
+        "Language 0.7, which only the Rust compiler reads: no TypeScript function stands for it. The connectors a program can call, [{ id, name }] with id <module>.<connector>: those the check demands a lock entry for (E1407), by the same function (crate::lock::callable_connectors), for the program as the runtime has it at start.",
+        connectors::callable_connectors,
     ),
     Door::own(
         "attention_facts",

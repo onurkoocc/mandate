@@ -335,7 +335,7 @@ WASI):
   programs, ten to fourteen outputs each), by `sha256`;
 - all 125 `compile` cases of `conformance/` for 0.1 to 0.5 (the 265 cases of
   0.6 and the 135 outputs of `vectors/golden/0.6.json` are the Rust
-  compiler's own, since it alone reads 0.6, and so are the 5 cases of 0.7
+  compiler's own, since it alone reads 0.6, and so are the 25 cases of 0.7
   and `vectors/golden/0.7.json`);
 - the stored results in [`vectors/`](vectors/README.md): the syntax and
   span vectors, the schema vectors, 193 diagnostic vectors, 183 diff

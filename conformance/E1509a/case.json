@@ -1,0 +1,118 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1509a",
+  "kind": "compile",
+  "title": "A `verify` among the parts of a criterion joined by `and`, in an invariant, is refused as a criterion met by it alone is (a mutation: a function and a contract added).",
+  "spec": [
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../E1509/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/verify",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "c",
+            "type": {
+              "ref": "Change"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Bool"
+        },
+        "effects": [],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "bool",
+              "value": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/Held",
+      "value": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "c",
+            "type": {
+              "ref": "Change"
+            }
+          }
+        ],
+        "accept": {},
+        "invariant": {
+          "held": {
+            "description": "The change is held to both",
+            "by": {
+              "all": [
+                {
+                  "call": {
+                    "op": "call",
+                    "callee": {
+                      "op": "var",
+                      "name": "touched"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "c"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "call": {
+                    "op": "call",
+                    "callee": {
+                      "op": "var",
+                      "name": "verify"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "c"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1509",
+        "path": "/defs/Held/invariant/held/by",
+        "facts": {
+          "contract": "Held",
+          "criterion": "held",
+          "method": "verify"
+        }
+      }
+    ]
+  }
+}

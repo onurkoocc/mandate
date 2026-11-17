@@ -114,7 +114,7 @@ export const KEPT: Record<string, Kept> = {
   // version changes it, so there is nothing for another compiler to decide.
   kindOf: { helper: "a file's kind from its name: .json is IR, anything else .mdt text" },
   calleePath: { helper: "the dotted name of a call's callee, read off the expression" },
-  atLeast: { helper: "whether a language version is at least another, by their order in LANGUAGE_VERSIONS and then mandate/0.6 (library.ts): the reference compiler's answer for 0.1 to 0.5, and the bridge's own for 0.6, which the reference does not know" },
+  atLeast: { helper: "whether a language version is at least another, by their order in LANGUAGE_VERSIONS and then mandate/0.6 and mandate/0.7 (library.ts, BRIDGE_LANGUAGE_VERSIONS): the reference compiler's answer for 0.1 to 0.5, and the bridge's own for 0.6 and 0.7, which the reference does not know" },
   classRank: { helper: "a data class's place in public < internal < confidential < restricted" },
   budgetAmount: { helper: "the number a budget gives one dimension" },
   formatDiagnostic: { helper: "a diagnostic as one line of text for a person" },
@@ -122,7 +122,8 @@ export const KEPT: Record<string, Kept> = {
   diag: { helper: "builds a diagnostic object from its parts" },
   htmlEscape: { helper: "a text escaped for HTML" },
   mdEscape: { helper: "a text escaped for Markdown" },
-  isProgram06: { helper: "whether a value is a program whose language is mandate/0.6 (library.ts), read off its `language` member alone" },
+  isProgram06OrLater: { helper: "whether a value is a program whose language is mandate/0.6 or a later one the bridge reads (library.ts), read off its `language` member alone, by atLeast" },
+  isProgram07OrLater: { helper: "whether a value is a program whose language is mandate/0.7 or a later one the bridge reads (library.ts), read off its `language` member alone, by atLeast" },
   isLanguageVersion: { helper: "whether a value is one of LANGUAGE_VERSIONS, the TypeScript's list (the constants stay the TypeScript's, see index.ts)" },
   isPath: { helper: "whether a text is a relative, normalized, portable path (PATH_PATTERN)" },
   pathProblem: { helper: "what makes a text not a path, for a message" },

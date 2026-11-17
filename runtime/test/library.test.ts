@@ -21,6 +21,7 @@ import { buildPackage, componentsOf, EXPANDED_MEDIA_TYPE, Runtime, verifyPackage
 import { Crash, Violation } from "../src/signals.js";
 import { SimAgents } from "../src/sim.js";
 import { closeAll, commandIds, planChecker, world, type World } from "./helpers.js";
+import { header, language, lockUnder, relabel, version } from "./relabel.js";
 import { BUDGET, CAPS, finish, MODULE, planned, program as planProgram, refusals, run } from "./planning.js";
 import { baseOf, RUNNING_PROGRAM_MEDIA_TYPE, type ProgramChecker, type WorkerChecker } from "../src/plan.js";
 import { toolUse } from "../src/sim.js";
@@ -63,7 +64,7 @@ agent Greeter {
 `;
 
 /** A program that applies a pattern of a library, acme.flows. */
-const FROM_LIBRARY = `mandate @ 0.6
+const FROM_LIBRARY = relabel(`mandate @ 0.6
 
 module example.greet @ 0.1
 
@@ -75,10 +76,10 @@ ${AGENT}
 workflow Greet = Once(work: Greeter.greet)
   caps   ModelStd
   budget { time: 5m, steps: 4 }
-`;
+`);
 
 /** A program that applies a pattern of its own. */
-const LOCAL = `mandate @ 0.6
+const LOCAL = relabel(`mandate @ 0.6
 
 module example.local @ 0.1
 
@@ -96,7 +97,7 @@ pattern Ask<In, Out>(
 workflow Greet = Ask<Text, Text>(work: Greeter.greet)
   caps   ModelStd
   budget { time: 5m, steps: 4 }
-`;
+`);
 
 /**
  * A library of two modules, of plain definitions: a function of `acme.two` calls one of `acme.two.types`, which a
@@ -111,7 +112,7 @@ const TWO: LibrarySource = {
 };
 
 /** A program that imports the library of two modules and applies a pattern of its own, which calls the library's function. */
-const TWO_LOCAL = `mandate @ 0.6
+const TWO_LOCAL = relabel(`mandate @ 0.6
 
 module example.two @ 0.1
 
@@ -131,10 +132,10 @@ pattern Ask(
 workflow Greet = Ask(work: Greeter.greet)
   caps   ModelStd
   budget { time: 5m, steps: 4 }
-`;
+`);
 
 /** A program that applies MakerChecker of the built-in std.patterns: its input is a constant written at the application. */
-const MAKER = `mandate @ 0.6
+const MAKER = relabel(`mandate @ 0.6
 
 module example.maker @ 0.1
 
@@ -171,7 +172,7 @@ workflow Make = MakerChecker<Text, Draft>(
     input: "tea", make: Writer.write, check: Critic.review, accepted: Fine, owner: editor)
   caps   ModelStd
   budget { time: 10m, steps: 8 }
-`;
+`);
 
 /** The lock's pin of the built-in std.patterns, as the acceptance lock holds it. */
 const STD_PIN = (): LibraryPin => (JSON.parse(read("fixtures/library/invoices.lock.json")) as { libraries: Record<string, LibraryPin> }).libraries["std.patterns"]!;
@@ -250,7 +251,7 @@ describe("a package of 0.6 at load", () => {
     expect(asked.linked!.defs["Greet"]).toEqual(asked.expanded!.defs["Greet"]);
     expect(check(canonicalize(program as unknown as Json), "json", { libraries: [FLOWS] }).linked).toBeUndefined();
     // A program that applies no pattern, with a lock that pins no library, stores nothing: it runs as it is linked.
-    const source = checked(read("fixtures/library/minimal.mdt"));
+    const source = checked(relabel(read("fixtures/library/minimal.mdt")));
     const minimal = verifyPackage(buildPackage(source));
     expect(minimal.stored).toBeUndefined();
     expect(minimal.running).toEqual(linkedProgram(source, {}));
@@ -283,7 +284,7 @@ describe("a package of 0.6 at load", () => {
 
   it("links a definition of std.patterns that is not a pattern applied: the compiler's own module, which the package does not carry", () => {
     const lock = { modules: {}, libraries: { "std.patterns": STD_PIN() } } as Lock;
-    const text = `mandate @ 0.6\n\nmodule example.batch @ 0.1\n\nuse std.patterns.{Batch}\n\nfn none(b: Batch<Int, Int>) -> Int {\n  1\n}\n`;
+    const text = relabel(`mandate @ 0.6\n\nmodule example.batch @ 0.1\n\nuse std.patterns.{Batch}\n\nfn none(b: Batch<Int, Int>) -> Int {\n  1\n}\n`);
     const program = checked(text);
     const v = verifyPackage(buildPackage(program, lock));
     // The package carries no module of it, and its running program holds the type: the run stores that.
@@ -302,7 +303,7 @@ describe("a package of 0.6 at load", () => {
     const program = checked(FROM_LIBRARY, [FLOWS]);
     expect(refusal(buildPackage(program, lockWith(FLOWS), {}, []))).toMatchObject({ code: "library_digest_mismatch" });
     // A program that imports nothing of it, with a lock that pins nothing.
-    const minimal = checked(read("fixtures/library/minimal.mdt"));
+    const minimal = checked(relabel(read("fixtures/library/minimal.mdt")));
     expect(refusal(buildPackage(minimal, { modules: {}, libraries: {} } as Lock, {}, [FLOWS]))).toMatchObject({ code: "library_digest_mismatch", message: expect.stringContaining("does not pin") });
   });
 
@@ -332,15 +333,15 @@ describe("a package of 0.6 at load", () => {
 
   it("refuses nothing of connectors and tool.call by name (they run, B9): the program of connectors is verified with the lock that binds them", () => {
     const connectors = fixtureLibrary("acme.connectors");
-    const program = load(read("fixtures/library/drafts.mdt"), "mdt").program!;
-    const { lock: _format, ...lock } = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
+    const program = load(relabel(read("fixtures/library/drafts.mdt")), "mdt").program!;
+    const { lock: _format, ...lock } = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string });
     expect(refusal(buildPackage(program, lock as Lock, {}, [connectors]))).toBeUndefined();
   });
 
   it("loads the acceptance program: neither it nor its running program holds a line of the table (B10 runs its review)", () => {
     const connectors = fixtureLibrary("acme.connectors");
     const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
-    const program = check(read("fixtures/library/invoices.mdt"), "mdt", { libraries: [connectors], lock });
+    const program = check(relabel(read("fixtures/library/invoices.mdt")), "mdt", { libraries: [connectors], lock });
     expect(program.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const { lock: _format, ...packaged } = lock;
     const pkg = buildPackage(program.program!, packaged as Lock, {}, [connectors]);
@@ -359,13 +360,13 @@ describe("a package of 0.6 at load", () => {
 
   it("refuses no lock for binding connectors by name (lock.connectors runs, B9): what is wrong with a binding is the check's to say", () => {
     const lock = { modules: {}, connectors: { "example.library.minimal.store": { credential: "made-up", url: "https://store.example/mcp", tools: {} } } } as unknown as Lock;
-    const e = refusal(buildPackage(checked(read("fixtures/library/minimal.mdt")), lock));
+    const e = refusal(buildPackage(checked(relabel(read("fixtures/library/minimal.mdt"))), lock));
     if (e) expect(e.code).not.toBe("unsupported_language");
-    expect(refusal(buildPackage(checked(read("fixtures/library/minimal.mdt")), { modules: {}, connectors: {} } as unknown as Lock))).toBeUndefined();
+    expect(refusal(buildPackage(checked(relabel(read("fixtures/library/minimal.mdt"))), { modules: {}, connectors: {} } as unknown as Lock))).toBeUndefined();
   });
 
   it("refuses no batch commit step by name (a critical effect in a map body runs, B9)", () => {
-    const text = read("conformance/E1708b/program.mdt")
+    const text = relabel(read("conformance/E1708b/program.mdt"))
       .replace(/\/\/\/ The ERP[\s\S]*?\n}\n\n/, "")
       .replace("capability ErpDraft = tool.call(erp, post_draft)\n", "")
       .replace("caps   ErpDraft, Files", "caps   Files")
@@ -376,7 +377,7 @@ describe("a package of 0.6 at load", () => {
     expect(refusal(buildPackage(checked(text)))).toMatchObject({ code: "load_verification_failed" });
   });
 
-  const HEAD = `mandate @ 0.6
+  const HEAD = relabel(`mandate @ 0.6
 
 module example.unrun @ 0.1
 
@@ -395,7 +396,7 @@ agent Worker {
   budget { time: 2m, steps: 2 }
   skill work(i: Item) -> Inferred<Item> ! {Model}
 }
-`;
+`);
 
   it("refuses waive by by no name (it runs, B10): what is left to refuse it is the check's own", () => {
     const text = `${HEAD}
@@ -445,7 +446,7 @@ workflow W(items: List<Item>) -> Int
   it("loads the migration whose envelope has shapes (B12); a name that is no pattern is the compiler's refusal (E1711), not the table's", () => {
     const lock = JSON.parse(read("fixtures/library/migrate-all.lock.json")) as Lock & { lock?: string };
     const { lock: _format, ...packaged } = lock;
-    const program = check(read("fixtures/library/migrate-all.mdt"), "mdt", { lock });
+    const program = check(relabel(read("fixtures/library/migrate-all.mdt")), "mdt", { lock });
     expect(program.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const envelope = (program.program!.defs["MigrateAll"] as { envelope: { shapes?: string[] } }).envelope;
     expect(envelope.shapes).toEqual(["FanOutMerge", "MakerChecker"]);
@@ -474,7 +475,7 @@ workflow W(i: Item) -> Inferred<Item>
   });
 
   it("links a library whose module imports another through what the library reaches, and nothing outside it", () => {
-    const program = checked(`mandate @ 0.6\n\nmodule example.two @ 0.1\n\nuse acme.two.{text_of}\n\nfn one() -> Int {\n  1\n}\n`, [TWO]);
+    const program = checked(relabel(`mandate @ 0.6\n\nmodule example.two @ 0.1\n\nuse acme.two.{text_of}\n\nfn one() -> Int {\n  1\n}\n`), [TWO]);
     const v = verifyPackage(buildPackage(program, lockWith(TWO), {}, [TWO]));
     expect(Object.keys(v.modules).sort()).toEqual(["acme.two", "acme.two.types"]);
     // What text_of names of its sibling module (pick, and Note) is in the running program; what nothing names is not.
@@ -490,7 +491,7 @@ workflow W(i: Item) -> Inferred<Item>
     expect(amended.ok).toBe(false);
     expect(amended.diagnostics).toEqual([expect.objectContaining({ code: "unsupported_language", message: expect.stringContaining("Greet = Ask") })]);
     // A sub-program with the application as written, and no running program of it, is not run.
-    const sub = { language: "mandate/0.6", module: "example.local.sub1", version: "0.1", defs: { Sub: program.defs["Greet"] } } as unknown as Program;
+    const sub = { language: language(), module: "example.local.sub1", version: "0.1", defs: { Sub: program.defs["Greet"] } } as unknown as Program;
     expect(subprogramNotRunYet(sub, program, {})).toEqual(["a pattern applied in a sub-program"]);
     // Nor is one whose running program still applies it, or lacks its workflow.
     expect(subprogramNotRunYet(sub, program, {}, sub)).toEqual(["a pattern applied in a sub-program"]);
@@ -656,7 +657,7 @@ describe("a run of a program that imports a library of two modules and applies a
   });
 
   it("a package of 0.6 whose program is of 0.5 is given no running program: its run links its program plainly, and stores none", async () => {
-    const older = LOCAL.replace("mandate @ 0.6", "mandate @ 0.5").replace(/\/\/\/ Asks once[\s\S]*$/, "workflow Greet(input: Text) -> Inferred<Text>\n  caps   ModelStd\n  budget { time: 5m, steps: 4 }\n{\n  delegate Greeter.greet(input)\n}\n");
+    const older = LOCAL.replace(header(), "mandate @ 0.5").replace(/\/\/\/ Asks once[\s\S]*$/, "workflow Greet(input: Text) -> Inferred<Text>\n  caps   ModelStd\n  budget { time: 5m, steps: 4 }\n{\n  delegate Greeter.greet(input)\n}\n");
     // Its lock is of the 0.6 format (it has a `libraries` member, which pins none): the package is of 0.6.
     const w = await world(older, { agents: new SimAgents().on("Greeter.greet", (req) => ({ ok: `hello, ${String((req.args as unknown[])[0])}`, cost: { steps: 1 } })), decisions: { mode: "signed" }, lock: { modules: {}, libraries: {} } as unknown as Lock });
     expect(w.pkg.program.language).toBe("mandate/0.5");
@@ -908,12 +909,12 @@ describe("a lead's sub-program in a run of 0.6", () => {
   // The plan's program of planning.ts in 0.6, with a pattern of its own a sub-program may apply.
   const src = (body = '  delegate work(Item { name: "a" })'): string =>
     planProgram()
-      .replace("mandate @ 0.4", "mandate @ 0.6")
+      .replace("mandate @ 0.4", header())
       .replace("workflow W(items", `/// Asks once, about one item.\npattern Ask(\n  work: skill(Item) -> Inferred<Text>\n) () -> Inferred<Text>\n{\n${body}\n}\n\nworkflow W(items`);
-  const base1 = baseOf(MODULE, 1, "mandate/0.6" as never);
+  const base1 = baseOf(MODULE, 1, language() as never);
   /** The operations of a sub-program whose one workflow applies the parent's pattern. */
   const applying = (): never => {
-    const sub = load(`mandate @ 0.6\n\nmodule ${MODULE}.plan_1 @ 0.1\n\nuse ${MODULE}\n\nworkflow Fix = Ask(work: Worker.fix)\n  caps   ${CAPS}\n  budget ${BUDGET}\n`, "mdt");
+    const sub = load(`${header()}\n\nmodule ${MODULE}.plan_1 @ 0.1\n\nuse ${MODULE}\n\nworkflow Fix = Ask(work: Worker.fix)\n  caps   ${CAPS}\n  budget ${BUDGET}\n`, "mdt");
     expect(sub.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     return Object.entries(sub.program!.defs).map(([name, d]) => ({ op: "add", path: `/defs/${name}`, value: d })) as never;
   };
@@ -949,7 +950,7 @@ describe("a lead's sub-program in a run of 0.6", () => {
   });
 
   it("that applies none is admitted as before: its admission names no running program", async () => {
-    const plain = load(`mandate @ 0.6\n\nmodule ${MODULE}.plan_1 @ 0.1\n\nuse ${MODULE}\n\nworkflow Fix() -> Inferred<Text>\n  caps   ${CAPS}\n  budget ${BUDGET}\n{\n  delegate Worker.fix(Item { name: "a" })\n}\n`, "mdt");
+    const plain = load(`${header()}\n\nmodule ${MODULE}.plan_1 @ 0.1\n\nuse ${MODULE}\n\nworkflow Fix() -> Inferred<Text>\n  caps   ${CAPS}\n  budget ${BUDGET}\n{\n  delegate Worker.fix(Item { name: "a" })\n}\n`, "mdt");
     const opsOf = Object.entries(plain.program!.defs).map(([name, d]) => ({ op: "add", path: `/defs/${name}`, value: d })) as never;
     const w = await planned(checker, [[toolUse("s1", "submit_program", { base: base1, ops: opsOf })], finish("planned")], { src: src() });
     const r = await run(w, "sp2");
@@ -1044,7 +1045,7 @@ describe("a lead's sub-program in a run of 0.6", () => {
         return { ...r, running: other, running_hash: hashProgram(other as unknown as Json).program } as never;
       },
     };
-    const w = await planned(lying, [[toolUse("s1", "submit_program", { base: base1, ops: plainOps("0.6") })], finish("planned")], { src: src() });
+    const w = await planned(lying, [[toolUse("s1", "submit_program", { base: base1, ops: plainOps(version()) })], finish("planned")], { src: src() });
     const r = await run(w, "sp6");
     expect(r.state, JSON.stringify(r.attention ?? r.error)).toBe("succeeded");
     expect(w.told[0]).toMatchObject({ admitted: false });

@@ -61,7 +61,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { check, isProgram06, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { check, isProgram06OrLater, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters } from "./adapters.js";
 import { Connectors } from "./connectors.js";
@@ -336,12 +336,12 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         // A role's view or the audit view (spec/boundary.md "Views by role and the audit view"); with neither, as before.
         const role = a.flags["--role"];
         if (typeof role === "string" && a.flags["--audit"] !== undefined) throw new Usage("show takes --role R or --audit, not both");
-        // A run of 0.6: what a model, a person or a server wrote is in the document as it was given, and Markdown is
+        // A run of 0.6 or later: what a model, a person or a server wrote is in the document as it was given, and Markdown is
         // printed to a terminal, HTML shown in a browser, both of which a control, format or bidirectional character
         // would move, reorder or hide text in: every such character of the document is escaped (`terminalDocument`).
         // JSON is the view's data, and stays as it is; an earlier run's document is as it was.
-        const v06 = isProgram06((await rt.runProgram(runId)).source);
-        const doc = (text: string): string => (v06 ? terminalDocument(text) : text);
+        const from06 = isProgram06OrLater((await rt.runProgram(runId)).source);
+        const doc = (text: string): string => (from06 ? terminalDocument(text) : text);
         const print = (view: object, made: () => Doc): void => out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : doc(format === "html" ? toHtml(made()) : toMarkdown(made())));
         if (typeof role === "string") {
           const { view, program, modules } = await runView(rt, runId, { role });
@@ -1167,10 +1167,10 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
   // How this configuration takes a decision: signed with a key, or by name.
   const as = config.decisions.mode === "unsigned" ? "--by <you>" : "--key <your key file>";
   if (json) return JSON.stringify({ run, budget, evidence: evidence.map((e) => ({ ...e, signature_valid: signed.get(e.evidence_id) ?? false })), actions, ...(decisions.length ? { decisions } : {}) }, null, 2) + "\n";
-  // In a run of 0.6 every value a model, a person or a server wrote is shown with its texts quoted, and with every
+  // In a run of 0.6 or later every value a model, a person or a server wrote is shown with its texts quoted, and with every
   // code point a terminal does not print as itself escaped (`shownSafe`); an earlier run's lines are as they were.
-  const v06 = isProgram06((await rt.runProgram(run.run_id)).source);
-  const shown = (v: Value): string => (v06 ? shownSafe(v) : show(v));
+  const from06 = isProgram06OrLater((await rt.runProgram(run.run_id)).source);
+  const shown = (v: Value): string => (from06 ? shownSafe(v) : show(v));
   const lines = [`run ${run.run_id}  ${run.workflow}  ${run.state}  revision ${run.revision}`];
   if (run.state === "waiting" && isObj(run.waiting)) {
     const w = run.waiting;
@@ -1189,7 +1189,7 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
       for (const c of changes) if (isObj(c)) lines.push(`  ${String(c["text"])}`);
       if (!changes.length) lines.push("  the envelope's amounts and capabilities are as they were");
       const reason = JSON.stringify(String(req["reason"] ?? ""));
-      lines.push(`  the lead's reason (model output): ${v06 ? terminalText(reason) : reason}`);
+      lines.push(`  the lead's reason (model output): ${from06 ? terminalText(reason) : reason}`);
       lines.push(`  approve: mandate amend ${run.run_id} --revision ${run.revision} ${as} approve`, `  decline: mandate amend ${run.run_id} --revision ${run.revision} ${as} decline`);
     } else if (w["kind"] === "timer") {
       lines.push(`waiting for: a timer until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "")}); the scheduler resumes the run then`);

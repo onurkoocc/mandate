@@ -508,6 +508,13 @@ pub const FAMILIES: &[Family] = &[
         reference: Reference::Rust,
     },
     Family {
+        glob: "*MDT-E1509*",
+        codes: "E1509",
+        stage: "Rust only: the method names of a contract's criteria, in a program of 0.7 (check_reserved_methods, crates/mandate-check/src/statics/review.rs)",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
         glob: "*MDT-E1602*",
         codes: "E1602",
         stage: "Rust only: the import checks of a 0.6 program (a use list, crates/mandate-check/src/imports.rs); an application of an imported pattern whose expansion names what its module does not make pub (crates/mandate-check/src/expand/mod.rs)",

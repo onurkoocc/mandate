@@ -368,6 +368,16 @@ and the runtime's checker reports it to the lead, as E1705.
 A program of 0.1 to 0.5 has no `shapes`: in its text the word is no field of an
 envelope (E0101), and in its IR an unknown member (E0104, case E0104g).
 
+## Reserved method names (0.7)
+
+Specified in [`attention.md`](attention.md#static-rules). E1509 extends E15xx
+(roles and people). As E1504 to E1508, it is the Rust compiler's alone, in its
+table of codes, with hand-written conformance cases of `mandate/0.7`.
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1509 | Criterion method name reserved | E1509, E1509a, E1509b | 0.7 only; a criterion of a contract whose verifier is, or has among its `and` parts, a call whose callee path is exactly `verify` or `waiver`, the names the runtime writes its own evidence records under and refuses at load (`reserved_method`); at `/defs/<C>/accept/<k>/by` (or `invariant`), once per criterion. A callee path that only ends so (`test.verify`, E1509b) and a `static` part are not it. A program of 0.6 has no such check: it checks, and the runtime refuses it at load (`crates/mandate-check/tests/reserved_methods.rs`). It is reported in the module that writes the contract, when that module is of 0.7; a 0.7 program that imports such a contract from an older module is still refused at load (`reserved_method`). Facts: `contract`, `criterion`, `method` |
+
 ## Attention (0.7)
 
 Specified in [`attention.md`](attention.md#static-rules). E19xx is assigned

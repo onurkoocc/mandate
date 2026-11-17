@@ -22,8 +22,11 @@
 //! program declares another version (an unknown one, E0103; one of 0.5 that
 //! meets what 0.6 adds), which is no program of 0.6. Each list is printed
 //! and its length held. The rules of 0.7 that every 0.7 program meets
-//! (E1509, E1909 with a lock, the version of `std.patterns` it resolves)
-//! are not in the language yet; the slice that adds one adds its rule here.
+//! (E1909 with a lock, the version of `std.patterns` it resolves) are not in
+//! the language yet; the slice that adds one adds its rule here. E1509 is, and
+//! no program or case of 0.6 above has a criterion it refuses, so none is
+//! left out for it (`crates/mandate-check/tests/reserved_methods.rs` holds
+//! the 0.6 program that has one, clean).
 //!
 //! - Every code that 0.7 adds (`mandate_ir::codes::CODES_0_7`) has a
 //!   conformance case of 0.7 that expects it, and every code a 0.7 case
