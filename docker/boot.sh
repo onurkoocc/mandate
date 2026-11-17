@@ -11,6 +11,9 @@
 # It then runs the job steps of the tested commit (its own docker/run-job.sh) or, for a commit from before docker/
 # existed, the copy that is baked into the image, and says which.
 #
+# The checkout is made the way CI's actions/checkout makes a depth-1 one in its result (the tree of the commit, shallow),
+# not in every detail: HEAD is detached, there is no origin remote, and git is the image's (2.43).
+#
 # The image is the one this checkout built: the host passes the digest of the Dockerfile, .dockerignore and boot.sh it
 # holds, and the image holds copies of them. When they differ (another checkout rebuilt the image under the same tag
 # since), the status is 97, and the script rebuilds and tries again; no job runs on another checkout's image. A job's
@@ -24,8 +27,12 @@ shift 2
 lib=/usr/local/lib/mandate-ci
 sum() { sha256sum | cut -d' ' -f1; }
 
+if [ -z "${MANDATE_CI_IMAGE:-}" ]; then
+  echo "boot: this image was built by a newer checkout of the Docker scripts; run the job again (your checkout rebuilds its own image)" >&2
+  exit 97
+fi
 have="$(cat "$lib/Dockerfile" "$lib/.dockerignore" "$lib/boot.sh" | sum)"
-if [ "$have" != "${MANDATE_CI_IMAGE:?the image digest of the checkout that started this}" ]; then
+if [ "$have" != "$MANDATE_CI_IMAGE" ]; then
   echo "boot: the image was built from another Dockerfile, .dockerignore or boot.sh than the checkout that started it" >&2
   exit 97
 fi
@@ -36,7 +43,8 @@ echo "$sha" > .git/shallow
 git unpack-objects --strict -q
 git checkout -q --detach "$sha"
 if [ "$(git rev-parse HEAD)" != "$sha" ]; then echo "boot: HEAD is not the tested commit $sha" >&2; exit 3; fi
-if [ -n "$(git status --porcelain)" ]; then echo "boot: the checkout of $sha is not clean:" >&2; git status --short >&2; exit 3; fi
+status="$(git status --porcelain)"
+if [ -n "$status" ]; then echo "boot: the checkout of $sha is not clean:" >&2; echo "$status" >&2; exit 3; fi
 git fsck --connectivity-only --no-dangling
 echo "tested commit: $sha (a depth-1 checkout of its own objects, made in the container)"
 
@@ -45,7 +53,7 @@ if [ -f docker/run-job.sh ]; then
   steps=/ci/repo/docker/run-job.sh
 else
   # The copy in the image must be the one of the checkout that started this.
-  if [ "$(sum < "$lib/run-job.sh")" != "${MANDATE_CI_STEPS:?the digest of the run-job.sh of the checkout that started this}" ]; then
+  if [ "$(sum < "$lib/run-job.sh")" != "${MANDATE_CI_STEPS:-}" ]; then
     echo "boot: the image holds another run-job.sh than the checkout that started it, and the tested commit has none" >&2
     exit 97
   fi

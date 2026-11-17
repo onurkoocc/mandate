@@ -50,8 +50,8 @@ insp() { docker inspect --format "$2" "$1"; }
 rm_container() { docker rm -f "$1" >/dev/null 2>&1; }
 container_of() { docker ps -aq --filter "name=^$1\$"; }
 # What goes into a container: a pack of exactly one commit, its trees and its blobs, made from git's objects with no
-# conversion of any kind (no working tree, no filter, no autocrlf, no export-subst, no attributes).
-pack_of_commit() { git -C "$root_native" rev-list --objects --no-walk "$1" | git -C "$root_native" pack-objects --stdout -q; }
+# conversion of any kind (no working tree, no filter, no autocrlf, no export-subst, no attributes, no replace refs).
+pack_of_commit() { git --no-replace-objects -C "$root_native" rev-list --objects --no-walk "$1" | git --no-replace-objects -C "$root_native" pack-objects --stdout -q; }
 
 usage() {
   sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//' >&2
@@ -121,10 +121,11 @@ test_lock="$git_dir/mandate-ci-test.lock"
 held_test=0
 slot_dir=""
 
-# Whether the holder of a lock is gone: its process does not exist, no job container of its name exists, and (for the
-# test lock) no service of the project is running. A lock with no process recorded is stale when it is two minutes old
-# (its holder died between making the directory and writing its process); one that is six hours old is stale whatever.
-lock_stale() { # <dir> [services]
+# Whether the holder of a lock is gone: its process does not exist and no job container of its name exists. (Services a
+# killed test job left running do not keep its lock: the next test job removes them once it has the lock.) A lock with no
+# process recorded is stale when it is two minutes old (its holder died between making the directory and writing its
+# process); one that is six hours old is stale whatever.
+lock_stale() { # <dir>
   local d="$1" pid
   [ -d "$d" ] || return 1
   if [ -n "$(find "$d" -maxdepth 0 -mmin +360 2>/dev/null)" ]; then return 0; fi
@@ -132,19 +133,18 @@ lock_stale() { # <dir> [services]
   if [ -z "$pid" ]; then [ -n "$(find "$d" -maxdepth 0 -mmin +2 2>/dev/null)" ]; return; fi
   if kill -0 "$pid" 2>/dev/null; then return 1; fi
   if [ -n "$(container_of "mandate-ci-job-$pid")" ]; then return 1; fi
-  if [ "${2:-}" = services ] && [ -n "$(dc --profile services ps --status running -q postgres otel-collector 2>/dev/null)" ]; then return 1; fi
   return 0
 }
 
 # Takes the lock directory if it is free, or if it is stale. Recovery is guarded by a directory of its own and decided
 # again under the guard, so that a waiter that judged the lock stale earlier cannot remove the lock that another waiter
 # recovered and took in the meantime.
-try_lock() { # <dir> [services]
+try_lock() { # <dir>
   local d="$1"
   if mkdir "$d" 2>/dev/null; then printf '%s\n' "$$" >"$d/pid"; return 0; fi
-  if lock_stale "$d" "${2:-}"; then
+  if lock_stale "$d"; then
     if mkdir "$d.recover" 2>/dev/null; then
-      if lock_stale "$d" "${2:-}"; then
+      if lock_stale "$d"; then
         echo "docker-ci: recovering a stale lock ($(basename "$d"), holder $(cat "$d/pid" 2>/dev/null || echo unknown))"
         rm -rf "$d"
       fi
@@ -163,7 +163,7 @@ lock_release() { # <dir>: only a lock this process holds
 
 acquire_test_lock() {
   local waited=0
-  while ! try_lock "$test_lock" services; do
+  while ! try_lock "$test_lock"; do
     if [ $((waited % 30)) -eq 0 ]; then echo "docker-ci: another test job (process $(cat "$test_lock/pid" 2>/dev/null || echo unknown)) holds the PostgreSQL and collector services; waiting (${waited} s)"; fi
     sleep 5
     waited=$((waited + 5))

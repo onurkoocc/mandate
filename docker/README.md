@@ -26,8 +26,9 @@ CI-only).
 Nothing of the host is mounted: there is no bind mount at all. The script makes **a pack of exactly the commit, its trees
 and its blobs** (`git rev-list --objects --no-walk <commit> | git pack-objects --stdout`, from git's own objects: no
 working tree, no host-side filter, no `core.autocrlf`, no `export-subst`, no attributes are involved) and pipes it to
-the standard input of the container. `docker/boot.sh` (fixed, in the image) does what CI's `actions/checkout` does: an
-empty repository, `git unpack-objects --strict`, the repository marked shallow at the commit, and `git checkout --detach`
+the standard input of the container. `docker/boot.sh` (fixed, in the image) makes a checkout like the one of CI's `actions/checkout` in its
+result (the commit's tree, shallow), not in every detail: HEAD is detached, there is no `origin` remote, and git is the
+image's (2.43). It makes an empty repository, `git unpack-objects --strict`, the repository marked shallow at the commit, and `git checkout --detach`
 of the commit, made by the container's own git. **HEAD is the real commit id**; `boot.sh` asserts that `git rev-parse
 HEAD` is the sha it was given, that `git status --porcelain` is empty and that `git fsck --connectivity-only` is clean.
 The log prints the tested sha.
@@ -59,6 +60,13 @@ image. `compose.yml` adds a PostgreSQL 16.15 and an OpenTelemetry Collector 0.16
 
 ## Checks that the environment is what CI pins and is closed (`check.mjs`)
 
+**What `check.mjs` is.** It is a tripwire for an accidental edit: one that opens a path from the host, or weakens a step so
+that it passes without running what CI runs. It is not a defence against someone who rewrites the script on purpose: they
+can rewrite the check in the same commit. The control for a change to `docker/` or `scripts/docker-ci.sh` is the review of
+its diff; the check makes such a change visible (a pinned line cannot change without the list in `check.mjs` changing) and
+catches the slips. It reads shell with a small reader of words, not a shell, and it does not pin variable assignments,
+function names or the `PATH`.
+
 `node docker/check.mjs` (run by the `rust` job of `ci.yml`, and by the `rust` job here) fails when:
 
 - a Rust, Node, OPA, PostgreSQL or collector value of `docker/` differs from `rust-toolchain.toml` or `ci.yml`;
@@ -71,11 +79,14 @@ image. `compose.yml` adds a PostgreSQL 16.15 and an OpenTelemetry Collector 0.16
 - **every line of `scripts/docker-ci.sh` that reaches Docker or feeds a container is not one of the lines pinned in
   `check.mjs`, exactly** (after joining continuation lines and normalising whitespace): a call of `docker`, `dc`,
   `dcp` or `pack_of_commit`, anything piped into them, `eval`, `source`, a pipe into a shell, a variable or a
-  substitution run as a command (`d=docker; "$d" cp ...`, with quote concatenation undone). Changing an invocation, or
+  substitution run as a command (`d=docker; "$d" cp ...`; an empty pair of quotes inside a word, as in `dock""er`, is
+  undone, other ways of writing a word are not read). Changing an invocation, or
   adding one, is a visible change of that list. In every other line the flags that open a path from the host (`-v`,
-  `--mount`, `--user`, `--entrypoint`, `--env-file`, `--env-from-file`, `--add-file`, privileges, host namespaces,
-  published ports, quoted or not) are refused, every `-e`/`--env` must carry `NAME=value` with a literal or one of the
-  script's own variables, the `COMPOSE_*` unset loop must be there, and `eval` must not;
+  `-u`, `-p`, `-w`, `--mount`, `--user`, `--entrypoint`, `--env-file`, `--env-from-file`, `--add-file`, privileges, host
+  namespaces, published ports) are refused, as a word, in quotes, or with the value glued on (`-v"$x:/y"`, `-u0`); every
+  `-e`/`--env` the reader finds (`-e K=V`, `-eK=V`, `-e"K=V"`, `--env=K=V`) must have the form `NAME=literal` or
+  `NAME=` one of `$image_digest`, `$steps_digest`, `$MANDATE_CI_NODE` (what those variables hold is not checked: they are
+  assigned in lines that are not pinned); the `COMPOSE_*` unset loop must be there, and `eval` must not;
 - the Dockerfile has more than the one `COPY` (which must be the last instruction before `USER ci`, after the strip of
   setuid bits), an `ADD`, a `--mount`, `--secret` or `--ssh`, or an `ARG` without a default; `.dockerignore` is not
   exactly `*` and the four files of the `COPY`;
@@ -86,11 +97,11 @@ image. `compose.yml` adds a PostgreSQL 16.15 and an OpenTelemetry Collector 0.16
   to its value on a line of the step or before it, and a step's `working-directory` must be a `cd` before its lines. The
   steps that are not there are on a short list in `check.mjs`, each with its reason: the apt and sysctl step, `sudo mkdir
   /work`, the container-host test, the OPA download, starting, logging and removing the collector with `docker run`;
-- `run-job.sh` or `boot.sh` lacks `set -eu` before its first function, or has `set +e`, or a line with `||` that is neither
-  `|| code=$?` (the form of `ci.yml` itself) nor one of the few listed lines (`|| true` and `|| :` make a failing command
-  pass); `boot.sh` must contain, in order, its header, the image digest check, the shallow checkout of the commit, the
-  assertion that HEAD is the commit, the clean-status and `fsck` checks and the run of the steps, and no other way of
-  making the checkout (`git add`, `git config`, `autocrlf`, `curl`).
+- `run-job.sh` or `boot.sh` lacks `set -eu` before its first function, or turns an option off with `set +` in any form,
+  or has a `trap`, or a line with `||` that is neither `|| code=$?` (the form of `ci.yml` itself) nor one of the few listed
+  lines (`|| true` and `|| :` make a failing command pass); the `case "$job"` dispatch at the end of `run-job.sh` is not
+  exactly the pinned one; and `boot.sh` is not exactly its pinned text (**all its code lines**: the checkout of the commit,
+  the assertions, the image digest check, the run of the steps; a line more or less fails).
 
 What this does not catch: a line of `run-job.sh` that does something in addition to the line of the step (the extra lines
 of a function are not compared with `ci.yml`; they are the adaptations: the collector wait, the OPA path, the stand-in
@@ -158,12 +169,14 @@ is a lock directory, `mandate-ci-slot.N`, in the repository's common git directo
 collector services, so a second one waits for the first (`mandate-ci-test.lock`, in the same place) before it takes a place,
 and a waiting job holds no place. The runtime's tests have 30 s process tests and a 2 s check budget, and fail with
 time-outs under load: rerun the job alone before concluding anything. A lock is released when the job ends, on interrupt,
-termination and hangup too (the job container is removed by name); it is recovered when stale (its process is gone, no
-job container of its name and, for the test lock, no service of the project is running; or it is six hours old), and
+termination and hangup too (the job container is removed by name); it is recovered when stale (its process is gone and there is no
+job container of its name, whether or not services are still running: the next test job removes what a killed one left;
+or it is six hours old), and
 the recovery is guarded by a directory of its own and decided again under the guard, so that two waiters cannot both recover
-it, and a waiter that judged it stale earlier cannot remove the lock another waiter took after recovering it. (A holder whose
-process is judged dead although it lives, which `kill -0` between separate Git Bash sessions could in principle say, would
-lose its lock; the job container's name is checked as well to make that unlikely.) The jobs of a checkout from before this
+it, and a waiter that judged it stale earlier cannot remove the lock another waiter took after recovering it. (Liveness is `kill -0` on the process number the holder recorded. Between separate Git Bash sessions on one Windows
+machine it works, as tried here; a holder that runs in WSL, or in another machine's checkout of a shared directory, is not
+seen as alive by a Git Bash waiter, and its lock would be taken as stale once no job container of its name exists. The job
+container's name is checked as well to make a wrong judgement unlikely.) The jobs of a checkout from before this
 limit take no place.
 
 ## What stays wider than needed, and why

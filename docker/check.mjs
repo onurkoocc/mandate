@@ -195,13 +195,12 @@ const PINNED = [
   'insp() { docker inspect --format "$2" "$1"; }',
   'rm_container() { docker rm -f "$1" >/dev/null 2>&1; }',
   'container_of() { docker ps -aq --filter "name=^$1\\$"; }',
-  'pack_of_commit() { git -C "$root_native" rev-list --objects --no-walk "$1" | git -C "$root_native" pack-objects --stdout -q; }',
+  'pack_of_commit() { git --no-replace-objects -C "$root_native" rev-list --objects --no-walk "$1" | git --no-replace-objects -C "$root_native" pack-objects --stdout -q; }',
   '( set -o pipefail; pack_of_commit "$sha" | dc --profile run run --rm -T --no-deps --name "$job_container" "${envs[@]}" "$service" bash /usr/local/lib/mandate-ci/boot.sh "$jobname" "$sha" "$@" ) &',
   'pack_of_commit "$sha" | docker exec -i -e "MANDATE_CI_IMAGE=$image_digest" -e "MANDATE_CI_STEPS=$steps_digest" "$1" bash /usr/local/lib/mandate-ci/boot.sh selfcheck "$sha"',
   'if ! dc --profile run build runner >"$log" 2>&1; then',
   'dc --profile run build runner',
   'dc --profile run --profile services down -v --remove-orphans',
-  'if [ "${2:-}" = services ] && [ -n "$(dc --profile services ps --status running -q postgres otel-collector 2>/dev/null)" ]; then return 1; fi',
   'if [ -n "$(container_of "mandate-ci-job-$pid")" ]; then return 1; fi',
   'dc --profile services rm -sfv postgres otel-collector >/dev/null 2>&1 || true',
   'git -C "$root_native" cat-file blob "$sha:runtime/test/otel-collector.yaml" | dc --profile run run --rm -T --no-deps runner sh -c \'cat > /otel/config/config.yaml && rm -f /otel/out/spans.json\' || return 1',
@@ -359,19 +358,25 @@ if (/(^|[^\w.-])eval(?![\w.-])/.test(unquote(scriptCode))) bad("scripts/docker-c
 // Flags that open a path from the host, in any line that is not pinned (an array of flags built elsewhere and expanded in a
 // pinned line is caught here), and the rule for -e: NAME=value with a literal or one of the script's own variables.
 const benignForms = ["command -v", "compgen -e", "cat-file -e", "grep -v", "set -u", "set -o pipefail"];
-const bannedFlag = /^(-v|-u|-p|-w|--volume|--mount|--volumes-from|--env-file|--env-from-file|--user|--entrypoint|--privileged|--cap-add|--device|--security-opt|--add-host|--userns|--cgroupns|--network|--net|--pid|--ipc|--uts|--publish|--add-file|--workdir)(=.*)?$/;
-const okEnvValue = (v) => /^[A-Za-z_][A-Za-z0-9_]*=(\$\{?(image_digest|steps_digest|MANDATE_CI_NODE)\}?|[A-Za-z0-9._:/-]*)$/.test(v.replace(/^["']|["']$/g, ""));
+const testOperators = new Set(["-eq", "-ne", "-ge", "-gt", "-le", "-lt"]);
+const bannedShort = /^-[vupw]/; // alone or with its value glued on: -v"$x:/y", -u0, -w/tmp
+const bannedLong = /^(--volume|--mount|--volumes-from|--env-file|--env-from-file|--user|--entrypoint|--privileged|--cap-add|--device|--security-opt|--add-host|--userns|--cgroupns|--network|--net|--pid|--ipc|--uts|--publish|--add-file|--workdir)(=.*)?$/;
+const okEnvValue = (v) => /^[A-Za-z_][A-Za-z0-9_]*=(\$\{?(image_digest|steps_digest|MANDATE_CI_NODE)\}?|[A-Za-z0-9._:/-]*)$/.test(v.replace(/^["']+|["')]+$/g, ""));
 for (const l of logicalLines) {
-  let t = unquote(l).replace(/(["'])(-{1,2}[A-Za-z][\w-]*)\1/g, "$2");
-  for (const b of benignForms) t = t.replaceAll(b, b.split(" ")[0]);
-  const tokens = t.split(/[\s()]+/).map((x) => x.replace(/^["']+|["']+$/g, ""));
-  tokens.forEach((tok, i) => {
-    if (tok === "-e" || tok === "--env") {
-      if (!okEnvValue(tokens[i + 1] ?? "")) bad(`scripts/docker-ci.sh passes ${tok} with a value that is not NAME=literal or NAME=one of the script's own variables (image_digest, steps_digest, MANDATE_CI_NODE): ${l}`);
-    } else if (/^--env=/.test(tok)) {
-      if (!okEnvValue(tok.slice(6))) bad(`scripts/docker-ci.sh passes --env with a value that is not NAME=literal or NAME=one of the script's own variables: ${l}`);
-    } else if (!pinned.has(l) && bannedFlag.test(tok)) {
-      bad(`scripts/docker-ci.sh has the flag ${tok} (a mount, a user, an entrypoint, a privilege, a host namespace, an extra file or an env file), which is not allowed outside the pinned lines: ${l}`);
+  let line = unquote(l);
+  for (const b of benignForms) line = line.replaceAll(b, b.split(" ")[0]);
+  const words = line.split(/\s+/).map((x) => x.replace(/^[("']+/, ""));
+  words.forEach((w0, i) => {
+    const w = w0.replace(/[)"']+$/, "");
+    if (/^-e/.test(w) && !testOperators.has(w)) {
+      // -e NAME=value, or -eNAME=value, or -e"NAME=value": the value is read whichever way it is written
+      const value = w.length > 2 ? w0.slice(2) : (words[i + 1] ?? "");
+      if (!okEnvValue(value)) bad(`scripts/docker-ci.sh passes -e with a value that is not NAME=literal or NAME=one of the script's own variables (image_digest, steps_digest, MANDATE_CI_NODE): ${l}`);
+    } else if (w === "--env" || /^--env=/.test(w)) {
+      const value = w === "--env" ? (words[i + 1] ?? "") : w0.slice(6);
+      if (!okEnvValue(value)) bad(`scripts/docker-ci.sh passes --env with a value that is not NAME=literal or NAME=one of the script's own variables: ${l}`);
+    } else if (!pinned.has(l) && (bannedShort.test(w) || bannedLong.test(w))) {
+      bad(`scripts/docker-ci.sh has the flag ${w} (a mount, a user, an entrypoint, a privilege, a host namespace, an extra file or an env file; a short one with its value glued on too), which is not allowed outside the pinned lines: ${l}`);
     }
   });
 }
@@ -663,37 +668,82 @@ for (const [file, text] of [["docker/run-job.sh", runJob], ["docker/boot.sh", re
   if (!lines.includes("set -eu")) bad(`${file} does not have the line \`set -eu\``);
   else if (lines.findIndex((l) => /^(job_|[a-z_]+\(\) \{)/.test(l)) >= 0 && lines.indexOf("set -eu") > lines.findIndex((l) => /^[a-z_]+\(\) \{/.test(l))) bad(`${file} has \`set -eu\` after its first function`);
   for (const l of lines) {
-    if (/\bset\s+\+(e|o errexit)\b/.test(l)) bad(`${file} has \`set +e\`: ${l}`);
+    if (/(^|[;&|(]\s*)set\s+(\S+\s+)*\+\S/.test(l)) bad(`${file} turns an option off with set + (set +e, set +eu, set +o errexit, ...): ${l}`);
+    if (/\btrap\b/.test(l)) bad(`${file} has a trap, which is not allowed in the steps or the entry: ${l}`);
     if (l.includes("||") && !/\|\| code=\$\?$/.test(l) && !allowedOrSet.has(l) && !(file === "docker/boot.sh" && /\|\| rc=\$\?$/.test(l))) bad(`${file} has a line with || that is not on the list of allowed ones in docker/check.mjs (a command made to pass with || true, || : or the like): ${l}`);
   }
 }
-// boot.sh: the checkout of the commit, its identity and the run of the steps. These lines, in this order.
+// run-job.sh: the dispatch on the job name, exactly (what runs for each job name, and quick's command).
+{
+  const lines = codeLines(runJob);
+  const at = lines.lastIndexOf('case "$job" in');
+  const want = [
+    'case "$job" in',
+    "rust) job_rust ;;",
+    "parity) job_parity ;;",
+    "test) job_test ;;",
+    "sandbox) job_sandbox ;;",
+    "selfcheck) job_selfcheck ;;",
+    "quick)",
+    'case "${MANDATE_CI_NODE:-24}" in 22 | 24) use_node "${MANDATE_CI_NODE:-24}" ;; *) echo "MANDATE_CI_NODE must be 22 or 24"; exit 2 ;; esac',
+    '[ "$#" -gt 0 ] || { echo "quick needs a command"; exit 2; }',
+    '"$@"',
+    ";;",
+    '*) echo "unknown job $job"; exit 2 ;;',
+    "esac",
+  ];
+  if (at < 0 || JSON.stringify(lines.slice(at)) !== JSON.stringify(want)) bad("docker/run-job.sh: the dispatch on the job name at the end of the file is not exactly the pinned one in docker/check.mjs");
+}
+// boot.sh: the checkout of the commit, its identity and the run of the steps. All its code lines, exactly: a line more or
+// less is a change of this list.
 {
   const lines = codeLines(read("docker/boot.sh"));
-  const required = [
+  const want = [
     "set -eu",
+    'job="${1:?usage: boot.sh <job> <sha> [command...]}"',
+    'sha="${2:?usage: boot.sh <job> <sha> [command...]}"',
+    "shift 2",
+    "lib=/usr/local/lib/mandate-ci",
+    "sum() { sha256sum | cut -d' ' -f1; }",
+    'if [ -z "${MANDATE_CI_IMAGE:-}" ]; then',
+    'echo "boot: this image was built by a newer checkout of the Docker scripts; run the job again (your checkout rebuilds its own image)" >&2',
+    "exit 97",
+    "fi",
     'have="$(cat "$lib/Dockerfile" "$lib/.dockerignore" "$lib/boot.sh" | sum)"',
-    'git init -q -b main .',
+    'if [ "$have" != "$MANDATE_CI_IMAGE" ]; then',
+    'echo "boot: the image was built from another Dockerfile, .dockerignore or boot.sh than the checkout that started it" >&2',
+    "exit 97",
+    "fi",
+    "cd /ci/repo",
+    "git init -q -b main .",
     'echo "$sha" > .git/shallow',
     "git unpack-objects --strict -q",
     'git checkout -q --detach "$sha"',
     'if [ "$(git rev-parse HEAD)" != "$sha" ]; then echo "boot: HEAD is not the tested commit $sha" >&2; exit 3; fi',
-    'if [ -n "$(git status --porcelain)" ]; then echo "boot: the checkout of $sha is not clean:" >&2; git status --short >&2; exit 3; fi',
+    'status="$(git status --porcelain)"',
+    'if [ -n "$status" ]; then echo "boot: the checkout of $sha is not clean:" >&2; echo "$status" >&2; exit 3; fi',
     "git fsck --connectivity-only --no-dangling",
+    'echo "tested commit: $sha (a depth-1 checkout of its own objects, made in the container)"',
+    "if [ -f docker/run-job.sh ]; then",
+    'echo "steps: docker/run-job.sh of the tested commit"',
+    "steps=/ci/repo/docker/run-job.sh",
+    "else",
+    'if [ "$(sum < "$lib/run-job.sh")" != "${MANDATE_CI_STEPS:-}" ]; then',
+    'echo "boot: the image holds another run-job.sh than the checkout that started it, and the tested commit has none" >&2',
+    "exit 97",
+    "fi",
+    'echo "steps: the copy baked into the image (the tested commit has no docker/run-job.sh)"',
+    'steps="$lib/run-job.sh"',
+    "fi",
+    "rc=0",
     'bash "$steps" "$job" "$sha" "$@" || rc=$?',
     'if [ "$rc" -eq 97 ]; then rc=1; fi',
     'exit "$rc"',
   ];
-  let at = -1;
-  for (const want of required) {
-    const i = lines.indexOf(want, at + 1);
-    if (i < 0) {
-      bad(`docker/boot.sh does not have, in its place, the line \`${want}\``);
-      break;
-    }
-    at = i;
+  if (JSON.stringify(lines) !== JSON.stringify(want)) {
+    const i = lines.findIndex((l, k) => l !== want[k]);
+    bad(`docker/boot.sh is not exactly the pinned text in docker/check.mjs (a line more, less or different); the first difference is at code line ${i < 0 ? Math.min(lines.length, want.length) + 1 : i + 1}: ${lines[i] ?? "(end of file)"}`);
   }
-  for (const l of lines) if (/\bgit (config|add|commit|archive|clone|fetch|pull|remote)\b|autocrlf|\bcurl\b|\bwget\b/.test(l)) bad(`docker/boot.sh has a command that makes the checkout another way than the pack of the commit: ${l}`);
 }
 
 // ── the result: nothing is checked after this line ──────────────────────
