@@ -77,7 +77,9 @@ pub(super) const CHECK_SUBPROGRAM: &[&str] = &["i"];
 /// Input: `{ i: { parent: program, modules?: { <name>: program }, workflow:
 /// string, number: number, base: string, ops: [{ op, path, value? }], lead:
 /// data class, room: { left: { <dimension>: number }, time_left_ms?: number,
-/// writes: [CapVal] } } }`.
+/// writes: [CapVal] }, std_patterns?: version } }`; `std_patterns` (0.7)
+/// the version of `std.patterns` the parent's lock pins, one the compiler
+/// embeds (anything else is `bad_input`), which the check reads.
 /// Output: `SubprogramCheck`, `{ ok, diagnostics, program?, hash?,
 /// workflow? }`, and, for a sub-program of 0.6 that applies a pattern and
 /// is admitted (the Rust's alone), `running`, the sub-program as a run runs
@@ -106,6 +108,7 @@ pub(super) fn check_subprogram(input: &Value) -> Result<JsValue, DoorError> {
         ops: &ops,
         lead,
         room: &room,
+        std_patterns: i.opt_std_patterns("std_patterns")?,
     });
     r.as_ref()
         .map(SubprogramCheck::to_js)
@@ -119,7 +122,8 @@ pub(super) const CHECK_AMENDMENT: &[&str] = &["i"];
 /// envelope, checked, and held to widening the old one only.
 ///
 /// Input: `{ i: { parent: program, modules?: { <name>: program }, workflow:
-/// string, envelope?: the new envelope as IR (any JSON value) } }`.
+/// string, envelope?: the new envelope as IR (any JSON value),
+/// std_patterns?: version } }`, `std_patterns` as [`check_subprogram`] takes it.
 /// Output: `AmendmentCheck`, `{ ok, diagnostics, program?, hash? }`;
 /// `bad_input` with the TypeScript's message when `workflow` is not a
 /// workflow with an envelope.
@@ -136,6 +140,7 @@ pub(super) fn check_amendment(input: &Value) -> Result<JsValue, DoorError> {
         modules,
         workflow,
         envelope,
+        std_patterns: i.opt_std_patterns("std_patterns")?,
     });
     r.as_ref()
         .map(AmendmentCheck::to_js)
@@ -143,7 +148,7 @@ pub(super) fn check_amendment(input: &Value) -> Result<JsValue, DoorError> {
 }
 
 /// The parameters of [`semantic_diff`].
-pub(super) const SEMANTIC_DIFF: &[&str] = &["before", "after", "locks", "modules"];
+pub(super) const SEMANTIC_DIFF: &[&str] = &["before", "after", "locks", "modules", "std_patterns"];
 
 /// `semanticDiff(before, after, locks)`, `compiler/src/views/views.ts`: the
 /// semantic diff of two programs.
@@ -165,7 +170,14 @@ pub(super) fn semantic_diff(input: &Value) -> Result<JsValue, DoorError> {
         after: l.opt_value("after"),
     });
     let modules = a.opt_modules("modules")?;
-    Ok(crate::diff::semantic_diff_with(before, after, locks, modules).to_js())
+    // 0.7: the version of std.patterns a caller that holds no lock names;
+    // each lock given must pin that one.
+    let named = a.opt_std_patterns("std_patterns")?;
+    for lock in [locks.and_then(|l| l.before), locks.and_then(|l| l.after)] {
+        crate::library::pin_of(lock, named.as_ref())
+            .map_err(|e| DoorError::bad_input(format!("`std_patterns`: {e}")))?;
+    }
+    Ok(crate::diff::semantic_diff_pinned(before, after, locks, modules, named.as_ref()).to_js())
 }
 
 /// The parameters of [`governance_changes`].

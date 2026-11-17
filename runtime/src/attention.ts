@@ -13,7 +13,7 @@
 // report's role, title and fields (`class`, `known`, `type`), and a stage's name, title and index, each by the path of
 // its statement in the running program.
 
-import { attentionFacts, canonicalize, checkSubprogram, isProgram07OrLater, type AttentionFacts, type AttentionFactsInput, type AttentionReport, type Json, type Program, type SubprogramCheck06, type SubprogramInput } from "@mandate/bridge";
+import { attentionFacts, canonicalize, checkSubprogram, isProgram07OrLater, type AttentionFacts, type AttentionFactsInput, type AttentionReport, type Json, type Program, type SubprogramCheck06, type SubprogramInput, type SubprogramInput07 } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import { refOf, sha256Of, type ArtifactScope, type ArtifactStore } from "./artifacts.js";
 import { Violation } from "./signals.js";
@@ -143,7 +143,9 @@ export function subprogramFacts(door: FactsDoor, input: SubprogramInput, checked
   const wf = Object.hasOwn(parent.defs, input.workflow) ? parent.defs[input.workflow] : undefined;
   const envelope = wf?.kind === "workflow" ? wf.envelope : undefined;
   try {
-    const facts = door({ text: canonicalize(view as unknown as Json), kind: "json", opts: { modules: { ...(input.modules ?? {}), [parent.module]: parent }, claim: { envelope: (envelope ?? null) as unknown as Record<string, unknown>, lead: input.lead } }, workflow: checked.workflow! });
+    // 0.7: the version of std.patterns the parent's lock pins, as the check was given it.
+    const pin = (input as SubprogramInput07).std_patterns;
+    const facts = door({ text: canonicalize(view as unknown as Json), kind: "json", opts: { modules: { ...(input.modules ?? {}), [parent.module]: parent }, claim: { envelope: (envelope ?? null) as unknown as Record<string, unknown>, lead: input.lead }, ...(pin !== undefined ? { std_patterns: pin } : {}) }, workflow: checked.workflow! });
     return factsProblem(facts, checked.workflow!) === undefined ? facts : null;
   } catch (e) {
     if (e instanceof CompilerFailure) throw e;
