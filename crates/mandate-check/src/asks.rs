@@ -1488,7 +1488,7 @@ fn walk_units<'a>(env: &Env<'a>, roots: &[&'a Value]) -> (Units<'a>, Cycles<'a>)
         stack.push((s, callees, 0));
         while let Some((unit, callees, next)) = stack.last_mut() {
             if let Some(c) = callees.get(*next).copied() {
-                *next += 1;
+                *next = next.saturating_add(1);
                 if done.contains_key(&c) || pending.contains(&c) {
                     continue;
                 }
