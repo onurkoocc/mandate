@@ -96,13 +96,9 @@ describe("a pass of the driver loop over a 0.7 run", () => {
         expect(expired).toHaveLength(2);
         expect(new Set(expired).size).toBe(2);
         const ended = await w.rt.getRun(r.run_id);
-        // The fault the par stops with is that of the branch that failed first, and nothing orders the two branches
-        // (on PostgreSQL they run at once): either approval's.
-        expect(ended.state).toBe("failed");
-        expect([
-          { $tag: "Rejected", $args: [{ unmet: ["first"], contract: "FirstOk" }] },
-          { $tag: "Rejected", $args: [{ unmet: ["second"], contract: "SecondOk" }] },
-        ]).toContainEqual(ended.error);
+        // Both branches fail in the round; the par fails with its first failed branch's fault in the branches' own
+        // order, `a`'s, whichever finished first (on PostgreSQL the two run at once).
+        expect([ended.state, ended.error]).toEqual(["failed", { $tag: "Rejected", $args: [{ unmet: ["first"], contract: "FirstOk" }] }]);
         expect((await w.rt.journal.events(r.run_id)).map((e) => e.type).slice(-6)).toEqual(["run_waiting", "wait_expired", "wait_expired", "lease_acquired", "run_running", "run_failed"]);
       } else {
         // As before 0.7: the wait runs.waiting names, and the run waits on the other one until the next tick.
