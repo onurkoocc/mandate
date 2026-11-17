@@ -11,7 +11,7 @@
 // worker that re-runs the workflow body finds earlier results instead of
 // calling the outside world again (R01, R13).
 
-import { BUDGET_DIMENSIONS, budgetAmount, type Budget } from "@mandate/bridge";
+import { BUDGET_DIMENSIONS, budgetAmount, isProgram07OrLater, type Budget } from "@mandate/bridge";
 import type { Cost, Outcome } from "./adapters.js";
 import { decisionId, type SignedDecision, type StoredDecision } from "./decisions.js";
 import type { EvidenceRecord } from "./evidence.js";
@@ -767,7 +767,10 @@ export class Journal {
   async openAmendment(runId: string, fence: number, cmd: { id: string; digest: string }, request: Value, pkg: { hash: string; program: Value; lock: Value; modules: Value }, requested: Value): Promise<CommandRow> {
     return this.openWait(runId, fence, { ...cmd, kind: "amendment" }, request, async (tx, run) => {
       if (run.cancel_requested) throw new Cancelled();
-      await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [pkg.hash, json(pkg.program), json(pkg.lock), json(pkg.modules)]);
+      // With whether it holds anything of 0.7 (package.ts `isPackage07OrLater`, which notify.ts reads as `is_07`).
+      const modules = typeof pkg.modules === "object" && pkg.modules !== null && !Array.isArray(pkg.modules) ? Object.values(pkg.modules) : [];
+      const is07 = [pkg.program, ...modules].some(isProgram07OrLater);
+      await tx.query("insert into packages (package_hash, program, lock, modules, is_07) values ($1, $2, $3, $4, $5) on conflict (package_hash) do nothing", [pkg.hash, json(pkg.program), json(pkg.lock), json(pkg.modules), is07]);
       await this.event(tx, runId, "amendment_requested", requested);
     });
   }
