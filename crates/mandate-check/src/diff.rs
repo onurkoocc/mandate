@@ -23,7 +23,7 @@ use mandate_ir::{
 use crate::caps::{CapVal, show_cap, within};
 use crate::lock_diff::{lock_diff, lock_limits_diff};
 use crate::modules::{Modules, linked_program};
-use crate::report_sig::{Reports, compare_reports, report_records};
+use crate::report_sig::{Reports, compare_reports, holds_report, report_records};
 use crate::view_shared::{
     Graph, ProgramRef, VIEW_FORMAT, caps_in, defs_of, duration, is_system, j, j_or_null, js_text,
     json_string, kind_text, method_of, micros_as_units, program_ref, workflow_effects,
@@ -1082,18 +1082,6 @@ fn report_changes(out: &mut Classified, name: &str, path: &str, was: &Reports, n
     }
     for text in down {
         out.beh(format!("{path}/body"), text);
-    }
-}
-
-/// Whether the definition `d` holds a `report` statement (0.7).
-fn holds_report(d: &Value) -> bool {
-    match d {
-        Value::Array(items) => items.iter().any(holds_report),
-        Value::Object(m) => {
-            m.get("op").and_then(Value::as_str) == Some("report")
-                || m.iter().any(|(_, x)| holds_report(x))
-        }
-        _ => false,
     }
 }
 

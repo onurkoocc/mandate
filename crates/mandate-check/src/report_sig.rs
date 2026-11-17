@@ -96,7 +96,8 @@ impl ReportSig {
 pub type Reports = BTreeMap<String, Vec<ReportSig>>;
 
 /// Whether `v` holds a `report` statement anywhere.
-fn holds_report(v: &Value) -> bool {
+#[must_use]
+pub fn holds_report(v: &Value) -> bool {
     match v {
         Value::Array(items) => items.iter().any(holds_report),
         Value::Object(m) => {
@@ -197,18 +198,37 @@ pub fn report_records(program: Program<'_>, linked: &Map) -> Reports {
     out
 }
 
-/// Each report of `reports` by its role and title, with how many there are
-/// and the highest class among them, in the order first met.
-fn by_key(reports: &[ReportSig]) -> Vec<((&str, &str), usize, ShownClass)> {
-    let mut out: Vec<((&str, &str), usize, ShownClass)> = Vec::new();
+/// The reports of one role and title: how many there are, and the highest
+/// class among them.
+struct Keyed<'a> {
+    role: &'a str,
+    title: &'a str,
+    count: usize,
+    class: ShownClass,
+}
+
+impl Keyed<'_> {
+    fn is(&self, other: &Keyed<'_>) -> bool {
+        self.role == other.role && self.title == other.title
+    }
+}
+
+/// Each report of `reports` by its role and title, in the order first met.
+fn by_key(reports: &[ReportSig]) -> Vec<Keyed<'_>> {
+    let mut out: Vec<Keyed<'_>> = Vec::new();
     for r in reports {
-        let key = (r.role.as_str(), r.title.as_str());
-        match out.iter_mut().find(|(k, _, _)| *k == key) {
-            Some((_, n, c)) => {
-                *n = n.saturating_add(1);
-                *c = (*c).max(r.class);
+        let one = Keyed {
+            role: r.role.as_str(),
+            title: r.title.as_str(),
+            count: 1,
+            class: r.class,
+        };
+        match out.iter_mut().find(|k| k.is(&one)) {
+            Some(k) => {
+                k.count = k.count.saturating_add(1);
+                k.class = k.class.max(r.class);
             }
-            None => out.push((key, 1, r.class)),
+            None => out.push(one),
         }
     }
     out
@@ -228,42 +248,46 @@ pub fn compare_reports(
     let (was, now) = (by_key(old), by_key(new));
     let mut up = Vec::new();
     let mut down = Vec::new();
-    for ((role, title), n, class) in &now {
-        match was.iter().find(|(k, _, _)| k == &(*role, *title)) {
+    for a in &now {
+        let (role, title) = (a.role, a.title);
+        match was.iter().find(|b| b.is(a)) {
             None => up.push(format!(
                 "+ {name}: report \"{title}\" to {role} (shows {})",
-                class.said()
+                a.class.said()
             )),
-            Some((_, m, before)) => {
-                if n > m {
+            Some(b) => {
+                if a.count > b.count {
                     up.push(format!(
-                        "+ {name}: report \"{title}\" to {role}, {n} where there were {m}"
+                        "+ {name}: report \"{title}\" to {role}, {} where there were {}",
+                        a.count, b.count
                     ));
                 }
-                if class > before {
+                if a.class > b.class {
                     up.push(format!(
                         "~ {name}: report \"{title}\" to {role} shows {} → {}",
-                        before.said(),
-                        class.said()
+                        b.class.said(),
+                        a.class.said()
                     ));
                 }
             }
         }
     }
-    for ((role, title), m, before) in &was {
-        match now.iter().find(|(k, _, _)| k == &(*role, *title)) {
+    for b in &was {
+        let (role, title) = (b.role, b.title);
+        match now.iter().find(|a| a.is(b)) {
             None => down.push(format!("- {name}: report \"{title}\" to {role} removed")),
-            Some((_, n, class)) => {
-                if n < m {
+            Some(a) => {
+                if a.count < b.count {
                     down.push(format!(
-                        "- {name}: report \"{title}\" to {role}, {n} where there were {m}"
+                        "- {name}: report \"{title}\" to {role}, {} where there were {}",
+                        a.count, b.count
                     ));
                 }
-                if class < before {
+                if a.class < b.class {
                     down.push(format!(
                         "~ {name}: report \"{title}\" to {role} shows {} → {}",
-                        before.said(),
-                        class.said()
+                        b.class.said(),
+                        a.class.said()
                     ));
                 }
             }

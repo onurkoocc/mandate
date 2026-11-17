@@ -23,8 +23,7 @@ use mandate_check::{
     check, check_subprogram, skeleton,
 };
 use mandate_ir::{
-    Diagnostic, JsValue, Language, Map, Program, Value, canonicalize, hash_program, parse,
-    stringify,
+    Diagnostic, JsValue, Language, Map, Value, canonicalize, hash_program, parse, stringify,
 };
 use mandate_lib::{Timestamp, Version};
 use mandate_syntax::{SourceKind, load};
@@ -830,8 +829,49 @@ fn the_facts_of_a_sub_program_of_a_parent_that_pins_2_0_0() {
             ("accountant", "Batch done")
         ]
     );
-    // The program the facts are of is the sub-program the door checked.
-    let _ = Program::of(&parent);
+    // The check of a sub-program is given no lock: it reads the version of
+    // its parent's language (2.0.0 here, the version the parent pins), or
+    // the one whose module it is handed as std.patterns. Handed 1.0.0's, the
+    // version a parent of 0.7 whose lock pins 1.0.0 reads, it runs no stage,
+    // and the door gives facts with none.
+    let one = std_patterns_for(None, Some(&version("1.0.0"))).unwrap();
+    let mut given = Modules::new();
+    for (m, ir) in one.modules.iter() {
+        given.insert(m, ir.clone());
+    }
+    let older = check_subprogram(&SubprogramInput {
+        modules: Some(&given),
+        ..input
+    })
+    .unwrap();
+    assert!(older.ok, "{:#?}", errors(&older.diagnostics));
+    let running = older.running.as_ref().unwrap();
+    let body = running
+        .get("defs")
+        .and_then(|d| d.get(workflow.as_str()))
+        .and_then(|w| w.get("body"))
+        .and_then(Value::as_array)
+        .unwrap();
+    assert!(
+        body.iter()
+            .all(|s| s.get("op").and_then(Value::as_str) != Some("stage"))
+    );
+    modules.insert(
+        "std.patterns",
+        one.modules.get("std.patterns").unwrap().clone(),
+    );
+    let none = attention_facts(
+        &view_text,
+        SourceKind::Json,
+        &CheckOptions {
+            modules: Some(&modules),
+            claim: Some(&claim),
+            ..CheckOptions::default()
+        },
+        &workflow,
+    )
+    .expect("the facts");
+    assert!(none.stages.is_empty() && none.reports.is_empty());
 }
 
 // ---------------------------------------------------------------- reports as governance

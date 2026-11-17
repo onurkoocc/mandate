@@ -511,12 +511,13 @@ fn with_pin(lock: &Value, library: &str, pin: &LockLibrary, language: Option<Lan
         out.insert(k, v);
     }
     m.insert("libraries", Value::Object(out));
-    if language.is_some_and(|l| l.at_least(Language::V0_7)) {
-        if !mandate_ir::lock_at_least(lock, mandate_ir::LOCK_FORMAT_0_7) {
-            m.insert("lock", mandate_ir::LOCK_FORMAT_0_7);
-        }
-    } else if !mandate_ir::lock_at_least(lock, mandate_ir::LOCK_FORMAT_0_6) {
-        m.insert("lock", mandate_ir::LOCK_FORMAT_0_6);
+    let floor = if language.is_some_and(|l| l.at_least(Language::V0_7)) {
+        mandate_ir::LOCK_FORMAT_0_7
+    } else {
+        mandate_ir::LOCK_FORMAT_0_6
+    };
+    if !mandate_ir::lock_at_least(lock, floor) {
+        m.insert("lock", floor);
     }
     Value::Object(m)
 }
