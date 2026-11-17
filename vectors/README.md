@@ -1272,7 +1272,7 @@ held by what a person writes and by what the Rust writes:
   `diagnostic-vectors.test.ts`, `diff-vectors.test.ts`) skip them, and each checks
   that what it skipped is exactly the directories whose `case.json` names 0.6, read
   as plain JSON, and that there are `RUST_ONLY_CASES` of them
-  (`compiler/test/cases-runner.ts`, 388 today, of 0.6 and 0.7): a case of 0.6 added or taken away
+  (`compiler/test/cases-runner.ts`, 392 today, of 0.6 and 0.7): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
   version, `mandate/0.8`, E0103, whose list has 0.6 and 0.7), `E0140` (a 0.5 lock that carries `libraries`),
@@ -1332,7 +1332,7 @@ same way, by gates of its own beside those of 0.6:
 - **Conformance cases of 0.7**, `"language": "mandate/0.7"`, written by hand and
   skipped and counted by the TypeScript runners as those of 0.6 are
   (`RUST_ONLY_LANGUAGES` is `mandate/0.6` and `mandate/0.7`, and `RUST_ONLY_CASES`
-  counts both, 388 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
+  counts both, 392 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
   unknown field of a 0.7 program, E0104), `S02k` and `S02l` (a 0.7 program with a lock
   of format 0.6, and of 0.7), `E0140d` (an unknown field of a 0.7 lock, E0140), `E1509` to `E1509b`
   (slice RL7), the stages (slice RL2): `A01` to `A01b`, `E0101h`, `E0104h` to `E0104j`, `E1901` to
@@ -1340,9 +1340,9 @@ same way, by gates of its own beside those of 0.6:
   `E0104k` to `E0104o`, `E0121g`, `E1501b`, `E1502a`, `E1705b`, `E1705c`, `E1903` to `E1903e`, `E1904`
   to `E1904v` and `E1905` to `E1905g`, `std.patterns` 2.0.0 (slice RL6): `E1609` to `E1609c`,
   `E1603b` and `L10` to `L10e`, the attention bound (slice RL4): `E1906` to `E1906p`,
-  `E1907` to `E1907b`, `E1908` to `E1908e`, `E1706c` to `E1706e`, `E1709e` to `E1709g`, `E1501c` and `S04b`,
+  `E1907` to `E1907c`, `E1908` to `E1908e`, `E1706c` to `E1706e`, `E1709e` to `E1709g`, `E1501c`, `E1501d`, `S04b`, `S04c` and `E0220h`,
   and the owner and the lock of 0.7 (slice RL5): `A04`, `E1910` to `E1910b`, `E1911`, `E1911a`, `E1705d`,
-  `E1501d`, `E1502b`, `E0140e` to `E0140h`, `E1307f`, `L11` and `L11a`
+  `E1501e`, `E1502b`, `E0140e` to `E0140h`, `E1307f`, `L11` and `L11a`
   (`conformance/README.md`, "Cases of 0.7").
 - **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (nine today,
   `asks.mdt`, `minimal.mdt`, `owner.mdt` (with its lock of 0.7, which gives role classes and asks for the
@@ -1459,13 +1459,14 @@ second review row and the governance row shortened):
     { "path": "/defs/Planning/body/2/value", "wait": "/defs/Planning/body/2/value", "kind": "review",
       "role": "accountant", "shown": "public", "known": "plain", "deadline_ms": 86400000,
       "on_no_answer": "escalates", "escalates": { "to": "finance_lead", "deadline_ms": 86400000 },
-      "stage": "review", "multiplicity": 1, "only": null },
+      "stage": "review", "multiplicity": 1, "only": null, "items": 4, "waivable": ["Short.short"] },
     { "path": "…/body/2/value", "wait": "…", "kind": "review", "role": "finance_lead", "shown": "public",
       "known": "plain", "deadline_ms": 86400000, "on_no_answer": "declined", "stage": "review",
-      "multiplicity": 1, "only": "on_escalation" },
+      "multiplicity": 1, "only": "on_escalation", "items": 4, "waivable": ["Short.short"] },
     { "path": "/defs/Planning/body/4/value", "wait": "/defs/Planning/body/4/value/contract/accept/owned/call",
       "kind": "verify", "role": "code_owner", "shown": "public", "known": "plain", "deadline_ms": null,
-      "on_no_answer": "waits", "stage": "merge", "multiplicity": 1, "only": null },
+      "on_no_answer": "waits", "stage": "merge", "multiplicity": 1, "only": null,
+      "contract": "Ready", "criterion": "owned" },
     { "path": "/defs/Planning/body/5/value", "wait": "/defs/Planning/body/5/value/authorize", "kind": "effect",
       "role": "release_manager", "shown": "public", "known": "verified", "deadline_ms": null,
       "on_no_answer": "waits", "stage": "merge", "multiplicity": 1, "only": null },
@@ -1491,7 +1492,8 @@ second review row and the governance row shortened):
       "multiplicity": 1, "only": "budget_exceeded" }
   ],
   "plans": [
-    { "path": "/defs/Planning/body/7/value", "kind": "plan", "role": "platform_lead", "shown": "public",
+    { "path": "/defs/Planning/body/7/value", "wait": "/defs/Planning/body/7/value/amendment",
+      "kind": "plan", "role": "platform_lead", "shown": "public",
       "known": "model", "on_no_answer": "refused_to_lead", "stage": "finish", "multiplicity": 1,
       "from": "asks_left" }
   ]
@@ -1532,7 +1534,17 @@ second review row and the governance row shortened):
   constant `deadline:`; `on_no_answer` one of `waits`, `unmet` (an approval with a
   deadline), `escalates` (with `escalates: { to, deadline_ms }`, the escalated deadline
   counted from the escalation), `declined`, `refused_to_lead`; `multiplicity` as a
-  report's; `only` `null`, `on_escalation` or `governance_file`.
+  report's; `only` `null`, `on_escalation` or `governance_file`. A `verify` row alone
+  has `contract` and `criterion`, the names whose approval it is, as written; a review's
+  rows alone have `items`, the most items its one decision is about (the bound of the
+  map it reviews: its `max`, else the envelope's `agents`; or `"unbounded"`), and
+  `waivable`, the criteria its roles may waive as `Contract.criterion`, in the order of
+  the program (`[]` when none); no other row has these members. `known` is no better
+  than what the value is made of, through bindings, templates and functions' results,
+  as a report's field (spec/attention.md "What is shown"). Under the runtime's
+  configuration an authorization's suffix does not name its row: the owner's gate is
+  the `governance` row of the effect's path whichever suffix its wait has, and an
+  authorization by a role the effect's row here, else its `effects` row (one by path).
 - `effects`: every effect site, an `effect` or a change set's member: `effect` its name,
   `counted` whether the total counts its authorization (the program hands it to `role`),
   `batch` a batch commit step, which never asks a person whatever the runtime's
@@ -1551,7 +1563,9 @@ second review row and the governance row shortened):
   each time the budget runs out (`multiplicity` per time).
 - `plans`: each `plan`, a row of its own, out of what is left of `asks`: each sub-program
   is held at its admission (its declared `asks`, or its static total), each amendment
-  request counted when the lead asks it, decided by the envelope's owner.
+  request counted when the lead asks it, decided by the envelope's owner. `wait` is
+  `<plan>/amendment`, the static form of the request's wait; a run's command id puts
+  the lead's turn and tool call between, `<plan>/step/<n>/tool/<k>/amendment`.
 
 `facts.json` holds, beside the programs, the facts of a lead's sub-program that applies
 a listed shape (`fixtures/attention/shapes.plans/noted.mdt`, under `Planning` of
@@ -1580,7 +1594,7 @@ the compiler's order. The gates that do this:
 | diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
 | diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
 | corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 | `crates/mandate-testkit/tests/corpus.rs` |
-| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 513: the TypeScript's 125, and 265 of language 0.6 and 123 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
+| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 517: the TypeScript's 125, and 265 of language 0.6 and 127 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
 | tool schema digests | the digest `schemaDigest` of `runtime/src/mcp-client.ts` (built to `runtime/dist`) gives for 34 MCP tools written as JSON text (no `outputSchema`, `outputSchema` empty or null, member order, nested and deep schemas, non-ASCII and astral names and strings, members sorted by UTF-16, lone surrogates, numbers JSON writes differently from their text, empty objects, a member given twice), with the canonical text it hashes, and 29 texts the door must refuse; written by `scripts/tool-digest-vectors.mjs` (found by the `scripts/*-vectors.mjs` loop of CI and `docker/run-job.sh`) | 34 tools, 29 refused | `crates/mandate-check/tests/connector_doors.rs` (door `tool_schema_digest`) |

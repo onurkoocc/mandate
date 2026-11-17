@@ -82,7 +82,7 @@ use crate::attention::{Count, RESTART_ALL_ROUNDS};
 use crate::caps::callee_path;
 use crate::statics::{Checker, Frame, ReviewSource, Val, max_class, sub_i};
 use crate::stdlib::DataClass;
-use crate::ty::{Level, level_rank};
+use crate::ty::Level;
 
 /// The most escalations `supervise escalate` makes for one delegation: the
 /// one constant of the specification, the compiler and the runtime
@@ -247,7 +247,12 @@ pub struct QuestionFact {
     /// (`<verify>/contract/require/i/…`, not `/defs/C/require/i/…`), and a
     /// sub-program's under its command (`<plan>/program/<n>…`): the
     /// runtime tags each wait it opens with its static site (kind and
-    /// wait), which these rows are the list of.
+    /// wait), which these rows are the list of. Under the runtime's
+    /// configuration the suffix of an authorization does not name the row:
+    /// the owner's gate of an effect is the `governance` row of its path,
+    /// whichever suffix its wait has, and an authorization by a role the
+    /// effect's row, else its [`EffectFact`] (spec/attention.md "The static
+    /// form of a wait").
     pub wait: String,
     /// Its kind.
     pub kind: SiteKind,
@@ -276,6 +281,36 @@ pub struct QuestionFact {
     /// `max_iter`), `map` (a map without a bound), `recursion`, `overflow`
     /// (past the largest count). `None` when it is a number.
     pub unbounded: Option<&'static str>,
+    /// What only a row of its kind says: a `verify`'s contract and
+    /// criterion, a review's items and the criteria its roles may waive.
+    /// `None` for every other kind, whose row has no member for it.
+    pub detail: Option<Detail>,
+}
+
+/// What a `verify` row or a review's rows say beside what every row says
+/// (the attention view: "Waive or decline the open items of the batch
+/// (Matched.totals may be waived); one decision about up to 60 items").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Detail {
+    /// A `verify`: the contract and the criterion whose approval it is, by
+    /// their names as the program writes them.
+    Verify {
+        /// The contract.
+        contract: String,
+        /// The criterion.
+        criterion: String,
+    },
+    /// A review (and its escalation): how many items its one decision is
+    /// about at most, the bound of the map whose outcomes it reviews (its
+    /// `max`, else the envelope's `agents`; unbounded without either), and
+    /// the criteria its roles may waive, as `Contract.criterion`, in the
+    /// order of the program (none when the contract has no waiver).
+    Review {
+        /// The bound of the items.
+        items: Count,
+        /// The criteria that may be waived.
+        waivable: Vec<String>,
+    },
 }
 
 /// One effect site: an `effect`, or a member of a change set.
@@ -304,6 +339,12 @@ pub struct EffectFact {
 pub struct PlanFact {
     /// Its path.
     pub path: String,
+    /// The static form of the wait an amendment request opens:
+    /// `<plan>/amendment`. A run's command id puts the lead's turn and its
+    /// tool call between the two, `<plan>/step/<n>/tool/<k>/amendment`
+    /// (`runtime/src/plan.ts`, `runtime/src/loop.ts`), with what every
+    /// command id adds (a loop's `@i`, a sub-program's prefix).
+    pub wait: String,
     /// Who decides a lead's amendment request: the envelope's owner.
     pub role: Option<String>,
     /// The class of what its lead is handed, which its requests are made
@@ -595,6 +636,10 @@ struct Env<'a> {
     /// level of their arguments ([`Handed`]). A site in the function or
     /// the contract shows at least that class, and is known no better.
     handed: &'a HashMap<String, Handed>,
+    /// What the typing found of each review, by its path: the bound of
+    /// the items it decides on and the criteria its roles may waive
+    /// ([`Detail::Review`]).
+    reviewed: &'a HashMap<String, (Count, Vec<String>)>,
 }
 
 /// The highest class and the weakest level of what one function's calls or
@@ -755,6 +800,7 @@ impl<'e, 'a> Walk<'e, 'a> {
             unbounded: ctx
                 .cause
                 .or_else(|| (multiplicity == Count::Unbounded).then_some("overflow")),
+            detail: site.detail,
         });
     }
 
@@ -966,6 +1012,7 @@ impl<'e, 'a> Walk<'e, 'a> {
                     .map_or(DataClass::Restricted, |(_, c)| *c);
                 self.found.plan(PlanFact {
                     path: path.to_owned(),
+                    wait: format!("{path}/amendment"),
                     role: envelope.and_then(Envelope::owner).map(str::to_owned),
                     shown: shown.max(self.env.floor),
                     stage: ctx.stage.map(str::to_owned),
@@ -1010,20 +1057,25 @@ impl<'e, 'a> Walk<'e, 'a> {
                     },
                     None => OnNoAnswer::Declined,
                 };
-                self.ask(
-                    out,
-                    ctx,
-                    Site::new(path, SiteKind::Review, role, path),
-                    Count::ONE,
-                    deadline,
-                    first,
-                    None,
-                );
+                // What the typing found of the map it reviews.
+                let detail = self
+                    .env
+                    .reviewed
+                    .get(path)
+                    .map(|(items, waivable)| Detail::Review {
+                        items: *items,
+                        waivable: waivable.clone(),
+                    });
+                let mut site = Site::new(path, SiteKind::Review, role, path);
+                site.detail = detail.clone();
+                self.ask(out, ctx, site, Count::ONE, deadline, first, None);
                 if to.is_some() {
+                    let mut site = Site::new(path, SiteKind::Review, to, path);
+                    site.detail = detail;
                     self.ask(
                         out,
                         ctx,
-                        Site::new(path, SiteKind::Review, to, path),
+                        site,
                         Count::ONE,
                         deadline,
                         OnNoAnswer::Declined,
@@ -1092,6 +1144,10 @@ impl<'e, 'a> Walk<'e, 'a> {
                     let deadline_ms = self.constant_ms(deadline);
                     let mut site = Site::new(path, SiteKind::Verify, role, path);
                     site.wait = format!("{path}/contract/{group}/{}{part}/call", ptr_token(cn));
+                    site.detail = Some(Detail::Verify {
+                        contract: e.contract().unwrap_or(name).to_owned(),
+                        criterion: cn.to_owned(),
+                    });
                     self.ask(out, ctx, site, Count::ONE, deadline_ms, on_no_answer, None);
                 }
             }
@@ -1285,6 +1341,8 @@ struct Site<'k> {
     role: Option<String>,
     /// The key of what the typing recorded of what it shows ([`Asked`]).
     shown: &'k str,
+    /// What only a row of its kind says ([`QuestionFact::detail`]).
+    detail: Option<Detail>,
 }
 
 impl<'k> Site<'k> {
@@ -1295,6 +1353,7 @@ impl<'k> Site<'k> {
             kind,
             role,
             shown,
+            detail: None,
         }
     }
 }
@@ -1656,6 +1715,7 @@ fn bound<'a>(env: &Env<'a>, name: &str, d: Definition<'a>) -> WorkflowBound {
             multiplicity: Count::ONE,
             only: None,
             unbounded: None,
+            detail: None,
         }],
     };
     for q in &mut budget_exceeded {
@@ -1714,10 +1774,17 @@ fn bound<'a>(env: &Env<'a>, name: &str, d: Definition<'a>) -> WorkflowBound {
 
 /// The weaker of two levels.
 fn weaker(a: Level, b: Level) -> Level {
-    if level_rank(a) > level_rank(b) { a } else { b }
+    crate::ty::weaker_level(a, b)
 }
 
 impl<'a> Checker<'a> {
+    /// 0.7: how `v` is known: the weaker of its type's level, the weakest
+    /// wrapper deciding ([`crate::reports::known`]), and of how what it is
+    /// made of is known where its type does not say so ([`Val::made`]).
+    pub(crate) fn level_of(&self, v: &Val) -> Level {
+        weaker(crate::reports::known(&v.ty, self), v.made)
+    }
+
     /// A call's (or a `verify`'s, a delegation's, an effect's) arguments,
     /// typed as [`Checker::call_args`] types them; in 0.7, those `shows`
     /// selects typed as what a wait shows, and recorded at `key`.
@@ -1792,18 +1859,37 @@ impl<'a> Checker<'a> {
             Level::Plain
         } else {
             shown.iter().fold(Level::Verified, |k, (v, floor)| {
-                weaker(weaker(k, crate::reports::known(&v.ty, self)), *floor)
+                weaker(weaker(k, self.level_of(v)), *floor)
             })
         };
         self.asked.insert(key.to_owned(), Asked { cls, known });
     }
 
     /// What a review at `path` shows: its map's outcomes, of class `cls`,
-    /// each open item known as its value was before it was verified.
-    pub(crate) fn asked_review(&mut self, path: &str, cls: DataClass, src: &ReviewSource) {
+    /// each open item known as its value was before it was verified; and
+    /// what its one decision is about: at most the map's bound of items
+    /// (its `max`, else the `agents` of the envelope it stands under,
+    /// `agents`), and the criteria of its contract a person may waive.
+    pub(crate) fn asked_review(
+        &mut self,
+        path: &str,
+        cls: DataClass,
+        src: &ReviewSource,
+        agents: Option<f64>,
+    ) {
         let known = weaker(src.level, crate::reports::known(&src.item, self));
         let cls = self.floor.max(cls);
         self.asked.insert(path.to_owned(), Asked { cls, known });
+        let items = match src.items.or_else(|| agents.map(|a| a as i64)) {
+            Some(n) => Count::of(n),
+            None => Count::Unbounded,
+        };
+        let waivable = self
+            .waivers(&src.contract)
+            .iter()
+            .map(|w| format!("{}.{}", src.contract, w.criterion))
+            .collect();
+        self.reviewed.insert(path.to_owned(), (items, waivable));
     }
 
     /// The attention bound of each of the program's own workflows (0.7),
@@ -1836,6 +1922,7 @@ impl<'a> Checker<'a> {
                         DataClass::Public
                     },
                     handed: &handed,
+                    reviewed: &self.reviewed,
                 };
                 found.push(bound(&env, name, d));
             }
@@ -1915,7 +2002,7 @@ impl<'a> Checker<'a> {
         shown.iter().fold(Handed::NOTHING, |h, (v, floor)| {
             h.join(Handed {
                 cls: v.cls.max(self.floor),
-                known: weaker(crate::reports::known(&v.ty, self), *floor),
+                known: weaker(self.level_of(v), *floor),
             })
         })
     }
@@ -1966,20 +2053,28 @@ impl<'a> Checker<'a> {
             } else {
                 ("binding", "a name its body binds".to_owned())
             };
-            self.report(
-                "E1501",
-                format!(
-                    "{site} names the role '{name}' by its {arg}, and '{name}' is also {what}, which a run would read in its place: the role a person is asked as is a role definition, and nothing a run computes. Rename the {by} (spec/attention.md \"What each question records\")."
-                ),
-                &sub_i(base, "args", i, "/value"),
-                Some(
-                    JsObject::new()
-                        .with("role", name)
-                        .with("where", site)
-                        .with("argument", arg)
-                        .with("shadowed_by", by),
-                ),
+            let message = format!(
+                "{site} names the role '{name}' by its {arg}, and '{name}' is also {what}, which a run would read in its place: the role a person is asked as is a role definition, and nothing a run computes. Rename the {by} (spec/attention.md \"What each question records\")."
             );
+            let facts = JsObject::new()
+                .with("role", name)
+                .with("where", site)
+                .with("argument", arg)
+                .with("shadowed_by", by);
+            let at = sub_i(base, "args", i, "/value");
+            // A question of a definition of another module that the
+            // program reaches is the program's: it is refused where the
+            // program reaches it, whatever language the module is of, and
+            // also while that definition is typed for this alone.
+            match self.elsewhere(&at) {
+                Some(e) => self.report_through(
+                    "E1501",
+                    format!("{message}{}", e.said()),
+                    &e.site,
+                    Some(e.facts(facts)),
+                ),
+                None => self.report("E1501", message, &at, Some(facts)),
+            }
         }
     }
 
@@ -2029,24 +2124,29 @@ impl<'a> Checker<'a> {
                     let place = match why {
                         "loop" => "in a loop without max_iter",
                         "map" => "in a map without a bound",
-                        "recursion" => "in a function that calls itself",
+                        "recursion" => "in what a cycle of calls reaches",
                         _ => "more times than the bound can count",
                     };
-                    self.report(
-                        "E1907",
-                        format!(
-                            "{name} declares asks: {asks}, and this question ({}) stands {place}: the bound cannot count it. Give the loop a max_iter, or ask outside it (spec/attention.md \"The algebra\").",
-                            q.kind.as_str()
-                        ),
-                        &q.path,
-                        Some(
-                            JsObject::new()
-                                .with("workflow", name)
-                                .with("kind", q.kind.as_str())
-                                .with("why", why)
-                                .with("asks", asks as f64),
-                        ),
+                    let message = format!(
+                        "{name} declares asks: {asks}, and this question ({}) stands {place}: the bound cannot count it. Give the loop a max_iter, or ask outside it (spec/attention.md \"The algebra\").",
+                        q.kind.as_str()
                     );
+                    let facts = JsObject::new()
+                        .with("workflow", name)
+                        .with("kind", q.kind.as_str())
+                        .with("why", why)
+                        .with("asks", asks as f64);
+                    // A question in a definition of another module is
+                    // refused where the program reaches it.
+                    match self.elsewhere(&q.path) {
+                        Some(e) => self.report(
+                            "E1907",
+                            format!("{message}{}", e.said()),
+                            &e.site,
+                            Some(e.facts(facts)),
+                        ),
+                        None => self.report("E1907", message, &q.path, Some(facts)),
+                    }
                 }
                 if reported.is_empty() {
                     self.report(

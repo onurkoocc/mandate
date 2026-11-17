@@ -1581,3 +1581,534 @@ fn set_in(v: &mut Value, path: &[&str], key: &str, value: Value) {
     let Value::Object(m) = at else { panic!() };
     m.insert(key, value);
 }
+
+// ── G1, G5: what the program reaches in another module ────────────────────
+
+/// A module of 0.6 whose contract and function name a role by a name a
+/// parameter of theirs also has, and a function that reaches the contract.
+const LIB: &str = "mandate @ 0.6\n\nmodule example.lib @ 0.1\n\nuse std.{human}\n\npub role accountant \"Accountant\"\n\npub type Note = { text: Text }\n\n/// The role that approves is named by a parameter of a role's name.\npub contract C(n: Note, accountant: Text) {\n  accept ok \"approved\" by human.approve(role: accountant)\n}\n\n/// Asks a role a parameter's name shadows.\npub fn ask(n: Note, accountant: Text) -> Untrusted<Text> ! {Human} {\n  human.ask(\"Is {n.text} right?\", role: accountant)\n}\n\n/// Verifies against C: the program reaches C through it.\npub fn checked(n: Note) -> Bool ! {Human} {\n  let v = verify n against C(n, \"x\")\n  true\n}\n";
+
+/// A module of 0.6 with a cycle through a contract (0.6 has no such E0502),
+/// and one of functions alone (E0502 in every language).
+const CYC: &str = "mandate @ 0.6\n\nmodule example.cyc @ 0.1\n\nuse std.{human}\n\npub role accountant \"Accountant\"\n\npub type Note = { text: Text }\n\npub contract C(n: Note) {\n  require again(n)\n  accept ok \"ok\" by static true\n}\n\npub fn again(n: Note) -> Bool ! {Human} {\n  let a = human.ask(\"Again {n.text}?\", role: accountant)\n  let v = verify n against C(n)\n  true\n}\n\npub fn f(n: Note) -> Bool ! {Human} {\n  g(n)\n}\n\npub fn g(n: Note) -> Bool ! {Human} {\n  f(n)\n}\n";
+
+/// A program of `language` that imports `names` of `module` and runs
+/// `body` in `W` (with `budget`).
+fn importer(language: &str, module: &str, names: &str, budget: &str, body: &str) -> String {
+    format!(
+        "mandate @ {language}\n\nmodule example.importer @ 0.1\n\nuse std.{{human, model}}\nuse {module}.{{{names}}}\n\ncapability ModelStd = model.infer(tier: standard, max_class: internal)\n\nworkflow W(n: Note) -> Bool\n  caps   ModelStd\n  budget {{ {budget} }}\n{{\n{body}\n  true\n}}\n"
+    )
+}
+
+/// The program `text` checked with the modules `mods`.
+fn checked_with(text: &str, mods: &[&str]) -> CheckResult {
+    let mut m = mandate_check::Modules::new();
+    for t in mods {
+        let p = load(t, SourceKind::Mdt).program.unwrap();
+        let name = p.get("module").and_then(Value::as_str).unwrap().to_owned();
+        m.insert(name, p);
+    }
+    let opts = CheckOptions {
+        modules: Some(&m),
+        ..CheckOptions::default()
+    };
+    check(text, SourceKind::Mdt, &opts)
+}
+
+/// `code at path` of each error.
+fn errors(r: &CheckResult) -> Vec<String> {
+    r.diagnostics
+        .iter()
+        .filter(|d| d.severity == mandate_ir::Severity::Error)
+        .map(|d| format!("{} at {}", d.code, d.at.path.as_deref().unwrap_or("")))
+        .collect()
+}
+
+/// The facts of the first diagnostic of `code`.
+fn facts_of(r: &CheckResult, code: &str) -> JsObject {
+    r.diagnostics
+        .iter()
+        .find(|d| d.code == code)
+        .and_then(|d| d.facts.clone())
+        .unwrap_or_else(|| panic!("no {code}: {:?}", errors(r)))
+}
+
+fn str_fact(f: &JsObject, key: &str) -> Option<String> {
+    f.get(key).and_then(JsValue::as_str).map(str::to_owned)
+}
+
+#[test]
+fn a_question_another_module_defines_is_the_programs_where_the_program_reaches_it() {
+    let lib7 = LIB.replace("mandate @ 0.6", "mandate @ 0.7");
+    let names = "C, Note, accountant, ask, checked";
+    for module in [LIB, lib7.as_str()] {
+        // A verify against the contract: E1501 at the verify, naming the
+        // contract, its module and the place in it.
+        let text = importer(
+            "0.7",
+            "example.lib",
+            names,
+            "steps: 2",
+            "  let v = verify n against C(n, \"finance_lead\")",
+        );
+        let r = checked_with(&text, &[module]);
+        assert_eq!(errors(&r), ["MDT-E1501 at /defs/W/body/0/value"]);
+        let f = facts_of(&r, "MDT-E1501");
+        assert_eq!(str_fact(&f, "definition").as_deref(), Some("C"));
+        assert_eq!(str_fact(&f, "module").as_deref(), Some("example.lib"));
+        assert_eq!(
+            str_fact(&f, "at").as_deref(),
+            Some("/defs/C/accept/ok/by/call/args/0/value")
+        );
+        assert_eq!(str_fact(&f, "shadowed_by").as_deref(), Some("parameter"));
+        assert!(
+            r.diagnostics
+                .iter()
+                .any(|d| d.message.contains("It is in C of the module example.lib")),
+            "{:?}",
+            shown(&r)
+        );
+        // A call of the function: at the call.
+        let text = importer(
+            "0.7",
+            "example.lib",
+            names,
+            "steps: 2",
+            "  let a = ask(n, \"finance_lead\")",
+        );
+        let r = checked_with(&text, &[module]);
+        assert_eq!(errors(&r), ["MDT-E1501 at /defs/W/body/0/value"]);
+        let f = facts_of(&r, "MDT-E1501");
+        assert_eq!(str_fact(&f, "definition").as_deref(), Some("ask"));
+        assert_eq!(
+            str_fact(&f, "at").as_deref(),
+            Some("/defs/ask/body/0/value/args/1/value")
+        );
+        // Through a function of the module that verifies against it: at the
+        // call of that function, the contract named.
+        let text = importer(
+            "0.7",
+            "example.lib",
+            names,
+            "steps: 2",
+            "  let c = checked(n)",
+        );
+        let r = checked_with(&text, &[module]);
+        assert_eq!(errors(&r), ["MDT-E1501 at /defs/W/body/0/value"]);
+        assert_eq!(
+            str_fact(&facts_of(&r, "MDT-E1501"), "definition").as_deref(),
+            Some("C")
+        );
+    }
+    // A program of 0.6 that does the same with the 0.6 module gets what it
+    // got: nothing.
+    let text = importer(
+        "0.6",
+        "example.lib",
+        names,
+        "steps: 2",
+        "  let v = verify n against C(n, \"finance_lead\")\n  let a = ask(n, \"finance_lead\")",
+    );
+    let r = checked_with(&text, &[LIB]);
+    assert!(errors(&r).is_empty(), "{:?}", errors(&r));
+    // The module checked on its own: as before in 0.6, refused in 0.7.
+    assert!(
+        errors(&checked(LIB)).is_empty(),
+        "{:?}",
+        errors(&checked(LIB))
+    );
+    assert_eq!(
+        errors(&checked(&lib7)),
+        [
+            "MDT-E1501 at /defs/C/accept/ok/by/call/args/0/value",
+            "MDT-E1501 at /defs/ask/body/0/value/args/1/value"
+        ]
+    );
+}
+
+#[test]
+fn a_cycle_another_module_defines_is_reported_where_the_program_reaches_it() {
+    let names = "C, Note, accountant, again, f";
+    // Through a contract: E0502 of 0.7, at the verify.
+    let text = importer(
+        "0.7",
+        "example.cyc",
+        names,
+        "steps: 2",
+        "  let v = verify n against C(n)",
+    );
+    let r = checked_with(&text, &[CYC]);
+    let found = errors(&r);
+    assert!(
+        found.contains(&"MDT-E0502 at /defs/W/body/0/value".to_owned()),
+        "{found:?}"
+    );
+    assert!(
+        !found.iter().any(|d| d.contains(" at /defs/C")),
+        "{found:?}"
+    );
+    let e = r
+        .diagnostics
+        .iter()
+        .find(|d| {
+            d.code == "MDT-E0502"
+                && d.facts
+                    .as_ref()
+                    .is_some_and(|f| str_fact(f, "definition").as_deref() == Some("C"))
+        })
+        .unwrap();
+    let f = e.facts.as_ref().unwrap();
+    assert_eq!(str_fact(f, "module").as_deref(), Some("example.cyc"));
+    assert_eq!(str_fact(f, "at").as_deref(), Some("/defs/C"));
+    // With asks declared, the question the cycle reaches is E1907 there too.
+    let text = importer(
+        "0.7",
+        "example.cyc",
+        names,
+        "steps: 2, asks: 1",
+        "  let v = verify n against C(n)",
+    );
+    let r = checked_with(&text, &[CYC]);
+    let e1907 = r
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "MDT-E1907")
+        .unwrap_or_else(|| panic!("{:?}", errors(&r)));
+    assert_eq!(e1907.at.path.as_deref(), Some("/defs/W/body/0/value"));
+    let f = e1907.facts.as_ref().unwrap();
+    assert_eq!(str_fact(f, "why").as_deref(), Some("recursion"));
+    assert_eq!(str_fact(f, "definition").as_deref(), Some("again"));
+    assert_eq!(
+        str_fact(f, "at").as_deref(),
+        Some("/defs/again/body/0/value")
+    );
+    // A cycle of functions alone: in 0.6 at the module's definition, as
+    // before; in 0.7 at the call.
+    let six = importer("0.6", "example.cyc", names, "steps: 2", "  let x = f(n)");
+    let r6 = checked_with(&six, &[CYC]);
+    assert!(
+        errors(&r6).contains(&"MDT-E0502 at /defs/f".to_owned()),
+        "{:?}",
+        errors(&r6)
+    );
+    let seven = importer("0.7", "example.cyc", names, "steps: 2", "  let x = f(n)");
+    let r7 = checked_with(&seven, &[CYC]);
+    assert!(
+        errors(&r7).contains(&"MDT-E0502 at /defs/W/body/0/value".to_owned()),
+        "{:?}",
+        errors(&r7)
+    );
+    // A 0.6 program that reaches the cycle through the contract: no E0502
+    // for it, as before (0.6 has no cycle through a contract).
+    let six = importer(
+        "0.6",
+        "example.cyc",
+        names,
+        "steps: 2",
+        "  let v = verify n against C(n)",
+    );
+    let r6 = checked_with(&six, &[CYC]);
+    assert!(
+        !errors(&r6)
+            .iter()
+            .any(|d| d.starts_with("MDT-E0502 at /defs/C") || d.starts_with("MDT-E0502 at /defs/W")),
+        "{:?}",
+        errors(&r6)
+    );
+}
+
+// ── G4: how a value is known travels with it ──────────────────────────────
+
+const KNOWN: &str = "mandate @ 0.7\n\nmodule example.known @ 0.1\n\nuse std.{human, model, tool}\n\nrole accountant \"Accountant\"\n\ntype Note = { text: Text }\n\nconnector erp = mcp(\"https://erp.example.com/mcp\")\n  version \"1.0\"\n  class   confidential\n{\n  tool vendor_name(vendor_id: Text) -> Untrusted<Text>\n    read_only\n}\n\ncapability ErpVendor = tool.call(erp, vendor_name)\ncapability ModelStd  = model.infer(tier: standard, max_class: confidential)\n\n/// A model's text, typed Text.\nfn summary(id: Text) -> Text ! {Model} {\n  let w = infer Text from id using ModelStd\n  \"{w}\"\n}\n\n/// Hands back the text it is given.\nfn keep(t: Text) -> Text ! {} {\n  t\n}\n\n/// Hands back the text it is given, by a return.\nfn early(t: Text) -> Text ! {} {\n  return \"{t}\"\n}\n\ncontract Seen(n: Note) {\n  accept seen \"Seen\" by human.approve(role: accountant)\n}\n\nworkflow W(id: Text) -> Untrusted<Text>\n  caps   ErpVendor, ModelStd\n  budget { steps: 4 }\n{\n  let v = erp.vendor_name(id)\n  let k = \"{v}\"\n  let a = human.ask(\"Kept {k}?\", role: accountant)\n  let m = summary(id)\n  let b = human.ask(\"Model {m}?\", role: accountant)\n  let c = human.ask(\"Kept {keep(k)}?\", role: accountant)\n  let r = early(k)\n  let d = human.ask(\"Early {r}?\", role: accountant)\n  let s = verify Note { text: k } against Seen(Note { text: k })\n  let e = human.ask(\"Count {len([k])}?\", role: accountant)\n  report to accountant \"Known\" { kept: k, model: m, count: len([k]), seen: s.text }\n  a\n}\n";
+
+#[test]
+fn a_value_is_known_as_what_it_is_made_of_through_bindings_and_functions() {
+    use mandate_check::ty::Level;
+    let r = checked(KNOWN);
+    assert!(r.ok, "{:?}", shown(&r));
+    let f = facts(KNOWN, "W");
+    let known = |path: &str| {
+        let q = f
+            .bound
+            .questions
+            .iter()
+            .find(|q| q.path == path)
+            .unwrap_or_else(|| panic!("{path}"));
+        (q.known, q.shown.as_str())
+    };
+    // A binding of a template of a tool's output: outside content, of the
+    // connector's class (before, `plain`).
+    assert_eq!(
+        known("/defs/W/body/2/value"),
+        (Level::Untrusted, "confidential")
+    );
+    // A function's Text made of a model's output.
+    assert_eq!(known("/defs/W/body/4/value"), (Level::Inferred, "public"));
+    // A function's result, handed outside content: no better than it, by
+    // its last value and by a return.
+    assert_eq!(
+        known("/defs/W/body/5/value"),
+        (Level::Untrusted, "confidential")
+    );
+    assert_eq!(
+        known("/defs/W/body/7/value"),
+        (Level::Untrusted, "confidential")
+    );
+    // A count is the run's own.
+    assert_eq!(known("/defs/W/body/9/value").0, Level::Plain);
+    // A report's fields are known the same way; a verified value starts
+    // again.
+    let fields: Vec<(String, Level)> = f.reports[0]
+        .fields
+        .iter()
+        .map(|x| (x.name.clone(), x.shown.known))
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            ("kept".to_owned(), Level::Untrusted),
+            ("model".to_owned(), Level::Inferred),
+            ("count".to_owned(), Level::Plain),
+            ("seen".to_owned(), Level::Plain),
+        ]
+    );
+}
+
+/// A function that reads a confidential row itself and hands it back as
+/// `Text`, its result handed to a model that may see public data only.
+const READS: &str = "mandate @ 0.7\n\nmodule example.reads @ 0.1\n\nuse std.{data, model, human}\n\nrole accountant \"Accountant\"\nrole core_owner \"Core owner\"\n\ntype CustomerName = Text classified confidential\ntype Row = { tracking_no: Text, full_name: CustomerName }\n\ncomponent core {\n  repo  \"acme/core\"\n  root  \"/work/acme-core\"\n  lang  java\n  owner role \"core_owner\"\n}\n\nenvironment prod_sim {\n  class confidential\n  read customers from core\n    sql \"select tracking_no, full_name from customers where tracking_no = :tracking_no\"\n    params (tracking_no: Text)\n    returns Row\n    max_rows 1\n}\n\ncapability Reads    = data.read(prod_sim, customers)\ncapability ModelPub = model.infer(tier: standard, max_class: public)\n\n/// Reads a customer's row and hands back its text, typed Text.\nfn text_of(t: Text) -> Text ! {Data.Read} {\n  let rows = data.read(prod_sim.customers, tracking_no: t, max_class: confidential)\n  \"{rows}\"\n}\n\nworkflow ViaText(t: Text) -> Inferred<Text>\n  caps   Reads, ModelPub\n  budget { steps: 4 }\n{\n  let n = text_of(t)\n  let q = human.ask(\"Is {n} right?\", role: accountant)\n  infer Text from n using ModelPub\n}\n";
+
+#[test]
+fn a_functions_result_is_of_the_class_of_what_it_returns_in_0_7() {
+    // 0.7: the confidential row the function returns keeps its class.
+    let r = checked(READS);
+    assert_eq!(errors(&r), ["MDT-E0220 at /defs/ViaText/body/2/value"]);
+    let asked = READS.replace(
+        "  infer Text from n using ModelPub\n",
+        "  infer Text from \"public\" using ModelPub\n",
+    );
+    let f = facts(&asked, "ViaText");
+    assert_eq!(f.bound.questions[0].shown.as_str(), "confidential");
+    // 0.6, the finding: the same function's result is of its arguments'
+    // class alone, public, and the model is handed the row unrefused. The
+    // older language is checked as it was.
+    let six = READS.replace("mandate @ 0.7", "mandate @ 0.6").replace(
+        "  let q = human.ask(\"Is {n} right?\", role: accountant)\n",
+        "",
+    );
+    let r6 = checked(&six);
+    assert!(errors(&r6).is_empty(), "{:?}", errors(&r6));
+}
+
+// ── G6, G3: what a verify's, a review's and a plan's row say ──────────────
+
+/// The rows of `list` of `workflow` of `text`, as the facts write them.
+fn rows_js(text: &str, workflow: &str, list: &str) -> Vec<Value> {
+    let f = facts(text, workflow);
+    let v = parse(&stringify(&f.to_js()).unwrap()).unwrap().value;
+    v.get(list)
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .to_vec()
+}
+
+/// The texts of the array `key` of `row`.
+fn texts<'v>(row: &'v Value, key: &str) -> Vec<&'v str> {
+    row.get(key)
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect()
+}
+
+#[test]
+fn a_verify_names_its_criterion_and_a_review_its_items_and_waivers() {
+    let text = read_text(ASKS).unwrap();
+    // A verify's rows: the contract and the criterion, as written.
+    let approving = rows_js(&text, "Approving", "questions");
+    let named: Vec<(String, String)> = approving
+        .iter()
+        .filter(|q| q.get("kind").and_then(Value::as_str) == Some("verify"))
+        .map(|q| {
+            (
+                q.get("contract")
+                    .and_then(Value::as_str)
+                    .unwrap()
+                    .to_owned(),
+                q.get("criterion")
+                    .and_then(Value::as_str)
+                    .unwrap()
+                    .to_owned(),
+            )
+        })
+        .collect();
+    assert!(
+        named.contains(&("Approved".to_owned(), "checked".to_owned())),
+        "{named:?}"
+    );
+    assert!(
+        named.contains(&("Approved".to_owned(), "kept".to_owned())),
+        "{named:?}"
+    );
+    // A review's rows: its items and the criteria it may waive; no other
+    // row has these members, nor a verify's.
+    let planning = rows_js(&text, "Planning", "questions");
+    let mut reviews = 0;
+    for q in &planning {
+        let kind = q.get("kind").and_then(Value::as_str).unwrap();
+        let has = |k: &str| q.get(k).is_some();
+        assert_eq!(
+            has("contract") && has("criterion"),
+            kind == "verify",
+            "{kind}"
+        );
+        assert_eq!(has("items") || has("waivable"), kind == "review", "{kind}");
+        if kind == "review" {
+            assert_eq!(q.get("items").and_then(Value::as_i64), Some(4));
+            assert_eq!(texts(q, "waivable"), ["Short.short"]);
+            reviews += 1;
+        }
+    }
+    assert_eq!(reviews, 2);
+    // The criteria in the order of the program, not of their names; and
+    // the envelope's agents (4) when the map has no max, which a map whose
+    // body delegates may lack (E1702 otherwise).
+    let more = text
+        .replace(
+            "  accept short \"The note is short\" by static true\n    waive by accountant, finance_lead\n",
+            "  accept short \"The note is short\" by static true\n    waive by accountant, finance_lead\n  accept alpha \"The note is plain\" by static true\n    waive by accountant, finance_lead\n",
+        )
+        .replace(
+            "  let checked = map it in notes max 4 {\n    verify it against Short(it)",
+            "  let checked = map it in notes {\n    let w = delegate Writer.write(it.text)\n    verify it against Short(it)",
+        )
+        .replace(
+            "  plan Lead.finish(t) within envelope\n",
+            "  infer Text from t using ModelStd\n",
+        );
+    assert!(checked(&more).ok, "{:?}", shown(&checked(&more)));
+    let planning = rows_js(&more, "Planning", "questions");
+    let review = planning
+        .iter()
+        .find(|q| q.get("kind").and_then(Value::as_str) == Some("review"))
+        .unwrap();
+    assert_eq!(texts(review, "waivable"), ["Short.short", "Short.alpha"]);
+    assert_eq!(review.get("items").and_then(Value::as_i64), Some(4));
+    // A review whose map has a max of its own: that max.
+    let sixty = text.replace(
+        "  let checked = map it in notes max 4 {",
+        "  let checked = map it in notes max 3 {",
+    );
+    let review = rows_js(&sixty, "Planning", "questions")
+        .into_iter()
+        .find(|q| q.get("kind").and_then(Value::as_str) == Some("review"))
+        .unwrap();
+    assert_eq!(review.get("items").and_then(Value::as_i64), Some(3));
+    // A plan's row: the static form of its amendment request's wait.
+    let plans = rows_js(&text, "Planning", "plans");
+    assert_eq!(plans.len(), 1);
+    assert_eq!(
+        plans[0].get("wait").and_then(Value::as_str),
+        Some("/defs/Planning/body/7/value/amendment")
+    );
+    assert_eq!(
+        plans[0].get("path").and_then(Value::as_str),
+        Some("/defs/Planning/body/7/value")
+    );
+    // The rows these do not apply to keep the members they had.
+    let asking = rows_js(&text, "Asking", "questions");
+    for q in &asking {
+        let keys: Vec<&str> = q
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, _)| k)
+            .filter(|k| *k != "escalates")
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "path",
+                "wait",
+                "kind",
+                "role",
+                "shown",
+                "known",
+                "deadline_ms",
+                "on_no_answer",
+                "stage",
+                "multiplicity",
+                "only"
+            ]
+        );
+    }
+}
+
+// ── G2: a run's authorization is tagged by the rule, which the facts serve ──
+
+#[test]
+fn an_authorization_names_one_row_whatever_its_suffix() {
+    let text = read_text(ASKS).unwrap();
+    let ir = load(&text, SourceKind::Mdt).program.unwrap();
+    let mut seen = 0;
+    for (w, d) in ir.get("defs").and_then(Value::as_object).unwrap().iter() {
+        if d.get("kind").and_then(Value::as_str) != Some("workflow") {
+            continue;
+        }
+        let f = facts(&text, w);
+        let b = &f.bound;
+        let authorizing = |q: &&mandate_check::asks::QuestionFact| {
+            matches!(
+                q.kind,
+                SiteKind::Effect | SiteKind::Changeset | SiteKind::Governance
+            )
+        };
+        // A kind and a path name one row.
+        let mut keys: Vec<(SiteKind, &str)> = Vec::new();
+        for q in b.questions.iter().filter(authorizing) {
+            assert!(
+                !keys.contains(&(q.kind, q.path.as_str())),
+                "{w}: {} at {} twice",
+                q.kind.as_str(),
+                q.path
+            );
+            keys.push((q.kind, q.path.as_str()));
+        }
+        // Every effect's and member's authorization and gate has one
+        // effects row by its path; a change set's own approval, which the
+        // configuration does not change, has none.
+        for q in b.questions.iter().filter(authorizing) {
+            let set = q.kind == SiteKind::Changeset && !q.path.contains("/members/");
+            assert_eq!(
+                b.effects.iter().filter(|e| e.path == q.path).count(),
+                usize::from(!set),
+                "{w}: {} at {}",
+                q.kind.as_str(),
+                q.path
+            );
+            seen += 1;
+        }
+        // The rule, for every effect: its owner's gate is its governance
+        // row when it has one, its authorization by a role its questions
+        // row when the total counts it, else its effects row.
+        for e in &b.effects {
+            let gates = b
+                .questions
+                .iter()
+                .filter(|q| q.kind == SiteKind::Governance && q.path == e.path)
+                .count();
+            assert!(gates <= 1, "{w}: {}", e.path);
+            let by_role = b
+                .questions
+                .iter()
+                .filter(|q| {
+                    matches!(q.kind, SiteKind::Effect | SiteKind::Changeset) && q.path == e.path
+                })
+                .count();
+            assert_eq!(by_role, usize::from(e.counted), "{w}: {}", e.path);
+        }
+    }
+    println!("authorizations: {seen} rows, each one by its kind and path");
+    assert!(seen >= 5);
+}

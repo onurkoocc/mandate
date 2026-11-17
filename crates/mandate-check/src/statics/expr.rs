@@ -26,7 +26,7 @@ use crate::stdlib::{
 };
 use crate::ty::{
     Level, Ty, UNKNOWN, assignable, bool_ty, epistemic, field, fields_of, from_type_expr,
-    join_level, mentions, named, named0, show, text_ty, unalias, with_level,
+    join_level, mentions, named, named0, show, text_ty, unalias, weaker_level, with_level,
 };
 use crate::walk::walk_exprs;
 
@@ -187,7 +187,7 @@ impl<'a> Checker<'a> {
     #[inline(never)]
     fn floored(&mut self, v: Val) -> Val {
         let v = self.raised(v);
-        let l = crate::reports::known(&v.ty, self);
+        let l = self.level_of(&v);
         if let Some(f) = self.report_floor
             && crate::ty::level_rank(l) > crate::ty::level_rank(f)
         {
@@ -264,7 +264,15 @@ impl<'a> Checker<'a> {
             let at = sub_i(path, "items", i, "");
             items.push(self.expr_or_unknown(Expr::of(x), frame, &at));
         }
-        Self::list_of(&items, op)
+        let mut v = Self::list_of(&items, op);
+        // 0.7: a list is typed by its first item, and known no better than
+        // its weakest (spec/attention.md "What is shown").
+        if self.at_least(Language::V0_7) {
+            v.made = items
+                .iter()
+                .fold(v.made, |l, x| weaker_level(l, self.level_of(x)));
+        }
+        v
     }
 
     fn list_of(items: &[Val], op: ExprOp) -> Val {
@@ -282,13 +290,18 @@ impl<'a> Checker<'a> {
             cls: max_class(items.iter().map(|x| x.cls)),
             waivable: any_waivable(items),
             silent: any_silent(items),
+            made: items
+                .iter()
+                .fold(Level::Verified, |l, x| weaker_level(l, x.made)),
         }
     }
 
-    /// A `template`: text, of the highest class of its parts.
+    /// A `template`: text, of the highest class of its parts, and in 0.7
+    /// known no better than the weakest of them.
     #[inline(never)]
     fn template(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         let mut out = Val::new(text_ty(), DataClass::Public);
+        let v0_7 = self.at_least(Language::V0_7);
         for (i, p) in e.parts().iter().enumerate() {
             if let Some(x) = p.get("expr").and_then(Expr::of) {
                 let at = sub_i(path, "parts", i, "/expr");
@@ -296,6 +309,9 @@ impl<'a> Checker<'a> {
                 out.cls = out.cls.max(v.cls);
                 out.waivable = out.waivable || v.waivable;
                 out.silent = out.silent || v.silent;
+                if v0_7 {
+                    out.made = weaker_level(out.made, self.level_of(&v));
+                }
             }
         }
         out
@@ -441,6 +457,7 @@ impl<'a> Checker<'a> {
             cls: l.cls.max(r.cls),
             waivable: l.waivable || r.waivable,
             silent: l.silent || r.silent,
+            made: weaker_level(l.made, r.made),
         }
     }
 
@@ -460,6 +477,7 @@ impl<'a> Checker<'a> {
             cls: from.cls.max(to.cls),
             waivable: from.waivable || to.waivable,
             silent: from.silent || to.silent,
+            made: weaker_level(from.made, to.made),
         };
         self.untyped(UNKNOWN, &ends)
     }
@@ -711,6 +729,7 @@ impl<'a> Checker<'a> {
                 cls: base.cls,
                 waivable,
                 silent: base.silent,
+                made: base.made,
             },
         }
     }
@@ -831,11 +850,18 @@ impl<'a> Checker<'a> {
         let p = e.callee().and_then(callee_path);
         // What a call gives is made of its arguments: of their class, and
         // resting on what they rest on.
+        let made = if self.at_least(Language::V0_7) {
+            args.iter()
+                .fold(Level::Verified, |l, a| weaker_level(l, self.level_of(a)))
+        } else {
+            Level::Verified
+        };
         let of = Val {
             ty: UNKNOWN,
             cls: max_class(args.iter().map(|a| a.cls)),
             waivable: any_waivable(&args),
             silent: any_silent(&args),
+            made,
         };
         let local = p
             .as_deref()
@@ -854,7 +880,11 @@ impl<'a> Checker<'a> {
     /// for a person in a map (E1708), and what it does, done here. Its
     /// value is of the class of its arguments (`of`), and rests on what
     /// they rest on and on a verification in the function a person may
-    /// waive.
+    /// waive. In 0.7 it is also of the class of what the function returns,
+    /// typed in its body (a read of classified data in it, `fn_result`),
+    /// and known no better than that and its arguments: before 0.7 a
+    /// function's result was of its arguments' class alone, which a value
+    /// the function reads itself and returns could be above.
     fn call_fn(
         &mut self,
         d: mandate_ir::Definition<'a>,
@@ -874,11 +904,24 @@ impl<'a> Checker<'a> {
         // has at least their class.
         let usages = self.fn_usages(p);
         Self::call_usages(frame, usages, p, path, cls);
+        let (cls, made) = if self.at_least(Language::V0_7) {
+            // A function on a cycle (E0502) is typed while it is called:
+            // its result is known as the weakest a value can be.
+            let (c, l) = self
+                .fn_result
+                .get(p)
+                .copied()
+                .unwrap_or((DataClass::Public, Level::Untrusted));
+            (cls.max(c), weaker_level(of.made, l))
+        } else {
+            (cls, of.made)
+        };
         Val {
             ty: self.ty(d.returns()),
             cls,
             waivable: of.waivable || self.fn_waivable(p, &mut HashSet::new()),
             silent: of.silent,
+            made,
         }
     }
 
@@ -944,7 +987,14 @@ impl<'a> Checker<'a> {
     ) -> Val {
         match p.as_str() {
             "quote" => return Val::like(text_ty(), of),
-            "len" => return Val::like(named0("Int"), of),
+            // A count is the run's own, however what it counts is known
+            // (spec/attention.md "What is shown").
+            "len" => {
+                return Val {
+                    made: Level::Verified,
+                    ..Val::like(named0("Int"), of)
+                };
+            }
             "peek" => {
                 self.report(
                     "W0207",
@@ -1143,6 +1193,9 @@ impl<'a> Checker<'a> {
         acc.cls = acc.cls.max(v.cls);
         acc.waivable = acc.waivable || v.waivable;
         acc.silent = acc.silent || v.silent;
+        if self.at_least(Language::V0_7) {
+            acc.made = weaker_level(acc.made, self.level_of(&v));
+        }
         let ep = epistemic(&v.ty);
         let level = join_level(level, ep.level);
         if let Some(fields) = fields {
@@ -1365,6 +1418,7 @@ impl<'a> Checker<'a> {
             cls: v.cls,
             waivable: self.waivable_contract(contract),
             silent: v.silent,
+            made: Level::Verified,
         };
         // 0.6: the value is the verified one or, when the contract is not
         // met, the handler's (but for the one exception).
