@@ -27,6 +27,7 @@ import { canonical, escapeAngles, type Obj, type Value } from "../src/values.js"
 import { world as egressWorld } from "./egress-world.js";
 import { declaredErp, declaredMailbox, INJECTION, type FakeMcp } from "./fake-mcp.js";
 import { closeAll, world, type World } from "./helpers.js";
+import { lockUnder, relabel, relabelled } from "./relabel.js";
 
 afterAll(closeAll);
 
@@ -51,7 +52,7 @@ const MAIL_SECRET = "made-up-mail-word";
  * A program of 0.6 over the connectors of the acme.connectors fixture: a workflow that reads and writes, an agent
  * that holds a read tool, and a batch commit step. `caps` is the matcher's.
  */
-const program = (o: { matcher?: string } = {}): string => `mandate @ 0.6
+const program = (o: { matcher?: string } = {}): string => relabel(`mandate @ 0.6
 
 module acme.finance.run @ 0.1
 
@@ -120,7 +121,7 @@ workflow PostAll(ms: List<Match>) -> Bool
   }
   true
 }
-`;
+`);
 
 const INV: Obj = { invoice_no: "INV-1", vendor_id: "V1", total_cents: 1000 };
 const ORDER: Obj = { order_no: "PO-1", vendor_id: "V1", total_cents: 1000 };
@@ -186,7 +187,7 @@ const LIB = (): LibrarySource => fixtureLibrary("acme.connectors");
 
 /** A lock that pins the library and binds the two connectors with the digests their servers list now. */
 async function lockFor(s: Servers, more: Partial<Lock> = {}): Promise<Lock> {
-  const fixture = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock;
+  const fixture = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock);
   return {
     modules: {},
     libraries: { "acme.connectors": fixture.libraries!["acme.connectors"]! },
@@ -260,11 +261,11 @@ describe("what 0.6 has that this runtime does not run yet, after connectors", ()
     const connectors = LIB();
     const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
     const { lock: _format, ...packaged } = lock;
-    const drafts = check(read("fixtures/library/drafts.mdt"), "mdt", { libraries: [connectors], lock, linked: true });
+    const drafts = check(relabel(read("fixtures/library/drafts.mdt")), "mdt", { libraries: [connectors], lock, linked: true });
     expect(drafts.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(notRunYet06(drafts.linked as unknown as Program, { lock: packaged as Lock })).toEqual([]);
     expect(verifyPackage(buildPackage(drafts.program!, packaged as Lock, {}, [connectors])).running.defs["erp"]).toMatchObject({ kind: "connector" });
-    const invoices = check(read("fixtures/library/invoices.mdt"), "mdt", { libraries: [connectors], lock, linked: true });
+    const invoices = check(relabel(read("fixtures/library/invoices.mdt")), "mdt", { libraries: [connectors], lock, linked: true });
     expect(invoices.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(notRunYet06(invoices.linked as unknown as Program, { lock: packaged as Lock })).toEqual([]);
     expect(verifyPackage(buildPackage(invoices.program!, packaged as Lock, {}, [connectors])).running.defs["Matched"]).toMatchObject({ kind: "contract" });
@@ -604,7 +605,7 @@ describe("what a server answers", () => {
   });
 
   it("refuses __proto__ and the runtime's own keys where a declared type leaves the member's name open (a map's keys)", () => {
-    const text = `mandate @ 0.6
+    const text = relabel(`mandate @ 0.6
 
 module example.kv @ 0.1
 
@@ -628,7 +629,7 @@ workflow Read() -> Untrusted<Map<Text, Text>>
 {
   kv.all()
 }
-`;
+`);
     const r = check(text, "mdt", { linked: true });
     expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
     const lock = { modules: {}, connectors: { "example.kv.kv": { credential: "kv", url: "https://kv.example.com/mcp", tools: { all: `sha256:${"0".repeat(64)}` } } } } as unknown as Lock;
@@ -957,7 +958,7 @@ describe("a batch commit step", () => {
 
 describe("mandate connector pin", () => {
   /** A directory with the program, its lock and the library; the configuration names the egress proxy. */
-  async function pinning(change: (lock: Lock) => void = () => undefined): Promise<{ dir: string; s: Servers; lockPath: string; run(): Promise<{ status: number; out: string }>; close(): Promise<void> }> {
+  async function pinning(change: (lock: Lock) => void = () => undefined, src: string = program()): Promise<{ dir: string; s: Servers; lockPath: string; run(): Promise<{ status: number; out: string }>; close(): Promise<void> }> {
     const eg = await egressWorld({
       credentials: {
         acme_erp: { hosts: ["erp.acme.example"], header: "authorization", template: "Bearer {secret}", secret: ERP_SECRET },
@@ -975,7 +976,7 @@ describe("mandate connector pin", () => {
     mkdirSync(at, { recursive: true });
     writeFileSync(join(at, "mandate.library.json"), lib.manifest);
     for (const [f, text] of Object.entries(lib.files)) writeFileSync(join(at, f), text);
-    writeFileSync(join(dir, "run.mdt"), program());
+    writeFileSync(join(dir, "run.mdt"), src);
     const lock = { lock: "mandate/lock/0.6", ...(await lockFor(s)) } as Lock & { lock: string };
     for (const c of Object.values(lock.connectors!)) c.tools = {};
     change(lock);
@@ -1030,6 +1031,32 @@ describe("mandate connector pin", () => {
     }
   });
 
+  it("pins the connectors a package of 0.7 can call and no others, with the compiler's digests; a package of 0.6 binds the one nothing calls too, and refuses it for its entry", async () => {
+    // The program without its two reads of the mailbox: its connector is declared and nothing can call it.
+    const quiet = program()
+      .replace("  let waiting = mailbox.list_invoices()\n", "")
+      .replace("caps   Inbox, ErpRead, ErpDraft, ModelStd", "caps   ErpRead, ErpDraft, ModelStd")
+      .replace(/\/\/\/ Lists the invoices in the mailbox\.\nworkflow Waiting[\s\S]*?\n}\n\n/, "");
+    expect(quiet).not.toContain("mailbox.list_invoices");
+    const p = await pinning((lock) => delete lock.connectors![MAIL], quiet);
+    try {
+      const r = await p.run();
+      if (relabelled()) {
+        expect(r.status, r.out).toBe(0);
+        const lock = JSON.parse(readFileSync(p.lockPath, "utf8")) as Lock;
+        expect(Object.keys(lock.connectors!)).toEqual([ERP]);
+        expect(lock.connectors![ERP]!.tools).toEqual(await digests(p.s.erp));
+        expect(p.s.mailbox.received).toEqual([]);
+      } else {
+        expect(r.status).not.toBe(0);
+        expect(r.out).toContain("bad_connector");
+        expect(r.out).toContain(MAIL);
+      }
+    } finally {
+      await p.close();
+    }
+  });
+
   it("refuses a connector the lock has no entry for (E1407), and a declared tool its server does not list (tool_schema_mismatch): nothing is written", async () => {
     const p = await pinning((lock) => delete lock.connectors![MAIL]);
     try {
@@ -1071,7 +1098,7 @@ describe("mandate connector pin", () => {
 // ── what a result may hold, and how long a server may take (the review of B9) ──
 
 describe("a server's answer is held to what the journal keeps and the type says", () => {
-  const text = `mandate @ 0.6
+  const text = relabel(`mandate @ 0.6
 
 module example.kv @ 0.1
 
@@ -1105,7 +1132,7 @@ workflow Read() -> Untrusted<Map<Text, Text>>
 {
   kv.all()
 }
-`;
+`);
   const kv = (): Connectors => {
     const r = check(text, "mdt", { linked: true });
     expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
