@@ -731,7 +731,8 @@ fn the_diff_of_two_locks_reads_their_role_classes_and_promotion() {
         lock_changes(&all_internal, &lock_with("role_classes", None)),
         (none.clone(), none.clone(), true)
     );
-    // `promotion` taken away: governance; added: behavior.
+    // `promotion` taken away: governance, and authority added (a run may
+    // start without the owner's signature); added: behavior.
     let no_ladder = lock_with("promotion", None);
     assert_eq!(
         lock_changes(&l, &no_ladder),
@@ -740,7 +741,7 @@ fn the_diff_of_two_locks_reads_their_role_classes_and_promotion() {
                 "/promotion - promotion: required (a run of read_only or live needs no promotion)"
             ),
             none.clone(),
-            true
+            false
         )
     );
     assert_eq!(
@@ -851,4 +852,32 @@ fn a_diagnostic_at_the_owner_points_at_the_role_s_name() {
     let e = load(ENVELOPED, SourceKind::Mdt);
     assert!(e.spans.get("/defs/W/envelope/owner").is_none());
     assert!(e.spans.get("/defs/W/envelope").is_some());
+}
+
+/// An owner names a role outside every scope (`/defs/<W>/owner` is no
+/// expression, and a run reads it from the definition, never from the
+/// body): a parameter or a binding of the role's name does not stand in its
+/// place, so neither is refused, unlike a question's `role:` (E1501 with
+/// `shadowed_by`).
+#[test]
+fn nothing_a_workflow_binds_stands_in_for_its_owner() {
+    let t = text()
+        .replace(
+            "workflow Describe(name: Text) -> Inferred<Text>",
+            "workflow Describe(name: Text, accountant: Text) -> Inferred<Text>",
+        )
+        .replace(
+            "  let line = delegate Writer.write(Item { name })",
+            "  let finance_lead = name\n  let line = delegate Writer.write(Item { name })",
+        );
+    let r = checked(&t, Some(&lock()));
+    assert_eq!(found(&r), Vec::<String>::new(), "{t}");
+    let p = r.program.as_ref().unwrap();
+    assert_eq!(
+        p.get("defs")
+            .and_then(|d| d.get("Describe"))
+            .and_then(|d| d.get("owner"))
+            .and_then(Value::as_str),
+        Some("accountant")
+    );
 }

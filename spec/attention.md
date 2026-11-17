@@ -646,7 +646,7 @@ reported at the lock's root, since the older schemas close their objects.
   |---|---|---|
   | A role's class raised in effect: an entry added above `internal`, changed upward, or taken away from below `internal` | governance (counts as authority added) | `~ the data class role r may be shown, in effect: internal → confidential (raised)` |
   | A role's class lowered in effect | behavior | `~ the data class role r may be shown, in effect: confidential → internal (lowered)` |
-  | `promotion: "required"` taken away | governance | `- promotion: required (a run of read_only or live needs no promotion)` |
+  | `promotion: "required"` taken away | governance (counts as authority added: a run of `read_only` or `live` may start without the owner's signature) | `- promotion: required (a run of read_only or live needs no promotion)` |
   | `promotion: "required"` added | behavior | `+ promotion: required (a run of read_only or live needs a promotion)` |
 
   A change of a workflow's `owner` is the governance change `owner_changed`

@@ -640,6 +640,7 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `E0140h` | A class in `role_classes` that is no data class | E0140 |
 | `E1307f` | An application with an owner and an envelope: E1307 at the envelope, and no E1910 (a mutation: an envelope added) | E1307 |
 | `L11` | `mandate publish` of a library of 0.7 whose workflow's owner changed to a role it already asks, as a minor version (`changes_owner`) | E1607 |
+| `L11a` | The same with one report more: the refusal names both reasons (`widens_authority`, `changes_owner`) | E1607 |
 
 Of these, `E1609`, `E1609a` and `E1603b` are cases of 0.7 whose program
 declares an older version: E1609 refuses a program of 0.6 that reads what

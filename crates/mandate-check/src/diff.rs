@@ -1973,6 +1973,10 @@ pub fn semantic_diff_pinned(
             || g.text.contains("tier")
             || g.text.contains("data class")
             || g.text.contains(": methods ")
+            // 0.7: the promotion ladder taken away lets a run of
+            // `read_only` or `live` start without the owner's signature.
+            // Only a lock of 0.7 gives this path.
+            || g.path == "/promotion"
     }) {
         unchanged.push("no authority added".to_owned());
     }

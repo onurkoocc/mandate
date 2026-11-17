@@ -1342,19 +1342,19 @@ same way, by gates of its own beside those of 0.6:
   `E1603b` and `L10` to `L10e`, the attention bound (slice RL4): `E1906` to `E1906p`,
   `E1907` to `E1907b`, `E1908` to `E1908e`, `E1706c` to `E1706e`, `E1709e` to `E1709g`, `E1501c` and `S04b`,
   and the owner and the lock of 0.7 (slice RL5): `A04`, `E1910` to `E1910b`, `E1911`, `E1911a`, `E1705d`,
-  `E1501d`, `E1502b`, `E0140e` to `E0140h`, `E1307f` and `L11`
+  `E1501d`, `E1502b`, `E0140e` to `E0140h`, `E1307f`, `L11` and `L11a`
   (`conformance/README.md`, "Cases of 0.7").
 - **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (nine today,
   `asks.mdt`, `minimal.mdt`, `owner.mdt` (with its lock of 0.7, which gives role classes and asks for the
   promotion ladder), `reports.mdt`, `shapes.mdt`, `stages.mdt`, and `batch.mdt`, `fan-out.mdt` and `maker-checker.mdt`,
-  which apply the patterns of `std.patterns` 2.0.0 with their locks; GOLDEN_COUNT outputs), the digest of each output text, made
+  which apply the patterns of `std.patterns` 2.0.0 with their locks; 118 outputs), the digest of each output text, made
   by the code of `golden/0.6.json` (`crates/mandate-testkit/tests/golden_0_7.rs`).
 - **`diagnostics-0.7/`**: the whole result of every compile case of 0.7 and of the
   checks and `load` of every 0.7 program, in the layout of `diagnostics-0.6/`
   (`crates/mandate-testkit/tests/diagnostics_0_7.rs`; the code is shared with
   `diagnostics_0_6.rs`, `tests/rust_diagnostics/`).
 - **`attention-0.7/facts.json`**: the attention facts of every workflow of every 0.7
-  program of `fixtures/attention/` (FACTS_COUNT workflows today), and of a sub-program, as the door `attention_facts`
+  program of `fixtures/attention/` (20 workflows today), and of a sub-program, as the door `attention_facts`
   gives them with the program's modules, `{ "<program>": { "<workflow>": <facts> } }`
   (`crates/mandate-testkit/tests/attention_0_7.rs`, which also holds the door to the
   function, `mandate_check::attention_facts`). Their shape is below ("The attention facts").
