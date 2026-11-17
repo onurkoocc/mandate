@@ -912,12 +912,65 @@ fn add_prints_what_the_door_gives_as_json() {
     assert_eq!(answer.get("lock"), Some(&Value::Null));
 }
 
+/// 0.7: `--program` names the program the lock is for. A program of 0.7 is
+/// given std.patterns 2.0.0 in a lock of format 0.7; one of 0.6 what a
+/// command that names none writes, byte for byte.
+#[test]
+fn add_pins_the_builtin_version_of_the_programs_language() {
+    let head = |v: &str| {
+        format!("mandate @ {v}\n\nmodule example.p @ 0.1\n\nuse std.patterns.{{Batch}}\n")
+    };
+    let mut io = MemoryIo::new();
+    io.now = seconds("2026-11-15T00:00:00Z");
+    io.put("p.mdt", &head("0.7"));
+    assert_eq!(
+        mandate(&mut io, &["add", "std.patterns", "--program", "p.mdt"]),
+        0,
+        "{}",
+        io.err
+    );
+    let two =
+        mandate_check::library::std_patterns_digest(Some(mandate_ir::Language::V0_7)).unwrap();
+    assert!(
+        io.out.starts_with(&format!("std.patterns 2.0.0 {two}\n")),
+        "{}",
+        io.out
+    );
+    let lock = json(io.text("mandate.lock.json").unwrap());
+    assert_eq!(
+        lock.get("lock").and_then(Value::as_str),
+        Some("mandate/lock/0.7")
+    );
+    let mut six = MemoryIo::new();
+    six.now = seconds("2026-11-15T00:00:00Z");
+    six.put("p.mdt", &head("0.6"));
+    assert_eq!(
+        mandate(&mut six, &["add", "std.patterns", "--program", "p.mdt"]),
+        0
+    );
+    let mut none = MemoryIo::new();
+    none.now = seconds("2026-11-15T00:00:00Z");
+    assert_eq!(mandate(&mut none, &["add", "std.patterns"]), 0);
+    assert_eq!(
+        six.text("mandate.lock.json"),
+        none.text("mandate.lock.json")
+    );
+    assert_eq!(six.out, none.out);
+    // One that does not load is reported against its file.
+    six.put("bad.mdt", "mandate @ 0.7\n\nmodule\n");
+    assert_eq!(
+        mandate(&mut six, &["add", "std.patterns", "--program", "bad.mdt"]),
+        1
+    );
+    assert!(six.err.contains("bad.mdt"), "{}", six.err);
+}
+
 #[test]
 fn add_pins_the_builtin_library_with_no_directory() {
     let mut io = MemoryIo::new();
     io.now = seconds("2026-11-15T00:00:00Z");
     assert_eq!(mandate(&mut io, &["add", "std.patterns"]), 0, "{}", io.err);
-    let digest = mandate_check::library::std_patterns_digest().unwrap();
+    let digest = mandate_check::library::std_patterns_digest(None).unwrap();
     assert!(
         io.out
             .starts_with(&format!("std.patterns 1.0.0 {digest}\n")),

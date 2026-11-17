@@ -156,7 +156,7 @@ fn library(dir: &str) -> LibrarySource {
 fn the_lock_of_the_acceptance_program_pins_what_the_libraries_are() {
     let mut lock = read_json("fixtures/library/invoices.lock.json").unwrap();
     for l in [
-        mandate_check::library::std_patterns().unwrap(),
+        mandate_check::library::std_patterns_for(None, None).unwrap(),
         load_library(&library("fixtures/library/acme.connectors"), false, "x").unwrap(),
     ] {
         let pin = mandate_ir::stringify(&mandate_ir::JsValue::Object(l.pin().to_js())).unwrap();
@@ -405,6 +405,7 @@ fn request<'a>(
         libraries: &[],
         config,
         now: at,
+        language: None,
     }
 }
 
@@ -743,7 +744,7 @@ fn add_resolves_the_highest_eligible_version() {
         ..request(None, &empty, &[], Some(&two), at)
     });
     assert!(r.ok, "{:#?}", r.diagnostics);
-    let digest = mandate_check::library::std_patterns_digest().unwrap();
+    let digest = mandate_check::library::std_patterns_digest(None).unwrap();
     assert_eq!(r.chosen.as_ref().unwrap().1, digest.as_str());
 }
 
@@ -907,7 +908,7 @@ fn the_diff_and_a_patch_classify_alike() {
         .unwrap();
     let lib = load_library(&library(ACME), false, "x").unwrap();
     let mut modules = lib.modules.clone();
-    for (m, p) in mandate_check::library::std_patterns()
+    for (m, p) in mandate_check::library::std_patterns_for(None, None)
         .unwrap()
         .modules
         .iter()

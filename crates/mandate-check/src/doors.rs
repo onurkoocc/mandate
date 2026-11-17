@@ -320,7 +320,7 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
     // 0.6: the built-in std.patterns, when the parent imports it, so that a
     // sub-program may apply its patterns (`shapes`).
     if let Some(p) = Program::of(i.parent)
-        && let Some(with_std) = crate::library::with_builtin(p, Some(&modules))
+        && let Some(with_std) = crate::library::with_builtin(p, Some(&modules), None)
     {
         modules = with_std;
     }
@@ -605,7 +605,8 @@ pub fn check_amendment(i: &AmendmentInput<'_>) -> Result<AmendmentCheck, String>
     // 0.6: the program's library modules, handed as modules, linked through
     // what they reach, as its own check links them.
     // The built-in std.patterns too, when the program imports it.
-    let with_std = Program::of(i.parent).and_then(|p| crate::library::with_builtin(p, i.modules));
+    let with_std =
+        Program::of(i.parent).and_then(|p| crate::library::with_builtin(p, i.modules, None));
     let modules = with_std.as_ref().or(i.modules);
     let reach = modules
         .filter(|_| reads_0_6(i.parent))
@@ -677,7 +678,7 @@ pub fn subprogram_linked(sub: &Value, parent: &Value, modules: Option<&Modules>)
         parent.clone(),
     );
     if let Some(p) = Program::of(parent)
-        && let Some(with_std) = crate::library::with_builtin(p, Some(&all))
+        && let Some(with_std) = crate::library::with_builtin(p, Some(&all), None)
     {
         all = with_std;
     }

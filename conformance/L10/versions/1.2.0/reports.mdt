@@ -1,0 +1,55 @@
+// acme.reports 1.2.0: 1.0.0 whose report also counts the keys of the vault,
+// so that its highest class rises from internal to confidential; see 1.0.0.
+
+mandate @ 0.7
+
+module acme.reports @ 1.0
+
+use std.{tool}
+
+/// A clerk of the store.
+pub role clerk "Clerk"
+
+/// An item of the store.
+pub type Item = { id: Text, size: Int }
+
+/// The store, which lists its items.
+pub connector store = mcp("https://store.acme.example/mcp")
+  version "1.0"
+  class   internal
+{
+  tool list_items() -> Untrusted<List<Item>>
+    read_only
+}
+
+/// The vault, which lists its keys.
+pub connector vault = mcp("https://vault.acme.example/mcp")
+  version "1.0"
+  class   confidential
+{
+  tool list_keys() -> Untrusted<List<Text>>
+    read_only
+}
+
+pub capability StoreRead = tool.call(store, list_items)
+pub capability VaultRead = tool.call(vault, list_keys)
+
+/// Counts the items of the store and the keys of the vault, and tells the
+/// clerk how many items there are.
+pub workflow Count() -> Int
+  caps   StoreRead, VaultRead
+  budget { time: 10m }
+{
+  let items = store.list_items()
+  let keys  = vault.list_keys()
+  report to clerk "Counted" { items: len(items), keys: len(keys) }
+  len(items) + len(keys)
+}
+
+/// Lists what a tool gives, and tells a role how many there are.
+pub pattern Tell<T>(source: tool() -> Untrusted<List<T>>, who: role, other: role) -> Int
+{
+  let xs = source()
+  report to who "Listed" { n: len(xs) }
+  len(xs)
+}

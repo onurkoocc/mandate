@@ -1266,7 +1266,7 @@ held by what a person writes and by what the Rust writes:
   `diagnostic-vectors.test.ts`, `diff-vectors.test.ts`) skip them, and each checks
   that what it skipped is exactly the directories whose `case.json` names 0.6, read
   as plain JSON, and that there are `RUST_ONLY_CASES` of them
-  (`compiler/test/cases-runner.ts`, 343 today, of 0.6 and 0.7): a case of 0.6 added or taken away
+  (`compiler/test/cases-runner.ts`, 388 today, of 0.6 and 0.7): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
   version, `mandate/0.8`, E0103, whose list has 0.6 and 0.7), `E0140` (a 0.5 lock that carries `libraries`),
@@ -1326,24 +1326,26 @@ same way, by gates of its own beside those of 0.6:
 - **Conformance cases of 0.7**, `"language": "mandate/0.7"`, written by hand and
   skipped and counted by the TypeScript runners as those of 0.6 are
   (`RUST_ONLY_LANGUAGES` is `mandate/0.6` and `mandate/0.7`, and `RUST_ONLY_CASES`
-  counts both, 377 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
+  counts both, 388 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
   unknown field of a 0.7 program, E0104), `S02k` and `S02l` (a 0.7 program with a lock
   of format 0.6, and of 0.7), `E0140d` (an unknown field of a 0.7 lock, E0140), `E1509` to `E1509b`
   (slice RL7), the stages (slice RL2): `A01` to `A01b`, `E0101h`, `E0104h` to `E0104j`, `E1901` to
   `E1901b` and `E1902` to `E1902g`, and the reports (slice RL3): `A02` to `A02b`, `A03`, `E0101i`,
   `E0104k` to `E0104o`, `E0121g`, `E1501b`, `E1502a`, `E1705b`, `E1705c`, `E1903` to `E1903e`, `E1904`
-  to `E1904v` and `E1905` to `E1905g`, and the attention bound (slice RL4): `E1906` to `E1906p`,
+  to `E1904v` and `E1905` to `E1905g`, `std.patterns` 2.0.0 (slice RL6): `E1609` to `E1609c`,
+  `E1603b` and `L10` to `L10e`, and the attention bound (slice RL4): `E1906` to `E1906p`,
   `E1907` to `E1907b`, `E1908` to `E1908e`, `E1706c` to `E1706e`, `E1709e` to `E1709g`, `E1501c` and `S04b`
   (`conformance/README.md`, "Cases of 0.7").
-- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (five today,
-  `asks.mdt`, `minimal.mdt`, `reports.mdt`, `shapes.mdt` and `stages.mdt`, 61 outputs), the digest of each output text, made
+- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (eight today,
+  `asks.mdt`, `minimal.mdt`, `reports.mdt`, `shapes.mdt`, `stages.mdt`, and `batch.mdt`, `fan-out.mdt` and `maker-checker.mdt`,
+  which apply the patterns of `std.patterns` 2.0.0 with their locks; 106 outputs), the digest of each output text, made
   by the code of `golden/0.6.json` (`crates/mandate-testkit/tests/golden_0_7.rs`).
 - **`diagnostics-0.7/`**: the whole result of every compile case of 0.7 and of the
   checks and `load` of every 0.7 program, in the layout of `diagnostics-0.6/`
   (`crates/mandate-testkit/tests/diagnostics_0_7.rs`; the code is shared with
   `diagnostics_0_6.rs`, `tests/rust_diagnostics/`).
 - **`attention-0.7/facts.json`**: the attention facts of every workflow of every 0.7
-  program of `fixtures/attention/` (15 workflows today), and of a sub-program, as the door `attention_facts`
+  program of `fixtures/attention/` (18 workflows today), and of a sub-program, as the door `attention_facts`
   gives them with the program's modules, `{ "<program>": { "<workflow>": <facts> } }`
   (`crates/mandate-testkit/tests/attention_0_7.rs`, which also holds the door to the
   function, `mandate_check::attention_facts`). Their shape is below ("The attention facts").
@@ -1569,7 +1571,7 @@ the compiler's order. The gates that do this:
 | diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
 | diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
 | corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 | `crates/mandate-testkit/tests/corpus.rs` |
-| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 502: the TypeScript's 125, and 265 of language 0.6 and 112 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
+| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 513: the TypeScript's 125, and 265 of language 0.6 and 123 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
 | tool schema digests | the digest `schemaDigest` of `runtime/src/mcp-client.ts` (built to `runtime/dist`) gives for 34 MCP tools written as JSON text (no `outputSchema`, `outputSchema` empty or null, member order, nested and deep schemas, non-ASCII and astral names and strings, members sorted by UTF-16, lone surrogates, numbers JSON writes differently from their text, empty objects, a member given twice), with the canonical text it hashes, and 29 texts the door must refuse; written by `scripts/tool-digest-vectors.mjs` (found by the `scripts/*-vectors.mjs` loop of CI and `docker/run-job.sh`) | 34 tools, 29 refused | `crates/mandate-check/tests/connector_doors.rs` (door `tool_schema_digest`) |

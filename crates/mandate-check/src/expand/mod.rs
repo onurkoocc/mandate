@@ -114,7 +114,7 @@ pub fn expanded_program_reaching(
     }
     // 0.6: the built-in `std.patterns`, when the program imports it and the
     // modules do not hold it.
-    let with_builtin = crate::library::with_builtin(view, modules);
+    let with_builtin = crate::library::with_builtin(view, modules, None);
     let modules = with_builtin.as_ref().or(modules);
     let linked = crate::modules::link_reaching(view, modules, reach);
     let e = expand(
@@ -158,7 +158,7 @@ pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
         return Some(e);
     }
     let view = Program::of(program)?;
-    let with_builtin = crate::library::with_builtin(view, modules);
+    let with_builtin = crate::library::with_builtin(view, modules, None);
     let modules = with_builtin.as_ref().or(modules);
     let linked = link(view, modules).defs;
     let mut members = view.members().clone();

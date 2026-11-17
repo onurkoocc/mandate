@@ -33,6 +33,10 @@ pub(crate) struct Args {
     pub libraries: Option<String>,
     /// `--config <file>`.
     pub config: Option<String>,
+    /// `--program <file>` (0.7, `add` and `upgrade`): the program the lock
+    /// is for, whose language decides which embedded `std.patterns` may be
+    /// pinned.
+    pub program: Option<String>,
     /// The flags, each as written (`--json`).
     pub flags: Vec<String>,
     /// The positional arguments.
@@ -77,6 +81,8 @@ impl Args {
         let format = option(&mut rest, "--format")?.unwrap_or_else(|| "md".to_owned());
         let libraries = option(&mut rest, "--libraries")?;
         let config = option(&mut rest, "--config")?;
+        // 0.7.
+        let program = option(&mut rest, "--program")?;
         let (flags, positional) = rest.into_iter().partition(|a| a.starts_with("--"));
         Ok(Args {
             modules,
@@ -90,6 +96,7 @@ impl Args {
             format,
             libraries,
             config,
+            program,
             flags,
             positional,
         })

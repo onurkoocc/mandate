@@ -609,6 +609,16 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `E1904r` to `E1904u` | A report's field of a type a person is not shown: a set, a list of lists, a record two levels deep, a range the check cannot type (a mutation each) | E1904 |
 | `E1904v` | A pattern's report field of a type not shown, refused on the expansion at the application (a mutation) | E1904 |
 | `E1905` to `E1905g` | A report in a map's body, a loop without `max_iter`, a function, an `on error`, an `on unmet` and an `on budget_exceeded` handler, a test, and directly before an `on error` (a mutation each) | E1905 |
+| `E1609` | A program of 0.6 (`fixtures/attention/batch.mdt`, a mutation: its `language`) whose lock pins `std.patterns` 2.0.0, a library of 0.7: refused at the pin and at the use | E1609 |
+| `E1609a` | A program of 0.6 that imports a module of 0.7 given to the check (the module of `E1602` under the header of 0.7) | E1609 |
+| `E1609b` | A program of 0.7 that imports a module of 0.6 given to the check (a mutation: its `language`) checks | — |
+| `E1609c` | A program of 0.7 whose lock pins `std.patterns` 1.0.0 reads 1.0.0 and checks | — |
+| `E1603b` | A program of 0.5 that imports a module of 0.7 is E1603, as for a module of 0.6 (a mutation: its `language`) | E1603 |
+| `L10` | `mandate publish` of a minor version of a library of 0.7 (`acme.reports` 1.1.0, `L10/versions/`) that adds a report: the signature widens | E1607 |
+| `L10a`, `L10b` | `mandate upgrade` to that version: not written without `--accept-governance`, written with it | — |
+| `L10c` | `mandate publish` of a minor version whose report's highest class rises (internal to confidential) | E1607 |
+| `L10d` | `mandate upgrade` to a version whose workflow's report is taken away: no governance change, written | — |
+| `L10e` | `mandate publish` of a minor version whose pattern addresses its report to its other role slot | E1607 |
 | `E1906` | A workflow whose attention bound is above its budget's `asks` (`fixtures/attention/asks.mdt`, whose workflows declare their exact bounds; a mutation: `asks` 9 becomes 8) | E1906 |
 | `E1906a` to `E1906j` | One question more of each kind of site, against the exact bound: `human.ask`, `escalate`, `pause`, `supervise escalate` (5), a `human.approve` of a criterion, an effect the program hands to a person (with its owner's gate), a change set, the owner's gate of an action that may carry a governance-class file, a review, a review's escalation (a mutation each) | E1906 |
 | `E1906k` to `E1906p` | The algebra: a loop's `max_iter` multiplies, a function counts at each call, `if` takes the larger branch, `supervise restart_all` counts a `par`'s branches twice, a `verify`'s `on unmet` and a statement's `on error` count beside it (a mutation each) | E1906 |
@@ -618,6 +628,11 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `E1908` to `E1908e` | `asks` in an agent's, a delegation's, a map's, a plan's, a skill's and a function's budget (a mutation each) | E1908 |
 | `E1706c` to `E1706e` | Under an envelope that limits `asks` (the room's `left.asks`): a sub-program whose static total does not fit what is left, one whose declared `asks` does not, and one whose total is unbounded and that declares none | E1706 |
 | `E1709e` to `E1709g` | An amendment that lowers the envelope's `asks`, leaves it out, and adds it to an envelope that had none | E1709 |
+
+Of these, `E1609`, `E1609a` and `E1603b` are cases of 0.7 whose program
+declares an older version: E1609 refuses a program of 0.6 that reads what
+0.7 wrote, and no program of 0.7 can meet it, so its cases name the version
+of the rule, as `E1603` names 0.6 for a program of 0.5.
 
 ## What the Rust crates run
 
@@ -655,13 +670,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 502, passed 502, pending 0
+conformance cases: ran 513, passed 513, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 343 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
+  of them 388 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
 ```
 
-(484 cases: 468 `compile`, 265 of them of language 0.6 and 78 of 0.7, and 16 `journal`; no case
+(529 cases: 513 `compile`, 265 of them of language 0.6 and 123 of 0.7, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

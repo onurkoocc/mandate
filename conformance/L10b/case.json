@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "L10b",
+  "kind": "compile",
+  "title": "mandate upgrade of acme.reports from 1.0.0 to 1.1.0, which adds a report, with --accept-governance gives back the lock with the new pin.",
+  "spec": [
+    "spec/attention.md#stdpatterns-200",
+    "spec/library.md#mandate-add-upgrade-and-publish"
+  ],
+  "language": "mandate/0.7",
+  "lock": "../L10a/mandate.lock.json",
+  "library": {
+    "op": "upgrade",
+    "name": "acme.reports",
+    "range": "1.1.0",
+    "versions": "../L10/versions",
+    "pinned": "../L10/versions/1.0.0",
+    "now": "2026-11-17T09:00:00Z",
+    "accept_governance": true
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "written": true
+  }
+}

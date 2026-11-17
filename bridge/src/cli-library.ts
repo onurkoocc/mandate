@@ -6,8 +6,8 @@
 // native command line (crates/mandate-cli, src/libraries.rs) set the forms: the same arguments are answered with the
 // same standard output, the same exit status and the same files written.
 //
-//   mandate add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
-//   mandate upgrade <library>[@<range>] [--accept-governance] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
+//   mandate add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]
+//   mandate upgrade <library>[@<range>] [--accept-governance] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]
 //   mandate publish <source dir> [--libraries <dir>] [--config <file>] [--json]
 //
 // The directory of libraries is the one `--libraries` names, or else `libraries.dir` of the configuration
@@ -22,6 +22,7 @@ import {
   libraryAdd,
   libraryPublish,
   libraryUpgrade,
+  load,
   LOCK_FORMAT_06,
   parseStrictJson,
   type Diagnostic,
@@ -65,6 +66,8 @@ export interface LibraryArgs {
   json: boolean;
   /** `--accept-governance`. */
   acceptGovernance?: boolean;
+  /** `--program <file>` (0.7, `add` and `upgrade`): the program the lock is for, whose language decides which embedded `std.patterns` may be pinned. */
+  program?: string;
 }
 
 /** What a check of a program is given of the libraries its lock pins. */
@@ -228,6 +231,17 @@ function add(io: Io, a: LibraryArgs, upgrading: boolean, usage: () => Stop): num
   const at = spec.indexOf("@");
   const [library, range] = at < 0 ? [spec, undefined] : [spec.slice(0, at), spec.slice(at + 1)];
   if (!isLibraryName(library)) throw fail(io, 2, `${library} is not the name of a library`);
+  // 0.7: the language of the program the lock is for, when --program names it; a program that does not load is
+  // reported against its file.
+  let language: string | undefined;
+  if (a.program !== undefined) {
+    const loaded = load(read(io, a.program), a.program.endsWith(".json") ? "json" : "mdt");
+    if (!loaded.program || hasErrors(loaded.diagnostics)) {
+      report(io, loaded.diagnostics, a.program, a.json);
+      return 1;
+    }
+    language = loaded.program.language;
+  }
   const { file: lockFile, lock } = lockToChange(io, a);
   const c = config(io, a);
   // The built-in library needs no directory: its one version is the compiler's own copy.
@@ -236,7 +250,7 @@ function add(io: Io, a: LibraryArgs, upgrading: boolean, usage: () => Stop): num
   const versions = dir !== undefined && library !== STD_PATTERNS ? versionsIn(io.fs, dir, library) : [];
   const pinned = dir !== undefined && pinnedVersion !== undefined ? libraryIn(io.fs, joinPath(joinPath(dir, library), pinnedVersion)) : undefined;
   const libraries = dir !== undefined ? pinnedIn(io.fs, lock, dir, library) : [];
-  const request = { library, ...(range !== undefined ? { range } : {}), lock, versions, libraries, ...(c?.libraries ? { config: c.libraries } : {}), now: now(io) };
+  const request = { library, ...(range !== undefined ? { range } : {}), lock, versions, libraries, ...(c?.libraries ? { config: c.libraries } : {}), now: now(io), ...(language !== undefined ? { language } : {}) };
   const outcome = upgrading ? libraryUpgrade({ ...request, pinned: pinned ?? NO_LIBRARY, accept_governance: a.acceptGovernance === true }) : libraryAdd(request);
   if (a.json) io.out(JSON.stringify(outcome, null, 2) + "\n");
   else {
