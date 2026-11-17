@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CODES as TS_CODES } from "../../compiler/src/index.js";
-import { EXEMPTIONS } from "./compare.js";
+import { EXEMPTIONS, RUST_ONLY_LANGUAGES } from "./compare.js";
 import { answerOf, MAX_ANSWER_BYTES, requestText, unrepresentable, WasmHost, WASI_IMPORTS } from "../src/wasm/host.js";
 import { CompilerFailure, DoorRefusal } from "../src/wasm/errors.js";
 import { compileModuleBytes, compileModuleFile, modulePath } from "../src/wasm/module.js";
@@ -373,8 +373,8 @@ describe("modules the host refuses, by name, from their bytes", () => {
 /** The `tables` output with the Rust's newest version as the TypeScript's (rust_only.rs, NEWEST_VERSION). */
 function tablesAsTypescript(v: unknown): unknown {
   const o = { ...(v as Record<string, unknown>) };
-  if (Array.isArray(o["LANGUAGE_VERSIONS"])) o["LANGUAGE_VERSIONS"] = (o["LANGUAGE_VERSIONS"] as string[]).filter((x) => x !== "mandate/0.6");
-  if (o["LANGUAGE_VERSION"] === "mandate/0.6") o["LANGUAGE_VERSION"] = "mandate/0.5";
+  if (Array.isArray(o["LANGUAGE_VERSIONS"])) o["LANGUAGE_VERSIONS"] = (o["LANGUAGE_VERSIONS"] as string[]).filter((x) => !RUST_ONLY_LANGUAGES.includes(x));
+  if (o["LANGUAGE_VERSION"] === RUST_ONLY_LANGUAGES.at(-1)) o["LANGUAGE_VERSION"] = "mandate/0.5";
   return o;
 }
 

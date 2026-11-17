@@ -24,7 +24,7 @@ use mandate_check::library::{LibrarySource, load_library};
 use mandate_cli::{Io, MemoryIo, run};
 use mandate_ir::{Value, canonicalize, parse};
 use mandate_lib::Timestamp;
-use mandate_testkit::rust_vectors::GOLDEN_0_6;
+use mandate_testkit::rust_vectors::{GOLDEN_0_6, GOLDEN_0_7};
 use mandate_testkit::{Golden, files, library_files, path, read_text, sha256};
 
 const OPS: &str = "fixtures/library/upgrade/acme.ops";
@@ -204,6 +204,7 @@ fn every_command_prints_what_the_golden_files_pin() {
     let goldens = [
         (Golden::load().unwrap(), false),
         (Golden::read(GOLDEN_0_6).unwrap(), true),
+        (Golden::read(GOLDEN_0_7).unwrap(), true),
     ];
     for (golden, of_0_6) in &goldens {
         for program in golden.programs() {

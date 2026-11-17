@@ -2,9 +2,9 @@
 
 **Status: not implemented yet.** This page is the specification of release
 0.7, written before its implementation, so that every part of it is built
-against one text. Nothing on it runs today: the Rust compiler does not read
-`mandate @ 0.7` (it is an unknown version, E0103), and the runtime runs no
-0.7 package. Each part is implemented by the slice named in the table, and
+against one text. Little of it runs today: the Rust compiler reads
+`mandate @ 0.7` and checks a 0.7 program as the same program of 0.6, with
+none of what this page adds yet, and the runtime runs no 0.7 package. Each part is implemented by the slice named in the table, and
 its state is changed here when that slice is merged. Language 0.7 is read by
 the Rust compiler alone: the TypeScript compiler stays frozen at 0.5 and
 does not read it (E0103). While a slice has not landed, the runtime refuses
@@ -14,7 +14,7 @@ best-effort basis.
 
 | Part | Slice | State |
 |---|---|---|
-| Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | not implemented yet |
+| Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | the compiler's part implemented (RL1); the runtime's gates not implemented yet |
 | `stage`: grammar, IR, printer; E1901, E1902 | RL2 | not implemented yet |
 | `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | not implemented yet |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | not implemented yet |

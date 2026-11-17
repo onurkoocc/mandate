@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S02l",
+  "kind": "compile",
+  "title": "A lock of format 0.7 is read by its own schema, which has every field of a 0.6 lock: a program of 0.7 checks with it.",
+  "spec": [
+    "spec/attention.md#lock-07",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/minimal.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

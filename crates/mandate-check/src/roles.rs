@@ -311,9 +311,21 @@ pub fn role_sites_of(defs: &Map, language: Option<Language>) -> Vec<RoleSite> {
 /// expansion, so that it names the roles its body asks, as the same workflow
 /// written out does (`crate::expand::expanded_program`); one whose pattern
 /// the definitions do not hold names none until it is expanded.
+///
+/// The door gives the definitions alone, with no program's language: they
+/// are expanded as a program of the newest version ([`Language::NEWEST`]),
+/// which reads every construct a definition of any version can hold.
+/// [`roles_named_in`] is the same for definitions of a known language.
 #[must_use]
 pub fn roles_named(defs: &Map) -> Vec<String> {
-    let expanded = expanded_defs(defs);
+    roles_named_in(defs, Language::NEWEST)
+}
+
+/// [`roles_named`] of the definitions of a program of `language`: a workflow
+/// that applies a pattern is expanded as that program's.
+#[must_use]
+pub fn roles_named_in(defs: &Map, language: Language) -> Vec<String> {
+    let expanded = expanded_defs(defs, language);
     let defs = expanded.as_ref().unwrap_or(defs);
     let mut out: Vec<String> = Vec::new();
     for s in role_sites(defs) {
@@ -328,8 +340,9 @@ pub fn roles_named(defs: &Map) -> Vec<String> {
 }
 
 /// The definitions with each workflow that applies a pattern they hold
-/// replaced by its expansion, when one does and every application expands.
-fn expanded_defs(defs: &Map) -> Option<Map> {
+/// replaced by its expansion, when one does and every application expands,
+/// as the definitions of a program of `language`.
+fn expanded_defs(defs: &Map, language: Language) -> Option<Map> {
     if !defs
         .iter()
         .any(|(_, d)| mandate_ir::Application::of_workflow(d).is_some())
@@ -337,7 +350,7 @@ fn expanded_defs(defs: &Map) -> Option<Map> {
         return None;
     }
     let mut program = Map::new();
-    program.insert("language", Language::V0_6.as_str());
+    program.insert("language", language.as_str());
     program.insert("defs", Value::Object(defs.clone()));
     crate::expand::expanded_program(&Value::Object(program), None)?
         .get("defs")?

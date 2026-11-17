@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S02i",
+  "kind": "compile",
+  "title": "A program of language 0.7 is read and checks: with none of what 0.7 adds, it is a 0.6 program under the new header.",
+  "spec": [
+    "spec/attention.md#version-gating"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/minimal.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

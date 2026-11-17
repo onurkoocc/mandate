@@ -375,12 +375,13 @@ fn a_program_is_read_by_the_schema_of_its_own_language() {
         refused(ir_schema_0_6().unwrap(), &v05),
         ["enum /language".to_owned()]
     );
-    // An unknown version is E0103, which names 0.6 among the versions read.
-    let unknown = load_json(&program("mandate/0.7", ""));
+    // An unknown version is E0103, which names 0.6 (and 0.7) among the
+    // versions read.
+    let unknown = load_json(&program("mandate/0.8", ""));
     let d = &unknown.diagnostics[0];
     assert_eq!(d.code, "MDT-E0103");
     assert!(d.message.ends_with(
-        "this compiler reads \"mandate/0.1\" or \"mandate/0.2\" or \"mandate/0.3\" or \"mandate/0.4\" or \"mandate/0.5\" or \"mandate/0.6\". Use an explicit migration instead of loading it as-is."
+        "this compiler reads \"mandate/0.1\" or \"mandate/0.2\" or \"mandate/0.3\" or \"mandate/0.4\" or \"mandate/0.5\" or \"mandate/0.6\" or \"mandate/0.7\". Use an explicit migration instead of loading it as-is."
     ), "{}", d.message);
 }
 
@@ -517,7 +518,7 @@ fn an_older_lock_with_a_field_of_0_6_is_refused_as_before() {
     }
     // A format no compiler reads is refused by the earlier schema's enum, as
     // before.
-    let unknown = json(r#"{"lock":"mandate/lock/0.7","modules":{}}"#);
+    let unknown = json(r#"{"lock":"mandate/lock/0.8","modules":{}}"#);
     assert_eq!(lock_diagnostics(&unknown), ["MDT-E0140 at /lock"]);
 }
 

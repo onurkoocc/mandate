@@ -17,6 +17,10 @@
 //! it reads in the program's place ([`CheckResult::expanded`]), and from
 //! whose diagnostics it reports in the program that was checked.
 //!
+//! A program of language 0.7 (spec/attention.md) is checked as the same
+//! program of 0.6 is: every rule of 0.6 holds for it (`at_least`), and what
+//! 0.7 adds is checked by the slices that add it.
+//!
 //! It holds the front door, the stages before the static checks, the static
 //! checks, and the lock and the sandbox requirements that stand on them:
 //!
@@ -223,7 +227,8 @@ pub use resolve::{
     resolve_names,
 };
 pub use roles::{
-    RoleSite, RoleValue, role_checks, role_sites, role_sites_of, roles_named, waiver_role_sites,
+    RoleSite, RoleValue, role_checks, role_sites, role_sites_of, roles_named, roles_named_in,
+    waiver_role_sites,
 };
 pub use sandbox::{
     CoTenancy, Egress, ExecGrant, Filesystem, ISOLATION_LEVELS, Isolation, IsolationLevel,

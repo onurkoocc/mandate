@@ -335,7 +335,8 @@ WASI):
   programs, ten to fourteen outputs each), by `sha256`;
 - all 125 `compile` cases of `conformance/` for 0.1 to 0.5 (the 265 cases of
   0.6 and the 135 outputs of `vectors/golden/0.6.json` are the Rust
-  compiler's own, since it alone reads 0.6);
+  compiler's own, since it alone reads 0.6, and so are the 5 cases of 0.7
+  and `vectors/golden/0.7.json`);
 - the stored results in [`vectors/`](vectors/README.md): the syntax and
   span vectors, the schema vectors, 193 diagnostic vectors, 183 diff
   vectors, and the compiled corpus (1,226 calls the TypeScript tests make
@@ -375,7 +376,9 @@ vectors and fails when the committed ones differ; the Rust tests read them and n
 The 0.6 pins (`vectors/golden/0.6.json`, `vectors/diagnostics-0.6/`) are the
 Rust compiler's own, since the TypeScript compiler does not read 0.6: the
 gates that read them write them again under `MANDATE_UPDATE_0_6=1`, never by
-hand ([`vectors/README.md`](vectors/README.md)).
+hand ([`vectors/README.md`](vectors/README.md)); the 0.7 pins
+(`vectors/golden/0.7.json`, `vectors/diagnostics-0.7/`) under
+`MANDATE_UPDATE_0_7=1`.
 
 ```sh
 cargo test --locked                       # where native executables may run

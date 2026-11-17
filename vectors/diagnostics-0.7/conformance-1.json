@@ -1,0 +1,142 @@
+{
+  "format": "mandate/vectors/diagnostics/conformance/0.1",
+  "part": 1,
+  "parts": 1,
+  "cases": [
+    {
+      "name": "E0140d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/attention/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0140",
+            "severity": "error",
+            "message": "The lock file does not match spec/lock-0.7.schema.json: / must NOT have additional properties",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E0140",
+            "facts": {
+              "keyword": "additionalProperties",
+              "params": {
+                "additionalProperty": "extensions"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S02i",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/attention/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e",
+          "defs": {
+            "Greet": "sha256:596801da78e127a180ea98dea4826019f3f908e38a6276721660d634fd24f7d2",
+            "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+            "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S02j",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown field \"extensions\". The IR schema is closed; unknown fields are rejected, not ignored.",
+            "at": {
+              "path": "/extensions",
+              "span": [1, 141, 1, 143]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "additionalProperties",
+              "schema_path": "#/additionalProperties"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S02k",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/attention/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e",
+          "defs": {
+            "Greet": "sha256:596801da78e127a180ea98dea4826019f3f908e38a6276721660d634fd24f7d2",
+            "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+            "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S02l",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/attention/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e",
+          "defs": {
+            "Greet": "sha256:596801da78e127a180ea98dea4826019f3f908e38a6276721660d634fd24f7d2",
+            "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+            "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329"
+          }
+        },
+        "diagnostics": []
+      }
+    }
+  ]
+}

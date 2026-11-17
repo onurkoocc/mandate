@@ -73,6 +73,13 @@
 //! in a domain of their own ([`HashDomain::Library`], under
 //! [`LIBRARY_HASH_VERSION`]).
 //!
+//! Language 0.7 (spec/attention.md) is read by this compiler alone too:
+//! [`Language::V0_7`], a program by `spec/ir-0.7.schema.json`
+//! ([`ir_schema_0_7`], [`IR_0_7_SCHEMA_TEXT`]) and a lock of format
+//! `mandate/lock/0.7` ([`LOCK_FORMAT_0_7`]) by `spec/lock-0.7.schema.json`
+//! ([`lock_schema_0_7`], [`LOCK_0_7_SCHEMA_TEXT`]), chosen as for 0.6. Each
+//! is the schema of 0.6 with what 0.7 adds, construct by construct.
+//!
 //! And the ECMAScript behaviour the compiler's output depends on, so that no
 //! phase reinvents it: objects that keep their members in ECMAScript order
 //! ([`Map`], [`JsObject`]); the output value [`JsValue`] with `undefined`, and
@@ -155,16 +162,17 @@ pub use hash::{
 pub use jcs::{canonicalize, compare_utf16, write_json_string};
 pub use js_value::{JsObject, JsValue, JsonText, stringify, stringify_pretty};
 pub use lock::{
-    LOCK_FIELDS_0_5, LOCK_FIELDS_0_6, LOCK_FORMAT, LOCK_FORMAT_0_6, LOCK_FORMATS, lock_at_least,
-    lock_schema_diagnostics, validate_lock,
+    LOCK_FIELDS_0_5, LOCK_FIELDS_0_6, LOCK_FORMAT, LOCK_FORMAT_0_6, LOCK_FORMAT_0_7, LOCK_FORMATS,
+    lock_at_least, lock_schema_diagnostics, validate_lock,
 };
 pub use number::{is_integer, is_safe_integer, number_to_string, write_number};
 pub use program::{Definition, Import, Program};
 pub use reader::{Parsed, parse, parse_bytes};
 pub use schema::{
-    IR_0_6_SCHEMA_TEXT, IR_SCHEMA_TEXT, LOCK_0_6_SCHEMA_TEXT, LOCK_SCHEMA_TEXT, Schema,
-    SchemaError, SchemaOptions, ir_schema, ir_schema_0_6, ir_schema_errors, ir_schema_of,
-    lock_schema, lock_schema_0_6, lock_schema_errors, lock_schema_of,
+    IR_0_6_SCHEMA_TEXT, IR_0_7_SCHEMA_TEXT, IR_SCHEMA_TEXT, LOCK_0_6_SCHEMA_TEXT,
+    LOCK_0_7_SCHEMA_TEXT, LOCK_SCHEMA_TEXT, Schema, SchemaError, SchemaOptions, ir_schema,
+    ir_schema_0_6, ir_schema_0_7, ir_schema_errors, ir_schema_of, lock_schema, lock_schema_0_6,
+    lock_schema_0_7, lock_schema_errors, lock_schema_of,
 };
 pub use stmt::{CallSpec, Pattern, Stmt};
 pub use tags::{

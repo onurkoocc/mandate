@@ -232,14 +232,15 @@ export function caseDirs(): string[] {
 // ---------------------------------------------------------------- languages only the Rust compiler reads
 
 /**
- * The language versions only the Rust compiler reads (spec/library.md). This compiler stays at 0.5: a case of one of
- * them is written by hand, and the Rust conformance gate runs it (crates/mandate-testkit/tests/conformance.rs). Here it
- * is skipped, and counted, so that no case is left out by both compilers without a commit that says so.
+ * The language versions only the Rust compiler reads (spec/library.md, spec/attention.md). This compiler stays at 0.5:
+ * a case of one of them is written by hand, and the Rust conformance gate runs it
+ * (crates/mandate-testkit/tests/conformance.rs). Here it is skipped, and counted, so that no case is left out by both
+ * compilers without a commit that says so.
  */
-export const RUST_ONLY_LANGUAGES: readonly string[] = ["mandate/0.6"];
+export const RUST_ONLY_LANGUAGES: readonly string[] = ["mandate/0.6", "mandate/0.7"];
 
 /** How many case directories are of a language only the Rust compiler reads. A commit that adds or takes away one changes it. */
-export const RUST_ONLY_CASES = 265;
+export const RUST_ONLY_CASES = 270;
 
 /** Whether this compiler skips the case: its `language` is one only the Rust compiler reads. */
 export function rustOnly(c: Pick<Case, "language">): boolean {

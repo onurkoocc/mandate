@@ -796,12 +796,13 @@ pub(crate) fn def_authority(
             }
         }
     }
-    // A contract's criteria name the roles that approve and waive them (a
-    // pattern is of 0.6, whose `waive by` roles are sites of their own).
+    // A contract's criteria name the roles that approve and waive them, as
+    // its home's language reads them (a pattern is of 0.6 or later, whose
+    // `waive by` roles are sites of their own).
     if kind == DefKind::Contract {
         let mut one = Map::new();
         one.insert(n, d.clone());
-        let sites = crate::roles::role_sites_of(&one, Some(mandate_ir::Language::V0_6));
+        let sites = crate::roles::role_sites_of(&one, site.home.language());
         if let Some(role) = sites.iter().find_map(|s| s.role.clone()) {
             return Some(("role", role, Some(n.to_owned())));
         }

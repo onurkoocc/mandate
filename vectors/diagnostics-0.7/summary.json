@@ -1,0 +1,13 @@
+{
+  "format": "mandate/vectors/diagnostics/summary/0.1",
+  "conformance_cases": 5,
+  "conformance_by_door": {
+    "check": 5
+  },
+  "golden_results": 3,
+  "diagnostics": 2,
+  "by_code": {
+    "MDT-E0104": 1,
+    "MDT-E0140": 1
+  }
+}
