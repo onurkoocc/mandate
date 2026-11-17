@@ -1515,6 +1515,7 @@ impl<'a> Checker<'a> {
             cls: over.cls.max(body.cls),
             waivable: over.waivable || body.waivable,
             silent: over.silent || body.silent,
+            made: crate::ty::weaker_level(over.made, body.made),
         }
     }
 

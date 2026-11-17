@@ -1,0 +1,25 @@
+// A program of 0.7 that verifies a note against a contract of example.lib.
+mandate @ 0.7
+
+module example.importer @ 0.1
+
+use std.{human, model}
+use example.lib.{C, D, Note, accountant}
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+agent Writer {
+  role   "Writes one note."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill write(t: Text) -> Inferred<Text> ! {Model}
+}
+
+workflow W(n: Note) -> Bool
+  caps   ModelStd
+  budget { steps: 2 }
+{
+  let w = delegate Writer.write(n.text)
+  let v = verify n against D(n, "finance_lead")
+  true
+}

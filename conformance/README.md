@@ -625,6 +625,9 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `E1907` to `E1907b` | A question in a loop without `max_iter`, in a function that calls itself (with E0502), and in what a recursion through a contract's `require` reaches (with E0502), in a workflow that declares `asks` | E1907 |
 | `S04b` | In 0.7 a cycle of calls through two contracts' `require` is a call cycle | E0502 |
 | `E1501c` | In 0.7 an approval's role that a parameter of its contract also names is refused, since a run reads the role in the contract's scope (a mutation of `fixtures/attention/asks.mdt`) | E1501 |
+| `E1501d` | In 0.7 the same of a contract of another module, of 0.6, that the program's `verify` reaches: refused at the `verify`, with the contract, its module and the place in it (`E1501d/lib.mdt`; a mutation: the contract) | E1501 |
+| `S04c`, `E1907c` | In 0.7 a cycle through a contract of another module, of 0.6, refused where the program reaches it, and with `asks` declared the question the cycle reaches (`cyc.mdt`; a mutation each: the contract) | E0502, E1907 |
+| `E0220h` | In 0.7 a call of a function is of the class of what it returns: a confidential row the function reads and returns as `Text`, handed to a model allowed public data (a mutation) | E0220 |
 | `E1908` to `E1908e` | `asks` in an agent's, a delegation's, a map's, a plan's, a skill's and a function's budget (a mutation each) | E1908 |
 | `E1706c` to `E1706e` | Under an envelope that limits `asks` (the room's `left.asks`): a sub-program whose static total does not fit what is left, one whose declared `asks` does not, and one whose total is unbounded and that declares none | E1706 |
 | `E1709e` to `E1709g` | An amendment that lowers the envelope's `asks`, leaves it out, and adds it to an envelope that had none | E1709 |
@@ -670,13 +673,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 513, passed 513, pending 0
+conformance cases: ran 517, passed 517, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 388 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
+  of them 392 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
 ```
 
-(529 cases: 513 `compile`, 265 of them of language 0.6 and 123 of 0.7, and 16 `journal`; no case
+(533 cases: 517 `compile`, 265 of them of language 0.6 and 127 of 0.7, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

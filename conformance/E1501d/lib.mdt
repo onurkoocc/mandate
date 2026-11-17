@@ -1,0 +1,21 @@
+// A module of 0.6 whose contract C names the role an approval asks
+// by a name its own parameter also has; D does not.
+mandate @ 0.6
+
+module example.lib @ 0.1
+
+use std.{human}
+
+pub role accountant "Accountant"
+
+pub type Note = { text: Text }
+
+/// The role that approves is named by a parameter of a role's name.
+pub contract C(n: Note, accountant: Text) {
+  accept ok "approved" by human.approve(role: accountant)
+}
+
+/// The role that approves is the role.
+pub contract D(n: Note, who: Text) {
+  accept ok "approved" by human.approve(role: accountant)
+}

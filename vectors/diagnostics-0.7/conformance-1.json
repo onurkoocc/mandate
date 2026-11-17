@@ -1317,6 +1317,39 @@
       }
     },
     {
+      "name": "E0220h",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "confidential data is sent to a model whose capability allows at most public.",
+            "at": {
+              "path": "/defs/ViaText/body/1/value",
+              "span": [1, 2141, 1, 2247]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "public"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1501b",
       "kind": "compile",
       "door": "check_patched",
@@ -1398,6 +1431,46 @@
               "where": "human.approve",
               "argument": "role",
               "shadowed_by": "parameter"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1501d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "lib.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1501",
+            "severity": "error",
+            "message": "human.approve names the role 'accountant' by its role, and 'accountant' is also a parameter of C, which a run would read in its place: the role a person is asked as is a role definition, and nothing a run computes. Rename the parameter (spec/attention.md \"What each question records\"). It is in C of the module example.lib, which the program reaches here.",
+            "at": {
+              "path": "/defs/W/body/1/value",
+              "span": [1, 948, 1, 1100]
+            },
+            "docs": "mandate explain MDT-E1501",
+            "facts": {
+              "role": "accountant",
+              "where": "human.approve",
+              "argument": "role",
+              "shadowed_by": "parameter",
+              "definition": "C",
+              "module": "example.lib",
+              "at": "/defs/C/accept/ok/by/call/args/0/value"
             }
           }
         ]
@@ -4740,7 +4813,7 @@
           {
             "code": "MDT-E1907",
             "severity": "error",
-            "message": "Approving declares asks: 8, and this question (ask) stands in a function that calls itself: the bound cannot count it. Give the loop a max_iter, or ask outside it (spec/attention.md \"The algebra\").",
+            "message": "Approving declares asks: 8, and this question (ask) stands in what a cycle of calls reaches: the bound cannot count it. Give the loop a max_iter, or ask outside it (spec/attention.md \"The algebra\").",
             "at": {
               "path": "/defs/confirm/body/0/value",
               "span": [1, 5034, 1, 5228]
@@ -4789,7 +4862,7 @@
           {
             "code": "MDT-E1907",
             "severity": "error",
-            "message": "V declares asks: 1, and this question (ask) stands in a function that calls itself: the bound cannot count it. Give the loop a max_iter, or ask outside it (spec/attention.md \"The algebra\").",
+            "message": "V declares asks: 1, and this question (ask) stands in what a cycle of calls reaches: the bound cannot count it. Give the loop a max_iter, or ask outside it (spec/attention.md \"The algebra\").",
             "at": {
               "path": "/defs/ask/body/0/value",
               "span": [30, 3, 30, 49]
@@ -4800,6 +4873,65 @@
               "kind": "ask",
               "why": "recursion",
               "asks": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1907c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "cyc.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0502",
+            "severity": "error",
+            "message": "Recursive call cycle C \u2192 again \u2192 C; static node and budget bounds need an acyclic call graph. It is in C of the module example.cyc, which the program reaches here.",
+            "at": {
+              "path": "/defs/W/body/1/value",
+              "span": [1, 948, 1, 1053]
+            },
+            "docs": "mandate explain MDT-E0502",
+            "facts": {
+              "cycle": [
+                "C",
+                "again"
+              ],
+              "definition": "C",
+              "module": "example.cyc",
+              "at": "/defs/C"
+            }
+          },
+          {
+            "code": "MDT-E1907",
+            "severity": "error",
+            "message": "W declares asks: 1, and this question (ask) stands in what a cycle of calls reaches: the bound cannot count it. Give the loop a max_iter, or ask outside it (spec/attention.md \"The algebra\"). It is in again of the module example.cyc, which the program reaches here.",
+            "at": {
+              "path": "/defs/W/body/1/value",
+              "span": [1, 948, 1, 1053]
+            },
+            "docs": "mandate explain MDT-E1907",
+            "facts": {
+              "workflow": "W",
+              "kind": "ask",
+              "why": "recursion",
+              "asks": 1,
+              "definition": "again",
+              "module": "example.cyc",
+              "at": "/defs/again/body/0/value"
             }
           }
         ]
@@ -5865,6 +5997,46 @@
                 "D",
                 "f"
               ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S04c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "cyc.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0502",
+            "severity": "error",
+            "message": "Recursive call cycle C \u2192 again \u2192 C; static node and budget bounds need an acyclic call graph. It is in C of the module example.cyc, which the program reaches here.",
+            "at": {
+              "path": "/defs/W/body/1/value",
+              "span": [1, 948, 1, 1053]
+            },
+            "docs": "mandate explain MDT-E0502",
+            "facts": {
+              "cycle": [
+                "C",
+                "again"
+              ],
+              "definition": "C",
+              "module": "example.cyc",
+              "at": "/defs/C"
             }
           }
         ]
