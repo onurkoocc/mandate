@@ -10,11 +10,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { main, shownSafe, terminalDocument, terminalText } from "../src/cli.js";
+import { relabel } from "./relabel.js";
 
 const dir = mkdtempSync(join(tmpdir(), "mandate-cli-review-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-const PROGRAM = `mandate @ 0.6
+const PROGRAM = relabel(`mandate @ 0.6
 
 module cli.review @ 0.1
 
@@ -55,7 +56,7 @@ workflow Echo(t: Text) -> Text
 {
   t
 }
-`;
+`);
 
 const CONFIG = join(dir, "mandate.runtime.json");
 const KEYS = join(dir, "decision-keys");

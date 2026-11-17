@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as compiler from "../../compiler/src/index.js";
-import { atLeast, check, checkSubprogram, hashProgram, LANGUAGE_06, libraryVerify, load, LOCK_FORMAT_06, skeleton, type LibrarySource, type Program06, type Shape06, type SubprogramCheck06 } from "../src/index.js";
+import { atLeast, BRIDGE_LANGUAGE_VERSIONS, check, checkSubprogram, hashProgram, isProgram06OrLater, isProgram07OrLater, LANGUAGE_06, LANGUAGE_07, libraryVerify, load, LOCK_FORMAT_06, LOCK_FORMAT_07, skeleton, type LibrarySource, type Program06, type Shape06, type SubprogramCheck06 } from "../src/index.js";
 import { modulePath } from "../src/wasm/module.js";
 
 const needs = existsSync(modulePath()) ? describe : describe.skip;
@@ -63,7 +63,30 @@ describe("atLeast", () => {
       expect(compiler.atLeast(LANGUAGE_06 as never, since)).toBe(false);
     }
     expect(atLeast(LANGUAGE_06, LANGUAGE_06)).toBe(true);
-    expect(atLeast("mandate/0.7" as never, "mandate/0.1")).toBe(false);
+    // 0.7 is newer still; a version the bridge does not read is at least none.
+    for (const since of [...compiler.LANGUAGE_VERSIONS, LANGUAGE_06] as const) {
+      expect(atLeast(LANGUAGE_07, since)).toBe(true);
+      expect(atLeast(since, LANGUAGE_07)).toBe(false);
+    }
+    expect(atLeast(LANGUAGE_07, LANGUAGE_07)).toBe(true);
+    expect(BRIDGE_LANGUAGE_VERSIONS).toEqual([...compiler.LANGUAGE_VERSIONS, LANGUAGE_06, LANGUAGE_07]);
+    expect(atLeast("mandate/0.8" as never, "mandate/0.1")).toBe(false);
+  });
+});
+
+describe("isProgram06OrLater and isProgram07OrLater", () => {
+  it("answer by the program's language alone: 0.6 or later, 0.7 or later; no value that is not a version the bridge reads is either", () => {
+    const of = (language: unknown): unknown => ({ language, module: "m", version: "0.1", defs: {} });
+    expect(BRIDGE_LANGUAGE_VERSIONS.map((v) => isProgram06OrLater(of(v)))).toEqual([false, false, false, false, false, true, true]);
+    expect(BRIDGE_LANGUAGE_VERSIONS.map((v) => isProgram07OrLater(of(v)))).toEqual([false, false, false, false, false, false, true]);
+    for (const p of [of("mandate/0.8"), of("mandate/1.0"), of(undefined), of(7), null, undefined, "mandate/0.6", [], {}]) {
+      expect(isProgram06OrLater(p), JSON.stringify(p)).toBe(false);
+      expect(isProgram07OrLater(p), JSON.stringify(p)).toBe(false);
+    }
+  });
+
+  it("hold the lock formats of 0.6 and 0.7 by their names", () => {
+    expect([LOCK_FORMAT_06, LOCK_FORMAT_07]).toEqual(["mandate/lock/0.6", "mandate/lock/0.7"]);
   });
 });
 

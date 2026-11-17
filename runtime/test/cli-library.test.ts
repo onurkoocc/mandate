@@ -19,6 +19,7 @@ import { Runtime } from "../src/runtime.js";
 import { Crash } from "../src/signals.js";
 import { SimAgents } from "../src/sim.js";
 import { closeAll, world } from "./helpers.js";
+import { relabel } from "./relabel.js";
 
 const dir = mkdtempSync(join(tmpdir(), "mandate-cli-library-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -86,7 +87,7 @@ pub pattern Once(
 };
 
 /** A program that applies the pattern of acme.desk, and has a workflow of its own over the library's plain definitions. */
-const ASK = `mandate @ 0.6
+const ASK = relabel(`mandate @ 0.6
 
 module example.desk @ 0.1
 
@@ -110,10 +111,10 @@ workflow Title(input: Request) -> Text
 {
   title_of(input)
 }
-`;
+`);
 
 /** A program that applies the pattern of acme.flows to an agent of its own. */
-const GREET = `mandate @ 0.6
+const GREET = relabel(`mandate @ 0.6
 
 module example.greet @ 0.1
 
@@ -133,7 +134,7 @@ agent Greeter {
 workflow Greet = Once(work: Greeter.greet)
   caps   ModelStd
   budget { time: 5m, steps: 4 }
-`;
+`);
 
 const LIBS = join(dir, "libs");
 const PROGRAM = join(dir, "ask.mdt");

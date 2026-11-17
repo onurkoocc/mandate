@@ -21,10 +21,11 @@ import { SimAgents, SimTool } from "../src/sim.js";
 import { digest, isObj, plain, type Obj, type Value } from "../src/values.js";
 import { roleDoc, runDoc, runView } from "../src/views.js";
 import { closeAll, world, type World } from "./helpers.js";
+import { lockUnder, relabel } from "./relabel.js";
 
 afterAll(closeAll);
 
-const PROGRAM = `mandate @ 0.6
+const PROGRAM = relabel(`mandate @ 0.6
 
 module test.review @ 0.1
 
@@ -85,7 +86,7 @@ workflow ReviewAll(items: List<Invoice>) -> Batch
   }
   Batch { posted: posted, declined: reviewed.declined, failed: reviewed.failed }
 }
-`;
+`);
 
 /** The same program, whose review asks the accountant alone: it is not escalated. */
 const UNESCALATED = PROGRAM.replace(", escalate_to: finance_lead)", ")");
@@ -796,7 +797,7 @@ describe("a review whose journal was changed under it", () => {
 
 // ── what cannot be undone, and what a person answers ────────────────────
 
-const UNDONE = `mandate @ 0.6
+const UNDONE = relabel(`mandate @ 0.6
 
 module test.undone @ 0.1
 
@@ -844,9 +845,9 @@ workflow Ship(changes: List<Change>, c: Change) -> Bool
   effect tag_release(named) idempotent_by c.branch
   true
 }
-`;
+`);
 
-const NESTED = `mandate @ 0.6
+const NESTED = relabel(`mandate @ 0.6
 
 module test.nested @ 0.1
 
@@ -895,7 +896,7 @@ workflow NoteOne(a: Change, b: Change) -> Bool
   effect note_one(second) idempotent_by b.branch
   true
 }
-`;
+`);
 
 /** A person's answer to the escalation the run waits on, signed by `who`. */
 async function answer(w: World, runId: string, who: Person, value: Value): Promise<RunRow> {
@@ -925,7 +926,7 @@ async function violationOf(make: () => Promise<unknown>): Promise<{ code: string
   }
 }
 
-const PAIR = `mandate @ 0.6
+const PAIR = relabel(`mandate @ 0.6
 
 module test.pair @ 0.1
 
@@ -956,7 +957,7 @@ workflow Probe(a: Item, b: Item) -> Bool
   let three = verify b against Pair(b, 20) on unmet(u) => false
   true
 }
-`;
+`);
 
 describe("a value that rests on a waiver, or on a person's answer", () => {
   it("a person's answer that holds the runtime's own members is refused by name, and the wait stays open (1a)", async () => {
@@ -1259,7 +1260,7 @@ function fixtureLibrary(dir: string): LibrarySource {
 describe("the acceptance program (invoices.mdt)", () => {
   it("loads, starts in design mode, reaches its review wait, and once decided posts each accepted match as a simulated draft", async () => {
     const who = people();
-    const { lock: _format, ...fixture } = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
+    const { lock: _format, ...fixture } = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string });
     const lock = { ...fixture, members: { ana: { keys: [who.ana.key.keyId] }, ben: { keys: [who.ben.key.keyId] } }, roles: { accountant: ["ana"], finance_lead: ["ben"] } } as Lock;
     const connectors = fixtureLibrary("acme.connectors");
     const order = (vendor: string, total: number): Obj => ({ order_no: `PO-${vendor}`, vendor_id: vendor, total_cents: total });
@@ -1274,7 +1275,7 @@ describe("the acceptance program (invoices.mdt)", () => {
       const o = i["invoice_no"] === "A" ? order("V1", 1000) : i["invoice_no"] === "B" ? order("V1", 1000) : order("V9", 1000);
       return { ok: { invoice_no: i["invoice_no"]!, order: o }, cost: { steps: 1 } };
     });
-    const w = await world(read("fixtures/library/invoices.mdt"), { agents, libraries: [connectors], lock, decisions: { keys: who.keys } });
+    const w = await world(relabel(read("fixtures/library/invoices.mdt")), { agents, libraries: [connectors], lock, decisions: { keys: who.keys } });
     w.adapters.samples = { tool: (name: string) => (name === "acme.connectors.mailbox.list_invoices" ? { result: invoices } : undefined) } as never;
     expect(NOT_RUN_YET_06.map((r) => r.name)).toEqual([]);
     const r = await w.rt.startRun({ pkg: w.pkg, workflow: "MatchInvoices", input: {}, runId: "acc1", mode: "design" });

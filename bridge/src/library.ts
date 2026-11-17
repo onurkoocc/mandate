@@ -1,9 +1,11 @@
-// Language 0.6 in the bridge (spec/library.md): the names, the types and the doors of what only the Rust compiler
-// reads. The reference compiler is frozen at 0.5, so its types and constants know nothing of 0.6; the bridge keeps
-// them as they are (index.ts takes them as they are, `export *`) and adds here what 0.6 has besides:
+// Languages 0.6 (spec/library.md) and 0.7 (spec/attention.md) in the bridge: the names, the types and the doors of
+// what only the Rust compiler reads. The reference compiler is frozen at 0.5, so its types and constants know nothing
+// of 0.6 or 0.7; the bridge keeps them as they are (index.ts takes them as they are, `export *`) and adds here what
+// 0.6 and 0.7 have besides:
 //
-// - the language and lock versions of 0.6, and `atLeast` over every version the bridge reads, 0.6 included (the
-//   reference compiler's `atLeast` knows nothing after 0.5, and so would read a 0.6 program as older than any);
+// - the language and lock versions of 0.6 and 0.7, and `atLeast` over every version the bridge reads, both included
+//   (the reference compiler's `atLeast` knows nothing after 0.5, and so would read a 0.6 program as older than any);
+//   and `isProgram06OrLater`, what a gate of 0.6 asks, which every later language passes too;
 // - the shapes 0.6 adds to the IR (spec/ir-0.6.schema.json) and to the lock (spec/lock-0.6.schema.json): `pub`
 //   and `doc` on a definition, a pattern and its application, a connector and its tools, a criterion's `waive`,
 //   an envelope's `shapes`; the lock's `libraries` and `connectors`;
@@ -13,11 +15,15 @@
 // - what the `check_subprogram` door gives besides: the running program of a sub-program that applies a pattern;
 // - the Rust-only doors the runtime and the command line call (doors.ts, RUST_ONLY): `library_verify`, the doors of
 //   `mandate add`, `upgrade` and `publish` (`library_add`, `library_upgrade`, `library_publish`), the authority
-//   signature, and the reading of the configuration's `libraries` member.
+//   signature, and the reading of the configuration's `libraries` member;
+// - the shapes 0.7 adds to the IR (spec/ir-0.7.schema.json) and to the lock (spec/lock-0.7.schema.json), as types
+//   alone: the `stage` and `report` statements, `asks` in a budget, `owner` on a workflow; the lock's `role_classes`
+//   and `promotion`. The compiler gives none of them yet (its slices add them one by one), and the runtime refuses a
+//   package that holds one by name (runtime/src/package.ts, NOT_RUN_YET_07) until it runs it.
 //
-// A program of 0.6 given to the reference compiler is refused by it on its own (E0103); the bridge never gives it one.
+// A program of 0.6 or 0.7 given to the reference compiler is refused by it on its own (E0103); the bridge never gives it one.
 
-import { LANGUAGE_VERSIONS, type CheckOptions, type CheckResult, type Criterion, type Def, type Diagnostic, type Envelope, type Expr, type LanguageVersion as ReferenceLanguage, type Lock as ReferenceLock, type Param, type SourceKind, type Stmt, type SubprogramCheck, type SubprogramInput, type TestDef, type TypeExpr, type Use, type WorkflowDef } from "@mandate/compiler";
+import { LANGUAGE_VERSIONS, type Budget, type CheckOptions, type DataClass, type CheckResult, type Criterion, type Def, type Diagnostic, type Envelope, type Expr, type LanguageVersion as ReferenceLanguage, type Lock as ReferenceLock, type Param, type SourceKind, type Stmt, type SubprogramCheck, type SubprogramInput, type TestDef, type TypeExpr, type Use, type WorkflowDef } from "@mandate/compiler";
 import { rustCall } from "./wasm/call.js";
 import { DoorRefusal } from "./wasm/errors.js";
 
@@ -25,18 +31,25 @@ import { DoorRefusal } from "./wasm/errors.js";
 export const LANGUAGE_06 = "mandate/0.6";
 /** The lock format of 0.6, with `libraries` and `connectors`. */
 export const LOCK_FORMAT_06 = "mandate/lock/0.6";
+/** The language version of 0.7 (spec/attention.md "Version gating"), which only the Rust compiler reads. */
+export const LANGUAGE_07 = "mandate/0.7";
+/** The lock format of 0.7 (spec/attention.md "Lock 0.7"), with `role_classes` and `promotion`. */
+export const LOCK_FORMAT_07 = "mandate/lock/0.7";
 /** The format of a library's manifest, `mandate.library.json`. */
 export const LIBRARY_FORMAT = "mandate/library/0.6";
-/** Every language version the bridge reads: the reference compiler's, then the one only the Rust reads. */
-export const BRIDGE_LANGUAGE_VERSIONS = [...LANGUAGE_VERSIONS, LANGUAGE_06] as const;
+/**
+ * Every language version the bridge reads, oldest first: the reference compiler's, then those only the Rust reads.
+ * test/facade.test.ts holds it to the Rust's own list (the `tables` door's LANGUAGE_VERSIONS).
+ */
+export const BRIDGE_LANGUAGE_VERSIONS = [...LANGUAGE_VERSIONS, LANGUAGE_06, LANGUAGE_07] as const;
 
-/** A language version the bridge reads: one of the reference compiler's, or 0.6. */
-export type LanguageVersion = ReferenceLanguage | typeof LANGUAGE_06;
+/** A language version the bridge reads: one of the reference compiler's, 0.6 or 0.7. */
+export type LanguageVersion = ReferenceLanguage | typeof LANGUAGE_06 | typeof LANGUAGE_07;
 
 /**
  * Whether `v` is `since` or a later version, over every version the bridge reads (BRIDGE_LANGUAGE_VERSIONS): the
- * reference compiler's `atLeast`, for 0.1 to 0.5 the same answer, and for 0.6 the one that compiler cannot give. A
- * value that is no version is at least none.
+ * reference compiler's `atLeast`, for 0.1 to 0.5 the same answer, and for 0.6 and 0.7 the one that compiler cannot
+ * give. A value that is no version is at least none.
  */
 export function atLeast(v: LanguageVersion, since: LanguageVersion): boolean {
   const order: readonly string[] = BRIDGE_LANGUAGE_VERSIONS;
@@ -128,9 +141,84 @@ export interface Program06 {
   tests?: Record<string, TestDef>;
 }
 
-/** Whether a value is a program (IR) of language 0.6. */
-export function isProgram06(p: unknown): boolean {
-  return typeof p === "object" && p !== null && (p as { language?: unknown }).language === LANGUAGE_06;
+/**
+ * Whether a value is a program (IR) of language 0.6 or of a later one the bridge reads: what a gate of 0.6 asks, since
+ * every rule of 0.6 holds in each later language (spec/attention.md "Version gating"). A language the bridge does not
+ * read is of none.
+ */
+export function isProgram06OrLater(p: unknown): boolean {
+  if (typeof p !== "object" || p === null) return false;
+  const language = (p as { language?: unknown }).language;
+  return typeof language === "string" && atLeast(language as LanguageVersion, LANGUAGE_06);
+}
+
+/** Whether a value is a program (IR) of language 0.7 or of a later one the bridge reads. */
+export function isProgram07OrLater(p: unknown): boolean {
+  if (typeof p !== "object" || p === null) return false;
+  const language = (p as { language?: unknown }).language;
+  return typeof language === "string" && atLeast(language as LanguageVersion, LANGUAGE_07);
+}
+
+// ── the IR of 0.7 (spec/attention.md "The IR"; spec/ir-0.7.schema.json) ─
+//
+// Types alone: the compiler gives none of these yet. Slices RL2 (`stage`, `report`), RL3 (`asks`) and RL4 (`owner`)
+// add them to the compiler, and these mirror the spec's table, not the compiler's output.
+
+/** `stage <name> "<title>"` (spec/attention.md "`stage`"; "The IR", `Stmt` `stage`): a marker with no body. */
+export interface StageStmt {
+  op: "stage";
+  /** A name, unique within its body. */
+  name: string;
+  /** A constant string of 1 to 80 Unicode scalar values (spec/attention.md "Titles"). */
+  title: string;
+}
+
+/** One field of a report (spec/attention.md "The IR", `ReportField`): a name and a pure expression of a displayable type. */
+export interface ReportField {
+  name: string;
+  value: Expr;
+}
+
+/** `report to <role> "<title>" { … }` (spec/attention.md "`report`"; "The IR", `Stmt` `report`). */
+export interface ReportStmt {
+  op: "report";
+  /** A role definition, or in a pattern one of its role slots. */
+  role: string;
+  /** A constant string of 1 to 80 Unicode scalar values (spec/attention.md "Titles"). */
+  title: string;
+  /** 1 to 16 fields, in the order the author wrote them: an array, since the canonical form sorts an object's members. */
+  fields: ReportField[];
+}
+
+/** A statement of 0.7: one of the reference's, a `stage` or a `report`. */
+export type Stmt07 = Stmt | StageStmt | ReportStmt;
+
+/**
+ * A budget of 0.7 (spec/attention.md "`asks`"; "The IR", `Budget.asks`): `asks`, an integer of at least 0, the most
+ * questions a run may put to people, in a workflow's budget or an envelope's alone (E1908). It is no dimension of the
+ * cost algebra (BUDGET_DIMENSIONS).
+ */
+export type Budget07 = Budget & { asks?: number };
+
+/**
+ * A workflow of 0.7 (spec/attention.md "`owner`"; "The IR", `Def(workflow).owner`): `owner`, the role that approves
+ * its card and signs its promotions, on a workflow without an envelope (E1910); an envelope's `owner` is 0.4's.
+ */
+export type WorkflowDef07 = WorkflowDef06 & { owner?: string };
+
+// ── the lock of 0.7 (spec/attention.md "Lock 0.7"; spec/lock-0.7.schema.json) ─
+//
+// Types alone, as the IR's: slice RL5 adds `role_classes` to the compiler, and RL4 `promotion`.
+
+/** The one value of a lock's `promotion`: a run of `read_only` or `live` needs a signed promotion. */
+export type Promotion = "required";
+
+/** What a lock of format 0.7 adds to one of 0.6; in a lock of an older format each is E0140. */
+export interface Lock07 {
+  /** Each role's highest data class it may be shown; a role it does not name may be shown `internal`. Every role it names is one `roles` names (E0140). */
+  role_classes?: Record<string, DataClass>;
+  /** The promotion ladder: every workflow then has an `owner` or an envelope (E1910). */
+  promotion?: Promotion;
 }
 
 // ── the lock of 0.6 (spec/lock-0.6.schema.json) ─────────────────────────
@@ -151,11 +239,11 @@ export interface ConnectorBinding {
   tools: Record<string, string>;
 }
 
-/** A lock of any format the bridge reads: a lock of 0.6 adds `libraries` and `connectors`. */
+/** A lock of any format the bridge reads: a lock of 0.6 adds `libraries` and `connectors`, one of 0.7 what Lock07 has. */
 export type Lock = ReferenceLock & {
   libraries?: Record<string, LibraryPin>;
   connectors?: Record<string, ConnectorBinding>;
-};
+} & Lock07;
 
 // ── the check door and the library doors ────────────────────────────────
 
