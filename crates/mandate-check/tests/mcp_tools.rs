@@ -169,7 +169,7 @@ fn mcp_tools_every_language_the_compiler_lists_has_a_tool_list_and_no_other_does
 /// they are asked for) and takes a `lock` (described, for the card and the
 /// attention view); `spec` takes the sections `patterns` and `attention`.
 /// The descriptions of the three tools say so.
-const NAMED_CHANGES: [(&str, &str); 8] = [
+const NAMED_CHANGES: [(&str, &str); 9] = [
     (
         "changed /mandate.check/description",
         "check: the description says libraries and the embedded std.patterns",
@@ -193,6 +193,10 @@ const NAMED_CHANGES: [(&str, &str); 8] = [
     (
         "added /mandate.project/inputSchema/properties/workflow",
         "project: the workflow the card and the attention view are asked for",
+    ),
+    (
+        "added /mandate.project/inputSchema/properties/libraries",
+        "project: takes libraries, the same schema as check",
     ),
     (
         "changed /mandate.spec/description",
@@ -263,6 +267,11 @@ fn mcp_tools_the_list_of_0_7_is_the_frozen_list_and_the_named_changes() {
     // (`required` is not among the differences).
     let libraries = property(&new, "mandate.check", "libraries").unwrap();
     assert_eq!(libraries.get("type").and_then(Value::as_str), Some("array"));
+    assert_eq!(
+        property(&new, "mandate.project", "libraries"),
+        Some(libraries),
+        "project takes the libraries check takes"
+    );
     let section = property(&new, "mandate.spec", "section").unwrap();
     let section = section.get("description").and_then(Value::as_str).unwrap();
     assert!(section.contains("`patterns`") && section.contains("`attention`"));

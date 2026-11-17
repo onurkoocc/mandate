@@ -181,7 +181,7 @@
   {
     "name": "mandate.project",
     "title": "A human view of a program",
-    "description": "A view people review (§15): architecture, authority, cost or attention of a program, the envelope card of one workflow, or the semantic diff from `before` (governance changes, behavior changes, what stayed the same). The card and the attention view are those of a program of 0.7, made from the program and its `lock`.",
+    "description": "A view people review (§15): architecture, authority, cost or attention of a program, the envelope card of one workflow, or the semantic diff from `before` (governance changes, behavior changes, what stayed the same). The card and the attention view are those of a program of 0.7, made from the program and its `lock`; a program that applies a pattern of a pinned library is given that library in `libraries`, as `check` is.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -233,6 +233,31 @@
         "lock": {
           "type": "object",
           "description": "The lock file (mandate.lock.json): the model tiers of the cost view, and, for a program of 0.7, what the card and the attention view are made from (the members bound to each role and the data class each role may be shown)."
+        },
+        "libraries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "manifest": {
+                "type": "string",
+                "description": "The text of the library's mandate.library.json."
+              },
+              "files": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Each module file the manifest lists, by its path, with its text."
+              }
+            },
+            "required": [
+              "manifest",
+              "files"
+            ],
+            "additionalProperties": false
+          },
+          "description": "The libraries the program's lock pins, each as its manifest and its module files. The embedded std.patterns is found without being given."
         }
       },
       "required": [
