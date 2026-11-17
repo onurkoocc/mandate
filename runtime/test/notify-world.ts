@@ -236,6 +236,11 @@ export async function append(w: World, runId: string, type: string, data: Value)
   });
 }
 
+/** A wait the journal holds as waiting, for an event a test appends: a question is told only while it is asked. */
+export async function waitingRow(w: World, runId: string, command: string, kind: string): Promise<void> {
+  await w.db.query("insert into commands (run_id, command_id, kind, state, fence, request_digest) values ($1, $2, $3, 'waiting', 0, 'sha256:made-up')", [runId, command, kind]);
+}
+
 /** The number a count comes back as: a number on PGlite, a text on PostgreSQL. */
 export async function count(w: World, sql: string, params: unknown[] = []): Promise<number> {
   return Number((await w.db.query<{ n: unknown }>(sql, params))[0]!.n);

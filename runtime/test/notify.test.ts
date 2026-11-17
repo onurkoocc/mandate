@@ -19,6 +19,7 @@
 // The proxy is the egress tests' in-process one, with an in-process upstream and no network. The clock is the
 // runtime's simulated one. Every secret is a made-up word.
 
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -52,7 +53,7 @@ import { tickPass } from "../src/tick.js";
 import { digest, type Obj } from "../src/values.js";
 import { seenHeader, world as egressWorld, type World as EgressWorld } from "./egress-world.js";
 import { closeAll, until } from "./helpers.js";
-import { answer, append, approveCard, count, DAY, inv, lines, msg, nworld, OWNED, REVIEW, REVIEW_AT, scratch, sign, BATCH, type NWorld } from "./notify-world.js";
+import { answer, append, approveCard, count, DAY, inv, lines, msg, nworld, OWNED, REVIEW, REVIEW_AT, scratch, sign, BATCH, waitingRow, type NWorld } from "./notify-world.js";
 
 const dirs: string[] = [];
 afterAll(async () => {
@@ -80,9 +81,10 @@ async function meet(w: NWorld, ...configs: NotificationsConfig[]): Promise<void>
 }
 
 /**
- * A run of OWNED that asked the platform lead (no role), then the reviewer, and succeeded: three notifications to
- * `hook` (or the channels of `meets`), met in a new world before its first run began. A later run of the same world
- * begins with the channels in use already.
+ * A run of OWNED that asks the platform lead (no role) and waits for the answer, after which its journal holds two
+ * outcomes, a budget run out and a stop for a person (written as the runtime writes events, under the run's lock):
+ * three notifications to `hook` (or the channels of `meets`), the question still asked. The channels are met in a new
+ * world before its first run begins; a later run of the same world begins with them in use already.
  */
 async function ownedRun(runId = "o1", tenant?: string, w0?: NWorld, meets: NotificationsConfig[] = [config(HOOK_CONFIG)]): Promise<NWorld> {
   const w = w0 ?? (await nworld(OWNED, "0.7"));
@@ -91,11 +93,22 @@ async function ownedRun(runId = "o1", tenant?: string, w0?: NWorld, meets: Notif
     await meet(w, ...meets);
   }
   await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId, ...(tenant ? { tenant } : {}) });
+  await append(w, runId, "budget_exceeded", { episode: 0, detail: { $tag: "BudgetExceeded", $args: [{ dimension: "steps" }] } });
+  await append(w, runId, "run_attention_required", { attention: { violation: "made_up" } });
+  expect((await w.rt.getRun(runId)).state).toBe("waiting");
+  return w;
+}
+
+/** A run of OWNED that asked twice, was answered twice, and succeeded. */
+async function endedRun(w: NWorld, runId: string): Promise<void> {
+  await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId });
   await answer(w, runId, w.who.pat, "because");
   await answer(w, runId, w.who.rex, "yes");
   expect((await w.rt.getRun(runId)).state).toBe("succeeded");
-  return w;
 }
+
+/** The three notifications of `ownedRun`, in its order. */
+const OWNED_TOLD = ["wait_opened platform_lead", "budget_exceeded platform_lead", "run_attention_required platform_lead"];
 
 const HOOK_CONFIG = { channels: { hook: { webhook: { url: HOOK, credential: "acme_hook", format: "mandate" } } }, roles: { platform_lead: { channels: ["hook"] }, reviewer: { channels: ["hook"] } } };
 
@@ -286,6 +299,22 @@ describe("what a notification may carry", () => {
     expect(commandShown(null, [])).toBeNull();
   });
 
+  it("carries a sub-program's command whose shown form does not fit as the digest of its own id, which the database resolves", async () => {
+    const own = (c: string): string => `digest:${createHash("sha256").update(c, "utf8").digest("hex").slice(0, 32)}`;
+    const long = `/defs/W/body/0/value/${"x".repeat(250)}/program/1`;
+    const inLong = `${long}/defs/${M}Fix/body/0/value`;
+    const odd = "/defs/W/body/0/value with space/program/1";
+    const inOdd = `${odd}/defs/Fix/body/0/value`;
+    expect(commandShown(inLong, [long])).toBe(own(inLong));
+    expect(commandShown(inOdd, [odd])).toBe(own(inOdd));
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "c1" });
+    await waitingRow(w, "c1", inLong, "input");
+    const hex = commandShown(inLong, [long])!.slice("digest:".length);
+    expect(await w.db.query("select command_id from commands where run_id = 'c1' and left(encode(sha256(convert_to(command_id, 'UTF8')), 'hex'), 32) = $1", [hex])).toEqual([{ command_id: inLong }]);
+  });
+
   it("makes a link from the three ids only, each URL-encoded, an absent one empty; one that would leave the template's origin is none", () => {
     expect(linkOf("https://m.example/runs/{run}?role={role}&at={command}", { run: "r 1/2", role: "accountant", command: "/defs/W/body/0" })).toBe("https://m.example/runs/r%201%2F2?role=accountant&at=%2Fdefs%2FW%2Fbody%2F0");
     expect(linkOf("https://m.example/{run}/{role}/{command}", { run: "r", role: null, command: null })).toBe("https://m.example/r//");
@@ -365,7 +394,7 @@ describe("the pump", () => {
     const c = config(HOOK_CONFIG);
     expect(await pass(w, c, { transport: way.transport })).toEqual({ sent: 3, failed: 0, dead: 0, pending: 0, failures: [] });
     const sent = bodies(way.calls);
-    expect(sent.map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened platform_lead", "wait_opened reviewer", "run_succeeded platform_lead"]);
+    expect(sent.map((n) => `${n.event} ${n.role}`)).toEqual(OWNED_TOLD);
     const events = await w.rt.journal.events("o1");
     const run = await w.rt.getRun("o1");
     for (const n of sent) {
@@ -377,7 +406,7 @@ describe("the pump", () => {
     }
     expect(sent.map((n) => [n.kind, n.class])).toEqual([
       ["decision", "S0"],
-      ["decision", "S0"],
+      ["outcome", "S1"],
       ["outcome", "S1"],
     ]);
     expect(sent[0]!.command).toBe((events.find((e) => e.seq === sent[0]!.seq)!.data as Obj)["command"]);
@@ -400,7 +429,7 @@ describe("the pump", () => {
     const sent = way.calls.map((c) => JSON.parse(c.body) as Obj);
     expect(sent.map((b) => Object.keys(b))).toEqual([["text"], ["text"], ["text"]]);
     expect(String(sent[0]!["text"])).toMatch(/^Mandate: run o1 of Ship \(tenant default\) waits for platform_lead at \/defs\/Ship\/body\/0\/value \(wait_opened, event \d+\)\. https:\/\/m\.acme\.example\/runs\/o1$/);
-    expect(String(sent[2]!["text"])).toMatch(/^Mandate: run o1 of Ship \(tenant default\): run_succeeded \(event \d+\)\. https:\/\/m\.acme\.example\/runs\/o1$/);
+    expect(String(sent[2]!["text"])).toMatch(/^Mandate: run o1 of Ship \(tenant default\): run_attention_required \(event \d+\)\. https:\/\/m\.acme\.example\/runs\/o1$/);
     const n: Notification = { format: NOTIFICATION_FORMAT, id: "sha256:x", kind: "decision", event: "review_escalated", class: "S0", tenant: "t", run: "r", workflow: "W", package: "p", seq: 9, at: 1, role: "finance_lead", command: "/c", deadline: Date.UTC(2027, 0, 2), as_of: { revision: 3, event: 9 }, link: null };
     expect(sentence(n)).toBe("Mandate: run r of W (tenant t) waits for finance_lead at /c, deadline 2027-01-02T00:00:00.000Z (review_escalated, event 9).");
   });
@@ -606,7 +635,7 @@ describe("the pump", () => {
     expect(a.dead + b.dead).toBe(0);
     const got = bodies(way.calls);
     const firsts = got.filter((n, i) => got.findIndex((m) => m.id === n.id) === i);
-    expect(firsts.map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened platform_lead", "wait_opened reviewer", "run_succeeded platform_lead"]);
+    expect(firsts.map((n) => `${n.event} ${n.role}`)).toEqual(OWNED_TOLD);
     for (const n of got) expect({ ...n, as_of: null }).toEqual({ ...firsts.find((f) => f.id === n.id)!, as_of: null });
     expect((await cursorRow(w.db, "hook", "o1"))!.seq).toBe(await lastSeq(w, "o1"));
   });
@@ -628,6 +657,39 @@ describe("the pump", () => {
     expect(ids(way.calls).filter((i) => i === first)).toHaveLength(6);
     expect(dead).toHaveLength(1);
     expect(await count(w, "select count(*) as n from notify_dead")).toBe(1);
+  });
+
+  // These two run by the real clock: a send's deadline is a timer's, and the claim must outlast it in the same time.
+  it("bounds the whole send by one deadline the claim outlasts: a slow way out and a second pump make one request and one attempt", async () => {
+    const w = await ownedRun();
+    let slow = true;
+    const way = fakeWay(() => new Response("busy", { status: 503 }));
+    way.setReady(async () => {
+      // The first answer of the proxy takes longer than a request's limit and a second together.
+      if (slow) {
+        slow = false;
+        await new Promise((r) => setTimeout(r, 1300));
+      }
+    });
+    const real = { transport: way.transport, now: () => Date.now(), timeoutMs: 100 };
+    const first = pass(w, config(HOOK_CONFIG), real);
+    // A second pump comes once a claim held for the request's limit and a second alone would have run out.
+    await new Promise((r) => setTimeout(r, 1200));
+    const [a] = await Promise.all([first, pass(w, config(HOOK_CONFIG), real)]);
+    expect(way.calls).toHaveLength(1);
+    expect((await cursorRow(w.db, "hook", "o1"))!.attempts).toBe(1);
+    // The first pump's send ended at its deadline, its way out not having answered: no attempt of its own.
+    expect(a.failures).toEqual([{ channel: "hook", message: "the egress proxy did not say within 100 ms whether it can serve hooks.acme.example" }]);
+  });
+
+  it("ends a send whose way out never answers at the deadline, as the way out not being there: no attempt", async () => {
+    const w = await ownedRun();
+    const way = fakeWay();
+    way.setReady(() => new Promise<void>(() => undefined));
+    const r = await pass(w, config(HOOK_CONFIG), { transport: way.transport, now: () => Date.now(), timeoutMs: 50 });
+    expect(r).toMatchObject({ sent: 0, failed: 0, dead: 0, pending: 0, failures: [{ channel: "hook" }] });
+    expect(way.calls).toEqual([]);
+    expect(await cursorRow(w.db, "hook", "o1")).toMatchObject({ pending: null, attempts: 0, retry_at: null });
   });
 
   it("takes a next attempt that a clock stepped back would put far ahead as due", async () => {
@@ -653,7 +715,15 @@ describe("the pump", () => {
     expect(way.calls).toHaveLength(1);
     await w.rt.liftHalt({ tenant: "default" }, "ops");
     await pass(w, config(HOOK_CONFIG), { transport: way.transport });
-    expect(way.calls).toHaveLength(6);
+    // After the lift, the rest: each run's two outcomes and its run_cancelled; h2's question ended with its run.
+    expect(bodies(way.calls).slice(1).map((n) => `${n.run} ${n.event}`)).toEqual([
+      "h1 budget_exceeded",
+      "h1 run_attention_required",
+      "h1 run_cancelled",
+      "h2 budget_exceeded",
+      "h2 run_attention_required",
+      "h2 run_cancelled",
+    ]);
   });
 
   it("sends no event outside the S0 and S1 lists; asks_exhausted joins them once slice B3 gives it its class", () => {
@@ -678,6 +748,7 @@ describe("the pump", () => {
         await w.rt.journal.event(tx, "am", "wait_opened", { command, kind: "amendment", request: { role: "platform_lead", reason: `${M} a lead's words`, deadline: 1234 } });
         return asked.seq;
       });
+      await waitingRow(w, "am", command, "amendment");
       // A page that ends at the amendment's request, its wait on the next page: [at - 1, at], then [at + 1]. (The
       // cursor is placed by hand: this is about the pages, not about where a cursor starts.)
       if (batch === 2) await w.db.query("insert into notify_cursors (channel, run_id, seq, at, start_seq) values ('hook', 'am', $1, 0, 0) on conflict (channel, run_id) do update set seq = excluded.seq", [at - 2]);
@@ -701,7 +772,7 @@ describe("which runs a pass tells, and when", () => {
     await approveCard(w);
     await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "late" });
     await answer(w, "late", w.who.pat, "because");
-    await ownedRun("done", undefined, w, []);
+    await endedRun(w, "done");
     const way = fakeWay();
     expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toMatchObject({ sent: 1 });
     expect(bodies(way.calls).map((n) => `${n.run} ${n.event} ${n.role}`)).toEqual(["late wait_opened reviewer"]);
@@ -757,7 +828,51 @@ describe("which runs a pass tells, and when", () => {
     await answer(w, "b", w.who.rex, "yes");
     expect((await w.rt.getRun("b")).state).toBe("succeeded");
     await pass(w, c, { transport: way.transport });
-    expect(bodies(way.calls).map((n) => `${n.run} ${n.event} ${n.role}`)).toEqual(["a wait_opened platform_lead", "b wait_opened platform_lead", "b wait_opened reviewer", "b run_succeeded platform_lead"]);
+    // From its first event, and a question only while it is still asked: b's two were answered, so its outcome alone.
+    expect(bodies(way.calls).map((n) => `${n.run} ${n.event} ${n.role}`)).toEqual(["a wait_opened platform_lead", "b run_succeeded platform_lead"]);
+  });
+
+  // A question is told only while it is still asked; an outcome always. The pump asks right before the send, so a
+  // question answered between that and the send may still be told: that is no error, the receiver finds it decided.
+  it("tells of runs that asked and ended between two passes only how they ended", async () => {
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    await meet(w, config(HOOK_CONFIG));
+    for (const run of ["f1", "f2", "f3"]) await endedRun(w, run);
+    const way = fakeWay();
+    await pass(w, config(HOOK_CONFIG), { transport: way.transport });
+    expect(bodies(way.calls).map((n) => `${n.run} ${n.event}`)).toEqual(["f1 run_succeeded", "f2 run_succeeded", "f3 run_succeeded"]);
+  });
+
+  it("tells a question still asked, and drops one whose wait closed while it waited for its next attempt, with no dead letter", async () => {
+    const w = await ownedRun();
+    let first: string | undefined;
+    const way = fakeWay((id) => {
+      first ??= id;
+      return id === first ? new Response("busy", { status: 503 }) : new Response("ok");
+    });
+    const c = config(HOOK_CONFIG);
+    expect(await pass(w, c, { transport: way.transport })).toMatchObject({ failed: 1, pending: 1 });
+    expect(bodies(way.calls).map((n) => n.event)).toEqual(["wait_opened"]);
+    // The platform lead answers before the next attempt: the run now asks the reviewer.
+    await answer(w, "o1", w.who.pat, "because");
+    w.clock.advance(backoffMs(1));
+    expect(await pass(w, c, { transport: way.transport })).toMatchObject({ sent: 3, dead: 0, pending: 0 });
+    expect(bodies(way.calls).slice(1).map((n) => `${n.event} ${n.role}`)).toEqual(["budget_exceeded platform_lead", "run_attention_required platform_lead", "wait_opened reviewer"]);
+    expect(ids(way.calls).filter((i) => i === first)).toHaveLength(1);
+    expect(await count(w, "select count(*) as n from notify_dead")).toBe(0);
+  });
+
+  it("two pumps that meet one new channel at once tell each open question once, and record the channel once", async () => {
+    // On PGlite the two are serialized by its one connection; on PostgreSQL they race, and the advisory lock decides.
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    for (const run of ["m1", "m2"]) await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: run });
+    const way = fakeWay();
+    const c = config(HOOK_CONFIG);
+    await Promise.all([pass(w, c, { transport: way.transport }), pass(w, c, { transport: way.transport })]);
+    expect(bodies(way.calls).map((n) => `${n.run} ${n.event}`).sort()).toEqual(["m1 wait_opened", "m2 wait_opened"]);
+    expect(await count(w, "select count(*) as n from notify_channels")).toBe(1);
   });
 
   it("tells a run halted and lifted between two passes, its run_cancelled after the lift", async () => {
@@ -769,13 +884,14 @@ describe("which runs a pass tells, and when", () => {
     await w.rt.liftHalt({ tenant: "default" }, "ops");
     const way = fakeWay();
     await pass(w, config(HOOK_CONFIG), { transport: way.transport });
-    expect(bodies(way.calls).map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened platform_lead", "run_cancelled platform_lead"]);
+    // Its question ended with the run: the outcome alone.
+    expect(bodies(way.calls).map((n) => `${n.event} ${n.role}`)).toEqual(["run_cancelled platform_lead"]);
   });
 
   it("tells a run created while the channel is being met from its first event", async () => {
     const w = await nworld(OWNED, "0.7");
     await approveCard(w);
-    await ownedRun("before", undefined, w, []);
+    await endedRun(w, "before");
     // A run is started while the meeting is under way, just before the channel is recorded as in use.
     let started: Promise<unknown> | undefined;
     const during: Db = {
@@ -797,7 +913,8 @@ describe("which runs a pass tells, and when", () => {
     expect(way.calls).toEqual([]);
     await answer(w, "during", w.who.pat, "because");
     await pass(w, config(HOOK_CONFIG), { transport: way.transport });
-    expect(bodies(way.calls).map((n) => `${n.run} ${n.event} ${n.role}`)).toEqual(["during wait_opened platform_lead", "during wait_opened reviewer"]);
+    // From its first event: the platform lead's question was answered, the reviewer's is asked.
+    expect(bodies(way.calls).map((n) => `${n.run} ${n.event} ${n.role}`)).toEqual(["during wait_opened reviewer"]);
   });
 
   it("tells a channel meeting an escalated review the escalation alone, and not the request it replaced", async () => {
@@ -845,8 +962,9 @@ describe("which runs a pass tells, and when", () => {
     await w.rt.halt({ all: true }, { by: "ops" });
     expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toMatchObject({ sent: 0 });
     await w.rt.liftHalt({ all: true }, "ops");
-    expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toMatchObject({ sent: 2 });
-    expect(bodies(way.calls).map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened platform_lead", "run_cancelled platform_lead"]);
+    // The halt ended the run, and its question with it: what is told after the lift is how it ended.
+    expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toMatchObject({ sent: 1 });
+    expect(bodies(way.calls).map((n) => `${n.event} ${n.role}`)).toEqual(["run_cancelled platform_lead"]);
   });
 });
 
@@ -1106,8 +1224,10 @@ workflow Ship(title: Text) -> Untrusted<Text>
     const plan = "/defs/Ship/body/1/value";
     await append(w, "leak-ship", "amendment_requested", { plan, step: `${plan}/step/0/tool/0`, lead: `${M}Lead.finish`, from: w.pkg.hash, package: w.pkg.hash, diff: `sha256:${M}` });
     await append(w, "leak-ship", "wait_opened", { command: `${plan}/step/0/tool/0/amendment`, kind: "amendment", request: { role: "platform_lead", reason: `${M}-reason: three more repositories`, envelope: { owner: `${M}` }, deadline: null } });
+    await waitingRow(w, "leak-ship", `${plan}/step/0/tool/0/amendment`, "amendment");
     await append(w, "leak-ship", "program_admitted", { plan, number: 1, command: `${plan}/program/1`, workflow: `${M}Fix` });
     await append(w, "leak-ship", "wait_opened", { command: `${plan}/program/1/defs/${M}Fix/body/0/value`, kind: "input", request: { question: `${M}-sub-question`, role: "reviewer" } });
+    await waitingRow(w, "leak-ship", `${plan}/program/1/defs/${M}Fix/body/0/value`, "input");
     await append(w, "leak-ship", "budget_exceeded", { episode: 0, detail: { $tag: "BudgetExceeded", $args: [{ dimension: `${M}-dimension`, requested: 1 }] } });
     await append(w, "leak-ship", "run_attention_required", { attention: { violation: `${M}_code`, message: `${M}-attention message` } });
     await pass();

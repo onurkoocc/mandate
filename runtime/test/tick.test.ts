@@ -108,7 +108,7 @@ describe("a pass of the driver loop over a 0.7 run", () => {
     }
   });
 
-  it("tells all of a run that the tick pass itself ends: it began after the channel was in use", async () => {
+  it("tells how a run that the tick pass itself ends ended: it began after the channel was in use, and its questions expired", async () => {
     const w = await nworld(BOTH, "0.7");
     const d = dir();
     const config = fileChannels(d, { accountant: true, finance_lead: false });
@@ -116,10 +116,11 @@ describe("a pass of the driver loop over a 0.7 run", () => {
     await pass(w, { config });
     await w.rt.startRun({ pkg: w.pkg, workflow: "Both", input: { n: { text: "x" } }, runId: "ends" });
     w.clock.advance(2 * HOUR);
-    // Three notifications, each on its role's own channel and on the one all roles share.
-    expect(await pass(w, { config })).toMatchObject({ moved: 1, notify: { sent: 6 } });
+    // Its two questions expired in the pass: they are no longer asked, and only the outcome is told, on the role's
+    // own channel and on the one all roles share.
+    expect(await pass(w, { config })).toMatchObject({ moved: 1, notify: { sent: 2 } });
     expect((await w.rt.getRun("ends")).state).toBe("failed");
-    expect(lines(join(d, "all.jsonl")).map((n) => `${String(n["event"])} ${String(n["role"])}`)).toEqual(["wait_opened accountant", "wait_opened finance_lead", "run_failed accountant"]);
+    expect(lines(join(d, "all.jsonl")).map((n) => `${String(n["event"])} ${String(n["role"])}`)).toEqual(["run_failed accountant"]);
   });
 
   it("drives a run whose decision was given and not driven on; a 0.6 run's decision waits for its deadline, as before", async () => {

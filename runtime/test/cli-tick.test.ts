@@ -98,8 +98,9 @@ describe("mandate tick", () => {
     expect(first.out).toBe("tick: 1 run waiting, 0 moved; notifications: 1 sent, 0 given up, 0 to try again\n");
     expect(told()).toEqual(["c1 wait_opened reviewer"]);
     // A run whose approval has a deadline of a moment, a pass once it has passed. It began after the channel was in
-    // use, so all of it is told, the pass that ended it included: its question and how it ended. The one runtime the
-    // pass built, for the run with something due, is closed, its checker's worker with it.
+    // use, so it is told from its first event; its question expired in the pass and is no longer asked, so what is
+    // told is how it ended. The one runtime the pass built, for the run with something due, is closed, its checker's
+    // worker with it.
     expect((await start("Rush", "c2")).code).toBe(0);
     await pause(400);
     const closes = vi.spyOn(WorkerChecker.prototype, "close");
@@ -111,8 +112,8 @@ describe("mandate tick", () => {
       closes.mockRestore();
     }
     expect(second.code, second.err).toBe(0);
-    expect(second.out).toMatch(/^run c2: waiting -> failed, revision \d+ -> \d+\ntick: 2 runs waiting, 1 moved; notifications: 2 sent, 0 given up, 0 to try again\n$/);
-    expect(told()).toEqual(["c1 wait_opened reviewer", "c2 wait_opened reviewer", "c2 run_failed reviewer"]);
+    expect(second.out).toMatch(/^run c2: waiting -> failed, revision \d+ -> \d+\ntick: 2 runs waiting, 1 moved; notifications: 1 sent, 0 given up, 0 to try again\n$/);
+    expect(told()).toEqual(["c1 wait_opened reviewer", "c2 run_failed reviewer"]);
     expect((await mandate("status", "c2")).out).toMatch(/^run c2 {2}Rush {2}failed/);
     expect((await mandate("status", "c1")).out).toMatch(/^run c1 {2}Ship {2}waiting/);
     // A pass with nothing to do sends nothing.
