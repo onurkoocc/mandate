@@ -421,13 +421,18 @@ fn asks_is_a_budget_member_of_the_0_7_schema_alone() {
             "{n}"
         );
     }
-    for bad in ["-1", "1.5", "\"2\"", "null"] {
+    for bad in ["-1", "\"2\"", "null"] {
         assert_eq!(
             loaded(&workflow("mandate/0.7", bad)),
             ["MDT-E0104 at /defs/W/budget/asks"],
             "{bad}"
         );
     }
+    // A number that is no integer is the reader's to refuse, as everywhere.
+    assert_eq!(
+        loaded(&workflow("mandate/0.7", "1.5")),
+        ["MDT-E0106 at /defs/W/budget/asks"]
+    );
     for language in ["mandate/0.6", "mandate/0.5", "mandate/0.4"] {
         let d = loaded(&workflow(language, "2"));
         assert!(
