@@ -48,6 +48,10 @@ fn every_program_of_0_7_gives_the_outputs_it_gave() {
             "fmt",
             "hash",
             "view --format json",
+            // The attention view of every workflow, as the command writes it.
+            "view --attention --format json",
+            "view --attention --format md",
+            "view --attention --format html",
         ] {
             if !names.contains(&needed) {
                 problems.push(format!("{p}: no {needed}"));

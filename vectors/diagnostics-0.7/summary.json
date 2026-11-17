@@ -7,8 +7,8 @@
     "check_patched": 90,
     "check_subprogram": 7
   },
-  "golden_results": 19,
-  "diagnostics": 146,
+  "golden_results": 23,
+  "diagnostics": 153,
   "by_code": {
     "MDT-E0101": 2,
     "MDT-E0104": 9,
@@ -32,6 +32,8 @@
     "MDT-E1908": 6,
     "MDT-E1910": 3,
     "MDT-E1911": 2,
-    "MDT-W0601": 30
+    "MDT-W0310": 3,
+    "MDT-W0504": 1,
+    "MDT-W0601": 33
   }
 }

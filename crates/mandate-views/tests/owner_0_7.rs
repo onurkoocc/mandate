@@ -34,8 +34,14 @@ fn views(p: &Value, lock: Option<&Value>) -> String {
     out.push(stringify(&authority_with(p, None).to_js()).unwrap());
     out.push(stringify(&cost_with(p, lock, None).to_js()).unwrap());
     let doc = program_doc(p, lock, None);
-    out.push(to_markdown(&doc));
-    out.push(to_html(&doc));
+    // The attention view shows the owner (RP1): the document is compared
+    // without it, as the other views are.
+    let cut = |s: String, at: &str| match s.find(at) {
+        Some(i) => s[..i].to_owned(),
+        None => s,
+    };
+    out.push(cut(to_markdown(&doc), "## Attention: "));
+    out.push(cut(to_html(&doc), "<h2>Attention: "));
     for w in ["Describe", "Check"] {
         out.push(stringify(&card(p, w, lock, None).unwrap().to_js()).unwrap());
         out.push(to_markdown(&card_doc(p, w, lock, None).unwrap()));

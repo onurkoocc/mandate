@@ -197,7 +197,8 @@ fn every_0_6_fixture_under_the_0_7_header_gives_what_it_gives_as_0_6() {
             std_patterns.push(p.clone());
         }
         let as_0_6 = outputs::outputs_of(p)?;
-        let as_0_7 = outputs::outputs_of_text(p, &rewritten)?;
+        // The attention view is new in 0.7: the old views are compared.
+        let as_0_7 = outputs::without_attention(outputs::outputs_of_text(p, &rewritten)?);
         let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
         if names(&as_0_6) != names(&as_0_7) {
             return Err(format!(

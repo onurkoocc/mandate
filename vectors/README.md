@@ -1265,20 +1265,30 @@ same way, by gates of its own beside those of 0.6:
   owner and the lock of 0.7 (slice RL5): `A04`, `E1910` to `E1910b`, `E1911`, `E1911a`, `E1705d`,
   `E1501c`, `E1502b` and `E0140e` to `E0140h`
   (`conformance/README.md`, "Cases of 0.7").
-- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (six today,
-  `asks.mdt`, `minimal.mdt`, `owner.mdt` (with its lock of 0.7), `reports.mdt`, `shapes.mdt` and `stages.mdt`, 73 outputs), the digest of each output text, made
+- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (seven today,
+  `asks.mdt`, `minimal.mdt`, `owner.mdt` (with its lock of 0.7), `reports.mdt`, `shapes.mdt`, `stages.mdt` and `view.mdt` (with its lock), 106 outputs), the digest of each output text, made
   by the code of `golden/0.6.json` (`crates/mandate-testkit/tests/golden_0_7.rs`).
 - **`diagnostics-0.7/`**: the whole result of every compile case of 0.7 and of the
   checks and `load` of every 0.7 program, in the layout of `diagnostics-0.6/`
   (`crates/mandate-testkit/tests/diagnostics_0_7.rs`; the code is shared with
   `diagnostics_0_6.rs`, `tests/rust_diagnostics/`).
 - **`attention-0.7/facts.json`**: the attention facts of every workflow of every 0.7
-  program of `fixtures/attention/` (17 workflows today), and of a sub-program, as the door `attention_facts`
+  program of `fixtures/attention/` (19 workflows today), and of a sub-program, as the door `attention_facts`
   gives them with the program's modules, `{ "<program>": { "<workflow>": <facts> } }`
   (`crates/mandate-testkit/tests/attention_0_7.rs`, which also holds the door to the
   function, `mandate_check::attention_facts`). Their shape is below ("The attention facts").
 
-The three are written by the Rust with `MANDATE_UPDATE_0_7=1` (passed on by
+- **`attention-0.7/view.json`**: the attention view of every workflow of every 0.7
+  program of `fixtures/attention/`, as the door `attention` (a Rust-only door of
+  `mandate-views`, `RUST_DOORS`) gives it with the program's modules and its lock (the
+  `<name>.lock.json` beside it), `{ "<program>": { "<workflow>": { "json", "md", "html" } } }`
+  (`crates/mandate-testkit/tests/attention_view_0_7.rs`). **What the Node server must match
+  (slice B9):** `view --attention` and the MCP `project` tool with `view: "attention"` give
+  these three texts for one workflow, and the golden digests of `golden/0.7.json`
+  (`view --attention --format json|md|html`, which for a program with several workflows is
+  one object `{ format, kind, program, workflows }` or one document) for the command.
+
+The four are written by the Rust with `MANDATE_UPDATE_0_7=1` (passed on by
 `scripts/wasi-test.mjs`) and compared on every other run. Beside them,
 `crates/mandate-testkit/tests/language_0_7.rs` checks that a 0.6 program relabelled
 `mandate @ 0.7` checks as it did: every 0.6 program of `fixtures/library/` (10, every

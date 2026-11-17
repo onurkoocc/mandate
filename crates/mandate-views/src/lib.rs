@@ -19,6 +19,12 @@
 //!   `program_doc`, which puts them in one document. [`shown`] holds the
 //!   small texts they are written in ([`show`], [`list`], [`mermaid_text`],
 //!   [`type_text`]).
+//! - [`attention`]: the attention view of a workflow of 0.7, the fourth view
+//!   of a program ([`AttentionView`], [`attention_view`]): when each role can
+//!   be asked what, at most how many times, by when, what happens with no
+//!   answer, and what the workflow tells whom; made from the attention
+//!   facts and the lock only (spec/attention.md "The attention view"). Rust
+//!   only, as 0.7 is; a program of 0.7 has it in its document.
 //! - [`card`]: the envelope card of a workflow, the one-page summary of its
 //!   envelope for the person who approves it ([`card()`], [`card_doc`],
 //!   [`envelope_workflows`], [`CardView`]); it stayed in TypeScript for 0.5
@@ -65,6 +71,7 @@
 
 pub mod acs;
 pub mod architecture;
+pub mod attention;
 pub mod authority;
 pub mod card;
 pub mod card_library;
@@ -84,6 +91,12 @@ pub use architecture::{
     ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, architecture_with,
     architecture_with_lock, mermaid,
 };
+pub use attention::{
+    AttentionView, ViewBound, ViewEffect, ViewField, ViewOwner, ViewReport, ViewRow, ViewStage,
+    attention_blocks, attention_doc, attention_doc_blocks, attention_program_doc,
+    attention_section, attention_view, attention_view_of, attention_views_js, has_attention,
+    if_no_answer, known_text, what_is_asked, workflow_names,
+};
 pub use authority::{
     AuthorityRow, AuthorityView, authority, authority_blocks, authority_with, late_kinds,
 };
@@ -102,7 +115,7 @@ pub use cost::{
 };
 pub use diff::{diff_blocks, diff_doc, diff_doc_with};
 pub use doc::{Block, Cell, Doc, cell_text, html_escape, md_escape, to_html, to_markdown};
-pub use program_doc::program_doc;
+pub use program_doc::{program_doc, program_doc_given};
 pub use shown::{list, mermaid_text, show, show_command, type_text};
 pub use system::{
     SystemAuthorize, SystemComponent, SystemEnvironment, SystemInterface, SystemRead, SystemView,

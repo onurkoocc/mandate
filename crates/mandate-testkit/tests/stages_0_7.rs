@@ -692,8 +692,10 @@ fn compare_with(program: &str, t: &mut Tally, marker: Marker) -> Result<Marks, S
     let unmarked = as_0_7(&text)?;
     let (marked, marks) = mark_with(program, &unmarked, marker)?;
     let op = marker.op();
-    let outs_a = outputs::outputs_of_text(program, &unmarked)?;
-    let outs_b = outputs::outputs_of_text(program, &marked)?;
+    // The attention view shows the stages and the reports themselves: what
+    // is compared is every other output, and the document without it.
+    let outs_a = outputs::without_attention(outputs::outputs_of_text(program, &unmarked)?);
+    let outs_b = outputs::without_attention(outputs::outputs_of_text(program, &marked)?);
     let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
     if names(&outs_a) != names(&outs_b) {
         return Err(format!(
