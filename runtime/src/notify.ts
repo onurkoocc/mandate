@@ -672,7 +672,10 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
   };
 
   try {
-    await Promise.all(channels.map((c) => pump(c)));
+    // Every channel ends its pass before the ways out are closed, also when another one failed.
+    const ended = await Promise.allSettled(channels.map((c) => pump(c)));
+    const failed = ended.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failed) throw failed.reason;
   } finally {
     await transport?.close();
   }
