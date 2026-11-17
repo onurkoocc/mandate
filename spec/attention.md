@@ -1076,7 +1076,8 @@ webhook whose URL is not `https` among them, is refused by name,
 
 | Table or member | Holds |
 |---|---|
-| `notify_cursors(channel, run_id, seq, at)` | Each channel's cursor per run |
+| `notify_cursors(channel, run_id, seq, at, start_seq, pending, attempts, retry_at, claim)` | Each channel's cursor per run, where it stood when the channel met the run, and the notification that waits for its next attempt: the attempts made, when the next may come, and the token of the pump that holds it |
+| `notify_channels(channel, at)` | The channels in use: a run without a cursor in one began after it was met |
 | `notify_dead(channel, run_id, seq, attempts, reason, at)` | Each notification given up |
 | index `commands_waiting` on `commands (run_id) where state = 'waiting'` | `ListWaits` |
 | manifest `attention` | The stored facts |

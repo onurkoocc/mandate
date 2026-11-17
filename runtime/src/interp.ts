@@ -156,8 +156,9 @@ interface Scope {
 
 /** Cancellation shared by the branches of one `par` block (fail_fast, §8.7). */
 interface Siblings {
-  /** A branch failed: the others stop before their next dispatch. Which fault the block fails with is not this. */
   failed: boolean;
+  /** The fault that stopped the siblings: what the block fails with in a run of a package older than 0.7. */
+  first?: Fault;
 }
 
 interface Ctx {
@@ -210,6 +211,12 @@ export interface InterpOptions {
   journal: Journal;
   adapters: Adapters;
   program: Program;
+  /**
+   * The run's package holds anything of 0.7 or later (package.ts `isPackage07OrLater`): a par whose branches fail in
+   * one round fails with the first of their faults in the branches' order. A run of an older package keeps the fault
+   * that stopped the others, as it always did.
+   */
+  package07?: boolean;
   packageHash: string;
   runId: string;
   fence: number;
@@ -572,7 +579,10 @@ export class Interpreter {
             const p = round ? `${path}/branches/${bn}#all${round}` : `${path}/branches/${bn}`;
             return await this.expr(s.branches[bn]!, { ...ctx, siblings }, p);
           } catch (e) {
-            if (e instanceof Fault) siblings.failed = true;
+            if (e instanceof Fault) {
+              siblings.first ??= e;
+              siblings.failed = true;
+            }
             throw e;
           }
         }),
@@ -586,10 +596,10 @@ export class Interpreter {
       // Anything other than a recoverable fault (attention, suspension, cancellation, a crash) wins.
       const hard = failures.find((f) => !(f instanceof Fault) && !(f instanceof SiblingStopped));
       if (hard) throw hard;
-      // The block fails with the fault of its first failed branch in the branches' own order (`settled` is in it),
-      // never with whichever finished first: a run and its replay end with the same fault whatever the timing. With
-      // one failed branch, the others stopped (SiblingStopped, no fault), that one's, as always.
-      lastError = failures.find((f) => f instanceof Fault) ?? failures[0];
+      // 0.7: the block fails with the fault of its first failed branch in the branches' own order (`settled` is in
+      // it), never with whichever finished first, so that a run and its replay end with the same fault whatever the
+      // timing. An older package's run fails with the fault that stopped the others, as it always did.
+      lastError = this.o.package07 ? (failures.find((f) => f instanceof Fault) ?? failures[0]) : (siblings.first ?? failures.find((f) => f instanceof Fault) ?? failures[0]);
     }
     throw lastError;
   }

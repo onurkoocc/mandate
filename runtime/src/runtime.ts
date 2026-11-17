@@ -218,6 +218,8 @@ interface Loaded {
   /** The program and its modules as they were packaged: what a sub-program is checked and linked against. */
   source: Program;
   modules: Modules;
+  /** The package holds anything of 0.7 or later (`isPackage07OrLater` of the program and modules as stored). */
+  package07: boolean;
 }
 
 export class Runtime {
@@ -863,6 +865,7 @@ export class Runtime {
       journal: this.journal,
       adapters,
       program: loaded.program,
+      ...(loaded.package07 ? { package07: true } : {}),
       plan: { parent: loaded.source, modules: loaded.modules, lock: loaded.lock, checker: this.checker, checkMs: this.checkMs, startedAt },
       ...(earlier.length ? { earlier } : {}),
       decisions: { keys: this.decisionKeys, lock: loaded.lock, required: loaded.signed },
@@ -928,7 +931,7 @@ export class Runtime {
         throw new Violation("expansion_mismatch", `Run ${run!.run_id} stored an expansion without the definitions its program imports (${[...new Set(missing)].sort().join(", ")}): it is not a running program, and is not run (spec/library.md).`);
       }
     }
-    return { program: stored ?? linkedProgram(p.program, modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules };
+    return { program: stored ?? linkedProgram(p.program, modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules, package07: isPackage07OrLater(p) };
   }
 
   /**

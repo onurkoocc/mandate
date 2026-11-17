@@ -176,13 +176,12 @@ describe("FixBug runs end to end", () => {
     expect(pr.prepares).toHaveLength(0);
   });
 
-  // Implementer and TestWriter start together, and nothing orders their dispatches: both are refused in the same round,
-  // and the fault the run stops with is that of the first failed branch in the branches' own order, `patch` before
-  // `tests`, Implementer's, whichever reservation reached the ledger first. Each order is shown to give the same.
+  // Implementer and TestWriter start together, and nothing orders their dispatches: the fault the run stops with is
+  // the one of the branch whose reservation reached the ledger first (fail_fast). Each order is pinned here.
   it.each([
     ["Implementer", [PATCH, TESTS], RESERVED["Implementer.apply"]!],
-    ["TestWriter", [TESTS, PATCH], RESERVED["Implementer.apply"]!],
-  ])("a caller limit below the agents' budgets stops at budget_exceeded before the PR, with Implementer's fault also when %s reserves first", async (_first, order, requested) => {
+    ["TestWriter", [TESTS, PATCH], RESERVED["TestWriter.regression"]!],
+  ])("a caller limit below the agents' budgets stops at budget_exceeded before the PR, with %s's fault when it reserves first", async (_first, order, requested) => {
     const w = await fixbug();
     dispatchOrder(w, order);
     const run = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb4", limits: { spend: { micros: 12 * USD, currency: "USD" } } });
