@@ -167,9 +167,22 @@ fn mcp_tools_every_language_the_compiler_lists_has_a_tool_list_and_no_other_does
 /// that `spec/attention.md` names: `check` takes `libraries`; `project`
 /// offers the card and the attention view (the `view` values, the `workflow`
 /// they are asked for) and takes a `lock` (described, for the card and the
-/// attention view); `spec` takes the sections `patterns` and `attention`.
-/// The descriptions of the three tools say so.
-const NAMED_CHANGES: [(&str, &str); 9] = [
+/// attention view); `caps_of` takes the `lock` and the `libraries` `check`
+/// takes; `spec` takes the sections `patterns` and `attention`. The
+/// descriptions of the four tools say so.
+const NAMED_CHANGES: [(&str, &str); 12] = [
+    (
+        "changed /mandate.caps_of/description",
+        "caps_of: the description says the lock and the libraries",
+    ),
+    (
+        "added /mandate.caps_of/inputSchema/properties/lock",
+        "caps_of: takes the lock, the same schema as check",
+    ),
+    (
+        "added /mandate.caps_of/inputSchema/properties/libraries",
+        "caps_of: takes libraries, the same schema as check",
+    ),
     (
         "changed /mandate.check/description",
         "check: the description says libraries and the embedded std.patterns",
@@ -269,8 +282,18 @@ fn mcp_tools_the_list_of_0_7_is_the_frozen_list_and_the_named_changes() {
     assert_eq!(libraries.get("type").and_then(Value::as_str), Some("array"));
     assert_eq!(
         property(&new, "mandate.project", "libraries"),
-        Some(libraries),
+        Some(libraries.clone()),
         "project takes the libraries check takes"
+    );
+    assert_eq!(
+        property(&new, "mandate.caps_of", "libraries"),
+        Some(libraries),
+        "caps_of takes the libraries check takes"
+    );
+    assert_eq!(
+        property(&new, "mandate.caps_of", "lock"),
+        property(&frozen, "mandate.check", "lock"),
+        "caps_of takes the lock check takes"
     );
     let section = property(&new, "mandate.spec", "section").unwrap();
     let section = section.get("description").and_then(Value::as_str).unwrap();

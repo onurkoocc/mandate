@@ -1,0 +1,205 @@
+{
+ "format": "mandate/vectors/mcp/0.1",
+ "name": "limits",
+ "about": "the message limits: a line of exactly the byte limit and one byte more, a 2 MiB request, a 1 000 000-element array, arrays and nestings over and at their limits, and which of two breaches is reported; the server goes on after each",
+ "args": [
+  "mcp"
+ ],
+ "input": [
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"pad\":\""
+  },
+  {
+   "repeat": "a",
+   "count": 1048451
+  },
+  {
+   "line": "\"}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"pad\":\""
+  },
+  {
+   "repeat": "a",
+   "count": 1048452
+  },
+  {
+   "line": "\"}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":"
+  },
+  {
+   "text": "\""
+  },
+  {
+   "repeat": "a",
+   "count": 2097152
+  },
+  {
+   "text": "\""
+  },
+  {
+   "line": "},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.apply_patch\",\"arguments\":{\"source\":\"{}\",\"base\":\"sha256:0\",\"ops\":"
+  },
+  {
+   "text": "["
+  },
+  {
+   "repeat": "0,",
+   "count": 999999
+  },
+  {
+   "text": "0]"
+  },
+  {
+   "line": "},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.apply_patch\",\"arguments\":{\"source\":\"{}\",\"base\":\"sha256:0\",\"ops\":"
+  },
+  {
+   "text": "["
+  },
+  {
+   "repeat": "0,",
+   "count": 10000
+  },
+  {
+   "text": "0]"
+  },
+  {
+   "line": "},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.apply_patch\",\"arguments\":{\"source\":\"{}\",\"base\":\"sha256:0\",\"ops\":"
+  },
+  {
+   "text": "["
+  },
+  {
+   "repeat": "0,",
+   "count": 9999
+  },
+  {
+   "text": "0]"
+  },
+  {
+   "line": "},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"x\",\"lock\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"x\",\"lock\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"ping\",\"params\":{\"x\":"
+  },
+  {
+   "repeat": "[",
+   "count": 500000
+  },
+  {
+   "repeat": "]",
+   "count": 500000
+  },
+  {
+   "text": "}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"ping\",\"params\":{\"x\":"
+  },
+  {
+   "repeat": "[",
+   "count": 500000
+  },
+  {
+   "repeat": "]",
+   "count": 499999
+  },
+  {
+   "text": "}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"ping\",\"params\":{\"b\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]],\"a\":"
+  },
+  {
+   "text": "["
+  },
+  {
+   "repeat": "0,",
+   "count": 10000
+  },
+  {
+   "text": "0]"
+  },
+  {
+   "line": "}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"ping\",\"params\":{\"b\":"
+  },
+  {
+   "text": "["
+  },
+  {
+   "repeat": "0,",
+   "count": 10000
+  },
+  {
+   "text": "0]"
+  },
+  {
+   "line": ",\"7\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":13,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"a\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]],\"a\":1}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":\"s\",\"method\":\"ping\",\"params\":{\"a/b~c\":{\"\\ud800\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}}}"
+  },
+  {
+   "line": "{\"id\":[1],\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}"
+  },
+  {
+   "line": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+  },
+  {
+   "line": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not json"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":14,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  }
+ ],
+ "output": [
+  "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"Request exceeds the 1048576-byte message limit\",\"data\":{\"reason\":\"E_INPUT_TOO_LARGE\",\"limit\":1048576,\"bytes\":1048577}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"Request exceeds the 1048576-byte message limit\",\"data\":{\"reason\":\"E_INPUT_TOO_LARGE\",\"limit\":1048576,\"bytes\":2097438}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"Request exceeds the 1048576-byte message limit\",\"data\":{\"reason\":\"E_INPUT_TOO_LARGE\",\"limit\":1048576,\"bytes\":2000320}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":-32600,\"message\":\"Request has an array of 10001 elements; the limit is 10000\",\"data\":{\"reason\":\"E_ARRAY_TOO_LONG\",\"limit\":10000,\"path\":\"/params/arguments/ops\"}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":6,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": false,\\n  \\\"diagnostics\\\": [\\n    {\\n      \\\"code\\\": \\\"MDT-E0103\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"Missing \\\\\\\"language\\\\\\\" field; expected \\\\\\\"mandate/0.1\\\\\\\" or \\\\\\\"mandate/0.2\\\\\\\" or \\\\\\\"mandate/0.3\\\\\\\" or \\\\\\\"mandate/0.4\\\\\\\" or \\\\\\\"mandate/0.5\\\\\\\" or \\\\\\\"mandate/0.6\\\\\\\" or \\\\\\\"mandate/0.7\\\\\\\".\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/language\\\",\\n        \\\"span\\\": [\\n          1,\\n          1,\\n          1,\\n          3\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E0103\\\",\\n      \\\"facts\\\": {\\n        \\\"expected\\\": [\\n          \\\"mandate/0.1\\\",\\n          \\\"mandate/0.2\\\",\\n          \\\"mandate/0.3\\\",\\n          \\\"mandate/0.4\\\",\\n          \\\"mandate/0.5\\\",\\n          \\\"mandate/0.6\\\",\\n          \\\"mandate/0.7\\\"\\n        ],\\n        \\\"found\\\": null\\n      }\\n    }\\n  ],\\n  \\\"governance\\\": []\\n}\"}],\"structuredContent\":{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0103\",\"severity\":\"error\",\"message\":\"Missing \\\"language\\\" field; expected \\\"mandate/0.1\\\" or \\\"mandate/0.2\\\" or \\\"mandate/0.3\\\" or \\\"mandate/0.4\\\" or \\\"mandate/0.5\\\" or \\\"mandate/0.6\\\" or \\\"mandate/0.7\\\".\",\"at\":{\"path\":\"/language\",\"span\":[1,1,1,3]},\"docs\":\"mandate explain MDT-E0103\",\"facts\":{\"expected\":[\"mandate/0.1\",\"mandate/0.2\",\"mandate/0.3\",\"mandate/0.4\",\"mandate/0.5\",\"mandate/0.6\",\"mandate/0.7\"],\"found\":null}}],\"governance\":[]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32600,\"message\":\"Request nesting exceeds the depth limit of 72\",\"data\":{\"reason\":\"E_INPUT_TOO_DEEP\",\"limit\":72,\"path\":\"/params/arguments/lock/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k\"}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": false,\\n  \\\"diagnostics\\\": [\\n    {\\n      \\\"code\\\": \\\"MDT-E0101\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"Expected 'module' but found 'x'.\\\",\\n      \\\"at\\\": {\\n        \\\"span\\\": [\\n          1,\\n          1,\\n          1,\\n          2\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E0101\\\"\\n    }\\n  ]\\n}\"}],\"structuredContent\":{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0101\",\"severity\":\"error\",\"message\":\"Expected 'module' but found 'x'.\",\"at\":{\"span\":[1,1,1,2]},\"docs\":\"mandate explain MDT-E0101\"}]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32600,\"message\":\"Request nesting exceeds the depth limit of 72\",\"data\":{\"reason\":\"E_INPUT_TOO_DEEP\",\"limit\":72,\"path\":\"/params/x/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0\"}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":11,\"error\":{\"code\":-32600,\"message\":\"Request nesting exceeds the depth limit of 72\",\"data\":{\"reason\":\"E_INPUT_TOO_DEEP\",\"limit\":72,\"path\":\"/params/b/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0\"}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":12,\"error\":{\"code\":-32600,\"message\":\"Request nesting exceeds the depth limit of 72\",\"data\":{\"reason\":\"E_INPUT_TOO_DEEP\",\"limit\":72,\"path\":\"/params/7/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0\"}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":13,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":\"s\",\"error\":{\"code\":-32600,\"message\":\"Request nesting exceeds the depth limit of 72\",\"data\":{\"reason\":\"E_INPUT_TOO_DEEP\",\"limit\":72,\"path\":\"/params/a~1b~0c/\\ud800/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0\"}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"Request nesting exceeds the depth limit of 72\",\"data\":{\"reason\":\"E_INPUT_TOO_DEEP\",\"limit\":72,\"path\":\"/x/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0\"}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"Request nesting exceeds the depth limit of 72\",\"data\":{\"reason\":\"E_INPUT_TOO_DEEP\",\"limit\":72,\"path\":\"/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0\"}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":14,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}"
+ ],
+ "tools_list": []
+}
