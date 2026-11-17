@@ -13,8 +13,9 @@
 // failure (`check_failed`), never a check that passed.
 
 import { parentPort, workerData } from "node:worker_threads";
-import { checkSubprogram, type SubprogramInput } from "@mandate/bridge";
+import type { SubprogramInput } from "@mandate/bridge";
 import { adoptCompiler, CompilerFailure, type WorkerCompiler } from "@mandate/bridge/mode";
+import { checkedSubprogram } from "./attention.js";
 import { checkAmended, type AmendedInput } from "./package.js";
 
 adoptCompiler((workerData as { compiler?: WorkerCompiler } | null)?.compiler);
@@ -25,7 +26,8 @@ const MODULE_MB = 256;
 parentPort?.on("message", (m: { id: number; input?: SubprogramInput; amendment?: AmendedInput }) => {
   let answer: Record<string, unknown>;
   try {
-    answer = { result: m.amendment ? checkAmended(m.amendment) : checkSubprogram(m.input!) };
+    // 0.7: with the attention facts of a sub-program whose workflow runs a stage or a report (attention.ts).
+    answer = { result: m.amendment ? checkAmended(m.amendment) : checkedSubprogram(m.input!) };
   } catch (e) {
     if (e instanceof CompilerFailure && e.kind === "out_of_memory") answer = { limit: { limit: "memory", max: MODULE_MB } };
     // What the lead is told: a failure of the compiler as it may be shown to a model.

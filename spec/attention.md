@@ -1089,6 +1089,9 @@ tools:
 - `check` takes `libraries`, and finds the embedded `std.patterns` by
   default;
 - `project` offers the card and the attention view, and takes `lock` and `libraries`;
+- `caps_of` takes `lock` and `libraries`, as `check` takes them, so that
+  the authority of a program that applies a pattern of a pinned library can
+  be read;
 - `spec` takes two more values of its existing `section` parameter,
   `patterns` and `attention`;
 - the tool list of 0.7 is data from one door of the Rust compiler,

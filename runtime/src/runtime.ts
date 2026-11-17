@@ -4,12 +4,13 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, callableConnectors, capsOf, check, domainHash, hashProgram, isProgram06OrLater, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { atLeast, attentionFacts, callableConnectors, capsOf, check, domainHash, hashProgram, isProgram06OrLater, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type AttentionFacts, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters, Cost, EgressNeed, RunComponents, RunMode, ToolAdapter } from "./adapters.js";
 import { Connectors, ConnectorWrite, connectorsOf } from "./connectors.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
+import { ATTENTION_MEDIA_TYPE, factsAtStart, readFacts, type FactsDoor } from "./attention.js";
 import { recordProblem, type AttestationRule } from "./attestation.js";
 import { criterionMethods } from "./criteria.js";
 import { approvalProblem, authorizationId, InvalidDecision, isSignedDecision, payloadOf, roleRefusal, shownRefusal, signerRefusal, storedProblem, type DecisionKind, type Refusal, type Shown, type SignedDecision, type StoredDecision } from "./decisions.js";
@@ -178,7 +179,7 @@ export const EXPANDED_MEDIA_TYPE = "application/vnd.mandate.expanded+json";
 const CONNECTOR_STOPS = ["tool_schema_mismatch", "connector_protocol", "egress_denied", "no_egress_for_connector", "bad_connector"] as const;
 
 /** What stops a run at its resume for a person, as `attention_required`, rather than being thrown at the caller. */
-const STOPS_AT_RESUME = new Set(["library_revoked", "expansion_mismatch", ...CONNECTOR_STOPS]);
+const STOPS_AT_RESUME = new Set(["library_revoked", "expansion_mismatch", "facts_mismatch", ...CONNECTOR_STOPS]);
 
 /** The violation limit of a 0.5 package's run when the configuration names none. */
 export const VIOLATION_LIMIT = 3;
@@ -246,6 +247,11 @@ export class Runtime {
   private readonly linkingCache = new Map<string, Modules>();
   /** The connectors a package of 0.7 can call, by package hash (callableOf). */
   private readonly callableCache = new Map<string, ReadonlySet<string>>();
+  /**
+   * 0.7: the compiler's door of the attention facts, which a run's start asks, and nothing after it (attention.ts). A
+   * seam: a test stands another in for it, to show that a resume and a replay read what the start stored.
+   */
+  attentionFacts: FactsDoor = attentionFacts;
 
   constructor(
     readonly db: Db,
@@ -295,6 +301,9 @@ export class Runtime {
     // applies a pattern): never one the program only imports.
     const wf = Object.hasOwn(o.pkg.program.defs, o.workflow) && Object.hasOwn(verified.running.defs, o.workflow) ? verified.running.defs[o.workflow] : undefined;
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
+    // 0.7: the attention facts of the workflow, asked of the compiler with what the check at load was given, which the
+    // run stores and reads from then on (spec/attention.md "The stored facts"). None given refuses the start.
+    const facts = verified.facts ? factsAtStart(this.attentionFacts, verified.facts, o.workflow) : undefined;
     const linked = verified.running;
     // The input is a value of the workflow's parameter types, as a model's answer is of its type: a Path in it keeps the Path rule (K68).
     const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
@@ -368,6 +377,7 @@ export class Runtime {
       components,
       ...(approved ? { envelope_approval: { decision: approved.decision, member: approved.member, role: approved.role, key: approved.key } } : {}),
       ...(expanded ? { expanded: expanded.hash } : {}),
+      ...(facts ? { attention: facts.digest } : {}),
     } as unknown as Value;
     const manifestHash = digest("run", manifest);
     try {
@@ -380,6 +390,8 @@ export class Runtime {
         await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
         // The running program the run runs from here on, its resumes and its replays: never one made again (spec/library.md).
         if (expanded) await this.artifacts.put({ tenant: policy.tenant, runId }, canonical(expanded.program as unknown as Value), EXPANDED_MEDIA_TYPE, tx);
+        // 0.7: the attention facts the run shows from here on, in its resumes and its replays: never asked again.
+        if (facts) await this.artifacts.put({ tenant: policy.tenant, runId }, facts.bytes, ATTENTION_MEDIA_TYPE, tx);
         if (approved) await this.journal.event(tx, runId, "envelope_approved", approved);
         for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
       });
@@ -588,8 +600,10 @@ export class Runtime {
       // is not the one the lock pins stops the run for a person (`tool_schema_mismatch`); nothing is called. A design
       // run reaches no server. (A start asks too, before the run exists: a difference there starts nothing.)
       const connectors = await this.connectorsAtResume(run, loaded, fence);
+      // 0.7: the attention facts the run stored at its start (`facts_mismatch` when they are missing or another).
+      const facts = await this.storedFacts(run);
       await this.write(runId, fence, async (tx) => this.journal.setState(tx, runId, "running"));
-      interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run), connectors);
+      interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run), connectors, facts);
     } catch (e) {
       if (!(e instanceof CompilerFailure) && !(e instanceof Violation && STOPS_AT_RESUME.has(e.code))) throw e;
       await this.settle(runId, fence, e);
@@ -677,7 +691,11 @@ export class Runtime {
       if (open.length) s = { state: "attention_required", attention: { open_actions: open } };
     }
     const { state, ...fields } = s;
-    await this.write(runId, fence, (tx) => this.journal.setState(tx, runId, state, fields));
+    await this.write(runId, fence, async (tx) => {
+      // 0.7: every stage begun and not ended ends before the run's `run_succeeded` (spec/attention.md "Events").
+      if (state === "succeeded") await this.journal.endStages(tx, runId);
+      await this.journal.setState(tx, runId, state, fields);
+    });
   }
 
   private async write(runId: string, fence: number, fn: (tx: Parameters<Parameters<Db["tx"]>[0]>[0]) => Promise<void>): Promise<void> {
@@ -834,7 +852,7 @@ export class Runtime {
     return connectorsOf(program).some(([name]) => name === effect.slice(0, dot));
   }
 
-  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[], bound?: Connectors): Interpreter {
+  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[], bound?: Connectors, attention?: AttentionFacts): Interpreter {
     const wf = Object.hasOwn(loaded.program.defs, run.workflow) ? loaded.program.defs[run.workflow] : undefined;
     const connectors = bound ?? this.connectorsFor(loaded.program, loaded.lock, adapters, this.sourceOf(run.package_hash, loaded));
     // The limit is the package's language's: a 0.5 program's run has one by default, an earlier one's only when configured.
@@ -865,6 +883,7 @@ export class Runtime {
       ...(this.limiter ? { limiter: this.limiter } : {}),
       ...(violationLimit !== undefined ? { violationLimit } : {}),
       ...(connectors ? { connectors } : {}),
+      ...(attention ? { attention } : {}),
     });
   }
 
@@ -952,6 +971,18 @@ export class Runtime {
       "expansion_mismatch",
       `Run ${run.run_id}'s manifest names the expansion ${String(named)}, and ${stored.length ? "no expansion stored with the run hashes to it" : "none is stored with the run"}: a run runs the expansion it stored at its start, and no other (spec/library.md).`,
     );
+  }
+
+  /**
+   * The attention facts a run of 0.7 stored at its start (spec/attention.md "The stored facts"), by the digest its
+   * manifest names as `attention`: undefined for a run whose manifest names none (every run of 0.1 to 0.6). Facts that
+   * are missing, or whose bytes do not hash to that digest, are not read: `facts_mismatch`. They are never asked of the
+   * compiler again: one upgraded while the run goes on does not change what the run shows.
+   */
+  async storedFacts(run: RunRow): Promise<AttentionFacts | undefined> {
+    const named = isObj(run.manifest) ? run.manifest["attention"] : undefined;
+    if (named === undefined) return undefined;
+    return readFacts(this.artifacts, { tenant: run.tenant, runId: run.run_id }, named, `Run ${run.run_id}'s manifest`);
   }
 
   /** The package's program with its imported modules linked in: what the interpreter runs. Never hashed. */
@@ -1791,22 +1822,25 @@ export class Runtime {
   async replayRun(runId: string, adapters: Adapters = refusingAdapters(this.adapters)): Promise<ReplayResult> {
     const run = await this.journal.run(runId);
     let loaded: Loaded;
+    let facts: AttentionFacts | undefined;
     try {
       loaded = await this.loaded(run.package_hash, run);
+      facts = await this.storedFacts(run);
     } catch (e) {
-      // A stored expansion that is missing or another: the replay reports it, and runs nothing.
-      if (e instanceof Violation && e.code === "expansion_mismatch") return { status: "attention_required", reason: { violation: e.code, message: e.message } };
+      // A stored expansion, or stored attention facts (0.7), missing or another: the replay reports it, and runs nothing.
+      if (e instanceof Violation && (e.code === "expansion_mismatch" || e.code === "facts_mismatch")) return { status: "attention_required", reason: { violation: e.code, message: e.message } };
       throw e;
     }
-    const interp = this.interpreter(run, loaded, run.fence, true, adapters, await this.journal.startedAt(runId), await this.earlier(run));
+    const interp = this.interpreter(run, loaded, run.fence, true, adapters, await this.journal.startedAt(runId), await this.earlier(run), undefined, facts);
     try {
       return { status: "complete", value: await interp.runWorkflow(run.workflow, run.input as Obj) };
     } catch (e) {
       if (e instanceof ReplayEnd) return e.reason === "payload_purged" ? { status: "incomplete_replay", missing: e.commandId } : { status: "partial", stoppedAt: e.commandId };
       if (e instanceof Fault) return { status: "failed", error: e.value() };
       if (e instanceof Attention) return { status: "attention_required", reason: e.reason };
-      // A sub-program's stored running program that is missing or another: reported as the run's own is, above.
-      if (e instanceof Violation && e.code === "expansion_mismatch") return { status: "attention_required", reason: { violation: e.code, message: e.message } };
+      // A sub-program's stored running program or facts missing or another, or a report or a stage the stored facts do
+      // not describe (0.7): reported as the run's own are, above.
+      if (e instanceof Violation && (e.code === "expansion_mismatch" || e.code === "facts_mismatch")) return { status: "attention_required", reason: { violation: e.code, message: e.message } };
       throw e;
     }
   }

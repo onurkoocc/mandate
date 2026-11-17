@@ -1,0 +1,126 @@
+{
+ "format": "mandate/vectors/mcp/0.1",
+ "name": "json-values",
+ "about": "what JSON.parse and JSON.stringify do: numbers as ids, ids that are not numbers or strings, a name given twice, names that are array indices, lone surrogates, control characters and U+2028 echoed back",
+ "args": [
+  "mcp"
+ ],
+ "input": [
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":1.0,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":1e21,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":-0,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":1e400,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":0.1,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":12345678901234567890,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":-1.5e-7,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":{\"b\":1,\"2\":true,\"a\":[null],\"1\":\"x\"},\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":[1,\"two\",{}],\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":true,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":\"\\ud800\",\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":\"a\\u0000\\u001f\\u007f\\u2028\\u2029\\\"\\\\\\/b\",\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":20,\"id\":21,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"x\\udc00y\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":23,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-\\ud83d\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":24,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.\\ud83d\",\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":25,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"E\\udbff\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":26,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.spec\",\"arguments\":{\"section\":\"\\ud83d\\ude00\\ud83d\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":27,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.caps_of\",\"arguments\":{\"source\":\"// Multi-agent bugfix workflow (design doc 4, \u00a720).\\n// Discovery \u2192 acceptance contract \u2192 implementation \u2192 evidence \u2192 delivery.\\n// Budgets: steps \u00d7 the per-call bound of mandate.lock.json (W0504, BACKLOG K13).\\n\\nmandate @ 0.2\\n\\nmodule company.devflow @ 0.1\\n\\nuse std.{fs, net, model, git, test, human, exec}\\nuse company.domain.{Issue, Patch, TestSet, PullRequest, PullRequestDraft}\\n\\n// \u2500\u2500 Capabilities \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\\ncapability RepoRead  = fs.read(\\\"/work/repo\\\")\\ncapability SrcWrite  = fs.write(\\\"/work/repo/src\\\")\\ncapability TestWrite = fs.write(\\\"/work/repo/test\\\")\\ncapability Build     = exec(commands: [\\\"mvn\\\"], args_prefix: [[\\\"-q\\\", \\\"test\\\"], [\\\"-q\\\", \\\"verify\\\"]])\\ncapability ModelStd  = model.infer(tier: standard)\\ncapability ModelEco  = model.infer(tier: economy)\\ncapability PR        = git.pr(\\\"company/backend\\\")\\n\\n// \u2500\u2500 Types "
+  },
+  {
+   "repeat": "\u2500",
+   "count": 65
+  },
+  {
+   "text": "\\ntype Finding = { file: Path, line: Int where line >= 1, claim: Text, evidence: EvidenceRef }\\ntype FixPlan = { steps: List<Text> where len(steps) in 1..12, touches: Set<Path>, risks: List<Text> }\\ntype Review  = { counterexamples: List<Text>, blocking: Bool }\\n\\n// \u2500\u2500 Acceptance contract \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\\ncontract FixAccepted(issue: Issue, pr: PullRequestDraft) {\\n  require issue.reproducible\\n  accept regression_test \\\"A regression test fails before the fix and passes after it\\\"\\n    by test.red_then_green(pr.patch, pr.tests)\\n  accept scope_respected \\\"The change stays inside the task scope\\\"\\n    by static pr.patch.files \u2286 issue.scope\\n  accept suite_green \\\"The existing test suite passes\\\"\\n    by test.suite([\\\"unit\\\", \\\"integration\\\"])\\n  accept no_blocking_review \\\"Independent review found no blocking issue\\\"\\n    by static not pr.review.blocking\\n       and review(model: standard, isolated)        // never enough on its own; paired with a static check\\n  accept owner_approved \\\"The code owner approved\\\"\\n    by human.approve(role: \\\"code_owner\\\")\\n}\\n\\n// \u2500\u2500 Agents "
+  },
+  {
+   "repeat": "\u2500",
+   "count": 64
+  },
+  {
+   "text": "\\nagent Explorer {\\n  role   \\\"Finds where the bug is, with evidence. Does not change code.\\\"\\n  caps   RepoRead, ModelStd\\n  budget { tokens: 1680k, time: 15m, spend: 10.56 USD, steps: 12 }\\n  skill locate(issue: Issue) -> Inferred<List<Finding>> ! {Fs.Read, Model}\\n}\\n\\nagent Planner {\\n  role   \\\"Turns findings into the smallest fix plan, split by behavior.\\\"\\n  caps   ModelStd\\n  budget { tokens: 560k, spend: 3.52 USD, steps: 4 }\\n  skill plan(issue: Issue, findings: Inferred<List<Finding>>) -> Inferred<FixPlan> ! {Model}\\n}\\n\\nagent Implementer {\\n  role   \\\"Applies the plan, only in the files it may change.\\\"\\n  caps   RepoRead, SrcWrite, Build, ModelStd\\n  budget { tokens: 2800k, time: 45m, spend: 17.6 USD, steps: 20 }\\n  skill apply(plan: Inferred<FixPlan>) -> Inferred<Patch> ! {Fs.Read, Fs.Write, Exec, Model}\\n}\\n\\nagent TestWriter {\\n  role   \\\"Writes the regression test that catches the bug.\\\"\\n  caps   RepoRead, TestWrite, Build, ModelStd\\n  budget { tokens: 1680k, time: 20m, spend: 10.56 USD, steps: 12 }\\n  skill regression(issue: Issue) -> Inferred<TestSet> ! {Fs.Read, Fs.Write, Exec, Model}\\n}\\n\\nagent Reviewer {\\n  role   \\\"Looks for counterexamples to the diff: concurrency, repeated messages, partial failure, unauthorized users.\\\"\\n  caps   RepoRead, ModelStd\\n  budget { tokens: 1120k, spend: 7.04 USD, steps: 8 }\\n  skill counterexamples(patch: Inferred<Patch>, tests: Inferred<TestSet>)\\n        -> Inferred<Review> ! {Fs.Read, Model}\\n}\\n\\n// \u2500\u2500 Workflow \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\\nworkflow FixBug(issue: Issue) -> PullRequest\\n  caps    RepoRead, SrcWrite, TestWrite, Build, ModelStd, PR\\n  budget  { spend: 50 USD, time: 3h }\\n{\\n  let findings = delegate Explorer.locate(issue)\\n  let plan     = delegate Planner.plan(issue, findings)\\n\\n  par {\\n    patch = delegate Implementer.apply(plan)\\n    tests = delegate TestWriter.regression(issue)\\n  }\\n\\n  let review = delegate Reviewer.counterexamples(patch, tests) isolated\\n\\n  let draft = PullRequestDraft { issue, patch, tests, review }\\n  let checked = verify draft against FixAccepted(issue, draft)\\n    on unmet(c) => escalate human(\\\"Open acceptance criteria: {c}\\\")\\n\\n  effect git.open_pr(checked)\\n    idempotent_by issue.id\\n    compensate    git.close_pr      // 0.1: never runs automatically; offered to a human (\u00a78.5)\\n}\\n\\non budget_exceeded in FixBug => pause and human.ask(\\\"Budget exceeded. Continue or cancel?\\\")\\n\\n// \u2500\u2500 Tests (\u00a76.4): the same workflow against recorded answers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\\ntest \\\"FixBug happy path\\\" {\\n  with handlers {\\n    Model  = replay(\\\"fixtures/fixbug-01.jsonl\\\"),\\n    Fs     = memfs(\\\"fixtures/repo-snapshot\\\"),\\n    Verify = pass_all(),\\n    git    = fake_git(),\\n    Human  = auto_approve(role: \\\"code_owner\\\"),\\n    Time   = fixed_clock(\\\"2026-10-07T21:00:00Z\\\"),\\n  }\\n  run FixBug(fixtures.issue_42) expect ok\\n}\\n\\ntest \\\"FixBug with a failing suite asks a person\\\" {\\n  with handlers {\\n    Model  = replay(\\\"fixtures/fixbug-01.jsonl\\\"),\\n    Fs     = memfs(\\\"fixtures/repo-snapshot\\\"),\\n    Verify = results(suite_green: false),\\n    git    = fake_git(),\\n    Human  = auto_approve(role: \\\"code_owner\\\"),\\n    Time   = fixed_clock(\\\"2026-10-07T21:00:00Z\\\"),\\n  }\\n  run FixBug(fixtures.issue_42) expect waiting\\n}\\n\",\"name\":\"Fix\\udc00Bug\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":28,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.5\\n\\ud800\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":29,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"E0320\",\"modules\":[\"\\udfff\"]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":30,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"__proto__\":{\"x\":1}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":31,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":{\"code\":\"E0320\",\"code\":\"E0130\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"id\":32,\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"},\"arguments\":{\"code\":\"E0320\"},\"name\":\"mandate.explain\"}}"
+  }
+ ],
+ "output": [
+  "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":1e+21,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":0.1,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":12345678901234567000,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":-1.5e-7,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":{\"1\":\"x\",\"2\":true,\"b\":1,\"a\":[null]},\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":[1,\"two\",{}],\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":true,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":\"\\ud800\",\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":\"a\\u0000\\u001f\u007f\u2028\u2029\\\"\\\\/b\",\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":21,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":22,\"error\":{\"code\":-32601,\"message\":\"Method not found: x\\udc00y\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":23,\"error\":{\"code\":-32022,\"message\":\"Unsupported protocol version\",\"data\":{\"supported\":[\"2026-07-28\",\"2025-11-25\",\"2025-06-18\",\"2025-03-26\",\"2024-11-05\"],\"requested\":\"2026-\\ud83d\"}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":24,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: mandate.\\ud83d\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":25,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"unknown code E\\udbff\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":26,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"no section \ud83d\ude00\\ud83d in the core specification\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":27,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"Fix\\udc00Bug is not an agent or workflow of this program\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":28,\"error\":{\"code\":-32603,\"message\":\"Internal error: the Rust compiler failed on check (unrepresentable): the input at /text is a string with a lone surrogate, which the request reader refuses\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":29,\"error\":{\"code\":-32603,\"message\":\"Internal error: the Rust compiler failed on load_modules (unrepresentable): the input at /sources/0/text is a string with a lone surrogate, which the request reader refuses\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":30,\"result\":{\"resultType\":\"complete\",\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":31,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"code\\\": \\\"MDT-E0130\\\",\\n  \\\"title\\\": \\\"Stale base\\\",\\n  \\\"explain\\\": \\\"An IR patch was written against a program hash that is no longer current. Re-read the program and rebase the patch (S12).\\\"\\n}\"}],\"structuredContent\":{\"code\":\"MDT-E0130\",\"title\":\"Stale base\",\"explain\":\"An IR patch was written against a program hash that is no longer current. Re-read the program and rebase the patch (S12).\"},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":32,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"code\\\": \\\"MDT-E0320\\\",\\n  \\\"title\\\": \\\"Overlapping writes in par\\\",\\n  \\\"explain\\\": \\\"Two branches of a par block can write the same scope. Write capabilities (fs.write, git.*) must be disjoint across branches; read capabilities may be shared (C5).\\\"\\n}\"}],\"structuredContent\":{\"code\":\"MDT-E0320\",\"title\":\"Overlapping writes in par\",\"explain\":\"Two branches of a par block can write the same scope. Write capabilities (fs.write, git.*) must be disjoint across branches; read capabilities may be shared (C5).\"},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}"
+ ],
+ "tools_list": []
+}

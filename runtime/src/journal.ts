@@ -196,7 +196,63 @@ export interface Admission {
   workflow: string;
   running?: { hash: string; artifact: string };
   shape?: { pattern: string; module: string };
+  /** 0.7: the digest of its attention facts, stored with it, for a sub-program whose running program holds a stage or a report. */
+  attention?: string;
   reservation?: Record<string, number>;
+}
+
+/** The sub-program a stage is of (0.7): its `plan` node and its number. Absent for a stage of the run's own program. */
+export interface ProgramOf {
+  plan: string;
+  number: number;
+}
+
+/** `stage_started` (spec/attention.md "Events"): the stage's node in the running program, its name, title and index. */
+export interface StageStarted {
+  node: string;
+  stage: string;
+  title: string;
+  index: number;
+  program?: ProgramOf;
+}
+
+/** One field of a `report` event: its value as the run evaluated it (or `$omitted`), and its class, level and type from the stored facts. */
+export interface ReportFieldEvent {
+  name: string;
+  value: Value;
+  class: string;
+  known: string;
+  type: string;
+}
+
+/** `report` (spec/attention.md "Events"): the report's node, its command id, the role it is addressed to, its title and fields. */
+export interface ReportEvent {
+  node: string;
+  command: string;
+  role: string;
+  title: string;
+  fields: ReportFieldEvent[];
+}
+
+const programKey = (p: ProgramOf | undefined): string => (p ? `${p.plan}#${p.number}` : "");
+const stageKey = (node: string, program: string): string => `${program}|${node}`;
+
+/** The stages of a run the journal holds: which began and which ended, by program and node, and those begun and not ended, in order. */
+async function stagesIn(tx: Tx, runId: string): Promise<{ started: Set<string>; ended: Set<string>; open: Array<{ node: string; stage: string; program?: ProgramOf }> }> {
+  const rows = await tx.query<Row>("select type, data from events where run_id = $1 and type in ('stage_started', 'stage_ended') order by seq", [runId]);
+  const started = new Set<string>();
+  const ended = new Set<string>();
+  const begun: Array<{ key: string; node: string; stage: string; program?: ProgramOf }> = [];
+  for (const r of rows) {
+    const d = (r["data"] ?? {}) as { node?: unknown; stage?: unknown; program?: ProgramOf };
+    const key = stageKey(String(d.node), programKey(d.program));
+    if (r["type"] === "stage_ended") ended.add(key);
+    else if (!started.has(key)) {
+      started.add(key);
+      begun.push({ key, node: String(d.node), stage: String(d.stage), ...(d.program ? { program: d.program } : {}) });
+    }
+  }
+  return { started, ended, open: begun.filter((s) => !ended.has(s.key)).map(({ key: _key, ...s }) => s) };
 }
 
 /**
@@ -278,6 +334,56 @@ export class Journal {
       await this.lock(tx, runId, fence);
       const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = 'map_ended' and data->>'map' = $2 limit 1", [runId, data.map]);
       if (!seen) await this.event(tx, runId, "map_ended", data);
+    });
+  }
+
+  /**
+   * Records that the run came to a stage (spec/attention.md "Events", 0.7): `stage_started` once for a stage node of a
+   * program (the run's own, or a sub-program's, which `program` names), however often the run is resumed and comes to
+   * it again; and, in the same transaction, `stage_ended` of the stage before it (`ended`) once, when it has not been
+   * written. Only the lease holder may write (R06).
+   */
+  async stageStarted(runId: string, fence: number, data: StageStarted, ended?: { node: string; stage: string }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const seen = await stagesIn(tx, runId);
+      const of = programKey(data.program);
+      if (ended && !seen.ended.has(stageKey(ended.node, of))) await this.event(tx, runId, "stage_ended", { node: ended.node, stage: ended.stage, ...(data.program ? { program: data.program as unknown as Value } : {}) });
+      if (!seen.started.has(stageKey(data.node, of))) await this.event(tx, runId, "stage_started", data as unknown as Value);
+    });
+  }
+
+  /**
+   * Writes `stage_ended` of each stage begun and not ended (0.7), in the order they began: before the run's
+   * `run_succeeded`, in its transaction (`tx`, which holds the run's lock), or, with `program`, at the successful end of
+   * that sub-program, for its stages alone.
+   */
+  async endStages(tx: Tx, runId: string, program?: { plan: string; number: number }): Promise<void> {
+    const seen = await stagesIn(tx, runId);
+    const only = program ? programKey(program) : undefined;
+    for (const s of seen.open) {
+      if (only !== undefined && programKey(s.program) !== only) continue;
+      await this.event(tx, runId, "stage_ended", { node: s.node, stage: s.stage, ...(s.program ? { program: s.program as unknown as Value } : {}) });
+    }
+  }
+
+  /** `endStages` of a sub-program, in a transaction of its own under the lease (R06). */
+  async endProgramStages(runId: string, fence: number, program: { plan: string; number: number }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      await this.endStages(tx, runId, program);
+    });
+  }
+
+  /**
+   * Records a report (spec/attention.md "Events", 0.7): once for a report's command id, however often the run is
+   * resumed and comes to it again. Only the lease holder may write (R06).
+   */
+  async report(runId: string, fence: number, data: ReportEvent): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = 'report' and data->>'command' = $2 limit 1", [runId, data.command]);
+      if (!seen) await this.event(tx, runId, "report", data as unknown as Value);
     });
   }
 

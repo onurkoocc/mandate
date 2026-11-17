@@ -55,7 +55,11 @@ import {
   type Pattern,
   type PlanExpr,
   type Program,
+  type ReportStmt,
+  type StageStmt,
   type Stmt,
+  type Stmt07,
+  type AttentionFacts,
   type TypeExpr,
   type Verifier,
   type WorkflowDef,
@@ -63,6 +67,7 @@ import {
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter, ToolSpec } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationsRequired, recordProblem, type AttestationRule } from "./attestation.js";
+import { reportFacts, reportValue, stageFacts } from "./attention.js";
 import { failureFacts, failureOf, forbidden, type BoundTool, type Connectors } from "./connectors.js";
 import { criterionMethods, evidenceIdOf, needsPerson, partMethod, uncovered } from "./criteria.js";
 import { approvalProblem, type StoredDecision } from "./decisions.js";
@@ -75,7 +80,7 @@ import { MAX_TOOL_OUTPUT } from "./tools.js";
 import { PLAN_TOOLS, planBrief, Planner, programsInFlight, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
 import { asVerdict, classify, decisionProblem, givenValueProblem, outcomeProblem, questionDigest, questionOf, REVIEW, reviewValue, subjectValue, valueDigest, VERDICT, VERIFY, verifyRecord, WAIVER, waiverFacts, waiverProblem, waiversOf, WHOLE, type Outcome as ReviewOutcome, type Question, type Split, type Verdict, type WaiverFacts } from "./review.js";
 import { schemaErrors, typeSchema } from "./schema.js";
-import type { ActionRow, Admission, CommandRow, Journal, ViolationKind } from "./journal.js";
+import type { ActionRow, Admission, CommandRow, Journal, ReportFieldEvent, ViolationKind } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
 import {
   canonical,
@@ -264,7 +269,7 @@ export interface InterpOptions {
    * Set for the interpreter of a sub-program: the command it was admitted as, under which its commands run and
    * from whose reservation they draw, and the `plan` node it belongs to, which names its effects' operations (N07).
    */
-  sub?: { command: string; plan: string };
+  sub?: { command: string; plan: string; number: number };
   /** What the interpreters of one run share. The run's own interpreter makes it. */
   shared?: Shared;
   /**
@@ -279,6 +284,12 @@ export interface InterpOptions {
    * 0.5, which has none, and nothing of it is read then.
    */
   connectors?: Connectors;
+  /**
+   * 0.7: the attention facts of the program this interpreter runs, as stored with the run at its start (or with a
+   * sub-program at its admission): a report's fields are labelled from them, and a stage held to them. Absent for a
+   * run of 0.1 to 0.6, which has no stage and no report.
+   */
+  attention?: AttentionFacts;
 }
 
 /** The turns of the actions of one operation (`Interpreter.alone`), by what the interpreters of one run share. */
@@ -391,6 +402,9 @@ export class Interpreter {
       const held = truthy(unwrap(await this.expr(wf.ensures, { ...ctx, scope: { vars: new Map([["result", result]]), parent: ctx.scope } }, `${at}/ensures`)));
       if (!held) throw new Fault("Rejected", [{ reason: "ensures", workflow: name }]);
     }
+    // 0.7: a sub-program that ended with its value ends the stage it was in; the run's own ends before `run_succeeded`.
+    const program = this.programOf();
+    if (program && !this.o.replay && this.o.attention?.stages.length) await this.o.journal.endProgramStages(this.o.runId, this.o.fence, program);
     return result;
   }
 
@@ -426,7 +440,17 @@ export class Interpreter {
         handlers.push({ s: stmts[j] as Extract<Stmt, { op: "on_error" }>, path: `${base}/${j}` });
       }
       const path = `${base}/${i}`;
+      // 0.7: a stage and a report change no value: the block's value is that of its last statement that is neither.
+      const marker = s as unknown as Stmt07;
+      if (marker.op === "stage") {
+        await this.stage(marker, stmts, i, base);
+        continue;
+      }
       try {
+        if (marker.op === "report") {
+          await this.report(marker, ctx, path);
+          continue;
+        }
         const r = await this.stmt(s, ctx, path);
         last = r.value;
         if (r.bind) ctx = { ...ctx, scope: { vars: r.bind, parent: ctx.scope } };
@@ -441,6 +465,58 @@ export class Interpreter {
       }
     }
     return last;
+  }
+
+  /**
+   * The node of the IR a statement or an expression at `path` stands for, in the program this interpreter runs: its
+   * path without the command of the sub-program it runs under, and without a loop's iteration, a restarted round and a
+   * map's item (`staticPath`). The attention facts are read by it.
+   */
+  private node(path: string): string {
+    const under = this.o.sub?.command;
+    return staticPath(under !== undefined && path.startsWith(under) ? path.slice(under.length) : path);
+  }
+
+  /** The sub-program this interpreter runs, as a stage's event names it (0.7): its `plan` node and its number. */
+  private programOf(): { plan: string; number: number } | undefined {
+    return this.o.sub ? { plan: this.o.sub.plan, number: this.o.sub.number } : undefined;
+  }
+
+  /**
+   * A stage (0.7, spec/attention.md "`stage`", "Events"): it changes nothing, costs nothing and counts in no budget.
+   * The run's coming to it is written once for its node, `stage_started`, with the end of the stage before it,
+   * `stage_ended`, in one transaction; a resumed run that comes to it again writes nothing, nor does a replay. Its
+   * index is its place among the stages of its body, from 0, and the stored facts must say the same of it.
+   */
+  private async stage(s: StageStmt, stmts: Stmt[], i: number, base: string): Promise<void> {
+    const before = stmts.slice(0, i).flatMap((x, j) => ((x as unknown as Stmt07).op === "stage" ? [{ s: x as unknown as StageStmt, j }] : []));
+    const path = `${base}/${i}`;
+    const node = this.node(path);
+    stageFacts(this.o.attention, node, { name: s.name, title: s.title, index: before.length }, path);
+    if (this.o.replay) return;
+    const program = this.programOf();
+    const prev = before.at(-1);
+    await this.o.journal.stageStarted(this.o.runId, this.o.fence, { node, stage: s.name, title: s.title, index: before.length, ...(program ? { program } : {}) }, prev ? { node: this.node(`${base}/${prev.j}`), stage: prev.s.name } : undefined);
+  }
+
+  /**
+   * A report (0.7, spec/attention.md "`report`", "Events"): each field is evaluated, as any pure expression is, and a
+   * failure to evaluate one is an ordinary failure of the step. Its class, how it is known and its type are read from
+   * the stored facts of its node, never worked out again here; facts that hold no entry for it, or another list of
+   * fields, are `facts_mismatch`. It is written once for its command id, `report`, to the role the running program
+   * names; nothing in a replay. It reserves nothing, counts in no budget and waits for nobody.
+   */
+  private async report(s: ReportStmt, ctx: Ctx, path: string): Promise<void> {
+    const node = this.node(path);
+    const facts = reportFacts(this.o.attention, node, s, path);
+    const fields: ReportFieldEvent[] = [];
+    for (const [i, f] of s.fields.entries()) {
+      const value = await this.expr(f.value, ctx, `${path}/fields/${i}/value`);
+      const known = facts.fields[i]!;
+      fields.push({ name: f.name, value: reportValue(value), class: known.class, known: known.known, type: known.type });
+    }
+    if (this.o.replay) return;
+    await this.o.journal.report(this.o.runId, this.o.fence, { node, command: path, role: s.role, title: s.title, fields });
   }
 
   private async stmt(s: Stmt, ctx: Ctx, path: string): Promise<{ value: Value; bind?: Map<string, Value> }> {
@@ -1352,7 +1428,7 @@ export class Interpreter {
         shared: this.shared,
         step,
         // The lead holds no place among the run's delegations while its sub-program runs: the sub-program's own do.
-        run: (a, sub, running) => aside(() => this.subprogram(a, sub, running)),
+        run: (a, sub, running, attention) => aside(() => this.subprogram(a, sub, running, attention)),
       });
     if (this.o.replay) {
       await planner(
@@ -1374,12 +1450,14 @@ export class Interpreter {
    * A sub-program that applies a pattern (0.6) runs as `running`, the running program stored at its admission, which
    * holds its expansion and all its parent sees; any other is linked into its parent here.
    */
-  private subprogram(a: Admission, sub: Program, running?: Program): Promise<Value> {
+  private subprogram(a: Admission, sub: Program, running?: Program, attention?: AttentionFacts): Promise<Value> {
     const { plan, ...o } = this.o;
     const program = running ?? subprogramLinked(sub, plan!.parent, plan!.modules);
     const wf = Object.hasOwn(program.defs, a.workflow) ? program.defs[a.workflow] : undefined;
     if (wf?.kind !== "workflow") throw new Violation("unknown_workflow", `Sub-program ${a.number} of ${a.plan} has no workflow '${a.workflow}'.`);
-    const inner = new Interpreter({ ...o, program, envelope: { ...o.envelope!, budget: wf.budget ?? {} }, sub: { command: a.command, plan: a.plan }, shared: this.shared });
+    // 0.7: its own attention facts, stored at its admission, and never the run's.
+    const { attention: _run, ...rest } = o;
+    const inner = new Interpreter({ ...rest, program, envelope: { ...o.envelope!, budget: wf.budget ?? {} }, sub: { command: a.command, plan: a.plan, number: a.number }, shared: this.shared, ...(attention ? { attention } : {}) });
     return inner.runWorkflow(a.workflow, {});
   }
 

@@ -144,7 +144,7 @@
   {
     "name": "mandate.caps_of",
     "title": "Authority of an agent or workflow",
-    "description": "The paths, hosts, model tiers, commands, repositories, money and external effects an agent or workflow may use, and each of its delegations' grants.",
+    "description": "The paths, hosts, model tiers, commands, repositories, money and external effects an agent or workflow may use, and each of its delegations' grants. A program of 0.6 or 0.7 is checked with its `lock` and the libraries the lock pins (`libraries`), as `check` is.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -169,6 +169,35 @@
         },
         "name": {
           "type": "string"
+        },
+        "lock": {
+          "type": "object",
+          "description": "The lock file (mandate.lock.json), to check model tiers and W0504."
+        },
+        "libraries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "manifest": {
+                "type": "string",
+                "description": "The text of the library's mandate.library.json."
+              },
+              "files": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Each module file the manifest lists, by its path, with its text."
+              }
+            },
+            "required": [
+              "manifest",
+              "files"
+            ],
+            "additionalProperties": false
+          },
+          "description": "The libraries the program's lock pins, each as its manifest and its module files. The embedded std.patterns is found without being given."
         }
       },
       "required": [
