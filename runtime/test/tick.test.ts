@@ -239,9 +239,12 @@ describe("a pass over a 0.6 run", () => {
     w.clock.advance(DAY);
     await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "late" });
     const built: string[] = [];
-    const r = await tickPass(w.db, { runtimeFor: async (runId) => (built.push(runId), { rt: w.rt }), now: () => w.clock.now() });
+    const closed: string[] = [];
+    const r = await tickPass(w.db, { runtimeFor: async (runId) => (built.push(runId), { rt: w.rt, close: async () => void closed.push(runId) }), now: () => w.clock.now() });
     expect(r).toEqual({ waiting: 2, due: 1, moved: 1, failed: 0 });
     expect(built).toEqual(["early"]);
+    // What was built for the run is closed once it is ticked (the CLI closes its gateways and its checker's worker).
+    expect(closed).toEqual(["early"]);
   });
 
   it("with follow, makes a pass every interval until stopped, and goes on after a pass that failed as a whole", async () => {
