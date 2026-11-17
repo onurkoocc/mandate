@@ -14,7 +14,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { check, load, toMarkdown, type Program } from "@mandate/bridge";
-import { compilerMode } from "@mandate/bridge/mode";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { shownPackage, signDecision } from "../src/decisions.js";
@@ -31,10 +30,6 @@ import { closeAll, commandIds, planChecker, world, type World } from "./helpers.
 import { BUDGET, CAPS, finish, leadChat, MODULE, msg, planned, program as planProgram, refusals, run, state, type Planned, type Turn } from "./planning.js";
 
 afterAll(closeAll);
-
-const rust = compilerMode() !== "ts";
-/** The tests that need a program of 0.6 checked: the Rust compiler's alone, skipped by name in `ts` mode. */
-const needs06 = rust ? describe : describe.skip;
 
 const read = (path: string): string => readFileSync(fileURLToPath(new URL(`../../${path}`, import.meta.url)), "utf8");
 
@@ -134,7 +129,7 @@ const eventsOf = async (w: World, runId: string, type: string): Promise<Obj[]> =
 const FAN_OUT = { pattern: "FanOutMerge", module: "std.patterns" };
 const MAKER_CHECKER = { pattern: "MakerChecker", module: "std.patterns" };
 
-needs06("a lead of the 0.6 migration, whose envelope lists FanOutMerge and MakerChecker", () => {
+describe("a lead of the 0.6 migration, whose envelope lists FanOutMerge and MakerChecker", () => {
   it("applies FanOutMerge: the sub-program is admitted with its shape, runs to its end over simulated agents, and replays", async () => {
     const w = await migration([submitting("fan-out.mdt"), ending(SUMMARY)]);
     const r = await start(w, "fan");
@@ -343,7 +338,7 @@ const asking = (text: string, reason = "the next sub-program needs another shape
 
 const admissions = async (w: World, runId: string): Promise<Obj[]> => eventsOf(w, runId, "program_admitted");
 
-needs06("a lead under an envelope with shapes, and one without", () => {
+describe("a lead under an envelope with shapes, and one without", () => {
   const planWith = (lead: Turn[], text: string, c: ProgramChecker = checker): Promise<Planned> => planned(c, lead, { src: text });
 
   it("admits a sub-program that applies a listed pattern of the parent's own, with its shape, and one under no shapes with none", async () => {

@@ -2,8 +2,7 @@
 // why. Every function bridge/src/index.ts exports is in exactly one of the three lists (test/facade.test.ts): the
 // door-backed functions, the Rust-only ones of language 0.6, and those kept in TypeScript.
 //
-// A door-backed function is answered by the door of its name in `rust` mode, and by both compilers, compared, in
-// `both` (index.ts). Its door takes the function's parameters as the members of its input, by these names, which
+// A door-backed function is answered by the door of its name (rust.ts, index.ts). Its door takes the function's parameters as the members of its input, by these names, which
 // the module's own table (the door `doors`) must give when the module is loaded (wasm/call.ts).
 
 /**
@@ -81,8 +80,8 @@ export type DoorBacked = keyof typeof DOOR_BACKED;
 /**
  * The functions of language 0.6 that only the Rust compiler answers (library.ts): the door each calls, and the
  * members of its input, the function's parameters in order. No TypeScript function stands for one: the reference
- * compiler is frozen at 0.5, so in `ts` mode each throws NoReference, by name, and in `both` it is the Rust's alone
- * (counted under `language-0.6`). Their doors stand for no TypeScript function in the module's table either.
+ * compiler is frozen at 0.5 and has no answer for them. Their doors stand for no TypeScript function in the module's
+ * table either.
  */
 export const RUST_ONLY = {
   libraryVerify: { door: "library_verify", params: ["library", "libraries"] },
@@ -97,8 +96,8 @@ export const RUST_ONLY = {
 } as const satisfies Record<string, { door: string; params: readonly string[] }>;
 
 /**
- * The doors the bridge calls that stand for no function of its own: `codes`, whose table is CODES in `rust` and
- * `both` (index.ts), with its parameters.
+ * The doors the bridge calls that stand for no function of its own: `codes`, whose table is CODES (index.ts), with
+ * its parameters.
  */
 export const OWN_DOORS = { codes: [] } as const satisfies Record<string, readonly string[]>;
 
@@ -109,7 +108,7 @@ export type Kept =
   /** Nothing in runtime/src, bridge/src/cli.ts or bridge/src/mcp.ts calls it (test/facade.test.ts holds that), so no door stands for it. */
   | { uncalled: string };
 
-/** The functions that stay in TypeScript in every mode, with the reason for each. */
+/** The functions that stay in TypeScript, with the reason for each. */
 export const KEPT: Record<string, Kept> = {
   // Helpers: what they give depends on their arguments alone, read as syntax or shown as text, and no language
   // version changes it, so there is nothing for another compiler to decide.
@@ -135,7 +134,7 @@ export const KEPT: Record<string, Kept> = {
     helper:
       "a governance glob as a RegExp, which JSON cannot carry; the runtime tests it against each path of a workspace, and a door per path would cost a call each. The door glob_match, which answers globRegExp(glob).test(text), is held to it by crates/mandate-check/tests/json_doors",
   },
-  // Called by nothing the bridge serves: no door, and the TypeScript reference's own in every mode. A caller that
+  // Called by nothing the bridge serves: no door, and the TypeScript reference's own. A caller that
   // starts to use one fails test/facade.test.ts until it has a door.
   system: { uncalled: "the system view; no door (crates/mandate-views has none)" },
   hasSystem: { uncalled: "whether a program has a system view" },

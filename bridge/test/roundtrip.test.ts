@@ -1,5 +1,5 @@
 // Every door-backed function through rust.ts, on real inputs, gives what its TypeScript counterpart (ts.ts) gives:
-// the same value by the facade's own equality (src/same.ts), which tells a Map from an object, a Set from an array,
+// the same value by the tests' own equality (test/same.ts), which tells a Map from an object, a Set from an array,
 // a member that is undefined from one that is not there, and members in another order. Or both throw.
 //
 // The inputs: every recorded call of the two crates' doors (crates/*/tests/json_doors/inputs.json), every recorded
@@ -12,7 +12,7 @@ import { basename, dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as reference from "../src/ts.js";
 import * as rust from "../src/rust.js";
-import { compareOutcomes, CompilerDivergence, LANGUAGE_06, takeDivergences, type Outcome } from "../src/compare.js";
+import { compareOutcomes, CompilerDivergence, LANGUAGE_06, takeDivergences, type Outcome } from "./compare.js";
 import { DOOR_BACKED, type DoorBacked } from "../src/doors.js";
 import { CompilerFailure } from "../src/wasm/errors.js";
 import { modulePath } from "../src/wasm/module.js";
@@ -32,8 +32,8 @@ const seen: Record<string, { answered: number; threw: number }> = Object.fromEnt
 const wrong: string[] = [];
 
 /**
- * One call of `fn` on both sides, compared as `both` mode compares (compare.ts: by `difference`, under the named
- * rules of vectors/README.md, and with an input of 0.6 the Rust's alone); what differs is kept in `wrong`, with
+ * One call of `fn` on both sides, compared as test/compare.ts compares (by `difference`, under the named rules of
+ * vectors/README.md, and with an input of 0.6 the Rust's alone); what differs is kept in `wrong`, with
  * `label`. Gives the Rust's value.
  */
 function both(label: string, fn: DoorBacked, args: unknown[]): unknown {

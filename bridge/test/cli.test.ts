@@ -249,7 +249,7 @@ describe("the mandate command line equals the compiler's own", () => {
   // Language 0.6, which the compiler's own command line does not read: `mandate view` gives the views the modules it
   // has, so that a workflow that applies a pattern of one of them is shown as its expansion (its commit, its review,
   // and its cost, 60 delegations of the map's bound at 0.30 USD).
-  it.skipIf(process.env["MANDATE_COMPILER"] === "ts")("gives the views of a program of 0.6 its modules", async () => {
+  it("gives the views of a program of 0.6 its modules", async () => {
     const modules = ["fixtures/library/acme.connectors/types.mdt", "fixtures/library/acme.connectors/connectors.mdt", "fixtures/library/batch.patterns.mdt"].flatMap((m) => ["--module", R(m)]);
     const dir = join(work, "view-0.6");
     mkdirSync(dir, { recursive: true });

@@ -5,8 +5,7 @@
 //
 // The library commands run in this process over a temporary directory, with a clock of their own (the waiting period
 // is a matter of days); the checking commands, and the library commands once more, run as the command line itself, a
-// child process built into a temporary directory (tree.ts). Only the Rust compiler reads 0.6: in `ts` mode every test
-// that needs it is skipped by name, and what is left shows the refusal by name.
+// child process built into a temporary directory (tree.ts).
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -15,18 +14,13 @@ import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { libraryCommand, Stop, type LibraryArgs } from "../src/cli-library.js";
-import { authoritySignature, canonicalize, librariesConfigProblems, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, NoReference, type Json, type LibrarySource } from "../src/index.js";
+import { authoritySignature, canonicalize, librariesConfigProblems, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, type Json, type LibrarySource } from "../src/index.js";
 import { beside, Files, isLibraryName, isModulePath, joinPath, libraryIn, lockPins, parseVersion, pinnedIn, rangeHolds, readManifest, versionsIn } from "../src/libraries.js";
-import { compilerMode, withCompiler } from "../src/mode.js";
 import { modulePath } from "../src/wasm/module.js";
 import { buildTree, repoRoot, type Tree } from "./tree.js";
 
-const rust = compilerMode() !== "ts" && existsSync(modulePath());
-
 // The tests here start the executable many times each: the default five seconds is too little on a busy machine.
 vi.setConfig({ testTimeout: 60_000 });
-/** The tests that need the Rust compiler, which alone reads 0.6: skipped by name in `ts` mode. */
-const needs06 = rust ? describe : describe.skip;
 
 const OPS = "fixtures/library/upgrade/acme.ops";
 const VERSIONS = ["1.0.0", "1.0.1", "1.1.0", "1.2.0", "2.0.0"];
@@ -125,7 +119,7 @@ function opsSource(w: World, v: string): void {
 /** The lock that pins acme.ops 1.0.0 (the one of conformance/L02). */
 const opsLock = (w: World): void => w.put("mandate.lock.json", repo("conformance/L02/mandate.lock.json"));
 
-needs06("mandate add", () => {
+describe("mandate add", () => {
   it("pins the highest version within the range and writes the lock", () => {
     const w = opsWorld();
     expect(w.mandate("add", "acme.ops@^1.0", "--libraries", "libs"), w.err).toBe(0);
@@ -198,7 +192,7 @@ needs06("mandate add", () => {
   });
 });
 
-needs06("the waiting period and the revocation list, from the configuration's libraries member", () => {
+describe("the waiting period and the revocation list, from the configuration's libraries member", () => {
   it("a version within its waiting period is not resolved", () => {
     const w = opsWorld();
     w.now = seconds("2026-11-13T12:00:00Z");
@@ -286,7 +280,7 @@ needs06("the waiting period and the revocation list, from the configuration's li
   });
 });
 
-needs06("mandate upgrade", () => {
+describe("mandate upgrade", () => {
   it("shows a change that widens the authority signature as a governance change, and writes the lock only with --accept-governance", () => {
     const w = opsWorld();
     opsLock(w);
@@ -357,7 +351,7 @@ needs06("mandate upgrade", () => {
   });
 });
 
-needs06("mandate publish", () => {
+describe("mandate publish", () => {
   it("copies the library and writes its index last", () => {
     const w = opsWorld(["1.0.0"]);
     opsSource(w, "1.0.1");
@@ -449,7 +443,7 @@ needs06("mandate publish", () => {
   });
 });
 
-needs06("a path taken from a lock or a manifest stays inside the directory it is read under", () => {
+describe("a path taken from a lock or a manifest stays inside the directory it is read under", () => {
   /** A library that reads, put where a path that leaves the directory would lead. */
   function outside(w: World, rel: string): void {
     for (const f of ["mandate.library.json", "ops.mdt"]) w.put(`${rel}/${f}`, repo(`${OPS}/1.0.0/${f}`));
@@ -571,43 +565,18 @@ needs06("a path taken from a lock or a manifest stays inside the directory it is
   });
 });
 
-describe("the doors of the library commands, by mode", () => {
+describe("the doors of the library commands", () => {
   const source: LibrarySource = { manifest: repo(`${OPS}/1.0.0/mandate.library.json`), files: { "ops.mdt": repo(`${OPS}/1.0.0/ops.mdt`) } };
   const request = { library: "acme.ops", lock: { modules: {} } as never, versions: [{ version: "1.0.0", library: source, index: repo(`${OPS}/1.0.0/index.json`) }], now: "2026-11-15T00:00:00Z" };
 
-  it("in `ts` mode each is a refusal by name, and the command ends with 2 and writes nothing", () => {
-    withCompiler("ts", () => {
-      for (const [name, call] of [
-        ["libraryAdd", () => libraryAdd(request)],
-        ["libraryUpgrade", () => libraryUpgrade({ ...request, pinned: source })],
-        ["libraryPublish", () => libraryPublish({ source, published: [], now: request.now })],
-        ["authoritySignature", () => authoritySignature(source)],
-        ["librariesConfigProblems", () => librariesConfigProblems({ dir: "libs" })],
-      ] as const) {
-        expect(call, name).toThrow(NoReference);
-        expect(call, name).toThrow(new RegExp(`${name} reads language 0\\.6.*MANDATE_COMPILER=ts`));
-      }
-      const w = opsWorld(["1.0.0", "1.0.1"]);
-      opsSource(w, "1.1.0");
-      const before = w.files();
-      for (const argv of [["add", "acme.ops", "--libraries", "libs"], ["upgrade", "acme.ops", "--libraries", "libs"], ["publish", "src", "--libraries", "libs"], ["add", "acme.ops", "--config", "c.json"]]) {
-        w.put("c.json", '{"libraries":{"dir":"libs"}}');
-        expect(w.mandate(...argv), argv.join(" ")).toBe(2);
-        expect(w.err, argv.join(" ")).toMatch(/^mandate: librar\w+ reads language 0\.6, which only the Rust compiler reads/);
-        expect(w.out).toBe("");
-        w.remove("c.json");
-        expect(w.files()).toEqual(before);
-      }
-    });
-  });
-
-  it.runIf(existsSync(modulePath()))("in `both` mode each is the Rust's alone, and gives what `rust` gives", () => {
-    const calls: Array<() => unknown> = [() => libraryAdd(request), () => libraryUpgrade({ ...request, pinned: source }), () => libraryPublish({ source, published: [], now: request.now }), () => authoritySignature(source), () => librariesConfigProblems({ dir: "" })];
-    for (const call of calls) expect(withCompiler("both", call)).toEqual(withCompiler("rust", call));
-    expect(withCompiler("rust", () => libraryAdd(request))).toMatchObject({ ok: true, version: "1.0.0" });
-    expect(withCompiler("rust", () => authoritySignature({ manifest: "{", files: {} }))).toBeNull();
+  it("each is the Rust's alone: it gives what its door gives, and a door's refusal of its input is an Error", () => {
+    expect(libraryAdd(request)).toMatchObject({ ok: true, version: "1.0.0" });
+    // The others answer, each by its own door, where the reference compiler (frozen at 0.5) has no answer.
+    const calls: Array<() => unknown> = [() => libraryUpgrade({ ...request, pinned: source }), () => libraryPublish({ source, published: [], now: request.now }), () => authoritySignature(source), () => librariesConfigProblems({ dir: "" })];
+    for (const call of calls) expect(call).not.toThrow();
+    expect(authoritySignature({ manifest: "{", files: {} })).toBeNull();
     // What a door refuses of its input is an Error with the door's message, as for every door.
-    expect(() => withCompiler("rust", () => libraryAdd({ ...request, now: "yesterday" }))).toThrow(/`now` is "yesterday"/);
+    expect(() => libraryAdd({ ...request, now: "yesterday" })).toThrow(/`now` is "yesterday"/);
   });
 });
 
@@ -619,7 +588,7 @@ interface Run {
   err: string;
 }
 
-needs06("the mandate executable with libraries", () => {
+describe("the mandate executable with libraries", () => {
   let tree: Tree;
   const work = mkdtempSync(join(tmpdir(), "mdt-cli-library-exe-"));
   dirs.push(work);

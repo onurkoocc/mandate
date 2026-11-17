@@ -1402,17 +1402,17 @@ fails when an entry of a list passes or names nothing.
   the Rust's doors answers `bad_input` (`to_markdown`, `to_html`, `architecture_blocks`,
   `authority_blocks`). The test holds each to that refusal and names what the TypeScript
   gives. No document or view the compiler makes has such a member, and the bridge's
-  `both` mode excuses none: a call with one is a divergence.
+  comparison of the two compilers in its tests (`bridge/test/compare.ts`) excuses none: a
+  call with one is a divergence.
 - **A lone UTF-16 surrogate in a document given to `toMarkdown` or `toHtml`, through
   the bridge.** A request to the module cannot carry one (its reader refuses it, as the
   IR's does), and a document can hold text a model wrote. So the bridge sends each lone
   surrogate of the document as U+FFFD (`bridge/src/rust.ts`, `wellFormed`), and the Rust
-  writes U+FFFD where the TypeScript writes the surrogate through. The bridge's `both`
-  mode compares the two with the TypeScript's lone surrogates as U+FFFD (the rule
-  `rendering-lone-surrogate` of `bridge/src/compare.ts`). Every other value a request
+  writes U+FFFD where the TypeScript writes the surrogate through. The bridge's tests
+  compare the two with the TypeScript's lone surrogates as U+FFFD (the rule
+  `rendering-lone-surrogate` of `bridge/test/compare.ts`). Every other value a request
   cannot carry is the next entry's.
-- **A value a request cannot carry, through the bridge in `rust` mode (the default
-  of the bridge, `MANDATE_COMPILER` unset): answered by the
+- **A value a request cannot carry, through the bridge: answered by the
   TypeScript, refused by the bridge.** The module's strict reader takes integers within
   ±(2^53−1) only, no −0, no lone UTF-16 surrogate, at most 128 levels of nesting; JSON
   has no hole in an array and no `undefined` in one, which `JSON.stringify` would write as
@@ -1431,4 +1431,4 @@ fails when an entry of a list passes or names nothing.
   command line exits 2, where the TypeScript's prints the diagnostic and exits 1; the MCP
   server answers with an error, where the TypeScript's answers the tool; a journal whose
   exported package holds one does not hold (`package_mismatch`), as in the TypeScript.
-  `both` compares no such call: the Rust's refusal is thrown as it is.
+  The bridge's tests compare no such call: the Rust's refusal is thrown as it is.
