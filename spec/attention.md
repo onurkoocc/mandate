@@ -1126,6 +1126,14 @@ Notifications are sent only for 0.7 runs.
   `run_attention_required`, `budget_exceeded`, `asks_exhausted`) go to the
   roles configured with `outcomes: true` and to the owner role, or, with no
   owner role, to those roles alone. Nothing of S2 to S4 is sent.
+  An S0 event is sent only while its question is still asked: one already
+  answered, one that expired, one of a run that has ended, and one that a
+  later question about the same wait replaced (a review's request once it
+  was escalated) before the pump reached it are passed over, and the cursor
+  moves past them without a dead letter, also when the notification had
+  waited for its next attempt. An S1 event is always sent. A question
+  answered between this check and the send may still be sent; the receiver
+  finds it decided.
 - **The id** is `digest("operation", { format: "mandate/notification/0.1",
   channel, run, seq })`: the runtime's digest of a domain and a value,
   `sha256:` and the hex of SHA-256 over `mandate/operation/0.1\n` and the
@@ -1181,8 +1189,10 @@ webhook whose URL is not `https` among them, is refused by name,
 
 | Table or member | Holds |
 |---|---|
-| `notify_cursors(channel, run_id, seq, at)` | Each channel's cursor per run |
+| `notify_cursors(channel, run_id, seq, at, start_seq, pending, attempts, retry_at, claim)` | Each channel's cursor per run, where it stood when the channel met the run, and the notification that waits for its next attempt: the attempts made, when the next may come, and the token of the pump that holds it |
+| `notify_channels(channel, at)` | The channels in use: a run without a cursor in one began after it was met |
 | `notify_dead(channel, run_id, seq, attempts, reason, at)` | Each notification given up |
+| `packages.is_07` | Whether the package holds anything of 0.7 or later, written when the package is kept; it gates what is of 0.7 alone, among it the order of a `par`'s faults. A package stored before the column has it null: the runtime reads its program instead, and the first pass of each process fills the column |
 | index `commands_waiting` on `commands (run_id) where state = 'waiting'` | `ListWaits` |
 | manifest `attention` | The stored facts |
 | manifest `promotion` | The promotion the run started under |
