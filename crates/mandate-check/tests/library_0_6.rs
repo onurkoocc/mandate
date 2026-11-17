@@ -662,6 +662,37 @@ fn add_keeps_a_lock_of_0_6_or_later_in_its_format() {
     }
 }
 
+/// `add` keeps every field of a lock of 0.7 it writes its pin into, the two
+/// of 0.7 among them (spec/attention.md "Lock 0.7"): `role_classes` and
+/// `promotion` come back as they were, and the lock written is one its
+/// schema takes.
+#[test]
+fn add_keeps_the_fields_of_a_lock_of_0_7() {
+    let versions = every_version();
+    let at = now("2026-11-13T12:00:00Z");
+    let config = mandate_lib::read_libraries_config(
+        &mandate_ir::parse(r#"{"dir":"libs","wait_days":0,"revoked":[]}"#)
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let key = format!("sha256:{}", "6".repeat(64));
+    let lock: Value = mandate_ir::parse(&format!(
+        r#"{{"lock":"mandate/lock/0.7","modules":{{}},"members":{{"ana":{{"keys":["{key}"]}}}},"roles":{{"accountant":["ana"]}},"role_classes":{{"accountant":"confidential"}},"promotion":"required"}}"#
+    ))
+    .unwrap()
+    .value;
+    assert!(mandate_ir::validate_lock(&lock).is_empty());
+    let r = add(&request(Some("^1.0"), &lock, &versions, Some(&config), at));
+    assert!(r.ok, "{:#?}", r.diagnostics);
+    let out = r.lock.as_ref().expect("a lock");
+    for field in ["lock", "members", "roles", "role_classes", "promotion"] {
+        assert_eq!(out.get(field), lock.get(field), "{field}");
+    }
+    assert!(out.get("libraries").is_some());
+    assert!(mandate_ir::validate_lock(out).is_empty());
+}
+
 /// `add`: the highest version within the range whose waiting period is
 /// over and whose digest is not revoked; a range nothing meets is E1606,
 /// and one whose versions all wait or are revoked is E1608.
