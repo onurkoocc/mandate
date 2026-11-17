@@ -134,7 +134,7 @@ fn the_facts_of_every_workflow_of_0_7() {
         let view = mandate_check::opened(&view, &parent_ir);
         let envelope = parent_ir
             .get("defs")
-            .and_then(|d| d.get(*workflow))
+            .and_then(|d| d.get(workflow))
             .and_then(|w| w.get("envelope"))
             .unwrap();
         let mut row = JsObject::new();
