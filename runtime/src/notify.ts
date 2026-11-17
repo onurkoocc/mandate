@@ -15,6 +15,8 @@
 // - A channel that is new does not replay the history of the runs already there: it is told of their waits still
 //   open (the latest question about each) and of the runs that need a person now, and its cursors start at their
 //   ends (`notify_channels` records it as in use). A run that begins after that is told from its first event.
+// - A question is told only while it is still asked: right before an S0 notification is sent, its wait is looked up,
+//   and one that was answered, expired, or belongs to a run that ended is passed over. An outcome is always told.
 // - A run in a halted scope is not notified, and its cursors do not move, until the halt is lifted.
 // - What is sent is fixed (`Notification`): ids, the kind, the role, the deadline, `as_of` and a link. Of an event the
 //   pump reads its type, its sequence number and its time, and of the four S0 events (and `asks_exhausted`) the role
@@ -28,7 +30,7 @@
 import { createHash } from "node:crypto";
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { isProgram07OrLater, type WorkflowDef07 } from "@mandate/bridge";
+import { BRIDGE_LANGUAGE_VERSIONS, isProgram07OrLater, type WorkflowDef07 } from "@mandate/bridge";
 import { eventClass } from "./classes.js";
 import type { Db, Row } from "./db.js";
 import { CREDENTIAL_NAME, HEADER_TOKEN, RESERVED_HEADERS, validHost } from "./egress/config.js";
@@ -156,7 +158,9 @@ export function carried(value: string, pattern: RegExp): string {
 export function commandShown(command: string | null, admitted: readonly string[]): string | null {
   if (command === null) return null;
   const inside = admitted.filter((p) => command.startsWith(`${p}/`)).sort((a, b) => b.length - a.length)[0];
-  return carried(inside === undefined ? command : `${inside}/digest:${hex32(command.slice(inside.length + 1))}`, CARRIED.command);
+  const shown = inside === undefined ? command : `${inside}/digest:${hex32(command.slice(inside.length + 1))}`;
+  // A form that does not fit is the digest of the command's own id, which a query over `command_id` resolves.
+  return CARRIED.command.test(shown) ? shown : `digest:${hex32(command)}`;
 }
 
 // ── the configuration ─────────────────────────────────────────────────
@@ -400,14 +404,34 @@ function causeOf(e: unknown): string {
   return typeof code === "string" ? code : "the connection failed";
 }
 
+/** The promise, or a rejection once `stop` aborts, whichever comes first: what does not take a signal is bounded all the same. */
+function within<T>(p: Promise<T>, stop: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = (): void => reject(new Error("the deadline of the send has passed"));
+    if (stop.aborted) return abort();
+    stop.addEventListener("abort", abort, { once: true });
+    p.then(
+      (v) => {
+        stop.removeEventListener("abort", abort);
+        resolve(v);
+      },
+      (e: unknown) => {
+        stop.removeEventListener("abort", abort);
+        reject(e);
+      },
+    );
+  });
+}
+
 /** The proxy's denials that are about the session, not the request: nothing reached the receiver, and none is an attempt. */
 const SESSION_DENIALS = new Set(["session_revoked", "session_expired"]);
 
 /**
  * The webhook adapter: one HTTPS POST of the notification (`mandate`) or of `{"text": <its sentence>}` (`text`), with
  * `content-type: application/json` and the notification's id in `x-mandate-notification`, through `way` and no other
- * way. A redirect is an error and is not followed; the request and its answer take `timeoutMs` (10 s) at most, and
- * `signal` stops it at once; nothing of the answer is read.
+ * way. A redirect is an error and is not followed; the whole send (the proxy's answer that it can serve, the opening of
+ * a session, the request and its answer) takes `timeoutMs` (10 s) at most, and `signal` stops it at once; nothing of
+ * the answer is read.
  *
  * - A 2xx delivers.
  * - A failed attempt, tried again at a later pass: a 5xx, a 408, a 429, a connection that fails, no answer in time,
@@ -422,19 +446,22 @@ export function webhookNotifier(channel: string, spec: WebhookChannel, way: (ten
   return {
     name: channel,
     async send(n, signal) {
-      const out = way(n.tenant);
-      await out.ready();
-      const body = spec.format === "text" ? JSON.stringify({ text: sentence(n) }) : JSON.stringify(n);
+      // One deadline for the whole send, started before anything of it: the proxy's answer that it can serve, the
+      // opening of a session, and the request with its answer. The claim on the attempt outlasts it (`claimMs`).
       const timeout = AbortSignal.timeout(timeoutMs);
+      const stop = signal ? AbortSignal.any([timeout, signal]) : timeout;
+      const out = way(n.tenant);
+      try {
+        await within(out.ready(), stop);
+      } catch (e) {
+        if (signal?.aborted) throw new Stopped();
+        if (timeout.aborted) throw new NotifyUnavailable(`the egress proxy did not say within ${timeoutMs} ms whether it can serve ${spec.host}`);
+        throw e;
+      }
+      const body = spec.format === "text" ? JSON.stringify({ text: sentence(n) }) : JSON.stringify(n);
       let res: Response;
       try {
-        res = await out.fetch(spec.url, {
-          method: "POST",
-          headers: { "content-type": "application/json", [NOTIFICATION_HEADER]: n.id },
-          body,
-          redirect: "error",
-          signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
-        });
+        res = await within(out.fetch(spec.url, { method: "POST", headers: { "content-type": "application/json", [NOTIFICATION_HEADER]: n.id }, body, redirect: "error", signal: stop }), stop);
       } catch (e) {
         if (signal?.aborted) throw new Stopped();
         if (e instanceof Violation) throw new NotifyUnavailable(e.message);
@@ -636,23 +663,18 @@ export function backoffMs(n: number): number {
   return NOTIFY_BACKOFF_MS * 2 ** (n - 1);
 }
 
-/** The packages of 0.7, by hash: a package's hash names what it holds for good, so each is read once per process. */
-const KNOWN = new WeakMap<Db, { is07: Map<string, boolean>; owners: Map<string, string | null> }>();
+/** The owner roles read so far, by package and workflow: a package's hash names what it holds for good. */
+const KNOWN = new WeakMap<Db, { owners: Map<string, string | null> }>();
 
-async function packages07(db: Db, is07: Map<string, boolean>): Promise<string[]> {
-  for (const r of await db.query<Row>("select package_hash from packages")) {
-    const hash = String(r["package_hash"]);
-    if (is07.has(hash)) continue;
-    // The languages of the program and of the modules it carries, and nothing else of the package.
-    const [p] = await db.query<Row>(
-      "select program->'language' as language, (select coalesce(jsonb_agg(m.value->'language'), '[]'::jsonb) from jsonb_each(coalesce(p.modules, '{}'::jsonb)) m) as modules from packages p where package_hash = $1",
-      [hash],
-    );
-    const languages = p ? [p["language"], ...(Array.isArray(p["modules"]) ? (p["modules"] as Value[]) : [])] : [];
-    is07.set(hash, languages.some((language) => isProgram07OrLater({ language })));
-  }
-  return [...is07].filter(([, yes]) => yes).map(([hash]) => hash);
-}
+/** The languages of 0.7 or later the bridge reads, as `isProgram07OrLater` holds them. */
+const LANGUAGES_07: readonly string[] = BRIDGE_LANGUAGE_VERSIONS.filter((language) => isProgram07OrLater({ language }));
+
+/**
+ * Whether the package `p` holds anything of 0.7 (package.ts `isPackage07OrLater`): its program, or a module it carries,
+ * is of a language of `LANGUAGES_07`, given as `$2`. In SQL, so that a run and the package it is of are read in one
+ * statement.
+ */
+const OF_07 = `(p.program->>'language' = any($2::text[]) or exists (select 1 from jsonb_each(coalesce(p.modules, '{}'::jsonb)) x where x.value->>'language' = any($2::text[])))`;
 
 interface Cursor {
   seq: number;
@@ -671,9 +693,10 @@ const cursorOf = (r: Row): Cursor | undefined =>
 const MEET_LOCK = 1835297107;
 
 /**
- * How long a pump holds the attempt it claimed before another may take it: a request's limit and a second. A claim
- * further ahead of now than this and the largest backoff together was made by a clock that has stepped back since,
- * and is taken as due.
+ * How long a pump holds the attempt it claimed before another may take it: the deadline of the whole send (the
+ * proxy's answer, the session's opening and the request, `webhookNotifier`) and a second. A claim or a next attempt
+ * further ahead of now than the larger of this and the largest backoff was made by a clock that has stepped back
+ * since, and is taken as due. Pumps and ticks share one clock, or clocks within a few seconds of each other.
  */
 const claimMs = (timeoutMs: number): number => timeoutMs + 1_000;
 const aheadMs = (timeoutMs: number): number => Math.max(backoffMs(NOTIFY_ATTEMPTS - 1), claimMs(timeoutMs));
@@ -703,13 +726,16 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
   const channels = Object.keys(o.config.channels).filter((c) => used.has(c)).sort();
   if (!channels.length || o.signal?.aborted) return report;
   let cache = KNOWN.get(db);
-  if (!cache) KNOWN.set(db, (cache = { is07: new Map(), owners: new Map() }));
+  if (!cache) KNOWN.set(db, (cache = { owners: new Map() }));
   const owners = cache.owners;
-  const hashes = await packages07(db, cache.is07);
   const transport = o.transport?.();
   const now = o.now ?? Date.now;
   const batch = Math.max(2, o.batch ?? 500);
   const timeoutMs = o.timeoutMs ?? NOTIFY_TIMEOUT_MS;
+  /** Whether the wait of `command` is still waiting, in a run that has not ended. */
+  const stillAsked = async (run: string, command: string | null): Promise<boolean> =>
+    command === null ||
+    (await db.query<Row>("select 1 as open from commands c join runs r on r.run_id = c.run_id where c.run_id = $1 and c.command_id = $2 and c.state = 'waiting' and r.state not in ('succeeded', 'failed', 'cancelled')", [run, command])).length > 0;
   /** As a start or a resume asks (journal.ts `openHalt`): a halt of this tenant, or of every tenant, not lifted. */
   const halted = async (tenant: string): Promise<boolean> => (await db.query<Row>("select 1 as halted from halts where lifted_at is null and (tenant is null or tenant = $1) limit 1", [tenant])).length > 0;
   const ownerOf = async (q: Pick<Db, "query">, hash: string, workflow: string): Promise<string | null> => {
@@ -744,15 +770,17 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
     await db.tx(async (tx) => {
       await tx.query(`select pg_advisory_xact_lock(${MEET_LOCK}, hashtext($1))`, [channel]);
       if ((await tx.query<Row>("select 1 as met from notify_channels where channel = $1", [channel])).length) return;
-      // Every run there is now, at its end, in one statement: a run it does not see began after it.
+      // Every run of 0.7 there is now, at its end, in one statement that also decides which packages are of 0.7: a run
+      // it does not see, with its package, began after it.
       const placed = await tx.query<Row>(
         `insert into notify_cursors (channel, run_id, seq, at, start_seq)
          select $1, r.run_id, coalesce(m.last, 0), $3, coalesce(m.last, 0)
-           from runs r cross join lateral (select max(seq) as last from events e where e.run_id = r.run_id) m
-          where r.package_hash = any($2::text[])
+           from runs r join packages p on p.package_hash = r.package_hash
+           cross join lateral (select max(seq) as last from events e where e.run_id = r.run_id) m
+          where ${OF_07}
          on conflict (channel, run_id) do nothing
          returning run_id, seq`,
-        [channel, hashes, now()],
+        [channel, LANGUAGES_07, now()],
       );
       const at = new Map(placed.map((p) => [String(p["run_id"]), Number(p["seq"])]));
       // Of those, the ones that still ask something: they are told it, from just before it.
@@ -808,11 +836,12 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
     // notification waits for its next attempt: chosen by the database, not read one by one.
     const runs = await db.query<Row>(
       `select r.run_id, r.tenant, r.workflow, r.package_hash, c.seq, c.start_seq, c.pending, c.attempts, c.retry_at
-         from runs r left join notify_cursors c on c.channel = $1 and c.run_id = r.run_id
-        where r.package_hash = any($2::text[])
+         from runs r join packages p on p.package_hash = r.package_hash
+         left join notify_cursors c on c.channel = $1 and c.run_id = r.run_id
+        where ${OF_07}
           and (c.run_id is null or ((c.retry_at is null or c.retry_at <= $3 or c.retry_at > $3 + $4) and exists (select 1 from events e where e.run_id = r.run_id and e.seq > c.seq)))
         order by r.created_at, r.run_id`,
-      [channel, hashes, now(), aheadMs(timeoutMs)],
+      [channel, LANGUAGES_07, now(), aheadMs(timeoutMs)],
     );
     // A tenant whose way out is not there, or that is halted, is left for the next pass; the other tenants go on.
     const skipped = new Set<string>();
@@ -857,6 +886,13 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
               pair = next ? seenOf(next) : undefined;
             }
             const n = e.seq <= start && !keep.has(e.seq) ? undefined : notificationOf(channel, e, pair, run, asOf, o.config, admitted);
+            // A question is told only while it is still asked: one answered, expired or of a run that ended is passed
+            // over, also when it waited for its next attempt (no dead letter). An outcome is always told. (A question
+            // answered between this and the send may still be told: the receiver finds it decided.)
+            if (n && n.kind === "decision" && !(await stillAsked(run.run, addressOf(e, pair, run, o.config)?.command ?? null))) {
+              moved = e.seq;
+              continue;
+            }
             if (!n) {
               moved = e.seq;
               continue;
