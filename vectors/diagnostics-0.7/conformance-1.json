@@ -1477,6 +1477,40 @@
       }
     },
     {
+      "name": "E1307f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/attention/owner.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1307",
+            "severity": "error",
+            "message": "Workflow Check applies a pattern, which is the whole of its definition with its caps and its budget; it has an envelope too. Its parameters, result and body are the pattern's (spec/library.md \"Application\").",
+            "at": {
+              "path": "/defs/Check/envelope",
+              "span": [1, 3214, 1, 3310]
+            },
+            "docs": "mandate explain MDT-E1307",
+            "facts": {
+              "workflow": "Check",
+              "problem": "member",
+              "member": "envelope"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1501b",
       "kind": "compile",
       "door": "check_patched",
@@ -5167,6 +5201,60 @@
               "field": "promotion",
               "language": "mandate/0.6"
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "L11",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1607",
+            "severity": "error",
+            "message": "Version 1.1.0 of library acme.owners widens the authority signature of 1.0.0, removes one of its criteria, adds a waiver or changes a workflow's owner, and is not a major version above it.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E1607",
+            "facts": {
+              "library": "acme.owners",
+              "problem": "needs_major",
+              "version": "1.1.0",
+              "base": "1.0.0",
+              "widens_authority": false,
+              "removes_criterion": false,
+              "adds_waiver": false,
+              "changes_owner": true
+            }
+          }
+        ],
+        "name": "acme.owners",
+        "version": "1.1.0",
+        "digest": "sha256:c6d104c47bb2da66ff839067caf69ff5795cfcff01cf438acd933412a1930d16",
+        "against": [
+          {
+            "version": "1.0.0",
+            "requires_major": true,
+            "widenings": [],
+            "governance": [
+              {
+                "kind": "owner_changed",
+                "at": "acme.owners/defs/Confirm/owner",
+                "text": "~ Confirm.owner: accountant \u2192 clerk"
+              }
+            ]
           }
         ]
       }
