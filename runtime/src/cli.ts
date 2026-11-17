@@ -79,7 +79,7 @@ import { exportJournal, parseExportJson, publicKeysIn, readExport, verifyExport,
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { otelEndpoint, otelExport, type OtelReport } from "./otel.js";
 import { egressTransport } from "./notify.js";
-import { driveLoop, TICK_INTERVAL_MS } from "./tick.js";
+import { driveLoop, MAX_INTERVAL_MS, TICK_INTERVAL_MS } from "./tick.js";
 import { libraryModules, refuseRevoked } from "./package.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
@@ -969,9 +969,10 @@ async function otel(a: Args, db: Db, out: (s: string) => void): Promise<number> 
  * `mandate tick` (spec/attention.md "The driver loop"): one pass, or with `--follow` one pass every `--interval`
  * (10 s unless given) until SIGINT or SIGTERM. Each run that waits is ticked by a runtime built for its own package,
  * as every command that may move a run builds one; then, unless `--no-notify`, the notifications of 0.7 runs go out
- * through the channels of the configuration's `notifications`. It prints each run it moved, and what it gave up;
- * everything of a run it prints passes through `terminalText`. Exit 1 when a run's tick failed or a channel's way out
- * was not there in the (last) pass.
+ * through the channels of the configuration's `notifications`, one attempt per notification per pass. It prints each
+ * run it moved, and what it gave up; everything of a run it prints passes through `terminalText`. Exit 1 when a run's
+ * tick failed or a channel's way out was not there in the (last) pass. With `--follow`, a pass that fails as a whole is
+ * reported and the next one comes; it ends saying how many passes it made.
  */
 async function tick(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => void, env: NodeJS.ProcessEnv): Promise<number> {
   if (a.positional.length) throw new Usage("tick takes no run: mandate tick [--follow] [--interval 10s] [--no-notify]");
@@ -981,17 +982,28 @@ async function tick(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => 
   const m = typeof given === "string" ? /^([1-9][0-9]{0,8})(ms|s|m|h)?$/.exec(given) : null;
   if (typeof given === "string" && !m) throw new Usage("--interval is a duration: 500ms, 10s, 2m or 1h (a number alone is seconds)");
   const intervalMs = m ? Number(m[1]) * { ms: 1, s: 1000, m: 60_000, h: 3_600_000 }[(m[2] ?? "s") as "ms" | "s" | "m" | "h"] : TICK_INTERVAL_MS;
+  // Node cuts a longer timer to 1 ms: the loop would pass without pause.
+  if (intervalMs > MAX_INTERVAL_MS) throw new Usage(`--interval is at most ${MAX_INTERVAL_MS} ms (about 24 days)`);
   const notifications = a.flags["--no-notify"] === true ? undefined : config.notifications;
   const err = (s: string): void => void process.stderr.write(`mandate: ${s}\n`);
+  const message = (e: unknown): string => terminalText(e instanceof Error ? e.message : String(e));
   const stop = new AbortController();
   const interrupt = (): void => stop.abort();
   process.once("SIGINT", interrupt);
   process.once("SIGTERM", interrupt);
   try {
-    const last = await driveLoop(db, {
+    const { last, passes } = await driveLoop(db, {
+      // A runtime for the run's package, as every command that may move a run builds one, closed once the run is
+      // ticked: its gateways' sessions and its checker's worker with it.
       runtimeFor: async (runId) => {
         const { rt } = await runtimeFor(db, config, "tick", runId, env);
-        return { rt, close: async () => rt.adapters.egress?.close() };
+        return {
+          rt,
+          close: async () => {
+            await rt.adapters.egress?.close();
+            await rt.checker.close?.();
+          },
+        };
       },
       ...(notifications
         ? {
@@ -1007,15 +1019,17 @@ async function tick(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => 
       intervalMs,
       signal: stop.signal,
       onTicked: (r) => out(`run ${terminalText(r.run)}: ${r.before.state} -> ${r.after.state}, revision ${r.before.revision} -> ${r.after.revision}\n`),
-      onError: (run, e) => err(`run ${terminalText(run)}: ${terminalText(e instanceof Error ? e.message : String(e))}`),
-      onNotifyError: (e) => err(`the notification pass failed: ${terminalText(e instanceof Error ? e.message : String(e))}`),
+      onError: (run, e) => err(`run ${terminalText(run)}: ${message(e)}`),
+      onNotifyError: (e) => err(`the notification pass failed: ${message(e)}`),
+      onPassError: (e) => err(`a pass failed: ${message(e)}; the next one comes in ${intervalMs} ms`),
       onPass: (r) => {
         if (follow) return;
         const n = r.notify;
-        out(`tick: ${r.waiting === 1 ? "1 run waiting" : `${r.waiting} runs waiting`}, ${r.moved} moved${r.failed ? `, ${r.failed} failed` : ""}; notifications: ${n ? `${n.sent} sent, ${n.retried} retried, ${n.dead} given up` : notifications ? "failed" : "off"}\n`);
+        out(`tick: ${r.waiting === 1 ? "1 run waiting" : `${r.waiting} runs waiting`}, ${r.moved} moved${r.failed ? `, ${r.failed} failed` : ""}; notifications: ${n ? `${n.sent} sent, ${n.dead} given up, ${n.pending} to try again` : notifications ? "failed" : "off"}\n`);
       },
     });
-    return last.failed || last.notify?.failures.length ? 1 : 0;
+    if (follow) out(`tick: stopped after ${passes === 1 ? "1 pass" : `${passes} passes`}\n`);
+    return !last || last.failed || last.notify?.failures.length ? 1 : 0;
   } finally {
     process.off("SIGINT", interrupt);
     process.off("SIGTERM", interrupt);

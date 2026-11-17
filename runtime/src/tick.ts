@@ -39,6 +39,20 @@ interface OpenWait {
 /** The kinds of wait a deadline ends. An input asks without a deadline, and a timer is no row of its own. */
 const EXPIRING = new Set(["decision", "amendment", REVIEW]);
 
+/**
+ * How long a run that waits on a wait already decided must not have moved before a tick drives it on. Whoever decided
+ * drives the run right after the decision commits, and until then the run still says `waiting`; a tick in that gap
+ * would take the lease from that drive, and two drives would replay at once. What is compared is the runtime's clock
+ * with the time of the run's last event: every write of a run (a decision, a lease, an expiry) writes one.
+ */
+export const STALE_DRIVE_MS = 30_000;
+
+/** The time of the run's last event, by the runtime's clock. */
+async function lastMoved(q: Pick<Tx, "query">, runId: string): Promise<number> {
+  const [r] = await q.query<Row>("select max(at) as at from events where run_id = $1", [runId]);
+  return Number(r?.["at"] ?? 0);
+}
+
 async function openWaits(q: Pick<Tx, "query">, runId: string): Promise<OpenWait[]> {
   const rows = await q.query<Row>("select command_id, kind, result from commands where run_id = $1 and state = 'waiting' order by command_id", [runId]);
   return rows.map((r) => ({ command: String(r["command_id"]), kind: String(r["kind"]), request: isObj((r["result"] ?? null) as Value) ? (r["result"] as Obj) : {} }));
@@ -51,11 +65,12 @@ async function planOf(q: Pick<Tx, "query">, run: RunRow, open: OpenWait[], now: 
   const req = isObj(w["request"] ?? null) ? (w["request"] as Obj) : {};
   // A timer is due once its end has come; it is the one wait that is no row of a person's.
   const timer = w["kind"] === "timer" && typeof req["deadline"] === "number" && now >= req["deadline"];
-  // A run that waits on a person's wait whose command is no longer waiting was decided and not driven on since.
+  // A run that waits on a person's wait whose command is no longer waiting was decided and not driven on since, once it
+  // has not moved for `STALE_DRIVE_MS`: until then the drive of whoever decided, or of the tick that expired it, is on its way.
   let stale = false;
   if (w["kind"] !== "timer" && typeof w["command"] === "string" && !open.some((o) => o.command === w["command"])) {
     const [row] = await q.query<Row>("select kind, state from commands where run_id = $1 and command_id = $2", [run.run_id, w["command"]]);
-    stale = !!row && WAIT_KINDS.has(String(row["kind"])) && row["state"] !== "waiting";
+    stale = !!row && WAIT_KINDS.has(String(row["kind"])) && row["state"] !== "waiting" && now - (await lastMoved(q, run.run_id)) >= STALE_DRIVE_MS;
   }
   return { due, stale, timer };
 }
@@ -72,8 +87,9 @@ async function planOf(q: Pick<Tx, "query">, run: RunRow, open: OpenWait[], now: 
  *   the escalated deadline has passed too, every open item is declined, by nobody (`review_expired`, `wait_expired`).
  *
  * Each in the order of the commands' ids, each only while its row is still `waiting`. Then the run is driven when a
- * wait expired, when the wait `runs.waiting` names was decided and not driven on, or when its timer is due. For the
- * wait `runs.waiting` names, what is written is what `tick` writes for a run of 0.6.
+ * wait expired, when the wait `runs.waiting` names was decided and not driven on (and the run has not moved for
+ * `STALE_DRIVE_MS`), or when its timer is due. For the wait `runs.waiting` names, what is written is what `tick`
+ * writes for a run of 0.6.
  */
 export async function tickOpenWaits(rt: { db: Db; journal: Journal; adapters: Pick<Adapters, "clock"> }, runId: string, hooks: TickHooks): Promise<RunRow> {
   const run = await rt.journal.run(runId);
@@ -158,11 +174,15 @@ export interface PassOptions {
   onError?: (run: string, e: unknown) => void;
   /** Told when the notification pass failed as a whole. */
   onNotifyError?: (e: unknown) => void;
+  /** The runtime's clock, which says what is due: a runtime is built only for a run with something due. */
+  now?: () => number;
 }
 
 export interface PassReport {
   /** The runs that were waiting when the pass began. */
   waiting: number;
+  /** Those with something due, for which a runtime was built and `tick` called. */
+  due: number;
   /** Those whose tick moved them. */
   moved: number;
   /** Those whose tick failed, and a notification pass that failed as a whole. */
@@ -171,17 +191,41 @@ export interface PassReport {
 }
 
 /**
- * One pass of the driver loop: each run in state `waiting`, oldest first, is `tick`ed under its own package; a run
- * whose tick fails (an unfit host, a halted tenant, a package that no longer loads) is reported and left as it is,
- * and the pass goes on. Then, with `notify`, the notification pass.
+ * Whether a waiting run may have something for `tick` to do now, read without a runtime: the deadline of the wait
+ * `runs.waiting` names (a decision's, an amendment's, a review's, a timer's) or of any other open wait has passed, or
+ * the wait it names was decided and the run has not moved for `STALE_DRIVE_MS`. It may say yes where `tick` then does
+ * nothing (an open wait of a run of 0.6 other than the one it names, a decision of 0.6 decided and not driven on),
+ * never no where `tick` would act.
+ */
+async function dueNow(db: Db, runId: string, now: number): Promise<boolean> {
+  const [run] = await db.query<Row>("select waiting from runs where run_id = $1 and state = 'waiting'", [runId]);
+  if (!run) return false;
+  const w = isObj((run["waiting"] ?? null) as Value) ? (run["waiting"] as Obj) : {};
+  const req = isObj(w["request"] ?? null) ? (w["request"] as Obj) : {};
+  if (typeof req["deadline"] === "number" && now >= req["deadline"]) return true;
+  const open = await openWaits(db, runId);
+  if (open.some((o) => EXPIRING.has(o.kind) && typeof o.request["deadline"] === "number" && now >= o.request["deadline"])) return true;
+  if (w["kind"] === "timer" || typeof w["command"] !== "string" || open.some((o) => o.command === w["command"])) return false;
+  const [row] = await db.query<Row>("select kind, state from commands where run_id = $1 and command_id = $2", [runId, w["command"]]);
+  return !!row && WAIT_KINDS.has(String(row["kind"])) && row["state"] !== "waiting" && now - (await lastMoved(db, runId)) >= STALE_DRIVE_MS;
+}
+
+/**
+ * One pass of the driver loop: each run in state `waiting`, oldest first, that has something due (`dueNow`) is
+ * `tick`ed by a runtime built for its own package, closed once it is done; a run whose tick fails (an unfit host, a
+ * halted tenant, a package that no longer loads) is reported and left as it is, and the pass goes on. Then, with
+ * `notify`, the notification pass, with the pass's signal: a stop cuts a request in flight.
  */
 export async function tickPass(db: Db, o: PassOptions, signal?: AbortSignal): Promise<PassReport> {
   const runs = (await db.query<Row>("select run_id from runs where state = 'waiting' order by created_at, run_id")).map((r) => String(r["run_id"]));
-  const report: PassReport = { waiting: runs.length, moved: 0, failed: 0 };
+  const report: PassReport = { waiting: runs.length, due: 0, moved: 0, failed: 0 };
+  const now = o.now ?? Date.now;
   for (const runId of runs) {
     if (signal?.aborted) break;
     let made: Awaited<ReturnType<PassOptions["runtimeFor"]>> | undefined;
     try {
+      if (!(await dueNow(db, runId, now()))) continue;
+      report.due++;
       const [row] = await db.query<Row>("select state, revision from runs where run_id = $1", [runId]);
       made = await o.runtimeFor(runId);
       const before = { state: String(row?.["state"]), revision: Number(row?.["revision"]) };
@@ -210,19 +254,41 @@ export async function tickPass(db: Db, o: PassOptions, signal?: AbortSignal): Pr
   return report;
 }
 
-/** One pass, or with `follow` one pass every `intervalMs` until `signal` aborts; gives the last pass's report. */
-export async function driveLoop(db: Db, o: PassOptions & { follow?: boolean; intervalMs?: number; signal?: AbortSignal; onPass?: (r: PassReport) => void }): Promise<PassReport> {
-  let last = await tickPass(db, o, o.signal);
-  o.onPass?.(last);
-  if (!o.follow) return last;
+/** The longest interval a timer of Node takes: a longer one is cut to 1 ms, which would make `--follow` a busy loop. */
+export const MAX_INTERVAL_MS = 2_147_483_647;
+
+/**
+ * One pass, or with `follow` one pass every `intervalMs` until `signal` aborts. With `follow`, a pass that throws (the
+ * database went away) is reported (`onPassError`), and the loop sleeps and goes on; without it, the throw is the
+ * caller's. Gives the last pass's report, and how many passes were made.
+ */
+export async function driveLoop(
+  db: Db,
+  o: PassOptions & { follow?: boolean; intervalMs?: number; signal?: AbortSignal; onPass?: (r: PassReport) => void; onPassError?: (e: unknown) => void },
+): Promise<{ last: PassReport | undefined; passes: number }> {
   const interval = o.intervalMs ?? TICK_INTERVAL_MS;
-  while (!o.signal?.aborted) {
+  if (!Number.isSafeInteger(interval) || interval < 1 || interval > MAX_INTERVAL_MS) throw new RangeError(`the interval is a whole number of milliseconds from 1 to ${MAX_INTERVAL_MS}`);
+  if (!o.follow) {
+    const last = await tickPass(db, o, o.signal);
+    o.onPass?.(last);
+    return { last, passes: 1 };
+  }
+  let last: PassReport | undefined;
+  let passes = 0;
+  for (;;) {
+    try {
+      last = await tickPass(db, o, o.signal);
+      o.onPass?.(last);
+    } catch (e) {
+      if (o.signal?.aborted) break;
+      o.onPassError?.(e);
+    }
+    passes++;
+    if (o.signal?.aborted) break;
     await sleep(interval, o.signal);
     if (o.signal?.aborted) break;
-    last = await tickPass(db, o, o.signal);
-    o.onPass?.(last);
   }
-  return last;
+  return { last, passes };
 }
 
 /** Waits `ms`, or until `signal` aborts. */

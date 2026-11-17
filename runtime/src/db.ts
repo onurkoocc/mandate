@@ -214,6 +214,10 @@ create table if not exists notify_cursors (
   run_id text not null,
   seq integer not null,
   at bigint not null,
+  start_seq integer not null default 0,
+  pending integer,
+  attempts integer not null default 0,
+  retry_at bigint,
   primary key (channel, run_id)
 );
 create table if not exists notify_dead (

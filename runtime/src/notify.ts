@@ -6,17 +6,25 @@
 //   (`notify_cursors`) that only moves forward, and the pump reads the journal after the fact. Nothing is written in
 //   the journal's transactions, and nothing is queued. Delivery is at least once: a receiver may get a notification
 //   twice, and knows the repeat by its `id`, the same for every retry.
-// - In order: a channel's cursor for a run does not move while a notification is being retried. After six failed
-//   attempts it is recorded in `notify_dead` and the cursor moves past it. A way out that is not there (the egress
-//   proxy does not answer, refuses the session or denies the request) is no attempt: the channel stops for the pass
-//   with its cursor where it was, and the next pass tries again.
+// - One attempt per notification per pass, so that a receiver that is slow or fails never holds up the driver loop.
+//   While a notification waits for its next attempt the channel's cursor for the run stands before it, so a run's
+//   notifications reach a channel in order; the attempts made and the earliest time of the next one are kept with the
+//   cursor, and the next attempt comes 1, 2, 4, 8 and 16 seconds later by the runtime's clock. The sixth failed attempt
+//   gives it up: it is recorded in `notify_dead` and the cursor moves past it. A way out that is not there (the proxy
+//   does not answer, or refuses the session) is no attempt: the channel's cursor stays, and the next pass tries again.
+// - A channel that meets a run for the first time does not replay its history: it is told of the waits still open
+//   (the latest question about each), and its cursor starts at the run's end.
+// - A run in a halted scope is not notified, and its cursors do not move, until the halt is lifted.
 // - What is sent is fixed (`Notification`): ids, the kind, the role, the deadline, `as_of` and a link. Of an event the
 //   pump reads its type, its sequence number and its time, and of the four S0 events (and `asks_exhausted`) the role
 //   asked, the command and the deadline, picked out by the database (`FACTS`): nothing else of an event's data, and
-//   nothing a step, a person or a model wrote, reaches this module. There is no body template.
+//   nothing a step, a person or a model wrote, reaches this module. What the starter of a run chose (the run's id, its
+//   tenant) and what a lead chose (the names inside a sub-program) are carried only in a narrow form, or as a digest
+//   (`carried`, `commandShown`). There is no body template.
 // - Two adapters: `webhook`, an HTTPS POST that leaves only through the egress proxy, in a gateway session with a
 //   credential by name, as a connector's requests do; and `file`, one JSON line per notification.
 
+import { createHash } from "node:crypto";
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { isProgram07OrLater, type WorkflowDef07 } from "@mandate/bridge";
@@ -30,12 +38,14 @@ import { digest, isObj, type Obj, type Value } from "./values.js";
 export const NOTIFICATION_FORMAT = "mandate/notification/0.1";
 /** The header a webhook's request carries the notification's id in. */
 export const NOTIFICATION_HEADER = "x-mandate-notification";
-/** How many times a notification is tried before it is given up (`notify_dead`). */
+/** How many attempts a notification is given before it is given up (`notify_dead`); one per pass at most. */
 export const NOTIFY_ATTEMPTS = 6;
 /** The longest one webhook request may take, from sending to its answer. */
 export const NOTIFY_TIMEOUT_MS = 10_000;
 /** The wait after the first failed attempt; it doubles after each further one (1 s, 2 s, 4 s, 8 s, 16 s). */
 export const NOTIFY_BACKOFF_MS = 1_000;
+/** The longest URL a channel or a link template may be. */
+const MAX_URL = 2048;
 
 /**
  * The events a person is told of, with the kind of notification each makes: what is asked of a role (S0, a
@@ -56,13 +66,16 @@ export const NOTIFIED: Readonly<Record<string, "decision" | "outcome">> = {
   asks_exhausted: "outcome",
 };
 
+/** The S0 events: each is about one wait, by its command. */
+const S0_TYPES = ["wait_opened", "review_requested", "review_escalated", "amendment_requested"] as const;
+
 /** The class each kind of notification is of. */
 const KIND_CLASS = { decision: "S0", outcome: "S1" } as const;
 
 /** What a person is told: identifiers, the kind, the role, the deadline, where the run stood, and a link. */
 export interface Notification {
   format: typeof NOTIFICATION_FORMAT;
-  /** `digest("operation", { format, channel, run, seq })`: the same for every retry of one notification. */
+  /** `digest("operation", { format, channel, run, seq })`, of the true run id: the same for every retry. */
   id: string;
   kind: "decision" | "outcome";
   event: string;
@@ -77,7 +90,7 @@ export interface Notification {
   role: string | null;
   command: string | null;
   deadline: number | null;
-  /** The run's revision and last event when the notification was made. */
+  /** The run's revision and last event, read together when the pump came to the run. */
   as_of: { revision: number; event: number };
   link: string | null;
 }
@@ -85,7 +98,7 @@ export interface Notification {
 /** The members of every notification, in the order it is written: nothing more and nothing less is ever sent. */
 export const NOTIFICATION_MEMBERS = ["format", "id", "kind", "event", "class", "tenant", "run", "workflow", "package", "seq", "at", "role", "command", "deadline", "as_of", "link"] as const;
 
-/** A notification that was not delivered. A retryable one is tried again, up to `NOTIFY_ATTEMPTS` in all. */
+/** A notification that was not delivered. A retryable one is tried again at a later pass, up to `NOTIFY_ATTEMPTS` in all. */
 export class NotifyFailed extends Error {
   constructor(
     readonly reason: string,
@@ -98,15 +111,55 @@ export class NotifyFailed extends Error {
 /** The way out is not there: nothing was sent toward the receiver, so it is no attempt. */
 export class NotifyUnavailable extends Error {}
 
-/** One channel's adapter. `send` delivers or throws `NotifyFailed` (or `NotifyUnavailable`). */
+/** The pass was stopped while a notification was being sent: no attempt, and the cursor stays before it. */
+class Stopped extends Error {}
+
+/** One channel's adapter. `send` delivers or throws `NotifyFailed` (or `NotifyUnavailable`); `signal` stops it. */
 export interface Notifier {
   name: string;
-  send(n: Notification): Promise<void>;
+  send(n: Notification, signal?: AbortSignal): Promise<void>;
+}
+
+// ── what a notification may carry ─────────────────────────────────────
+
+/**
+ * The forms a value chosen outside the program may take in a notification: a run's id and a tenant (whoever starts a
+ * run chooses them, as any text), a workflow's name, a command's IR path and a package's hash. Default run ids (UUIDs)
+ * and ordinary tenant names are carried as they are.
+ */
+export const CARRIED = {
+  id: /^[A-Za-z0-9._:@#~-]{1,128}$/,
+  workflow: /^[A-Za-z_][A-Za-z0-9_]{0,127}$/,
+  command: /^\/[A-Za-z0-9_./:@#~[\]-]{0,255}$/,
+  package: /^sha256:[0-9a-f]{64}$/,
+} as const;
+
+const hex32 = (v: string): string => createHash("sha256").update(v, "utf8").digest("hex").slice(0, 32);
+
+/** `value` when it has the form `pattern` allows; otherwise `digest:` and 32 hex digits of its SHA-256, in its place. */
+export function carried(value: string, pattern: RegExp): string {
+  return pattern.test(value) ? value : `digest:${hex32(value)}`;
+}
+
+/**
+ * A wait's command as a notification carries it. A wait inside a lead's sub-program has a command that holds the names
+ * the lead (a model) chose for its definitions: it is carried as the command the sub-program was admitted under (the
+ * `plan` node the author wrote, and the sub-program's number), followed by a digest of the rest, so that two waits of
+ * one sub-program still differ. `admitted` are the commands of the run's admitted sub-programs (`program_admitted`).
+ */
+export function commandShown(command: string | null, admitted: readonly string[]): string | null {
+  if (command === null) return null;
+  const inside = admitted.filter((p) => command.startsWith(`${p}/`)).sort((a, b) => b.length - a.length)[0];
+  return carried(inside === undefined ? command : `${inside}/digest:${hex32(command.slice(inside.length + 1))}`, CARRIED.command);
 }
 
 // ── the configuration ─────────────────────────────────────────────────
 
-/** A webhook channel as the configuration gives it, held to the rules of a connector's gateway. */
+/**
+ * A webhook channel as the configuration gives it, held to the rules of a connector's gateway. Its URL is no place
+ * for a secret: it is in the runtime's configuration, and the credential goes in through the proxy. A receiver that
+ * keeps its secret in its URL (the incoming webhooks of Slack and Teams) is not supported by this design.
+ */
 export interface WebhookChannel {
   /** `https://<host><path>`, as written. */
   url: string;
@@ -123,7 +176,7 @@ export type Channel = { webhook: WebhookChannel } | { file: string };
 export interface NotificationsConfig {
   channels: Record<string, Channel>;
   roles: Record<string, { channels: string[]; outcomes: boolean }>;
-  /** The link template: `{run}`, `{role}` and `{command}` only, each URL-encoded where it goes. */
+  /** The link template: `{run}`, `{role}` and `{command}` only, after the host, each URL-encoded where it goes. */
   link: string | null;
 }
 
@@ -211,7 +264,7 @@ function webhookOf(raw: unknown, at: string, bad: (m: string) => never, isRecord
     return bad(`${at}.url is one absolute https:// URL`);
   }
   if (!validHost(u.hostname) || authority.toLowerCase() !== u.hostname || u.username || u.password || u.port || u.search || u.hash) bad(`${at}.url's host is a host name or an IPv4 address, as written`);
-  if (/[\x00-\x20\x7f]/.test(url)) bad(`${at}.url holds no space or control character`);
+  if (/[\x00-\x20\x7f]/.test(url) || url.length > MAX_URL) bad(`${at}.url holds no space or control character, and is at most ${MAX_URL} characters`);
   const credential = w["credential"];
   if (credential === undefined) bad(`${at}.credential is required: the name of the credential the egress proxy puts in`);
   if (typeof credential !== "string" || !CREDENTIAL_NAME.test(credential)) bad(`${at}.credential is a credential's name, of letters, digits, _ and -, starting with a letter, at most 64 characters`);
@@ -227,18 +280,38 @@ function webhookOf(raw: unknown, at: string, bad: (m: string) => never, isRecord
   return { url, host: u.hostname, credential: credential as string, header: header as string, template: template as string, format: format as "mandate" | "text" };
 }
 
-/** A link template: an absolute http(s) URL whose only placeholders are `{run}`, `{role}` and `{command}`. */
+/**
+ * A link template: an absolute http(s) URL whose only placeholders are `{run}`, `{role}` and `{command}`, each after
+ * the host (in the path, the query or the fragment), so that no value can change where the link points.
+ */
 function linkTemplate(link: unknown, bad: (m: string) => never): void {
-  if (typeof link !== "string" || !/^https?:\/\/[^\s]+$/.test(link) || /[\x00-\x20\x7f]/.test(link)) bad(`notifications.link is an absolute http:// or https:// URL, as a template`);
+  if (typeof link !== "string" || !/^https?:\/\/[^\s]+$/.test(link) || /[\x00-\x20\x7f]/.test(link) || link.length > MAX_URL) bad(`notifications.link is an absolute http:// or https:// URL, as a template, of at most ${MAX_URL} characters`);
   const rest = (link as string).replace(/\{(run|role|command)\}/g, "");
   const other = /\{[^}]*\}?|\}/.exec(rest);
   if (other) bad(`notifications.link may hold {run}, {role} and {command} only, and holds ${JSON.stringify(other[0])}`);
+  const s = link as string;
+  const end = s.slice(s.indexOf("//") + 2).search(/[/?#]/);
+  const authority = end < 0 ? s : s.slice(0, s.indexOf("//") + 2 + end);
+  if (authority.includes("{") || end < 0) bad(`notifications.link has its placeholders after the host, in the path or the query: ${JSON.stringify(authority)} is where it points`);
+  try {
+    new URL(s.replace(/\{(run|role|command)\}/g, "x"));
+  } catch {
+    bad(`notifications.link is an absolute http:// or https:// URL`);
+  }
 }
 
-/** The link of a notification: the template with each placeholder replaced by its value, URL-encoded (none: empty). */
+/**
+ * The link of a notification: the template with each placeholder replaced by its value, URL-encoded (none: empty).
+ * A link that would point anywhere but the template's origin is none.
+ */
 export function linkOf(template: string | null, v: { run: string; role: string | null; command: string | null }): string | null {
   if (template === null) return null;
-  return template.replace(/\{(run|role|command)\}/g, (_, k: "run" | "role" | "command") => encodeURIComponent(v[k] ?? ""));
+  const link = template.replace(/\{(run|role|command)\}/g, (_, k: "run" | "role" | "command") => encodeURIComponent(v[k] ?? ""));
+  try {
+    return new URL(link).origin === new URL(template.replace(/\{(run|role|command)\}/g, "")).origin ? link : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The fixed sentence of a `text` webhook, made of the notification's own members and nothing else. */
@@ -270,12 +343,12 @@ export interface WebhookTransport {
  * The egress proxy as a webhook's way out: for each channel and tenant one gateway session to the webhook's host, POST
  * only, with the channel's credential in its header and template, as a connector's. The proxy does not open a session
  * that belongs to no run (its admin protocol requires `tenant`, `run` and `command`), so the session is opened for the
- * tenant of the run notified and the run `notify:<channel>`, a name no run of the runtime is given by the runtime: a
- * halt of the tenant (`revoke { tenant }`) cuts it as it cuts the tenant's runs', and `revoke { run: "notify:<channel>" }`
- * cuts the channel's. What a session reaches is its one destination, which the proxy holds to its own configuration
- * (`credential_not_allowed`); its scope only says what a revocation cuts. A session revoked is not replaced within the
- * pass; the next pass opens another. `send` is what the gateway sends with (a test's spy); `timeoutMs` bounds each
- * admin request.
+ * tenant of the run notified and the run `notify:<channel>`. What a session reaches is its one destination, which the
+ * proxy holds to its own configuration (`credential_not_allowed`); its scope only says what a revocation cuts:
+ * `revoke { tenant }` cuts the tenant's notification sessions, `revoke { run: "notify:<channel>" }` the channel's (and,
+ * by the same name, a run someone named so). A halted tenant's runs are not notified at all (`notifyPass`). A session
+ * revoked is not replaced within the pass; the next pass opens another. `send` is what the gateway sends with (a
+ * test's spy); `timeoutMs` bounds each admin request.
  */
 export function egressTransport(o: { admin: string; send?: typeof fetch; timeoutMs?: number; now?: () => number }): () => WebhookTransport {
   return () => {
@@ -320,37 +393,53 @@ function causeOf(e: unknown): string {
   return typeof code === "string" ? code : "the connection failed";
 }
 
+/** The proxy's denials that are about the session, not the request: nothing reached the receiver, and none is an attempt. */
+const SESSION_DENIALS = new Set(["session_revoked", "session_expired"]);
+
 /**
  * The webhook adapter: one HTTPS POST of the notification (`mandate`) or of `{"text": <its sentence>}` (`text`), with
  * `content-type: application/json` and the notification's id in `x-mandate-notification`, through `way` and no other
- * way. A redirect is an error and is not followed; the request and its answer take 10 seconds at most; nothing of the
- * answer is read. A 2xx delivers. A 5xx, a 408, a 429, a connection that fails and no answer in time are retried; any
- * other answer, a redirect among them, gives the notification up. A denial of the egress proxy, a proxy that does not
- * answer and a session it revoked are `NotifyUnavailable`: nothing reached the receiver. A reason names the host and
- * the status or the cause, never the URL's path (which a chat webhook keeps its own secret in), a header or a body.
+ * way. A redirect is an error and is not followed; the request and its answer take `timeoutMs` (10 s) at most, and
+ * `signal` stops it at once; nothing of the answer is read.
+ *
+ * - A 2xx delivers.
+ * - A failed attempt, tried again at a later pass: a 5xx, a 408, a 429, a connection that fails, no answer in time,
+ *   and a denial of this request by the egress proxy.
+ * - Given up at once: any other answer, a redirect among them.
+ * - No attempt (`NotifyUnavailable`): a proxy that does not answer, a session it refuses or revoked.
+ *
+ * A reason names the host and the status, the cause or the proxy's denial, never the URL's path, a header or a body.
  */
-export function webhookNotifier(channel: string, spec: WebhookChannel, way: (tenant: string) => WebhookWay): Notifier {
+export function webhookNotifier(channel: string, spec: WebhookChannel, way: (tenant: string) => WebhookWay, timeoutMs = NOTIFY_TIMEOUT_MS): Notifier {
   if (!/^https:\/\//.test(spec.url)) throw new Violation("bad_notification_channel", `notification channel ${channel}: a webhook is reached over https:// only`);
   return {
     name: channel,
-    async send(n) {
+    async send(n, signal) {
       const out = way(n.tenant);
       await out.ready();
       const body = spec.format === "text" ? JSON.stringify({ text: sentence(n) }) : JSON.stringify(n);
-      const stop = AbortSignal.timeout(NOTIFY_TIMEOUT_MS);
+      const timeout = AbortSignal.timeout(timeoutMs);
       let res: Response;
       try {
-        res = await out.fetch(spec.url, { method: "POST", headers: { "content-type": "application/json", [NOTIFICATION_HEADER]: n.id }, body, redirect: "error", signal: stop });
+        res = await out.fetch(spec.url, {
+          method: "POST",
+          headers: { "content-type": "application/json", [NOTIFICATION_HEADER]: n.id },
+          body,
+          redirect: "error",
+          signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
+        });
       } catch (e) {
+        if (signal?.aborted) throw new Stopped();
         if (e instanceof Violation) throw new NotifyUnavailable(e.message);
-        if (stop.aborted) throw new NotifyFailed(`${spec.host} gave no answer within ${NOTIFY_TIMEOUT_MS} ms`, true);
+        if (timeout.aborted) throw new NotifyFailed(`${spec.host} gave no answer within ${timeoutMs} ms`, true);
         if (redirected(e)) throw new NotifyFailed(`${spec.host} answered with a redirect, which is not followed`, false);
         throw new NotifyFailed(`${spec.host} could not be reached (${causeOf(e)})`, true);
       }
       // Nothing of the answer is read: what a receiver says is no part of what the runtime keeps.
       await res.body?.cancel().catch(() => undefined);
       const denied = res.headers.get(DENIED_HEADER);
-      if (denied) throw new NotifyUnavailable(`the egress proxy denied the request to ${spec.host} (${denied})`);
+      if (denied && SESSION_DENIALS.has(denied)) throw new NotifyUnavailable(`the egress proxy ended the session for ${spec.host} (${denied})`);
+      if (denied) throw new NotifyFailed(`the egress proxy denied the request to ${spec.host} (${denied.slice(0, 64)})`, true);
       if (res.status >= 200 && res.status < 300) return;
       if (res.status >= 300 && res.status < 400) throw new NotifyFailed(`${spec.host} answered ${res.status}, a redirect, which is not followed`, false);
       throw new NotifyFailed(`${spec.host} answered ${res.status}`, res.status >= 500 || res.status === 408 || res.status === 429);
@@ -388,20 +477,22 @@ const FACTS = `case type
   when 'asks_exhausted' then jsonb_build_object('command', data->'command')
   end`;
 
-interface Seen {
+/** An event as the pump reads it. */
+export interface Seen {
   seq: number;
   type: string;
   at: number;
   facts: Obj | null;
 }
 
-/** A run of 0.7, as the pump reads it. */
+const seenOf = (r: Row): Seen => ({ seq: Number(r["seq"]), type: String(r["type"]), at: Number(r["at"]), facts: isObj((r["facts"] ?? null) as Value) ? (r["facts"] as Obj) : null });
+
+/** A run of 0.7, as the pump reads it: its ids, its owner role, and the channel's cursor for it. */
 interface Run07 {
   run: string;
   tenant: string;
   workflow: string;
   package: string;
-  revision: number;
   owner: string | null;
 }
 
@@ -420,11 +511,22 @@ export function ownerRole(def: unknown): string | null {
 }
 
 /**
+ * The wait an S0 event is about, and the role and deadline it asks, or undefined for an event that tells no question:
+ * a `wait_opened` of a review or an amendment is not told, since its `review_requested` or `amendment_requested`,
+ * written in the same transaction, is (one question is told once); an amendment's request, with the role it asks and
+ * its deadline, is in its wait's `wait_opened`, the event after it.
+ */
+function questionOf(e: Seen, pair: Seen | undefined): { command: string | null; role: string | null; deadline: number | null } | undefined {
+  let facts = e.facts ?? {};
+  if (e.type === "wait_opened" && (facts["kind"] === "review" || facts["kind"] === "amendment")) return undefined;
+  if (e.type === "amendment_requested") facts = pair && pair.type === "wait_opened" && pair.seq === e.seq + 1 && pair.facts?.["kind"] === "amendment" ? pair.facts : {};
+  return { command: text(facts["command"]), role: text(facts["role"]), deadline: number(facts["deadline"]) };
+}
+
+/**
  * Who an event is addressed to (spec/attention.md "Notifications"), or undefined when it is sent to nobody:
  *
- * - an S0 event, to the role it asks; one that asks no role, to the owner role; with no owner role, to nobody. A
- *   `wait_opened` of a review or an amendment is not sent: its `review_requested` or `amendment_requested`, written
- *   in the same transaction, is, so that one question is told once;
+ * - an S0 event, to the role it asks; one that asks no role, to the owner role; with no owner role, to nobody;
  * - an S1 event, to the roles configured with `outcomes: true` and to the owner role.
  *
  * Only a role the configuration names has channels; `role` is always one of its names.
@@ -432,47 +534,61 @@ export function ownerRole(def: unknown): string | null {
 export function addressOf(e: Seen, pair: Seen | undefined, run: Pick<Run07, "owner">, config: NotificationsConfig): { kind: "decision" | "outcome"; roles: string[]; command: string | null; deadline: number | null } | undefined {
   const kind = Object.hasOwn(NOTIFIED, e.type) ? NOTIFIED[e.type]! : undefined;
   if (!kind || eventClass(e.type) !== KIND_CLASS[kind]) return undefined;
-  const configured = (r: string | null): r is string => r !== null && Object.hasOwn(config.roles, r);
   if (kind === "outcome") {
     const roles = Object.keys(config.roles).filter((r) => config.roles[r]!.outcomes || r === run.owner).sort();
     return { kind, roles, command: e.type === "asks_exhausted" ? text(e.facts?.["command"]) : null, deadline: null };
   }
-  let facts = e.facts ?? {};
-  if (e.type === "wait_opened" && (facts["kind"] === "review" || facts["kind"] === "amendment")) return undefined;
-  // An amendment's request, with the role it asks and its deadline, is in its wait's `wait_opened`, the next event.
-  if (e.type === "amendment_requested") facts = pair && pair.type === "wait_opened" && pair.seq === e.seq + 1 && pair.facts?.["kind"] === "amendment" ? pair.facts : {};
-  const asked = text(facts["role"]);
-  const role = asked ?? run.owner;
-  return { kind, roles: configured(role) ? [role] : [], command: text(facts["command"]), deadline: number(facts["deadline"]) };
+  const q = questionOf(e, pair);
+  if (!q) return undefined;
+  const role = q.role ?? run.owner;
+  return { kind, roles: role !== null && Object.hasOwn(config.roles, role) ? [role] : [], command: q.command, deadline: q.deadline };
 }
 
-/** The notification of `e` on `channel`, or undefined when the event is not addressed to a role whose channels hold it. */
-export function notificationOf(channel: string, e: Seen, pair: Seen | undefined, run: Run07, lastEvent: number, config: NotificationsConfig): Notification | undefined {
+/**
+ * The notification of `e` on `channel`, or undefined when the event is not addressed to a role whose channels hold it.
+ * The id is made of the true run id; every member that carries what whoever started the run chose, or what a lead
+ * chose, carries its safe form (`carried`, `commandShown`), and so do the sentence and the link made of them.
+ */
+export function notificationOf(channel: string, e: Seen, pair: Seen | undefined, run: Run07, asOf: { revision: number; event: number }, config: NotificationsConfig, admitted: readonly string[] = []): Notification | undefined {
   const a = addressOf(e, pair, run, config);
   if (!a) return undefined;
   const reached = a.roles.filter((r) => config.roles[r]!.channels.includes(channel));
   if (!reached.length) return undefined;
   // On a channel more than one role reaches, an outcome names the owner role if it is one of them, else the first by name.
   const role = run.owner !== null && reached.includes(run.owner) ? run.owner : reached[0]!;
-  const n = {
+  const shown = { run: carried(run.run, CARRIED.id), command: commandShown(a.command, admitted) };
+  return {
     format: NOTIFICATION_FORMAT,
     id: digest("operation", { format: NOTIFICATION_FORMAT, channel, run: run.run, seq: e.seq }),
     kind: a.kind,
     event: e.type,
     class: KIND_CLASS[a.kind],
-    tenant: run.tenant,
-    run: run.run,
-    workflow: run.workflow,
-    package: run.package,
+    tenant: carried(run.tenant, CARRIED.id),
+    run: shown.run,
+    workflow: carried(run.workflow, CARRIED.workflow),
+    package: carried(run.package, CARRIED.package),
     seq: e.seq,
     at: e.at,
     role,
-    command: a.command,
+    command: shown.command,
     deadline: a.deadline,
-    as_of: { revision: run.revision, event: lastEvent },
-    link: linkOf(config.link, { run: run.run, role, command: a.command }),
+    as_of: asOf,
+    link: linkOf(config.link, { run: shown.run, role, command: shown.command }),
   } satisfies Notification;
-  return n;
+}
+
+/**
+ * The questions still open of a run that a channel meets for the first time: for each wait still waiting, the latest
+ * S0 event that tells it (an escalation, rather than the request it escalated). Given the S0 events in order.
+ */
+function stillOpen(s0: Seen[], open: ReadonlySet<string>): Set<number> {
+  const bySeq = new Map(s0.map((e) => [e.seq, e]));
+  const latest = new Map<string, number>();
+  for (const e of s0) {
+    const q = questionOf(e, bySeq.get(e.seq + 1));
+    if (q?.command && open.has(q.command)) latest.set(q.command, e.seq);
+  }
+  return new Set(latest.values());
 }
 
 // ── the pump ──────────────────────────────────────────────────────────
@@ -481,12 +597,12 @@ export interface NotifyOptions {
   config: NotificationsConfig;
   /** How a webhook's requests leave, a new transport for each pass (`egressTransport`); a webhook without one sends nothing. */
   transport?: () => WebhookTransport;
-  /** The time `notify_cursors` and `notify_dead` record. */
+  /** The runtime's clock: when the next attempt of a notification may come, and the time the tables record. */
   now?: () => number;
-  /** How the pump waits between two attempts; a test records the waits instead. */
-  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
-  /** Stops the pass: a notification being retried stays where it is, with the cursor before it. */
+  /** Stops the pass, a request in flight among it: a notification being sent stays where it is, with the cursor before it. */
   signal?: AbortSignal;
+  /** The longest one webhook request may take (10 s). */
+  timeoutMs?: number;
   /** How many events are read at a time. */
   batch?: number;
   onSent?: (channel: string, n: Notification) => void;
@@ -497,87 +613,100 @@ export interface NotifyOptions {
 
 export interface NotifyReport {
   sent: number;
-  /** Attempts that failed and were tried again. */
-  retried: number;
+  /** Attempts of this pass that failed, each tried again at a later pass. */
+  failed: number;
   /** Notifications given up (`notify_dead`). */
   dead: number;
-  /** The channels that stopped for the pass, and why. */
+  /** Notifications that wait for their next attempt once the pass is over, on the pass's channels. */
+  pending: number;
+  /** The channels whose way out was not there, and why. */
   failures: Array<{ channel: string; message: string }>;
 }
 
-/** The pause after failed attempt `n` (from 1). */
+/** The pause after failed attempt `n` (from 1), before attempt `n + 1` may come. */
 export function backoffMs(n: number): number {
   return NOTIFY_BACKOFF_MS * 2 ** (n - 1);
 }
 
-function waitMs(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal?.aborted) return resolve();
-    const done = (): void => {
-      clearTimeout(t);
-      signal?.removeEventListener("abort", done);
-      resolve();
-    };
-    const t = setTimeout(done, ms);
-    signal?.addEventListener("abort", done);
-  });
+/** The packages of 0.7, by hash: a package's hash names what it holds for good, so each is read once per process. */
+const KNOWN = new WeakMap<Db, { is07: Map<string, boolean>; owners: Map<string, string | null> }>();
+
+async function packages07(db: Db, is07: Map<string, boolean>): Promise<string[]> {
+  for (const r of await db.query<Row>("select package_hash from packages")) {
+    const hash = String(r["package_hash"]);
+    if (is07.has(hash)) continue;
+    // The languages of the program and of the modules it carries, and nothing else of the package.
+    const [p] = await db.query<Row>(
+      "select program->'language' as language, (select coalesce(jsonb_agg(m.value->'language'), '[]'::jsonb) from jsonb_each(coalesce(p.modules, '{}'::jsonb)) m) as modules from packages p where package_hash = $1",
+      [hash],
+    );
+    const languages = p ? [p["language"], ...(Array.isArray(p["modules"]) ? (p["modules"] as Value[]) : [])] : [];
+    is07.set(hash, languages.some((language) => isProgram07OrLater({ language })));
+  }
+  return [...is07].filter(([, yes]) => yes).map(([hash]) => hash);
 }
 
-class Stopped extends Error {}
+interface Cursor {
+  seq: number;
+  start: number;
+  pending: number | null;
+  attempts: number;
+  retryAt: number | null;
+}
 
-/** The runs of 0.7, oldest first, each with its owner role; a package's language and owner are read once per process. */
-async function runs07(db: Db, known: Map<string, boolean>, owners: Map<string, string | null>): Promise<Run07[]> {
-  const rows = await db.query<Row>("select run_id, tenant, workflow, package_hash, revision from runs order by created_at, run_id");
-  const out: Run07[] = [];
-  for (const r of rows) {
-    const hash = String(r["package_hash"]);
-    if (!known.has(hash)) {
-      // The languages of the program and of the modules it carries, and nothing else of the package.
-      const [p] = await db.query<Row>(
-        "select program->'language' as language, (select coalesce(jsonb_agg(m.value->'language'), '[]'::jsonb) from jsonb_each(coalesce(p.modules, '{}'::jsonb)) m) as modules from packages p where package_hash = $1",
-        [hash],
-      );
-      const languages = p ? [p["language"], ...(Array.isArray(p["modules"]) ? (p["modules"] as Value[]) : [])] : [];
-      known.set(hash, languages.some((language) => isProgram07OrLater({ language })));
-    }
-    if (!known.get(hash)) continue;
-    const workflow = String(r["workflow"]);
+const cursorOf = (r: Row): Cursor | undefined =>
+  r["seq"] === null || r["seq"] === undefined
+    ? undefined
+    : { seq: Number(r["seq"]), start: Number(r["start_seq"] ?? 0), pending: r["pending"] === null || r["pending"] === undefined ? null : Number(r["pending"]), attempts: Number(r["attempts"] ?? 0), retryAt: r["retry_at"] === null || r["retry_at"] === undefined ? null : Number(r["retry_at"]) };
+
+/**
+ * One notification pass. For each channel a role names (the channels side by side), for each run of 0.7 with something
+ * new past the channel's cursor (one run after another), in the run's order:
+ *
+ * - a run in a halted scope (its tenant, or every tenant) is skipped, and nothing of it moves;
+ * - a channel that meets a run for the first time is told only of its waits still open, and its cursor starts there;
+ * - an event addressed to none of the channel's roles moves the cursor past it;
+ * - an event addressed to one of them is sent once in the pass: delivered, the cursor moves past it; failed, it waits
+ *   for a later pass, with the cursor before it and the run's later events behind it, or, failed for the sixth time or
+ *   for good, it is given up (`notify_dead`) and the cursor moves past it. A failed attempt ends the channel's pass:
+ *   its receiver does not answer as it should, and is not asked again until the next pass.
+ */
+export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport> {
+  const report: NotifyReport = { sent: 0, failed: 0, dead: 0, pending: 0, failures: [] };
+  const used = new Set(Object.values(o.config.roles).flatMap((r) => r.channels));
+  const channels = Object.keys(o.config.channels).filter((c) => used.has(c)).sort();
+  if (!channels.length || o.signal?.aborted) return report;
+  let cache = KNOWN.get(db);
+  if (!cache) KNOWN.set(db, (cache = { is07: new Map(), owners: new Map() }));
+  const owners = cache.owners;
+  const hashes = await packages07(db, cache.is07);
+  const transport = o.transport?.();
+  const now = o.now ?? Date.now;
+  const batch = Math.max(2, o.batch ?? 500);
+  const halts = new Map<string, Promise<boolean>>();
+  const halted = (tenant: string): Promise<boolean> => {
+    let h = halts.get(tenant);
+    // As a start or a resume asks (journal.ts `openHalt`): a halt of this tenant, or of every tenant, not lifted.
+    if (!h) halts.set(tenant, (h = db.query<Row>("select 1 as halted from halts where lifted_at is null and (tenant is null or tenant = $1) limit 1", [tenant]).then((r) => r.length > 0)));
+    return h;
+  };
+  const ownerOf = async (hash: string, workflow: string): Promise<string | null> => {
     const key = JSON.stringify([hash, workflow]);
     if (!owners.has(key)) {
       const [d] = await db.query<Row>("select program->'defs'->$2::text as def from packages where package_hash = $1", [hash, workflow]);
       const def = (d?.["def"] ?? null) as Value;
       owners.set(key, ownerRole(isObj(def) ? { owner: def["owner"], envelope: isObj(def["envelope"] ?? null) ? { owner: (def["envelope"] as Obj)["owner"] } : undefined } : null));
     }
-    out.push({ run: String(r["run_id"]), tenant: String(r["tenant"]), workflow, package: hash, revision: Number(r["revision"]), owner: owners.get(key) ?? null });
-  }
-  return out;
-}
-
-/** The languages and owners read so far, by package: a package's hash names what it holds for good. */
-const KNOWN = new WeakMap<Db, { known: Map<string, boolean>; owners: Map<string, string | null> }>();
-
-/**
- * One notification pass: for each channel a role names, for each run of 0.7, the events after the channel's cursor
- * for the run, in order. An event addressed to none of the channel's roles moves the cursor past it; one addressed to
- * one of them is sent, tried up to `NOTIFY_ATTEMPTS` times with a backoff, and the cursor moves past it once it is
- * delivered or given up (`notify_dead`). The channels go on side by side; one channel's runs one after another.
- */
-export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport> {
-  const report: NotifyReport = { sent: 0, retried: 0, dead: 0, failures: [] };
-  const used = new Set(Object.values(o.config.roles).flatMap((r) => r.channels));
-  const channels = Object.keys(o.config.channels).filter((c) => used.has(c)).sort();
-  if (!channels.length || o.signal?.aborted) return report;
-  let cache = KNOWN.get(db);
-  if (!cache) KNOWN.set(db, (cache = { known: new Map(), owners: new Map() }));
-  const runs = await runs07(db, cache.known, cache.owners);
-  const transport = o.transport?.();
-  const now = o.now ?? Date.now;
-  const pause = o.sleep ?? waitMs;
-  const batch = Math.max(2, o.batch ?? 500);
+    return owners.get(key) ?? null;
+  };
+  /** Moves the cursor past `seq`, and forgets a notification waiting for its next attempt at or before it. */
   const cursorTo = async (channel: string, run: string, seq: number): Promise<void> => {
     await db.query(
-      `insert into notify_cursors (channel, run_id, seq, at) values ($1, $2, $3, $4)
-       on conflict (channel, run_id) do update set seq = excluded.seq, at = excluded.at where notify_cursors.seq < excluded.seq`,
+      `update notify_cursors set seq = $3, at = $4,
+         attempts = case when pending is not null and pending <= $3 then 0 else attempts end,
+         retry_at = case when pending is not null and pending <= $3 then null else retry_at end,
+         pending = case when pending is not null and pending <= $3 then null else pending end
+       where channel = $1 and run_id = $2 and seq < $3`,
       [channel, run, seq, now()],
     );
   };
@@ -587,65 +716,115 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
     const notifier: Notifier =
       "file" in c
         ? fileNotifier(channel, c.file)
-        : webhookNotifier(channel, c.webhook, (tenant) => {
-            if (!transport) throw new NotifyUnavailable(`channel ${channel} is a webhook, and no egress proxy is configured for it`);
-            return transport.open(channel, c.webhook, tenant);
-          });
+        : webhookNotifier(
+            channel,
+            c.webhook,
+            (tenant) => {
+              if (!transport) throw new NotifyUnavailable(`channel ${channel} is a webhook, and no egress proxy is configured for it`);
+              return transport.open(channel, c.webhook, tenant);
+            },
+            o.timeoutMs,
+          );
+    // The runs with something new past the cursor, or that the channel has not met yet, and none whose notification
+    // waits for its next attempt: chosen by the database, not read one by one.
+    const runs = await db.query<Row>(
+      `select r.run_id, r.tenant, r.workflow, r.package_hash, c.seq, c.start_seq, c.pending, c.attempts, c.retry_at
+         from runs r left join notify_cursors c on c.channel = $1 and c.run_id = r.run_id
+        where r.package_hash = any($2::text[])
+          and (c.run_id is null or ((c.retry_at is null or c.retry_at <= $3) and exists (select 1 from events e where e.run_id = r.run_id and e.seq > c.seq)))
+        order by r.created_at, r.run_id`,
+      [channel, hashes, now()],
+    );
     // A tenant whose way out is not there is left for the next pass; the channel's other tenants go on.
     const unavailable = new Set<string>();
-    for (const run of runs) {
+    for (const r of runs) {
       if (o.signal?.aborted) return;
-      if (unavailable.has(run.tenant)) continue;
-      const [cur] = await db.query<Row>("select seq from notify_cursors where channel = $1 and run_id = $2", [channel, run.run]);
-      let cursor = cur ? Number(cur["seq"]) : 0;
-      const [m] = await db.query<Row>("select max(seq) as newest from events where run_id = $1", [run.run]);
-      const last = m?.["newest"] === null || m?.["newest"] === undefined ? 0 : Number(m["newest"]);
-      if (last <= cursor) continue;
+      const run: Run07 = { run: String(r["run_id"]), tenant: String(r["tenant"]), workflow: String(r["workflow"]), package: String(r["package_hash"]), owner: null };
+      if (unavailable.has(run.tenant) || (await halted(run.tenant))) continue;
+      run.owner = await ownerOf(run.package, run.workflow);
+      // Where the run stands, read at one moment: its revision and its last event.
+      const [snap] = await db.query<Row>("select r.revision, (select max(seq) from events e where e.run_id = r.run_id) as last from runs r where r.run_id = $1", [run.run]);
+      const asOf = { revision: Number(snap?.["revision"] ?? 0), event: Number(snap?.["last"] ?? 0) };
+      const last = asOf.event;
+      const open = async (): Promise<Set<string>> => new Set((await db.query<Row>("select command_id from commands where run_id = $1 and state = 'waiting'", [run.run])).map((x) => String(x["command_id"])));
+      const s0 = async (after: number): Promise<Seen[]> =>
+        (await db.query<Row>(`select seq, type, at, ${FACTS} as facts from events where run_id = $1 and seq > $2 and seq <= $3 and type = any($4::text[]) order by seq`, [run.run, after, last, [...S0_TYPES]])).map(seenOf);
+      const admitted = (await db.query<Row>("select data->>'command' as c from events where run_id = $1 and type = 'program_admitted'", [run.run])).flatMap((x) => (typeof x["c"] === "string" ? [x["c"]] : []));
+      let cur = cursorOf(r);
+      if (!cur) {
+        // First met: what is still asked is told, and nothing else of the past; the cursor starts at the run's end.
+        const all = await s0(0);
+        const keep = stillOpen(all, await open());
+        const bySeq = new Map(all.map((e) => [e.seq, e]));
+        const mine = all.filter((e) => keep.has(e.seq) && notificationOf(channel, e, bySeq.get(e.seq + 1), run, asOf, o.config) !== undefined).map((e) => e.seq);
+        const from = mine.length ? Math.min(...mine) - 1 : last;
+        await db.query("insert into notify_cursors (channel, run_id, seq, at, start_seq) values ($1, $2, $3, $4, $5) on conflict (channel, run_id) do nothing", [channel, run.run, from, now(), last]);
+        const [again] = await db.query<Row>("select seq, start_seq, pending, attempts, retry_at from notify_cursors where channel = $1 and run_id = $2", [channel, run.run]);
+        cur = again ? cursorOf(again) : undefined;
+        if (!cur) continue;
+      }
+      if (cur.seq >= last) continue;
+      // Of what came before the channel met the run, only the questions still open are told.
+      const keep = cur.start > cur.seq ? stillOpen(await s0(cur.seq), await open()) : new Set<number>();
+      let cursor = cur.seq;
       let moved = cursor;
       try {
-        while (cursor < last) {
-          const page = (await db.query<Row>(`select seq, type, at, ${FACTS} as facts from events where run_id = $1 and seq > $2 and seq <= $3 order by seq limit $4`, [run.run, cursor, last, batch])).map(
-            (r): Seen => ({ seq: Number(r["seq"]), type: String(r["type"]), at: Number(r["at"]), facts: isObj((r["facts"] ?? null) as Value) ? (r["facts"] as Obj) : null }),
-          );
+        pages: while (cursor < last) {
+          const page = (await db.query<Row>(`select seq, type, at, ${FACTS} as facts from events where run_id = $1 and seq > $2 and seq <= $3 order by seq limit $4`, [run.run, moved, last, batch])).map(seenOf);
           if (!page.length) break;
           for (let i = 0; i < page.length; i++) {
             const e = page[i]!;
             let pair = page[i + 1];
             if (e.type === "amendment_requested" && !pair) {
               const [next] = await db.query<Row>(`select seq, type, at, ${FACTS} as facts from events where run_id = $1 and seq = $2`, [run.run, e.seq + 1]);
-              pair = next ? { seq: Number(next["seq"]), type: String(next["type"]), at: Number(next["at"]), facts: isObj((next["facts"] ?? null) as Value) ? (next["facts"] as Obj) : null } : undefined;
+              pair = next ? seenOf(next) : undefined;
             }
-            const n = notificationOf(channel, e, pair, run, last, o.config);
-            if (n) {
-              // What came before it is done: the cursor stands before it while it is tried.
-              if (moved > cursor) await cursorTo(channel, run.run, moved);
-              cursor = moved;
-              const outcome = await deliver(notifier, n);
-              if (outcome === "sent") {
-                report.sent++;
-                o.onSent?.(channel, n);
-              } else {
-                await db.query("insert into notify_dead (channel, run_id, seq, attempts, reason, at) values ($1, $2, $3, $4, $5, $6) on conflict (channel, run_id, seq) do nothing", [
-                  channel,
-                  run.run,
-                  e.seq,
-                  outcome.attempts,
-                  outcome.reason,
-                  now(),
-                ]);
-                report.dead++;
-                o.onDead?.({ channel, run: run.run, seq: e.seq, id: n.id, attempts: outcome.attempts, reason: outcome.reason });
+            const n = e.seq <= cur.start && !keep.has(e.seq) ? undefined : notificationOf(channel, e, pair, run, asOf, o.config, admitted);
+            if (!n) {
+              moved = e.seq;
+              continue;
+            }
+            if (cur.pending === e.seq && cur.retryAt !== null && cur.retryAt > now()) break pages;
+            // What came before it is done: the cursor stands before it while it is tried.
+            if (moved > cursor) await cursorTo(channel, run.run, moved);
+            cursor = moved;
+            const failure = await attempt(notifier, n);
+            if (failure === undefined) {
+              report.sent++;
+              o.onSent?.(channel, n);
+            } else {
+              const [kept] = await db.query<Row>(
+                "update notify_cursors set pending = $3, attempts = case when pending = $3 then attempts + 1 else 1 end, at = $4 where channel = $1 and run_id = $2 and seq < $3 returning attempts",
+                [channel, run.run, e.seq, now()],
+              );
+              // Another pump moved the cursor past it meanwhile: it is that one's.
+              if (!kept) break pages;
+              const attempts = Number(kept["attempts"]);
+              if (failure.retryable && attempts < NOTIFY_ATTEMPTS) {
+                await db.query("update notify_cursors set retry_at = $4 where channel = $1 and run_id = $2 and pending = $3", [channel, run.run, e.seq, now() + backoffMs(attempts)]);
+                report.failed++;
+                // The receiver does not answer as it should: the channel is not asked again in this pass.
+                return;
               }
-              await cursorTo(channel, run.run, e.seq);
-              cursor = e.seq;
+              await db.query("insert into notify_dead (channel, run_id, seq, attempts, reason, at) values ($1, $2, $3, $4, $5, $6) on conflict (channel, run_id, seq) do nothing", [
+                channel,
+                run.run,
+                e.seq,
+                attempts,
+                failure.reason,
+                now(),
+              ]);
+              report.dead++;
+              o.onDead?.({ channel, run: run.run, seq: e.seq, id: n.id, attempts, reason: failure.reason });
             }
-            moved = e.seq;
+            await cursorTo(channel, run.run, e.seq);
+            cursor = moved = e.seq;
           }
           if (moved > cursor) await cursorTo(channel, run.run, moved);
           cursor = moved;
         }
       } catch (e) {
-        // The cursor stands before the notification that was being tried: it is tried again by the next pass.
+        // The cursor stands before the notification that was being sent: it is tried again by the next pass.
         if (e instanceof Stopped) return;
         if (!(e instanceof NotifyUnavailable)) throw e;
         unavailable.add(run.tenant);
@@ -655,19 +834,15 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
     }
   };
 
-  /** Tries `n` until it is delivered or given up; a way out that is not there is thrown on, as no attempt. */
-  const deliver = async (notifier: Notifier, n: Notification): Promise<"sent" | { attempts: number; reason: string }> => {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        await notifier.send(n);
-        return "sent";
-      } catch (e) {
-        if (!(e instanceof NotifyFailed)) throw e;
-        if (!e.retryable || attempt >= NOTIFY_ATTEMPTS) return { attempts: attempt, reason: e.reason };
-        report.retried++;
-        await pause(backoffMs(attempt), o.signal);
-        if (o.signal?.aborted) throw new Stopped();
-      }
+  /** Sends `n` once: undefined when delivered, the failure otherwise; a way out that is not there, or a stop, is thrown on. */
+  const attempt = async (notifier: Notifier, n: Notification): Promise<NotifyFailed | undefined> => {
+    try {
+      await notifier.send(n, o.signal);
+      return undefined;
+    } catch (e) {
+      if (o.signal?.aborted) throw new Stopped();
+      if (e instanceof NotifyFailed) return e;
+      throw e;
     }
   };
 
@@ -679,5 +854,7 @@ export async function notifyPass(db: Db, o: NotifyOptions): Promise<NotifyReport
   } finally {
     await transport?.close();
   }
+  const [p] = await db.query<Row>("select count(*) as n from notify_cursors where pending is not null and channel = any($1::text[])", [channels]);
+  report.pending = Number(p?.["n"] ?? 0);
   return report;
 }
