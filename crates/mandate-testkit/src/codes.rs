@@ -675,6 +675,20 @@ pub const FAMILIES: &[Family] = &[
         ported: true,
         reference: Reference::TypeScript,
     },
+    Family {
+        glob: "*MDT-E1901*",
+        codes: "E1901",
+        stage: "Rust only: the stages of a 0.7 program, where each stands (stage_checks, crates/mandate-check/src/stages.rs), after the shapes of an envelope, and again on what an expansion writes",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
+        glob: "*MDT-E1902*",
+        codes: "E1902",
+        stage: "Rust only: the stages of a 0.7 program, the list of each body and each title (stage_checks, crates/mandate-check/src/stages.rs), after the shapes of an envelope, and again on what an expansion writes",
+        ported: true,
+        reference: Reference::Rust,
+    },
 ];
 
 /// The family of `code` (`MDT-E0120`), when the table has one.

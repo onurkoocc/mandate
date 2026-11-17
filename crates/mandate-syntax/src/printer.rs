@@ -168,9 +168,7 @@ pub fn print_program(program: &Value) -> Printed {
             }
             lines.push("  }".to_owned());
         }
-        for s in items(t, "body") {
-            lines.push(stmt(s, "  ")?);
-        }
+        stmt_lines(items(t, "body"), "  ", &mut lines)?;
         lines.push("}".to_owned());
         out.push(lines.join("\n"));
     }
@@ -1068,11 +1066,23 @@ fn verifier(v: &Value) -> Printed {
 fn block(body: &[Value], ind: &str) -> Printed {
     let mut lines = vec![format!("{ind}{{")];
     let inner = format!("{ind}  ");
-    for s in body {
-        lines.push(stmt(s, &inner)?);
-    }
+    stmt_lines(body, &inner, &mut lines)?;
     lines.push(format!("{ind}}}"));
     Ok(lines.join("\n"))
+}
+
+/// The statements of a block, each on its line at `ind`, onto `lines`. A
+/// `stage` of 0.7 (spec/attention.md "`stage`") has a blank line before it,
+/// unless it starts the block; no IR before 0.7 has one, so an older
+/// program prints as before.
+fn stmt_lines(body: &[Value], ind: &str, lines: &mut Vec<String>) -> Result<(), String> {
+    for (i, s) in body.iter().enumerate() {
+        if i > 0 && StmtOp::from_value(member(s, "op")) == Some(StmtOp::Stage) {
+            lines.push(String::new());
+        }
+        lines.push(stmt(s, ind)?);
+    }
+    Ok(())
 }
 
 /// `block(body, ind).trimStart()`.
@@ -1150,6 +1160,12 @@ fn stmt(s: &Value, ind: &str) -> Printed {
                 Ok(format!("{ind}{text}"))
             }
         }
+        // 0.7: a marker line, its name and its title.
+        StmtOp::Stage => Ok(format!(
+            "{ind}stage {} {}",
+            show(s, "name"),
+            quoted(member(s, "title"))?
+        )),
     }
 }
 

@@ -564,6 +564,23 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `E1509` | A criterion of a 0.7 program met by a call of `waiver` is refused (the runtime refuses it at load) | E1509 |
 | `E1509a` | A `verify` among the `and` parts of an invariant criterion is refused | E1509 |
 | `E1509b` | `test.verify`, alone and joined to another part with `and`, is not a reserved name: it checks | — |
+| `A01` | A 0.7 program with stages checks (`fixtures/attention/stages.mdt`): a workflow in two stages, a pattern in four applied by a workflow whose expansion has them | — |
+| `A01a` | `stage` is an ordinary name in a 0.7 program wherever a name and a string do not follow it on its line | — |
+| `A01b` | Before 0.7 a stage line is ordinary names: in a 0.6 program, `stage collect "Collect"` is three expressions | E0120 |
+| `E0104h` | A stage in the IR of a 0.6 program (a mutation: one statement added) | E0104 |
+| `E0104i` | A stage title of 81 characters, refused by the 0.7 schema (a mutation) | E0104 |
+| `E0104j` | An empty stage title (a mutation) | E0104 |
+| `E0101h` | A stage title with an interpolation | E0101 |
+| `E1901` | A stage moved into the body of a pattern's second map (a mutation) | E1901 |
+| `E1901a` | A stage in a function's body (a mutation) | E1901 |
+| `E1901b` | A stage in a branch of an `if` in a workflow's body | E1901 |
+| `E1902` | Two stages of one body with one name (a mutation: a stage renamed) | E1902 |
+| `E1902a` | A statement before the first stage of a body (a mutation: the first stage taken away) | E1902 |
+| `E1902b` | A stage directly before another stage (a mutation: a stage added) | E1902 |
+| `E1902c` | A stage at the end of a body (a mutation: a stage added) | E1902 |
+| `E1902d` | An `on error` directly after a stage (a mutation: a handler added) | E1902 |
+| `E1902e` | A stage title with a control character (a mutation: the title) | E1902 |
+| `E1902f` | A stage title with a bidirectional control (a mutation: the title) | E1902 |
 
 ## What the Rust crates run
 
@@ -601,13 +618,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 398, passed 398, pending 0
+conformance cases: ran 415, passed 415, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 273 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
+  of them 290 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
 ```
 
-(414 cases: 398 `compile`, 265 of them of language 0.6 and 8 of 0.7, and 16 `journal`; no case
+(431 cases: 415 `compile`, 265 of them of language 0.6 and 25 of 0.7, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

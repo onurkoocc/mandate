@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1901a",
+  "kind": "compile",
+  "title": "A stage in the body of a function is out of place: only a workflow's and a pattern's body have stages (a mutation: one statement added).",
+  "spec": [
+    "spec/attention.md#stage",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/near/body/0",
+      "value": {
+        "op": "stage",
+        "name": "compare",
+        "title": "Compare the totals"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1901",
+        "path": "/defs/near/body/0",
+        "facts": {
+          "stage": "compare",
+          "place": "fn"
+        }
+      }
+    ]
+  }
+}

@@ -4,9 +4,11 @@
 //! is written by hand.
 //!
 //! - The schemas the crate embeds are the files in `spec/`, and they differ
-//!   from those of 0.6 exactly where the lists below say: today only in
-//!   their names and their version, since no construct of 0.7 is read yet.
-//!   A slice of 0.7 that adds a construct adds its pointers to the list.
+//!   from those of 0.6 exactly where the lists below say: in their names and
+//!   their version, and in the statements, which 0.7 adds `stage` to. A
+//!   slice of 0.7 that adds a construct adds its pointers to the list.
+//! - A `stage` is a statement of the 0.7 schema alone, closed, its title a
+//!   string of 1 to 80 code points.
 //! - Each document is read by the schema of its own version, chosen by the
 //!   exact value of its `language` or `lock`, and a document of an earlier
 //!   version as before; each schema is closed.
@@ -80,19 +82,43 @@ fn the_embedded_schemas_of_0_7_are_the_files_in_spec_and_prepare() {
     lock_schema_0_7().expect("the 0.7 lock schema");
 }
 
-/// The 0.7 IR schema is the 0.6 one under the new version. Each slice of 0.7
-/// that adds a construct (`stage`, `report`, `owner`, `asks`) lists its
-/// pointers here.
+/// The 0.7 IR schema is the 0.6 one under the new version, with the
+/// statements of 0.7. Each slice of 0.7 that adds a construct (`stage`,
+/// `report`, `owner`, `asks`) lists its pointers here.
 #[test]
 fn the_0_7_ir_schema_differs_from_the_0_6_one_only_where_listed() {
     assert_eq!(
         differences_of(IR_0_6_SCHEMA_TEXT, IR_0_7_SCHEMA_TEXT),
         [
+            "/$defs/Stmt/oneOf",
             "/$id",
             "/description",
             "/properties/language/enum",
             "/title"
         ]
+    );
+    // The statements: those of 0.6 as they are, then `stage` (RL2), closed,
+    // its title a string of 1 to 80 code points.
+    let stmts = |text: &str| {
+        json(text)
+            .get("$defs")
+            .and_then(|d| d.get("Stmt"))
+            .and_then(|s| s.get("oneOf"))
+            .and_then(Value::as_array)
+            .unwrap()
+            .to_vec()
+    };
+    let (old, new) = (stmts(IR_0_6_SCHEMA_TEXT), stmts(IR_0_7_SCHEMA_TEXT));
+    assert_eq!(new.len(), old.len() + 1, "one statement added");
+    for (a, b) in old.iter().zip(&new) {
+        assert_eq!(canonicalize(a), canonicalize(b), "a statement of 0.6");
+    }
+    assert_eq!(
+        new.last().map(canonicalize).as_deref(),
+        Some(
+            r##"{"additionalProperties":false,"properties":{"name":{"$ref":"#/$defs/Name"},"op":{"const":"stage"},"title":{"maxLength":80,"minLength":1,"type":"string"}},"required":["op","name","title"],"type":"object"}"##
+        ),
+        "the stage statement"
     );
     let v = json(IR_0_7_SCHEMA_TEXT);
     assert_eq!(
@@ -198,6 +224,76 @@ fn a_program_of_0_7_is_read_by_the_schema_of_0_7() {
         d.message
     );
     assert_eq!(Language::NEWEST, Language::V0_7);
+}
+
+/// A program of `language` whose function's body is `body` (statements, as
+/// JSON).
+fn with_body(language: &str, body: &str) -> String {
+    format!(
+        r#"{{"language":"{language}","module":"example.minimal","version":"0.1","defs":{{"f":{{"kind":"fn","params":[],"returns":{{"ref":"Int"}},"body":[{body}]}}}}}}"#
+    )
+}
+
+/// A `stage` statement (spec/attention.md "The IR"): read by the 0.7
+/// schema, closed, its title a string of 1 to 80 code points; refused by
+/// the schemas of 0.6 and earlier, whose statements are closed. Where a
+/// stage may stand is the check's (E1901), not the schema's.
+#[test]
+fn a_stage_is_a_statement_of_the_0_7_schema_alone() {
+    let stage = |title: &str| {
+        format!(
+            r#"{{"op":"stage","name":"collect","title":{}}},{{"op":"return","value":{{"op":"int","value":1}}}}"#,
+            mandate_ir::stringify(&mandate_ir::JsValue::from(title)).unwrap_or_default()
+        )
+    };
+    let ok = stage("Collect the items");
+    assert_eq!(loaded(&with_body("mandate/0.7", &ok)), Vec::<String>::new());
+    // Eighty code points, each of them more than one UTF-16 unit or byte.
+    let wide = "\u{1F600}".repeat(80);
+    assert_eq!(
+        loaded(&with_body("mandate/0.7", &stage(&wide))),
+        Vec::<String>::new()
+    );
+    for title in [String::new(), "x".repeat(81), format!("{wide}x")] {
+        assert_eq!(
+            loaded(&with_body("mandate/0.7", &stage(&title))),
+            ["MDT-E0104 at /defs/f/body/0/title"],
+            "{title:?}"
+        );
+    }
+    // Closed: no member but `op`, `name` and `title`, and each of them.
+    assert_eq!(
+        loaded(&with_body(
+            "mandate/0.7",
+            r#"{"op":"stage","name":"collect","title":"t","body":[]}"#
+        )),
+        ["MDT-E0104 at /defs/f/body/0/body"]
+    );
+    assert_eq!(
+        loaded(&with_body(
+            "mandate/0.7",
+            r#"{"op":"stage","name":"collect"}"#
+        ))
+        .len(),
+        1
+    );
+    assert_eq!(
+        loaded(&with_body(
+            "mandate/0.7",
+            r#"{"op":"stage","name":"not a name","title":"t"}"#
+        )),
+        ["MDT-E0104 at /defs/f/body/0/name"]
+    );
+    // Not a statement before 0.7.
+    for language in ["mandate/0.6", "mandate/0.5"] {
+        let d = loaded(&with_body(language, &ok));
+        assert!(
+            !d.is_empty()
+                && d.iter()
+                    .all(|l| l.starts_with("MDT-E0104 at /defs/f/body/0")),
+            "{language}: {d:?}"
+        );
+    }
 }
 
 /// A hash written as the lock fixtures write one: one digit, 64 times.

@@ -1,0 +1,41 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1902b",
+  "kind": "compile",
+  "title": "A stage directly before another stage marks no statement and is refused (a mutation: a stage added directly after Greet's first).",
+  "spec": [
+    "spec/attention.md#stage",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Greet/body/1",
+      "value": {
+        "op": "stage",
+        "name": "think",
+        "title": "Think of a greeting"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1902",
+        "path": "/defs/Greet/body/0",
+        "facts": {
+          "workflow": "Greet",
+          "stage": "draft",
+          "problem": "empty"
+        }
+      }
+    ]
+  }
+}
