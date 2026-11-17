@@ -420,17 +420,46 @@ Each question site records, beside its count:
 
 | Fact | Holds |
 |---|---|
+| `kind` | Which row of the table above it is: `verify`, `ask`, `escalate`, `pause`, `supervise_escalate`, `effect`, `changeset`, `governance`, `review` or `plan` |
+| `wait` | The wait in its static form (below) |
 | `role` | The role asked, or none |
-| `shown` | The highest data class of what the wait shows: the contract's arguments, the question's text, the review's map outcomes, the effect's parameters |
-| `known` | How what it shows is known: `verified`, `plain`, `model` or `external`, from the level of its type |
+| `shown` | The highest data class of what the wait shows: the contract's arguments, the question's text, the review's map outcomes, the effect's parameters; in a function or a contract, at least the class of what its calls and `verify`s hand it, through every caller |
+| `known` | How what it shows is known: `verified`, `plain`, `model` or `external`, from the level of its type; in a function or a contract, no better than what its calls and `verify`s hand it |
 | `deadline_ms` | Its deadline, when a constant `deadline:` gives one |
 | `on_no_answer` | What happens when nobody answers: `waits`, `unmet`, `escalates { to, deadline_ms }`, `declined` or `refused_to_lead` |
-| `stage` | The stage it stands in, if any |
+| `stage` | The stage it stands in, if any; for a site in a function or a contract, the stage of its calls when they all stand in one |
 | `multiplicity` | How many times it can be asked |
 
 A review with `escalate_to` records `escalates` for its first role and
 `declined` for the role it escalates to, and one without `escalate_to`
 records `declined`; a lead's amendment request records `refused_to_lead`.
+
+The role a question names is a role definition, and nothing a run computes:
+in 0.7, a `role:` of `human.ask`, `human.approve`, `human(…)` or `supervise
+escalate`, a review's `role:` or `escalate_to:`, or an approval's
+`distinct_from:` whose name a parameter or a binding in scope also has is
+E1501 (`shadowed_by`), since a run would read that name's value instead.
+
+**The static form of a wait.** `wait` is the site's IR path in the running
+program and the part the runtime adds for the wait it opens there:
+`/contract/<group>/<criterion>[/all/i]/call` after a `verify` for an
+approval, `/escalate` after a delegation, `/authorize` after an effect or a
+change set's member (`…/members/<m>/authorize`) or a change set,
+`/governance` for an owner's gate that comes before another role's
+authorization (one that takes the place of a policy is at `/authorize`),
+nothing for `human.ask`, `escalate`, `pause` and a review. `kind` and
+`wait` name one site, but for a review and its `only: on_escalation` row,
+which share the review's wait. A run's command id is not this text: it adds
+a loop's iteration (`@i`), a restarted branch's round (`#allN`), a map's
+item (`[i]`) and a delegation's attempt (`#k`, before `/escalate`); a
+function's site stands under its call (`<call>>f/…` for `/defs/f/…`), a
+contract's under its `verify` (`<verify>/contract/require/i/…` and
+`<verify>/contract/<group>/<criterion>/…` for `/defs/C/require/i/…` and
+`/defs/C/<group>/<criterion>/by/…`), a handler's under its episode
+(`/defs/W/on/i@n/…`), and a sub-program's under its command
+(`<plan>/program/<n>…`). The runtime tags each wait it opens with its static
+site, its kind and its static wait, and the facts are the list those tags
+are held to.
 
 ### Sub-programs and amendments
 

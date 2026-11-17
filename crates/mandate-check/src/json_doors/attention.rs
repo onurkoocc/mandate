@@ -52,7 +52,15 @@ pub(super) const ATTENTION_FACTS: &[&str] = &["text", "kind", "opts", "workflow"
 /// `kind` is one of a closed list, one name for each row of the table of
 /// sites ([`crate::asks::SiteKind`]), which the runtime tags every wait it
 /// opens with: `verify`, `ask`, `escalate`, `pause`, `supervise_escalate`,
-/// `effect`, `changeset`, `governance`, `review`, `plan`. `on_no_answer` is
+/// `effect`, `changeset`, `governance`, `review`, `plan`. `wait` is the wait
+/// in its static form: the site's IR path and the part the runtime adds
+/// (`/contract/<group>/<criterion>[/all/i]/call`, `/authorize`,
+/// `/governance`, `/escalate`), not a run's command id, which adds
+/// iterations (`@i`, `#allN`, `[i]`, an attempt's `#k`) and stands a
+/// function's site under its call (`<call>>f/…`), a contract's under its
+/// `verify` (`<verify>/contract/…`) and a sub-program's under its command
+/// (`<plan>/program/<n>…`); `kind` and `wait` name one row (a review and its
+/// `only: on_escalation` row share the review's wait). `on_no_answer` is
 /// one of `waits`, `unmet`, `escalates` (with `escalates: { to,
 /// deadline_ms }`), `declined`, `refused_to_lead`; `only` is `null`,
 /// `on_escalation`, `governance_file` or `budget_exceeded`. A count is an

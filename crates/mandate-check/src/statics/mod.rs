@@ -512,6 +512,11 @@ pub(crate) struct Checker<'a> {
     /// the order of the definitions, computed once every definition is
     /// typed (`crate::asks`).
     pub(crate) bounds: Vec<crate::asks::WorkflowBound>,
+    /// 0.7: what each call of a function of the program and each `verify`
+    /// hands its function or contract, with the definition the call stands
+    /// in: `(caller, callee, handed)` (`crate::asks`, the floor of what a
+    /// site in a function or a contract shows).
+    pub(crate) handed_calls: Vec<(String, String, crate::asks::Handed)>,
 }
 
 /// 0.7: what the one pass of the static checks gives the attention facts:
@@ -730,6 +735,7 @@ impl<'a> Checker<'a> {
             report_floor: None,
             asked: HashMap::new(),
             bounds: Vec::new(),
+            handed_calls: Vec::new(),
         }
     }
 
@@ -1157,6 +1163,89 @@ impl<'a> Checker<'a> {
         for (n, _) in &calls {
             visit(n, &mut Vec::new(), &calls, &mut state, &mut found);
         }
+        self.recursion_found(found);
+        // 0.7: a cycle may go through a contract too: a `verify` runs its
+        // contract's `require`, criteria and verifiers' arguments, which may
+        // call a function that verifies against it again. Each such cycle
+        // is refused as one of calls is; a cycle of functions and workflows
+        // alone was found above, as before 0.7.
+        if self.at_least(Language::V0_7) {
+            let mut graph: Vec<(&'a str, Vec<&'a str>)> = Vec::new();
+            for (name, d) in defs.iter() {
+                let kind = Definition::of(d).kind();
+                if !matches!(
+                    kind,
+                    Some(DefKind::Fn | DefKind::Workflow | DefKind::Contract)
+                ) {
+                    continue;
+                }
+                let mut set: Vec<&'a str> = Vec::new();
+                let parts: Vec<&'a Value> = match kind {
+                    Some(DefKind::Contract) => ["require", "accept", "invariant"]
+                        .iter()
+                        .filter_map(|k| d.get(k))
+                        .collect(),
+                    _ => d.get("body").into_iter().collect(),
+                };
+                for part in parts {
+                    self.callees_in(part, &mut set);
+                }
+                graph.push((name, set));
+            }
+            let mut state: HashMap<&'a str, bool> = HashMap::new();
+            let mut through: Vec<(Vec<&'a str>, &'a str)> = Vec::new();
+            for (n, _) in &graph {
+                visit(n, &mut Vec::new(), &graph, &mut state, &mut through);
+            }
+            let contract = |c: &str| self.def_of(c, DefKind::Contract).is_some();
+            through.retain(|(cycle, _)| cycle.iter().any(|c| contract(c)));
+            self.recursion_found(through);
+        }
+    }
+
+    /// The functions, workflows and (0.7) contracts `v` calls or verifies
+    /// against, each once, in order.
+    fn callees_in(&self, v: &'a Value, out: &mut Vec<&'a str>) {
+        match v {
+            Value::Array(items) => {
+                for x in items {
+                    self.callees_in(x, out);
+                }
+            }
+            Value::Object(m) => {
+                if let Some(e) = Expr::of(v) {
+                    let callee = match e.op() {
+                        Some(ExprOp::Call) => e
+                            .callee()
+                            .filter(|c| c.is(ExprOp::Var))
+                            .and_then(Expr::name)
+                            .filter(|n| {
+                                self.def(n).is_some_and(|t| {
+                                    matches!(t.kind(), Some(DefKind::Fn | DefKind::Workflow))
+                                })
+                            }),
+                        Some(ExprOp::Verify) => e
+                            .contract()
+                            .filter(|c| self.def_of(c, DefKind::Contract).is_some()),
+                        _ => None,
+                    };
+                    if let Some(c) = callee
+                        && let Some((key, _)) = self.defs.iter().find(|(k, _)| *k == c)
+                        && !out.contains(&key)
+                    {
+                        out.push(key);
+                    }
+                }
+                for (_, x) in m.iter() {
+                    self.callees_in(x, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// E0502 for each cycle `found`, every name on it marked `recursive`.
+    fn recursion_found(&mut self, found: Vec<(Vec<&'a str>, &'a str)>) {
         for (cycle, n) in found {
             for c in &cycle {
                 self.recursive.insert((*c).to_owned());

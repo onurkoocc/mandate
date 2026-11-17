@@ -1,0 +1,41 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1907b",
+  "kind": "compile",
+  "title": "A question a recursion through a contract reaches, in a workflow that declares asks, is refused at the question beside the cycle (E0502): ask runs once for each level of again → verify against C → C's require → again.",
+  "spec": [
+    "spec/attention.md#the-algebra",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0502",
+        "path": "/defs/C",
+        "facts": {
+          "cycle": [
+            "C",
+            "again"
+          ]
+        }
+      },
+      {
+        "code": "MDT-E1907",
+        "path": "/defs/ask/body/0/value",
+        "facts": {
+          "workflow": "V",
+          "kind": "ask",
+          "why": "recursion",
+          "asks": 1
+        }
+      }
+    ]
+  }
+}

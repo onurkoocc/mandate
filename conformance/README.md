@@ -612,7 +612,9 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `E1906` | A workflow whose attention bound is above its budget's `asks` (`fixtures/attention/asks.mdt`, whose workflows declare their exact bounds; a mutation: `asks` 9 becomes 8) | E1906 |
 | `E1906a` to `E1906j` | One question more of each kind of site, against the exact bound: `human.ask`, `escalate`, `pause`, `supervise escalate` (5), a `human.approve` of a criterion, an effect the program hands to a person (with its owner's gate), a change set, the owner's gate of an action that may carry a governance-class file, a review, a review's escalation (a mutation each) | E1906 |
 | `E1906k` to `E1906p` | The algebra: a loop's `max_iter` multiplies, a function counts at each call, `if` takes the larger branch, `supervise restart_all` counts a `par`'s branches twice, a `verify`'s `on unmet` and a statement's `on error` count beside it (a mutation each) | E1906 |
-| `E1907`, `E1907a` | A question in a loop without `max_iter`, and in a function that calls itself (with E0502), in a workflow that declares `asks` (a mutation each) | E1907 |
+| `E1907` to `E1907b` | A question in a loop without `max_iter`, in a function that calls itself (with E0502), and in what a recursion through a contract's `require` reaches (with E0502), in a workflow that declares `asks` | E1907 |
+| `S04b` | In 0.7 a cycle of calls through two contracts' `require` is a call cycle | E0502 |
+| `E1501c` | In 0.7 an approval's role that a parameter of its contract also names is refused, since a run reads the role in the contract's scope (a mutation of `fixtures/attention/asks.mdt`) | E1501 |
 | `E1908` to `E1908e` | `asks` in an agent's, a delegation's, a map's, a plan's, a skill's and a function's budget (a mutation each) | E1908 |
 | `E1706c` to `E1706e` | Under an envelope that limits `asks` (the room's `left.asks`): a sub-program whose static total does not fit what is left, one whose declared `asks` does not, and one whose total is unbounded and that declares none | E1706 |
 | `E1709e` to `E1709g` | An amendment that lowers the envelope's `asks`, leaves it out, and adds it to an envelope that had none | E1709 |
@@ -653,7 +655,7 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 499, passed 499, pending 0
+conformance cases: ran 502, passed 502, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
   of them 343 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand

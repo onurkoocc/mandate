@@ -1,0 +1,53 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1501c",
+  "kind": "compile",
+  "title": "In 0.7 a role a question names is a role definition and no name the scope binds: an approval's role that a parameter of its contract also names is refused, since a run reads the approval's role in the contract's scope (a mutation: Approved gains a parameter named accountant).",
+  "spec": [
+    "spec/attention.md#what-each-question-records",
+    "spec/envelope.md#roles"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Approved/params/1",
+      "value": {
+        "name": "accountant",
+        "type": {
+          "ref": "Text"
+        }
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/Approving/body/4/value/args/1",
+      "value": {
+        "value": {
+          "op": "text",
+          "value": "finance_lead"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1501",
+        "path": "/defs/Approved/accept/checked/by/call/args/0/value",
+        "facts": {
+          "role": "accountant",
+          "where": "human.approve",
+          "argument": "role",
+          "shadowed_by": "parameter"
+        }
+      }
+    ]
+  }
+}
