@@ -762,8 +762,8 @@ describe("the mandate executable with libraries", () => {
     const usage = await mandate("add");
     expect(usage.code).toBe(2);
     for (const line of [
-      "  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]",
-      "  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]",
+      "  add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]",
+      "  upgrade <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]",
       "  publish <source dir> [--libraries <dir>] [--config <file>] [--json]",
       "  check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
     ]) expect(usage.err).toContain(`\n${line}\n`);
