@@ -1166,7 +1166,47 @@ fn stmt(s: &Value, ind: &str) -> Printed {
             show(s, "name"),
             quoted(member(s, "title"))?
         )),
+        StmtOp::Report => stmt_report(s, ind),
     }
+}
+
+/// The widest line a `report` is printed on whole; a longer one, or one
+/// whose fields span lines, has one field per line.
+const REPORT_LINE: usize = 100;
+
+/// 0.7 (spec/attention.md "`report`"): `report to r "t" { a: x, b: y }` on
+/// one line when it fits in [`REPORT_LINE`] characters (counted as Unicode
+/// scalar values) and no field's text spans lines; otherwise its head and
+/// `{` on the first line, one field a line after it, each but the last with
+/// a comma, and `}` on a line of its own. The fields in the order of the IR,
+/// the order a person reads them.
+fn stmt_report(s: &Value, ind: &str) -> Printed {
+    let head = format!(
+        "{ind}report to {} {}",
+        show(s, "role"),
+        quoted(member(s, "title"))?
+    );
+    let inner = format!("{ind}  ");
+    let mut fields: Vec<String> = Vec::new();
+    for f in items(s, "fields") {
+        fields.push(format!(
+            "{}: {}",
+            show(f, "name"),
+            expr(member(f, "value"), 0, &inner)?
+        ));
+    }
+    let line = format!("{head} {{ {} }}", fields.join(", "));
+    if line.chars().count() <= REPORT_LINE && !line.contains('\n') {
+        return Ok(line);
+    }
+    let mut lines = vec![format!("{head} {{")];
+    let last = fields.len().saturating_sub(1);
+    for (i, f) in fields.iter().enumerate() {
+        let comma = if i < last { "," } else { "" };
+        lines.push(format!("{inner}{f}{comma}"));
+    }
+    lines.push(format!("{ind}}}"));
+    Ok(lines.join("\n"))
 }
 
 /// `case "par"` of `stmt`.

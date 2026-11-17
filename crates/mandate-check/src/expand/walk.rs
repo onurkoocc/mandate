@@ -186,8 +186,9 @@ impl Walk {
                         bound.push(n.to_owned());
                     }
                 }
-                // Bind nothing for what follows; a stage of 0.7 opens no
-                // scope either (spec/attention.md "`stage`").
+                // Bind nothing for what follows; a stage and a report of
+                // 0.7 open no scope either (spec/attention.md "`stage`",
+                // "`report`").
                 Some(
                     StmtOp::If
                     | StmtOp::Loop
@@ -195,7 +196,8 @@ impl Walk {
                     | StmtOp::OnError
                     | StmtOp::Run
                     | StmtOp::Expr
-                    | StmtOp::Stage,
+                    | StmtOp::Stage
+                    | StmtOp::Report,
                 )
                 | None => {}
             }
@@ -535,6 +537,22 @@ impl Walk {
             // 0.7: a stage names nothing: its name is no reference and its
             // title is text (spec/attention.md "`stage`").
             "stage" => return,
+            // 0.7: a report names what its fields' expressions name. Its
+            // role is one of the pattern's role slots, which E1903 holds it
+            // to (`crate::reports`), and no name the walk follows; its title
+            // is text, and a field's name binds nothing.
+            "report" => {
+                let fields = v
+                    .get("fields")
+                    .and_then(Value::as_array)
+                    .unwrap_or_default();
+                for (i, f) in fields.iter().enumerate() {
+                    if let Some(x) = f.get("value") {
+                        self.node(x, &format!("{path}/fields/{i}/value"), scope, false);
+                    }
+                }
+                return;
+            }
             _ => {}
         }
         // Every other statement and expression: its members, a `let`'s type

@@ -88,6 +88,7 @@
 
 use mandate_ir::{JsObject, JsValue, Value};
 
+mod attention;
 mod authority;
 mod connectors;
 mod front;
@@ -485,7 +486,9 @@ pub static DOORS: &[Door] = &[
 /// The note of a library door: no TypeScript function stands for it.
 const LIBRARY_NOTE: &str = "Language 0.6, which only the Rust compiler reads: no TypeScript function stands for it, and crates/mandate-check/tests/library_doors.rs holds it to the compiler's functions (crate::library).";
 
-/// The library doors of language 0.6 (spec/library.md "The bridge"), in a
+/// The library doors of language 0.6 (spec/library.md "The bridge"), and
+/// those of 0.7 (`tool_schema_digest`, `callable_connectors`, `mcp_tools`,
+/// `attention_facts`, spec/attention.md), in a
 /// table of their own, since no TypeScript function stands for them and
 /// [`DOORS`] is held to the TypeScript call for call. It is committed as
 /// `crates/mandate-check/tests/library_doors/doors.json`, and the
@@ -539,7 +542,16 @@ pub static LIBRARY_DOORS: &[Door] = &[
         "Language 0.7, which only the Rust compiler reads: no TypeScript function stands for it. The tools of the MCP servers of a language, { language, tools, modern }: tools is the tools member of the result of tools/list, unchanged, for both servers and both protocol eras, and modern is what the modern era adds beside it ({ ttlMs, cacheScope }). language is required, mandate/0.1 to mandate/0.7: those up to 0.6 give the frozen list (the tables door's TOOLS), 0.7 the frozen list and the changes spec/attention.md names (crates/mandate-check/tests/mcp_tools.rs holds the set of differences), and vectors/mcp-tools/mcp-tools-0.7.json holds the output.",
         mcp_tools::mcp_tools,
     ),
+    Door::own(
+        "attention_facts",
+        attention::ATTENTION_FACTS,
+        ATTENTION_NOTE,
+        attention::attention_facts,
+    ),
 ];
+
+/// The note of the door of the attention facts (language 0.7).
+const ATTENTION_NOTE: &str = "Language 0.7, which only the Rust compiler reads: the attention facts of a workflow (spec/attention.md, The facts), from the typing of the check that checks it, with the input of the door check and the workflow's name; null when the program does not check. No TypeScript function stands for it, and crates/mandate-testkit/tests/attention_0_7.rs holds it to the fixtures of 0.7.";
 
 /// The library door named `name`.
 #[must_use]

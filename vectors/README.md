@@ -18,8 +18,8 @@ Rust compiler is not held to the TypeScript", lists what they do not reach.
 
 Other things here are not the TypeScript's: `golden/0.6.json` and
 `diagnostics-0.6/`, which the Rust compiler writes about language 0.6, which
-only it reads ("The gates of 0.6" below), and `golden/0.7.json` and
-`diagnostics-0.7/`, the same for language 0.7 ("The gates of 0.7").
+only it reads ("The gates of 0.6" below), and `golden/0.7.json`,
+`diagnostics-0.7/` and `attention-0.7/`, the same for language 0.7 ("The gates of 0.7").
 
 They are not conformance cases (`conformance/`): a case states a rule and
 is checked against the spec; a vector records what the reference
@@ -1234,7 +1234,7 @@ held by what a person writes and by what the Rust writes:
   `diagnostic-vectors.test.ts`, `diff-vectors.test.ts`) skip them, and each checks
   that what it skipped is exactly the directories whose `case.json` names 0.6, read
   as plain JSON, and that there are `RUST_ONLY_CASES` of them
-  (`compiler/test/cases-runner.ts`, 290 today, of 0.6 and 0.7): a case of 0.6 added or taken away
+  (`compiler/test/cases-runner.ts`, 343 today, of 0.6 and 0.7): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
   version, `mandate/0.8`, E0103, whose list has 0.6 and 0.7), `E0140` (a 0.5 lock that carries `libraries`),
@@ -1294,20 +1294,27 @@ same way, by gates of its own beside those of 0.6:
 - **Conformance cases of 0.7**, `"language": "mandate/0.7"`, written by hand and
   skipped and counted by the TypeScript runners as those of 0.6 are
   (`RUST_ONLY_LANGUAGES` is `mandate/0.6` and `mandate/0.7`, and `RUST_ONLY_CASES`
-  counts both, 290 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
+  counts both, 343 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
   unknown field of a 0.7 program, E0104), `S02k` and `S02l` (a 0.7 program with a lock
   of format 0.6, and of 0.7), `E0140d` (an unknown field of a 0.7 lock, E0140), `E1509` to `E1509b`
-  (slice RL7), and the stages (slice RL2): `A01` to `A01b`, `E0101h`, `E0104h` to `E0104j`, `E1901` to
-  `E1901b` and `E1902` to `E1902f` (`conformance/README.md`, "Cases of 0.7").
-- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (two today,
-  `minimal.mdt` and `stages.mdt`, 25 outputs), the digest of each output text, made
+  (slice RL7), the stages (slice RL2): `A01` to `A01b`, `E0101h`, `E0104h` to `E0104j`, `E1901` to
+  `E1901b` and `E1902` to `E1902g`, and the reports (slice RL3): `A02` to `A02b`, `A03`, `E0101i`,
+  `E0104k` to `E0104o`, `E0121g`, `E1501b`, `E1502a`, `E1705b`, `E1705c`, `E1903` to `E1903e`, `E1904`
+  to `E1904v` and `E1905` to `E1905g` (`conformance/README.md`, "Cases of 0.7").
+- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (three today,
+  `minimal.mdt`, `reports.mdt` and `stages.mdt`, 36 outputs), the digest of each output text, made
   by the code of `golden/0.6.json` (`crates/mandate-testkit/tests/golden_0_7.rs`).
 - **`diagnostics-0.7/`**: the whole result of every compile case of 0.7 and of the
   checks and `load` of every 0.7 program, in the layout of `diagnostics-0.6/`
   (`crates/mandate-testkit/tests/diagnostics_0_7.rs`; the code is shared with
   `diagnostics_0_6.rs`, `tests/rust_diagnostics/`).
+- **`attention-0.7/facts.json`**: the attention facts of every workflow of every 0.7
+  program of `fixtures/attention/` (five workflows today), as the door `attention_facts`
+  gives them with the program's modules, `{ "<program>": { "<workflow>": <facts> } }`
+  (`crates/mandate-testkit/tests/attention_0_7.rs`, which also holds the door to the
+  function, `mandate_check::attention_facts`). Their shape is below ("The attention facts").
 
-Both are written by the Rust with `MANDATE_UPDATE_0_7=1` (passed on by
+The three are written by the Rust with `MANDATE_UPDATE_0_7=1` (passed on by
 `scripts/wasi-test.mjs`) and compared on every other run. Beside them,
 `crates/mandate-testkit/tests/language_0_7.rs` checks that a 0.6 program relabelled
 `mandate @ 0.7` checks as it did: every 0.6 program of `fixtures/library/` (10, every
@@ -1315,7 +1322,7 @@ output of `golden/0.6.json`), and every compile case of 0.6 whose program declar
 0.6 (251 of 265: the five library cases have no program, and nine cases of 0.6 hold a
 program of another version), with the whole result of its door; only the version's
 text may differ, and the hashes, each only as a renaming. It also checks that every
-code 0.7 adds (`CODES_0_7`: E1509, E1901 and E1902) has a case of 0.7 that expects it.
+code 0.7 adds (`CODES_0_7`: E1509, E1901 to E1905) has a case of 0.7 that expects it.
 `crates/mandate-testkit/tests/stages_0_7.rs` checks that a stage changes nothing but
 where the statements after it stand: each of those 0.6 programs, relabelled 0.7 and
 with stage markers put into the top level of each body of a workflow written out and
@@ -1323,9 +1330,72 @@ of a pattern (seeded by its path; the first statement always), gives every outpu
 the relabelled program gives, value by value, its paths `/defs/D/body/i` and its
 spans' lines moved by the markers before them, the IR and `fmt` with the markers
 taken out, and the same static nodes, costs and role sites; only the hashes may
-differ, as a renaming.
+differ, as a renaming. The same test puts reports of pure fields in the same
+places (before every statement a marker may stand before, to the first role the
+program names or its lock binds, in a pattern to its first role slot): every output,
+node count and cost is the same, and the role sites are those of the unmarked
+program and one more for each report its workflows hold.
 `crates/mandate-ir/tests/language_0_7.rs` holds the two schemas of 0.7 to those of 0.6,
-pointer by pointer (the IR schema of 0.7 adds the statement `stage`).
+pointer by pointer (the IR schema of 0.7 adds the statements `stage` and `report`, and
+`ReportField`).
+
+### The attention facts
+
+The door `attention_facts` (a library door of `mandate-check`, `LIBRARY_DOORS`, with no
+TypeScript function) takes what the door `check` takes and the name of a workflow,
+`{ text, kind, opts?, workflow }`, checks the program as `check` does (asking for the
+running program), and gives the facts of that workflow, or `null` when the program does
+not check, is older than 0.7 or defines no such workflow. The facts are of the running
+program, the program a run runs (`check`'s `linked`, the expansion for a workflow that
+applies a pattern): every `path` is the JSON Pointer of a statement there, the one the
+runtime runs (its command ids are these paths with `@k` for a loop's iteration and the
+like, and a sub-program's command before them). A field's `type`, `class` and `known`
+are what the static checks' typing gave its value. The shape, `mandate/attention/0.1`,
+for `MatchAll` of `fixtures/attention/reports.mdt` (the program hash shortened):
+
+```json
+{
+  "format": "mandate/attention/0.1",
+  "workflow": "MatchAll",
+  "program": "sha256:e79e…",
+  "stages": [
+    { "path": "/defs/MatchAll/body/0", "name": "collect", "title": "Collect the items", "index": 0 },
+    { "path": "/defs/MatchAll/body/3", "name": "work", "title": "Work on each item", "index": 1 },
+    { "path": "/defs/MatchAll/body/5", "name": "exceptions", "title": "Decide on the exceptions", "index": 2 },
+    { "path": "/defs/MatchAll/body/7", "name": "commit", "title": "Commit what was accepted", "index": 3 }
+  ],
+  "reports": [
+    { "path": "/defs/MatchAll/body/2", "role": "accountant", "title": "Items collected", "stage": "collect",
+      "multiplicity": 1,
+      "fields": [ { "name": "items", "type": "Int", "class": "confidential", "known": "plain" } ] },
+    { "path": "/defs/MatchAll/body/9", "role": "accountant", "title": "Batch done", "stage": "commit",
+      "multiplicity": 1,
+      "fields": [ { "name": "posted", "type": "Int", "class": "confidential", "known": "plain" },
+                  { "name": "declined", "type": "Int", "class": "confidential", "known": "plain" },
+                  { "name": "failed", "type": "Int", "class": "confidential", "known": "plain" } ] }
+  ]
+}
+```
+
+- `stages`: the top-level stages of the workflow's body in order, `index` from 0.
+- `reports`: every report of the body in the order of a depth-first walk; `role` the
+  role it is addressed to (in an expansion, the one the application binds); `stage` the
+  name of the stage of the top-level statement it stands in, or `null`; `multiplicity`
+  how many times one run can show it, an integer or `"unbounded"` (1 at the top level
+  and in a branch, `n` in `loop max_iter n`, multiplied through nested loops, twice in a
+  branch of a `par` that `supervise restart_all` runs again).
+- `fields`: in the order written; `type` as the compiler shows a type; `class` the data
+  class of the value; `known` one of `verified`, `plain`, `model` (`Inferred`, a model's
+  output) and `external` (`Untrusted`, outside content): the level of the type, the
+  weakest wrapper deciding, also among the wrappers of its elements and fields, and no
+  better than the weakest value the field is made of (a template that interpolates a
+  model's output is a model's output), but for a count `len` gives, which is `plain`.
+- Every list is an array, since the canonical form sorts an object's members and the
+  order is the order a person reads; a consumer that looks a node up builds its index
+  from `path`. A later slice adds members (the question sites, the effect sites, the
+  totals, the declared `asks`) and changes none of these; a consumer ignores a member it
+  does not know. The facts are no part of the IR or of any hash, and asking for them
+  changes nothing `check` gives.
 
 ## Where the Rust compiler is not held to the TypeScript
 
@@ -1346,7 +1416,7 @@ the compiler's order. The gates that do this:
 | diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
 | diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
 | corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 | `crates/mandate-testkit/tests/corpus.rs` |
-| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 415: the TypeScript's 125, and 265 of language 0.6 and 25 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
+| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 468: the TypeScript's 125, and 265 of language 0.6 and 78 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
 | tool schema digests | the digest `schemaDigest` of `runtime/src/mcp-client.ts` (built to `runtime/dist`) gives for 34 MCP tools written as JSON text (no `outputSchema`, `outputSchema` empty or null, member order, nested and deep schemas, non-ASCII and astral names and strings, members sorted by UTF-16, lone surrogates, numbers JSON writes differently from their text, empty objects, a member given twice), with the canonical text it hashes, and 29 texts the door must refuse; written by `scripts/tool-digest-vectors.mjs` (found by the `scripts/*-vectors.mjs` loop of CI and `docker/run-job.sh`) | 34 tools, 29 refused | `crates/mandate-check/tests/connector_doors.rs` (door `tool_schema_digest`) |

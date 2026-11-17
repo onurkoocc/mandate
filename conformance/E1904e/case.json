@@ -1,0 +1,49 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1904e",
+  "kind": "compile",
+  "title": "A report's field that runs an effect is refused, in a pattern's report too (a mutation: the field posted of the pattern's last report runs its commit slot).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/9/fields/0/value",
+      "value": {
+        "op": "effect",
+        "name": "commit",
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "posted"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1904",
+        "path": "/defs/BatchWithExceptions/body/9/fields/0/value",
+        "facts": {
+          "role": "reviewer",
+          "field": "posted",
+          "problem": "impure",
+          "what": "effect"
+        }
+      }
+    ]
+  }
+}

@@ -15,6 +15,19 @@
     "view --card --format md": "sha256:1bc4792414dddeba3eca99a731ae497571ee337305ecb9e9a817e8cef579eedd",
     "view --card --format html": "sha256:05540827ce4de234f0f14e1c018b554aa40919b9b53f434391b34f1508b16133"
   },
+  "fixtures/attention/reports.mdt": {
+    "check": "sha256:de5551dd5bdf35a3f9578585f252c6e4323a933b475ad7140cd1f5863f1b50c6",
+    "check --module": "sha256:de5551dd5bdf35a3f9578585f252c6e4323a933b475ad7140cd1f5863f1b50c6",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:370d6c549a82a3f210d10d8a5a8fb4bb9d8e55ed0e4846bed75fc674d000d1b8",
+    "fmt": "sha256:e9911744f502d92b771751181696ea28da8248cbab620dcd7f3594b6b76d8609",
+    "hash": "sha256:0bad6b807eeb475f6d34d2b1fde9b598340f51cf7d9fb9364df5565a364d0f1d",
+    "view --format json": "sha256:d82999da849daefd02d17199c97208ab121366bc2150b5862d6bb712789970ef",
+    "view --format md": "sha256:9125e571b28ed651a73f2064456f661b0ff165ef4e81e5b08ec241fa922d8591",
+    "view --format html": "sha256:e9524aa1f8479de06718fe3970f43cce9a383c31a47d58cdd7877300fd570184",
+    "view --against itself": "sha256:94cf0e7e84d177b29cca401fa9370fdad95bf03388619d2f650fc2c507cc6a68",
+    "sandbox": "sha256:6f062f1953cf2af31cc0922d5ce4c6d255b2ff5c42477534efb574a0130178dd"
+  },
   "fixtures/attention/stages.mdt": {
     "check": "sha256:105e897a9a353c25a98f62ae2e9ec6707b3845b27c9d7037b40a01b4b815c8cf",
     "check --module": "sha256:105e897a9a353c25a98f62ae2e9ec6707b3845b27c9d7037b40a01b4b815c8cf",

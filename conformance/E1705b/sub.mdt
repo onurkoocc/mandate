@@ -1,0 +1,17 @@
+// The definitions of a lead's sub-program of A03/parent.mdt (E1705b): a
+// workflow whose body the lead marks with a stage of its own. Only its
+// definitions are read.
+
+mandate @ 0.7
+
+module example.shaped.plan_1 @ 0.1
+
+use example.shaped
+
+workflow Look() -> Inferred<Text>
+  caps   M, R
+  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }
+{
+  stage look "Look at the item"
+  delegate Worker.look(Item { name: "a" })
+}

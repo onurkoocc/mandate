@@ -20,9 +20,13 @@
 //! A program of language 0.7 (spec/attention.md) is checked as the same
 //! program of 0.6 is: every rule of 0.6 holds for it (`at_least`), and what
 //! 0.7 adds is checked by the slices that add it: so far its stages
-//! ([`stages`], E1901 and E1902). A stage is a statement every walker of the
-//! compiler names, and none but [`stages`] reads it as more than nothing: it
-//! adds no cost, node, value, scope, role or authority.
+//! ([`stages`], E1901 and E1902) and its reports ([`reports`], E1903 to
+//! E1905, and E1705 for both in a lead's sub-program). A stage and a report
+//! are statements every walker of the compiler names: a stage adds no cost,
+//! node, value, scope, role or authority; a report adds no cost, node, value,
+//! scope or authority, and its role is a role site. What a report shows is
+//! typed by the static checks, and [`attention`] gives the facts of a
+//! workflow from that typing ([`attention_facts`]).
 //!
 //! It holds the front door, the stages before the static checks, the static
 //! checks, and the lock and the sandbox requirements that stand on them:
@@ -57,6 +61,11 @@
 //!   E1301 to E1307. Rust only.
 //! - [`stages`]: the stages of a program of 0.7 ([`stage_checks`]): E1901
 //!   and E1902. Rust only.
+//! - [`reports`]: the reports of a program of 0.7 ([`report_checks`]):
+//!   E1903, E1904 (what a field may hold; its type is held by the static
+//!   checks) and E1905. Rust only.
+//! - [`attention`]: the attention facts of a workflow of 0.7
+//!   ([`attention_facts`], [`AttentionFacts`], [`Count`]). Rust only.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
 //!   `compiler/src/check/roles.ts`.
 //! - [`lock`]: the lock, `compiler/src/lock.ts`: [`Lock`], [`validate_lock`],
@@ -159,6 +168,7 @@
 #![forbid(unsafe_code)]
 
 pub mod amendment;
+pub mod attention;
 pub mod caps;
 pub mod check;
 pub mod cost;
@@ -178,6 +188,7 @@ pub mod modules;
 pub mod patch;
 pub mod path;
 pub mod posix;
+pub mod reports;
 pub mod resolve;
 pub mod roles;
 pub mod sandbox;
@@ -191,9 +202,13 @@ pub mod view_shared;
 pub mod walk;
 
 pub use amendment::narrowings;
+pub use attention::{AttentionFacts, Count, attention_facts};
 pub use cost::{CostPart, StaticCost, micros_text, static_cost};
+pub use reports::report_checks;
 pub use stages::stage_checks;
-pub use statics::{lead_classes, static_check, workflow_nodes};
+pub use statics::{
+    Shown, ShownField, lead_classes, static_check, static_check_shown, workflow_nodes,
+};
 pub use walk::reads_var;
 
 pub use check::{
@@ -269,5 +284,6 @@ pub use stdlib::{
     is_ungated_effect, std_effect, std_fn,
 };
 pub use subprogram::{
-    Room, containment, language_of, opened, skeleton, subprogram_shape, subprogram_workflow,
+    Room, containment, language_of, opened, skeleton, subprogram_attention, subprogram_shape,
+    subprogram_workflow,
 };

@@ -1,0 +1,65 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1905d",
+  "kind": "compile",
+  "title": "A report in an on unmet handler is refused (a mutation: the verification of Greet gains a handler that reports).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Greet/body/6/value/on_unmet",
+      "value": {
+        "bind": "u",
+        "then": {
+          "op": "block",
+          "body": [
+            {
+              "op": "report",
+              "role": "accountant",
+              "title": "Moved",
+              "fields": [
+                {
+                  "name": "n",
+                  "value": {
+                    "op": "int",
+                    "value": 1
+                  }
+                }
+              ]
+            },
+            {
+              "op": "expr",
+              "value": {
+                "op": "var",
+                "name": "u"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1905",
+        "path": "/defs/Greet/body/6/value/on_unmet/then/body/0",
+        "facts": {
+          "role": "accountant",
+          "title": "Moved",
+          "place": "on_unmet"
+        }
+      }
+    ]
+  }
+}

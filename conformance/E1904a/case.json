@@ -1,0 +1,50 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1904a",
+  "kind": "compile",
+  "title": "A report's field that holds a spawn is refused: a field is pure (a mutation: the field words of Greet's first report).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/3/fields/3/value",
+      "value": {
+        "op": "spawn",
+        "agent": "Greeter",
+        "skill": "greet",
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "vendor_id"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1904",
+        "path": "/defs/Greet/body/3/fields/3/value",
+        "facts": {
+          "role": "accountant",
+          "field": "words",
+          "problem": "impure",
+          "what": "spawn"
+        }
+      }
+    ]
+  }
+}

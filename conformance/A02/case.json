@@ -1,0 +1,34 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "A02",
+  "kind": "compile",
+  "title": "A program of 0.7 with reports checks: a pattern whose reports go to its role slot, applied by a workflow whose expansion reports to the role it binds, and a workflow written out that reports fields a model wrote, a contract verified, a connector gave and the run counted, in a branch and in a bounded loop.",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#the-ir",
+    "spec/attention.md#titles"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Greeted/accept/said/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

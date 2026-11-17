@@ -39,20 +39,24 @@ pub(crate) enum TitleProblem {
     /// A format character (category Cf), every bidirectional control among
     /// them.
     Format(char),
+    /// U+2028 LINE SEPARATOR or U+2029 PARAGRAPH SEPARATOR (categories Zl
+    /// and Zp), which break a line in some renderers: a title is one line.
+    Separator(char),
 }
 
 impl TitleProblem {
     /// The fact `rule`.
-    fn rule(self) -> &'static str {
+    pub(crate) fn rule(self) -> &'static str {
         match self {
             TitleProblem::Length(_) => "length",
             TitleProblem::Control(_) => "control",
             TitleProblem::Format(_) => "format",
+            TitleProblem::Separator(_) => "separator",
         }
     }
 
     /// What the message says of the title.
-    fn said(self) -> String {
+    pub(crate) fn said(self) -> String {
         match self {
             TitleProblem::Length(0) => "is empty".to_owned(),
             TitleProblem::Length(n) => format!("has {n} characters, more than {TITLE_MAX}"),
@@ -61,12 +65,36 @@ impl TitleProblem {
                 "holds the format or bidirectional character {}",
                 code_point(c)
             ),
+            TitleProblem::Separator(c) => {
+                format!("holds the line or paragraph separator {}", code_point(c))
+            }
         }
+    }
+
+    /// The character the problem names, when it names one: the fact `char`.
+    pub(crate) fn char(self) -> Option<char> {
+        match self {
+            TitleProblem::Length(_) => None,
+            TitleProblem::Control(c) | TitleProblem::Format(c) | TitleProblem::Separator(c) => {
+                Some(c)
+            }
+        }
+    }
+
+    /// The facts of a title problem beside the others of its diagnostic:
+    /// `rule`, and `char` when it names one.
+    pub(crate) fn facts(self, facts: JsObject) -> JsObject {
+        facts
+            .with("rule", self.rule())
+            .with_some("char", self.char().map(code_point))
     }
 }
 
+/// What every message about a title says of the rules, after what is wrong.
+pub(crate) const TITLE_RULES: &str = "a title is constant text of 1 to 80 characters with no control, format, bidirectional, line separator or paragraph separator character, since a person reads it on one line of an approval card";
+
 /// `U+0007`: a character as the facts and the messages name it.
-fn code_point(c: char) -> String {
+pub(crate) fn code_point(c: char) -> String {
     format!("U+{:04X}", u32::from(c))
 }
 
@@ -104,10 +132,18 @@ fn is_format(c: char) -> bool {
     FORMAT.iter().any(|(lo, hi)| (*lo..=*hi).contains(&c))
 }
 
+/// Whether `c` breaks a line as a separator: U+2028 LINE SEPARATOR (Zl) or
+/// U+2029 PARAGRAPH SEPARATOR (Zp), the only characters of those categories.
+fn is_separator(c: char) -> bool {
+    matches!(c, '\u{2028}' | '\u{2029}')
+}
+
 /// How `title` breaks the title rules, if it does: 1 to [`TITLE_MAX`]
-/// characters, counted as Unicode scalar values, and no control and no
-/// format character, the first such character named. A title is constant
-/// text: the parser refuses interpolation in it, and in IR it is a string.
+/// characters, counted as Unicode scalar values, and no control, no format
+/// character and no line or paragraph separator, the first such character
+/// named. A title is constant text: the parser refuses interpolation in it,
+/// and in IR it is a string. Stage titles (E1902) and report titles (E1903)
+/// are held to the same rules.
 pub(crate) fn title_problem(title: &str) -> Option<TitleProblem> {
     let n = title.chars().count();
     if n == 0 || n > TITLE_MAX {
@@ -118,6 +154,8 @@ pub(crate) fn title_problem(title: &str) -> Option<TitleProblem> {
             Some(TitleProblem::Control(c))
         } else if is_format(c) {
             Some(TitleProblem::Format(c))
+        } else if is_separator(c) {
+            Some(TitleProblem::Separator(c))
         } else {
             None
         }
@@ -379,23 +417,20 @@ fn list_rules(body: &[Value], base: &str, what: &str, name: &str, out: &mut Out<
                 | StmtOp::Loop
                 | StmtOp::Return
                 | StmtOp::Run
-                | StmtOp::Expr,
+                | StmtOp::Expr
+                | StmtOp::Report,
             )
             | None => {}
         }
         if let Some(p) = title_problem(s.title().unwrap_or_default()) {
-            let mut f = facts("title", stage).with("rule", p.rule());
-            if let TitleProblem::Control(c) | TitleProblem::Format(c) = p {
-                f = f.with("char", code_point(c));
-            }
             out.report(
                 "E1902",
                 format!(
-                    "The title of stage '{stage}' of {what} {name} {}; a title is constant text of 1 to {TITLE_MAX} characters with no control, format or bidirectional character, since a person reads it on an approval card.",
+                    "The title of stage '{stage}' of {what} {name} {}; {TITLE_RULES}.",
                     p.said()
                 ),
                 &format!("{at}/title"),
-                f,
+                p.facts(facts("title", stage)),
             );
         }
     }
@@ -403,7 +438,7 @@ fn list_rules(body: &[Value], base: &str, what: &str, name: &str, out: &mut Out<
 
 #[cfg(test)]
 mod tests {
-    use super::{TitleProblem, is_format, title_problem};
+    use super::{TitleProblem, is_format, is_separator, title_problem};
 
     #[test]
     fn the_title_rules() {
@@ -447,17 +482,33 @@ mod tests {
                 "{c:?}"
             );
         }
-        // Neither: spaces of other kinds, letters, marks and symbols.
+        // The line and the paragraph separator break a line in some
+        // renderers: a title is one line.
+        for c in ['\u{2028}', '\u{2029}'] {
+            assert!(!is_format(c) && !c.is_control(), "{c:?}");
+            assert_eq!(
+                title_problem(&format!("a{c}b")),
+                Some(TitleProblem::Separator(c)),
+                "{c:?}"
+            );
+            assert_eq!(TitleProblem::Separator(c).rule(), "separator");
+        }
+        // None of them: spaces of other kinds (Zs), letters, marks and
+        // symbols.
         for c in [
             '\u{A0}',
-            '\u{2028}',
+            '\u{2007}',
+            '\u{202F}',
             '\u{3000}',
             'ß',
             '\u{301}',
             '€',
             '\u{1F600}',
         ] {
-            assert!(!is_format(c) && !c.is_control(), "{c:?}");
+            assert!(
+                !is_format(c) && !c.is_control() && !is_separator(c),
+                "{c:?}"
+            );
             assert_eq!(title_problem(&format!("a{c}b")), None, "{c:?}");
         }
         // The first character that breaks a rule is named.

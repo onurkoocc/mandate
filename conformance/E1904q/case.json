@@ -1,0 +1,61 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1904q",
+  "kind": "compile",
+  "title": "The part of a field that is not pure is refused where it stands, inside an expression that otherwise is (a mutation: the field words counts a delegation's result).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/3/fields/3/value",
+      "value": {
+        "op": "call",
+        "callee": {
+          "op": "var",
+          "name": "len"
+        },
+        "args": [
+          {
+            "value": {
+              "op": "delegate",
+              "agent": "Greeter",
+              "skill": "greet",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "vendor_id"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1904",
+        "path": "/defs/Greet/body/3/fields/3/value/args/0/value",
+        "facts": {
+          "role": "accountant",
+          "field": "words",
+          "problem": "impure",
+          "what": "delegate"
+        }
+      }
+    ]
+  }
+}
