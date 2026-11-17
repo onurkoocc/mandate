@@ -893,7 +893,11 @@ pub fn card(
     // 0.6: a workflow that applies a pattern is read as its expansion (or, if
     // the pattern's module is not given, the stand-in that says so).
     let expanded: Option<Value> = if is_0_6 {
-        mandate_check::expand::for_views(program, modules)
+        mandate_check::expand::for_views_pinned(
+            program,
+            modules,
+            mandate_check::library::std_patterns_pin(lock).as_ref(),
+        )
     } else {
         None
     };

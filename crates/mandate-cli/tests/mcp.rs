@@ -620,6 +620,87 @@ fn project_views_of_a_program_that_applies_a_pinned_librarys_pattern_are_mandate
     );
 }
 
+/// 0.7 (RL6): a program of 0.7 whose lock pins std.patterns 1.0.0 is
+/// projected, in every view, with 1.0.0's expansion, as `mandate view`
+/// shows it with that lock; without the lock, with 2.0.0's, the version of
+/// its language. The Node server does not hand the pin yet (its slice comes
+/// later), and no recorded conversation holds such a program.
+#[test]
+fn project_shows_the_version_of_std_patterns_the_lock_pins() {
+    const PROGRAM: &str = "fixtures/attention/batch.mdt";
+    const LOCK: &str = "conformance/E1609c/mandate.lock.json";
+    let mut io = MemoryIo::new();
+    for f in [PROGRAM, LOCK] {
+        io.files.insert(f.to_owned(), read_bytes(f).unwrap());
+    }
+    let code = serve_io(
+        &mut io,
+        &["view", PROGRAM, "--format", "json", "--lock", LOCK],
+        b"",
+    );
+    assert_eq!(code, 0, "{}", io.err);
+    let views = io.out.clone();
+    let lock = mandate_ir::parse(&read_text(LOCK).unwrap()).unwrap().value;
+    let source = quoted(&read_text(PROGRAM).unwrap());
+    let with_lock = |view: &str| {
+        format!(
+            r#"{{"source":{source},"lock":{},"view":"{view}"}}"#,
+            mandate_ir::stringify(&mandate_ir::JsValue::from(&lock)).unwrap()
+        )
+    };
+    let alone = |view: &str| format!(r#"{{"source":{source},"view":"{view}"}}"#);
+    let out = serve(&[
+        call(1, "mandate.project", &with_lock("architecture")),
+        call(2, "mandate.project", &with_lock("authority")),
+        call(3, "mandate.project", &with_lock("cost")),
+        call(4, "mandate.project", &alone("architecture")),
+    ]);
+    for (i, view) in ["architecture", "authority", "cost"].iter().enumerate() {
+        assert!(
+            out[i].contains(&content(&pretty_member(&views, view))),
+            "{view}: {}",
+            &out[i][..300.min(out[i].len())]
+        );
+    }
+    assert!(out[0].contains("BatchWithExceptions (std.patterns 1.0.0)"));
+    assert!(out[3].contains("BatchWithExceptions (std.patterns 2.0.0)"));
+    // The diff of the program with itself, the lock given: no change.
+    let diff = serve(&[call(
+        5,
+        "mandate.project",
+        &with_lock("diff").replace(
+            r#","view":"diff""#,
+            &format!(r#","view":"diff","before":{source}"#),
+        ),
+    )]);
+    assert!(
+        diff[0].contains(r#"\"governance\": []"#),
+        "{}",
+        &diff[0][..300.min(diff[0].len())]
+    );
+    // caps_of reads the authority view of that expansion as well.
+    let caps = serve(&[call(
+        6,
+        "mandate.caps_of",
+        &with_lock("authority").replace(r#","view":"authority""#, r#","name":"MatchAll""#),
+    )]);
+    let auth = pretty_member(&views, "authority");
+    let row = mandate_ir::parse(&auth).unwrap().value;
+    let wanted = row
+        .get("rows")
+        .and_then(mandate_ir::Value::as_array)
+        .unwrap()
+        .iter()
+        .find(|r| r.get("who").and_then(mandate_ir::Value::as_str) == Some("MatchAll"))
+        .map(|r| mandate_ir::stringify(&mandate_ir::JsValue::from(r)).unwrap())
+        .unwrap();
+    assert!(
+        structured(&caps[0]).contains(&wanted),
+        "{}",
+        &caps[0][..300.min(caps[0].len())]
+    );
+}
+
 #[test]
 fn libraries_that_are_not_libraries_are_a_tool_error_in_each_tool_that_takes_them() {
     let refused = "libraries must be a list of libraries, each { manifest, files }";

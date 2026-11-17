@@ -61,6 +61,12 @@ const RULES: Rules<'static> = Rules {
         ("program_doc", "lock"),
         ("program_doc", "modules"),
         ("diff_doc", "locks"),
+        // 0.7: the version of std.patterns a caller that holds no lock names.
+        ("architecture", "std_patterns"),
+        ("authority", "std_patterns"),
+        ("cost", "std_patterns"),
+        ("program_doc", "std_patterns"),
+        ("diff_doc", "std_patterns"),
         ("card", "opts"),
         ("card_doc", "opts"),
         ("acs_target", "modules"),

@@ -1,0 +1,7 @@
+# Exceptions for the osv check (.github/workflows/supply-chain.yml) are the repository
+# owner's decision: one advisory each, always with an expiry date (ignoreUntil).
+
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2026-12-18
+reason = "ReDoS in picomatch up to 4.0.7 (CVE-2026-112366); 4.0.7 is the latest release and no fixed version exists as of 2026-11-18. picomatch is only a development dependency of the test runner (vitest, vite, tinyglobby, fdir), never ships and never sees untrusted patterns; the exception expires so the check turns red again if it is still unfixed."

@@ -362,6 +362,7 @@ fn run_subprogram(inputs: &Inputs, c: &Value) -> Got {
         ops: &ops,
         lead: DataClass::from_name(lead).unwrap(),
         room: &room,
+        std_patterns: None,
     }) {
         Ok(r) => Got::Text(with_digest(r.to_js())),
         Err(message) => Got::Throws(format!("Error: {message}")),
@@ -390,6 +391,7 @@ fn run_amendment(inputs: &Inputs, c: &Value) -> Got {
         modules: modules.as_ref(),
         workflow,
         envelope,
+        std_patterns: None,
     }) {
         Ok(r) => Got::Text(with_digest(r.to_js())),
         Err(message) => Got::Throws(format!("Error: {message}")),

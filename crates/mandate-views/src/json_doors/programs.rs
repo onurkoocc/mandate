@@ -6,6 +6,7 @@ use mandate_check::Locks;
 use mandate_check::Modules;
 use mandate_check::json_doors::DoorError;
 use mandate_check::json_doors::input::{Members, args};
+use mandate_check::library::Version;
 use mandate_ir::{JsValue, Value};
 
 use super::documents::doc_js;
@@ -31,8 +32,19 @@ impl<'a> CardOpts<'a> {
     }
 }
 
+/// The member `std_patterns` (0.7) of a view door's input: the version of
+/// `std.patterns` a caller that holds no lock names, one the compiler
+/// embeds. With `lock` it must be the version the lock pins, which the view
+/// reads either way. `bad_input`, with a fixed message, for anything else.
+fn pin_named(a: Members<'_>, lock: Option<&Value>) -> Result<Option<Version>, DoorError> {
+    let named = a.opt_std_patterns("std_patterns")?;
+    mandate_check::library::pin_of(lock, named.as_ref())
+        .map_err(|e| DoorError::bad_input(format!("`std_patterns`: {e}")))?;
+    Ok(named)
+}
+
 /// The parameters of [`architecture`].
-pub(super) const ARCHITECTURE: &[&str] = &["program", "modules", "lock"];
+pub(super) const ARCHITECTURE: &[&str] = &["program", "modules", "lock", "std_patterns"];
 
 /// `architecture(program)`, `compiler/src/views/views.ts`: each workflow as a
 /// graph of its steps.
@@ -49,11 +61,13 @@ pub(super) const ARCHITECTURE: &[&str] = &["program", "modules", "lock"];
 pub(super) fn architecture(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, ARCHITECTURE)?;
     let modules = a.opt_modules("modules")?;
-    Ok(crate::architecture_with_lock(a.program("program")?, a.opt_lock("lock"), modules).to_js())
+    let lock = a.opt_lock("lock");
+    let pin = pin_named(a, lock)?;
+    Ok(crate::architecture_pinned(a.program("program")?, lock, modules, pin.as_ref()).to_js())
 }
 
 /// The parameters of [`authority`].
-pub(super) const AUTHORITY: &[&str] = &["program", "modules"];
+pub(super) const AUTHORITY: &[&str] = &["program", "modules", "std_patterns"];
 
 /// `authority(program)`, `compiler/src/views/views.ts`: what each agent,
 /// workflow and delegation may touch.
@@ -66,11 +80,12 @@ pub(super) const AUTHORITY: &[&str] = &["program", "modules"];
 pub(super) fn authority(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, AUTHORITY)?;
     let modules = a.opt_modules("modules")?;
-    Ok(crate::authority_with(a.program("program")?, modules).to_js())
+    let pin = pin_named(a, None)?;
+    Ok(crate::authority_pinned(a.program("program")?, modules, pin.as_ref()).to_js())
 }
 
 /// The parameters of [`cost`].
-pub(super) const COST: &[&str] = &["program", "lock", "modules"];
+pub(super) const COST: &[&str] = &["program", "lock", "modules", "std_patterns"];
 
 /// `cost(program, lock)`, `compiler/src/views/views.ts`: the static upper
 /// bound of what each workflow hands out.
@@ -81,11 +96,13 @@ pub(super) const COST: &[&str] = &["program", "lock", "modules"];
 pub(super) fn cost(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, COST)?;
     let modules = a.opt_modules("modules")?;
-    Ok(crate::cost_with(a.program("program")?, a.opt_lock("lock"), modules).to_js())
+    let lock = a.opt_lock("lock");
+    let pin = pin_named(a, lock)?;
+    Ok(crate::cost_pinned(a.program("program")?, lock, modules, pin.as_ref()).to_js())
 }
 
 /// The parameters of [`program_doc`].
-pub(super) const PROGRAM_DOC: &[&str] = &["program", "lock", "modules"];
+pub(super) const PROGRAM_DOC: &[&str] = &["program", "lock", "modules", "std_patterns"];
 
 /// `programDoc(program, lock, modules)`, `compiler/src/views/views.ts`: the
 /// views of a program as one document.
@@ -97,11 +114,17 @@ pub(super) fn program_doc(input: &Value) -> Result<JsValue, DoorError> {
     let program = a.program("program")?;
     let lock = a.opt_lock("lock");
     let modules = a.opt_modules("modules")?;
-    Ok(doc_js(&crate::program_doc(program, lock, modules)))
+    let pin = pin_named(a, lock)?;
+    Ok(doc_js(&crate::program_doc_pinned(
+        program,
+        lock,
+        modules,
+        pin.as_ref(),
+    )))
 }
 
 /// The parameters of [`diff_doc`].
-pub(super) const DIFF_DOC: &[&str] = &["before", "after", "locks", "modules"];
+pub(super) const DIFF_DOC: &[&str] = &["before", "after", "locks", "modules", "std_patterns"];
 
 /// `diffDoc(before, after, locks)`, `compiler/src/views/views.ts`: the
 /// semantic diff of two programs as a document.
@@ -119,7 +142,16 @@ pub(super) fn diff_doc(input: &Value) -> Result<JsValue, DoorError> {
         after: l.opt_value("after"),
     });
     let modules = a.opt_modules("modules")?;
-    Ok(doc_js(&crate::diff_doc_with(before, after, locks, modules)))
+    // Each lock is held to the version named, when one is.
+    pin_named(a, locks.and_then(|l| l.before))?;
+    let pin = pin_named(a, locks.and_then(|l| l.after))?;
+    Ok(doc_js(&crate::diff_doc_pinned(
+        before,
+        after,
+        locks,
+        modules,
+        pin.as_ref(),
+    )))
 }
 
 /// The parameters of [`envelope_workflows`].

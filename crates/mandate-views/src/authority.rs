@@ -277,9 +277,21 @@ pub fn authority(program: &Value) -> AuthorityView {
 /// [`authority`] shows it.
 #[must_use]
 pub fn authority_with(program: &Value, modules: Option<&Modules>) -> AuthorityView {
+    authority_pinned(program, modules, None)
+}
+
+/// [`authority_with`] where the expansion reads `std.patterns` at the
+/// version `pinned` (0.7: the version the program's lock pins); `None` is
+/// [`authority_with`]'s answer.
+#[must_use]
+pub fn authority_pinned(
+    program: &Value,
+    modules: Option<&Modules>,
+    pinned: Option<&mandate_check::library::Version>,
+) -> AuthorityView {
     let mut rows: Vec<AuthorityRow> = Vec::new();
     // 0.6: a workflow that applies a pattern is shown as its expansion.
-    let expanded = mandate_check::expand::for_views(program, modules);
+    let expanded = mandate_check::expand::for_views_pinned(program, modules, pinned);
     if let Some(p) = Program::of(expanded.as_ref().unwrap_or(program)) {
         let defs = sorted_defs(p);
         // 0.6: the connectors the program imports are read, so that a

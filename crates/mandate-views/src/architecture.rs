@@ -4,6 +4,7 @@
 //! `architectureBlocks`, lines 1513-1526). The graph is
 //! [`mandate_check::Graph`], which the semantic diff also stands on.
 
+use mandate_check::library::{Version, std_patterns_pin};
 use mandate_check::{
     ArchEdge, ArchKind, ArchNode, Graph, Modules, ProgramRef, VIEW_FORMAT, defs_of, is_kind,
     program_ref,
@@ -151,9 +152,24 @@ pub fn architecture_with_lock(
     lock: Option<&Value>,
     modules: Option<&Modules>,
 ) -> ArchitectureView {
+    architecture_pinned(program, lock, modules, None)
+}
+
+/// [`architecture_with_lock`] with the version of `std.patterns` a caller
+/// that holds no lock names (0.7, `named`): the expansion reads the version
+/// the lock pins, else `named`, else the version of the program's language
+/// ([`mandate_check::library::std_patterns_for`]).
+#[must_use]
+pub fn architecture_pinned(
+    program: &Value,
+    lock: Option<&Value>,
+    modules: Option<&Modules>,
+    named: Option<&Version>,
+) -> ArchitectureView {
     let mut workflows: Vec<WorkflowArchitecture> = Vec::new();
     // 0.6: a workflow that applies a pattern is shown as its expansion.
-    let expanded = mandate_check::expand::for_views(program, modules);
+    let pin = std_patterns_pin(lock).or(named.copied());
+    let expanded = mandate_check::expand::for_views_pinned(program, modules, pin.as_ref());
     let written = Program::of(program);
     if let Some(p) = Program::of(expanded.as_ref().unwrap_or(program)) {
         for (name, d) in sorted_defs(p) {
@@ -162,7 +178,7 @@ pub fn architecture_with_lock(
             }
             let pattern = written
                 .and_then(|w| defs_of(w).get(name).map(|orig| (w, orig)))
-                .and_then(|(w, orig)| pattern_of(w, orig, lock, modules))
+                .and_then(|(w, orig)| pattern_of(w, orig, lock, modules, pin.as_ref()))
                 .map(|p| p.text);
             let mut g = Graph::new(p, d);
             g.block(Definition::of(d).body(), Vec::new());
