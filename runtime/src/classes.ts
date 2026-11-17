@@ -72,6 +72,10 @@ export const EVENT_CLASSES: Readonly<Record<string, ViewClass>> = {
   charge_settled: "S2",
   map_started: "S2",
   map_ended: "S2",
+  // S2 of 0.7: a stage begun and ended, and a report, which is addressed (spec/attention.md "Events"; `addressee`).
+  stage_started: "S2",
+  stage_ended: "S2",
+  report: "S2",
   // S3: an external action and a change set, with what they carry.
   action_prepared: "S3",
   action_committed: "S3",
@@ -182,9 +186,28 @@ export type Audience = { role: string } | { audit: true };
 /**
  * Whether a view for `audience` shows what is in class `cls`. The audit view shows every class. A role's view shows
  * S1 and S2, and S0 where it was asked of that role: `askedOf` is the role the wait or the decision names.
+ *
+ * 0.7 (spec/attention.md "A report is addressed"): what is addressed to one role (`addressed`, as `addressee` gives it
+ * for an event) is shown, of the roles, to that role alone, whatever its class; one addressed to no role it can name
+ * (`{ to: null }`) to none. The audit view shows it as everything.
  */
-export function shows(audience: Audience, cls: ViewClass, askedOf?: string | null): boolean {
+export function shows(audience: Audience, cls: ViewClass, askedOf?: string | null, addressed?: { to: string | null }): boolean {
   if ("audit" in audience) return true;
+  if (addressed !== undefined && (addressed.to === null || addressed.to !== audience.role)) return false;
   if (cls === "S0") return askedOf !== undefined && askedOf !== null && askedOf === audience.role;
   return cls === "S1" || cls === "S2";
+}
+
+/** The event types that are addressed to one role, which their data names as `role` (spec/attention.md "Events"). */
+export const ADDRESSED_EVENTS: ReadonlySet<string> = new Set(["report"]);
+
+/**
+ * Whom an event is addressed to, for `shows`: undefined for an event of a type that is not addressed; for one that is,
+ * the role its data names, or null when it names none, which no role is shown. The type decides whether an event is
+ * addressed; the data only says to whom.
+ */
+export function addressee(type: string, data: unknown): { to: string | null } | undefined {
+  if (!ADDRESSED_EVENTS.has(type)) return undefined;
+  const role = typeof data === "object" && data !== null && !Array.isArray(data) ? (data as Record<string, unknown>)["role"] : undefined;
+  return { to: typeof role === "string" ? role : null };
 }
