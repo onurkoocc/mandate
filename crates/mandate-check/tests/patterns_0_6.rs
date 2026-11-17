@@ -466,6 +466,18 @@ fn the_roles_an_expansion_asks_are_roles_the_program_names() {
     );
     assert_eq!(mandate_check::roles_named(&defs(&written)), ["admin"]);
     assert_eq!(mandate_check::roles_named(&defs(&applied)), ["admin"]);
+    // The definitions are expanded as a program of the language they are
+    // given with: of 0.6 or 0.7 as the door's (which has no language), and
+    // not at all as definitions of 0.5, which has no patterns.
+    use mandate_ir::Language;
+    for language in [Language::V0_6, Language::V0_7] {
+        assert_eq!(
+            mandate_check::roles_named_in(&defs(&applied), language),
+            ["admin"],
+            "{language}"
+        );
+    }
+    assert!(mandate_check::roles_named_in(&defs(&applied), Language::V0_5).is_empty());
     // The acceptance program and its flow written out name the same: a review
     // is no role site (its role is held by E1507), so neither names one.
     let file = |f: &str| defs(&read_text(f).unwrap());

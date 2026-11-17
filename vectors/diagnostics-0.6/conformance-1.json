@@ -15842,7 +15842,7 @@
           {
             "code": "MDT-E0103",
             "severity": "error",
-            "message": "Unsupported language version \"mandate/0.7\"; this compiler reads \"mandate/0.1\" or \"mandate/0.2\" or \"mandate/0.3\" or \"mandate/0.4\" or \"mandate/0.5\" or \"mandate/0.6\". Use an explicit migration instead of loading it as-is.",
+            "message": "Unsupported language version \"mandate/0.8\"; this compiler reads \"mandate/0.1\" or \"mandate/0.2\" or \"mandate/0.3\" or \"mandate/0.4\" or \"mandate/0.5\" or \"mandate/0.6\" or \"mandate/0.7\". Use an explicit migration instead of loading it as-is.",
             "at": {
               "path": "/language",
               "span": [1, 13, 1, 26]
@@ -15855,9 +15855,10 @@
                 "mandate/0.3",
                 "mandate/0.4",
                 "mandate/0.5",
-                "mandate/0.6"
+                "mandate/0.6",
+                "mandate/0.7"
               ],
-              "found": "mandate/0.7"
+              "found": "mandate/0.8"
             }
           }
         ]

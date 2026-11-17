@@ -33,9 +33,8 @@ use std::collections::BTreeSet;
 use common::{check_text, check_with, kind_named, modules_of, patched_source, read_source};
 use mandate_check::KnownModules;
 use mandate_ir::codes::{self, Reference};
-use mandate_ir::{Value, canonicalize, parse};
+use mandate_ir::{Language, Value, canonicalize, parse};
 use mandate_syntax::SourceKind;
-use mandate_testkit::rust_only::RUST_ONLY_LANGUAGES;
 use mandate_testkit::{
     compare_text, files, read_json, repo_path, run_gate, sha256, subdirectories,
 };
@@ -307,13 +306,14 @@ fn every_0_5_conformance_case_under_the_0_6_header_gives_what_it_gives_as_0_5() 
     assert!(n >= 10, "only {n} conformance cases of 0.5");
 }
 
-/// The codes each compile case of 0.6 expects.
+/// The codes each compile case of 0.6 (whose `language` is `mandate/0.6`)
+/// expects.
 fn codes_of_0_6_cases() -> Vec<(String, BTreeSet<String>)> {
     let mut out = Vec::new();
     for id in subdirectories("conformance").unwrap() {
         let case = read_json(&format!("conformance/{id}/case.json")).unwrap();
         let language = case.get("language").and_then(Value::as_str);
-        if !language.is_some_and(|l| RUST_ONLY_LANGUAGES.contains(&l)) {
+        if language != Some(Language::V0_6.as_str()) {
             continue;
         }
         let codes: BTreeSet<String> = case
@@ -330,10 +330,12 @@ fn codes_of_0_6_cases() -> Vec<(String, BTreeSet<String>)> {
     out
 }
 
-/// Every code the Rust compiler is the reference for has a conformance case
-/// of 0.6 that expects it, and every code a 0.6 case expects is a row of the
-/// table: a case cannot expect a code the table does not have, nor a code be
-/// added in Rust without a case.
+/// Every code the Rust compiler is the reference for that 0.6 added (every
+/// such code but those `codes::CODES_0_7` lists, which `language_0_7.rs`
+/// holds to cases of 0.7) has a conformance case of 0.6 that expects it, and
+/// every code a 0.6 case expects is a row of the table: a case cannot expect
+/// a code the table does not have, nor a code be added in Rust without a
+/// case.
 #[test]
 fn every_code_of_the_rust_compiler_has_a_case_of_0_6() {
     let cases = codes_of_0_6_cases();
@@ -347,7 +349,7 @@ fn every_code_of_the_rust_compiler_has_a_case_of_0_6() {
         "no case of 0.6 expects a code, so nothing below is checked"
     );
     let rust: Vec<&str> = codes::iter()
-        .filter(|r| r.reference == Reference::Rust)
+        .filter(|r| r.reference == Reference::Rust && r.since() == Some(Language::V0_6))
         .map(|r| r.code)
         .collect();
     let without_case: Vec<&&str> = rust.iter().filter(|c| !expected.contains(**c)).collect();

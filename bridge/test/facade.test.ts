@@ -147,10 +147,11 @@ needs("the facade on the Rust compiler", () => {
       if (ours !== JSON.stringify(tables[n])) differ.push(n);
     }
     // KNOWN_VERSIONS and NEWEST_VERSION of crates/mandate-testkit/src/rust_only.rs (vectors/README.md, "The versions
-    // only the Rust compiler reads"): the Rust's list has mandate/0.6 at its end, and its newest version is 0.6.
+    // only the Rust compiler reads"): the Rust's list has mandate/0.6 and mandate/0.7 at its end, and its newest
+    // version is 0.7.
     expect(differ).toEqual(["LANGUAGE_VERSION", "LANGUAGE_VERSIONS"]);
-    expect(tables["LANGUAGE_VERSIONS"]).toEqual([...compiler.LANGUAGE_VERSIONS, "mandate/0.6"]);
-    expect([compiler.LANGUAGE_VERSION, tables["LANGUAGE_VERSION"]]).toEqual(["mandate/0.5", "mandate/0.6"]);
+    expect(tables["LANGUAGE_VERSIONS"]).toEqual([...compiler.LANGUAGE_VERSIONS, "mandate/0.6", "mandate/0.7"]);
+    expect([compiler.LANGUAGE_VERSION, tables["LANGUAGE_VERSION"]]).toEqual(["mandate/0.5", "mandate/0.7"]);
   });
 
   it("CODES outside `ts` is the Rust's table of codes, which has every row of the TypeScript's", () => {

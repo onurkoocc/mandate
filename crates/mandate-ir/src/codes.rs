@@ -11,6 +11,8 @@
 //!
 //! A code is written with its prefix, as diagnostics carry it (`MDT-E0103`).
 
+use crate::tags::Language;
+
 /// Which compiler is the reference for a row of the table: the one whose
 /// text the row must equal, and which a test holds it to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -766,9 +768,31 @@ pub fn iter() -> impl Iterator<Item = &'static CodeRow> {
     CODES.iter()
 }
 
+/// The codes language 0.7 adds (spec/attention.md), in the order they were
+/// added: each is a row of [`CODES`] whose reference is [`Reference::Rust`].
+/// A slice of 0.7 that adds a code lists it here, and the gates of 0.7 hold
+/// it to a conformance case of 0.7 that expects it; a code of the Rust that
+/// is not listed is of 0.6, and is held to a case of 0.6. None yet.
+pub const CODES_0_7: &[&str] = &[];
+
+impl CodeRow {
+    /// The language version that added the code, for a row of the Rust
+    /// compiler: 0.7 when [`CODES_0_7`] lists it, else 0.6. `None` for a row
+    /// of the TypeScript's table, whose codes are of 0.1 to 0.5.
+    #[must_use]
+    pub fn since(&self) -> Option<Language> {
+        match self.reference {
+            Reference::TypeScript => None,
+            Reference::Rust if CODES_0_7.contains(&self.code) => Some(Language::V0_7),
+            Reference::Rust => Some(Language::V0_6),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CODES, Reference, iter, lookup};
+    use super::{CODES, CODES_0_7, CodeRow, Reference, iter, lookup};
+    use crate::tags::Language;
 
     #[test]
     fn rows_and_lookup() {
@@ -826,5 +850,35 @@ mod tests {
             lookup("MDT-E1602").is_some_and(|r| r.reference == Reference::Rust),
             "the first codes of 0.6"
         );
+    }
+
+    /// Every code [`CODES_0_7`] lists is a row of the Rust, once; a row of
+    /// the Rust is of 0.6 unless it is listed, and a row of the TypeScript
+    /// is of neither.
+    #[test]
+    fn the_codes_of_0_7_are_rows_of_the_rust() {
+        for code in CODES_0_7 {
+            assert!(
+                lookup(code).is_some_and(|r| r.reference == Reference::Rust),
+                "{code} is listed as a code of 0.7 and is not a row of the Rust"
+            );
+            assert_eq!(
+                CODES_0_7.iter().filter(|c| *c == code).count(),
+                1,
+                "{code} is listed twice"
+            );
+        }
+        assert_eq!(
+            lookup("MDT-E1602").and_then(CodeRow::since),
+            Some(Language::V0_6)
+        );
+        assert_eq!(lookup("MDT-E0101").and_then(CodeRow::since), None);
+        let made_up = CodeRow {
+            code: "MDT-E1602",
+            title: "",
+            explain: "",
+            reference: Reference::TypeScript,
+        };
+        assert_eq!(made_up.since(), None, "a row of the TypeScript");
     }
 }

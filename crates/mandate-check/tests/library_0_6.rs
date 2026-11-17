@@ -626,6 +626,42 @@ fn a_version_published_in_between_is_held_to_the_version_above() {
     assert!(fine.ok, "{:#?}", fine.diagnostics);
 }
 
+/// `add` writes its pin into a lock of format 0.6 when the lock is older
+/// (the first format with `libraries`), and keeps the format of a lock of
+/// 0.6 or later: a lock of 0.7 (spec/attention.md "Lock 0.7") stays one.
+#[test]
+fn add_keeps_a_lock_of_0_6_or_later_in_its_format() {
+    let versions = every_version();
+    let at = now("2026-11-13T12:00:00Z");
+    let config = mandate_lib::read_libraries_config(
+        &mandate_ir::parse(r#"{"dir":"libs","wait_days":0,"revoked":[]}"#)
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    for (given, written) in [
+        ("mandate/lock/0.5", "mandate/lock/0.6"),
+        ("mandate/lock/0.6", "mandate/lock/0.6"),
+        ("mandate/lock/0.7", "mandate/lock/0.7"),
+    ] {
+        let lock: Value = mandate_ir::parse(&format!(r#"{{"lock":"{given}","modules":{{}}}}"#))
+            .unwrap()
+            .value;
+        let r = add(&request(Some("^1.0"), &lock, &versions, Some(&config), at));
+        assert!(r.ok, "{given}: {:#?}", r.diagnostics);
+        let out = r.lock.as_ref().expect("a lock");
+        assert_eq!(
+            out.get("lock").and_then(Value::as_str),
+            Some(written),
+            "{given}"
+        );
+        assert!(
+            mandate_ir::validate_lock(out).is_empty(),
+            "{given}: the lock written is one its schema takes"
+        );
+    }
+}
+
 /// `add`: the highest version within the range whose waiting period is
 /// over and whose digest is not revoked; a range nothing meets is E1606,
 /// and one whose versions all wait or are revoked is E1608.

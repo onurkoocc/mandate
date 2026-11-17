@@ -1,7 +1,8 @@
-//! The files the Rust compiler writes about language 0.6, which no
-//! TypeScript result holds (`vectors/README.md`, "The gates of 0.6"): the
-//! golden file of the 0.6 programs, [`GOLDEN_0_6`], and the diagnostic
-//! vectors of 0.6, [`DIAGNOSTICS_0_6`].
+//! The files the Rust compiler writes about languages 0.6 and 0.7, which no
+//! TypeScript result holds (`vectors/README.md`, "The gates of 0.6" and "The
+//! gates of 0.7"): the golden file of the 0.6 programs, [`GOLDEN_0_6`], and
+//! the diagnostic vectors of 0.6, [`DIAGNOSTICS_0_6`]; and those of 0.7,
+//! [`GOLDEN_0_7`] and [`DIAGNOSTICS_0_7`], written with [`UPDATE_0_7`].
 //!
 //! They catch a regression; they do not say a rule is right, which the
 //! hand-written conformance cases of 0.6 do. A normal run compares each file
@@ -30,10 +31,32 @@ pub const DIAGNOSTICS_0_6: &str = "vectors/diagnostics-0.6";
 /// and `.ir.json` file in it.
 pub const PROGRAMS_0_6: &str = "fixtures/library";
 
+/// The environment variable that makes a run write the files of 0.7
+/// instead of comparing them: `MANDATE_UPDATE_0_7=1`, passed on under
+/// WebAssembly as [`UPDATE`] is.
+pub const UPDATE_0_7: &str = "MANDATE_UPDATE_0_7";
+
+/// The golden file of the 0.7 programs, relative to the repository root:
+/// the shape of [`GOLDEN_0_6`].
+pub const GOLDEN_0_7: &str = "vectors/golden/0.7.json";
+
+/// The directory of the diagnostic vectors of 0.7: the layout and formats
+/// of [`DIAGNOSTICS_0_6`].
+pub const DIAGNOSTICS_0_7: &str = "vectors/diagnostics-0.7";
+
+/// The directory of the programs of 0.7 the golden file of 0.7 pins: every
+/// `.mdt` and `.ir.json` file in it.
+pub const PROGRAMS_0_7: &str = "fixtures/attention";
+
 /// Whether this run writes the files of 0.6 ([`UPDATE`] is `1`).
 #[must_use]
 pub fn updating() -> bool {
-    std::env::var(UPDATE).is_ok_and(|v| v == "1")
+    updating_by(UPDATE)
+}
+
+/// Whether the environment variable `var` is `1`.
+fn updating_by(var: &str) -> bool {
+    std::env::var(var).is_ok_and(|v| v == "1")
 }
 
 /// The programs of 0.6 the golden file pins, repository paths in order.
@@ -42,10 +65,25 @@ pub fn updating() -> bool {
 ///
 /// When the directory cannot be listed.
 pub fn programs_0_6() -> Result<Vec<String>, String> {
-    Ok(crate::files(PROGRAMS_0_6)?
+    programs_in(PROGRAMS_0_6)
+}
+
+/// The programs of 0.7 the golden file of 0.7 pins, repository paths in
+/// order.
+///
+/// # Errors
+///
+/// When the directory cannot be listed.
+pub fn programs_0_7() -> Result<Vec<String>, String> {
+    programs_in(PROGRAMS_0_7)
+}
+
+/// Every `.mdt` and `.ir.json` file of `dir`, repository paths in order.
+fn programs_in(dir: &str) -> Result<Vec<String>, String> {
+    Ok(crate::files(dir)?
         .into_iter()
         .filter(|f| f.ends_with(".mdt") || f.ends_with(".ir.json"))
-        .map(|f| format!("{PROGRAMS_0_6}/{f}"))
+        .map(|f| format!("{dir}/{f}"))
         .collect())
 }
 
@@ -146,18 +184,33 @@ fn ascii(text: &str) -> String {
 ///
 /// The file is missing or differs (on a normal run), or cannot be written.
 pub fn pin(rel: &str, text: &str) -> Result<String, String> {
-    if updating() {
+    pin_by(UPDATE, rel, text)
+}
+
+/// [`pin`] for a file of 0.7: written instead with [`UPDATE_0_7`] set to
+/// `1`.
+///
+/// # Errors
+///
+/// As [`pin`].
+pub fn pin_0_7(rel: &str, text: &str) -> Result<String, String> {
+    pin_by(UPDATE_0_7, rel, text)
+}
+
+/// [`pin`], written instead when the environment variable `var` is `1`.
+fn pin_by(var: &str, rel: &str, text: &str) -> Result<String, String> {
+    if updating_by(var) {
         let file = crate::path(rel);
         if let Some(dir) = file.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("{rel}: {e}"))?;
         }
         std::fs::write(&file, text).map_err(|e| format!("{rel}: {e}"))?;
-        return Ok(format!("{rel}: written ({UPDATE}=1)"));
+        return Ok(format!("{rel}: written ({var}=1)"));
     }
     let committed = crate::read_text(rel)
-        .map_err(|e| format!("{e}; {UPDATE}=1 writes it from what the Rust gives"))?;
+        .map_err(|e| format!("{e}; {var}=1 writes it from what the Rust gives"))?;
     crate::compare_text(&committed, text).map_err(|why| {
-        format!("{rel} is not what the Rust gives: {why}\n(a change on purpose: write it again with {UPDATE}=1, and say why in the commit)")
+        format!("{rel} is not what the Rust gives: {why}\n(a change on purpose: write it again with {var}=1, and say why in the commit)")
     })?;
     Ok(format!("{rel}: the same"))
 }

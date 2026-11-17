@@ -1,0 +1,43 @@
+{
+  "format": "mandate/vectors/diagnostics/golden/0.1",
+  "part": 1,
+  "parts": 1,
+  "programs": [
+    {
+      "program": "fixtures/attention/minimal.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e",
+            "defs": {
+              "Greet": "sha256:596801da78e127a180ea98dea4826019f3f908e38a6276721660d634fd24f7d2",
+              "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e",
+            "defs": {
+              "Greet": "sha256:596801da78e127a180ea98dea4826019f3f908e38a6276721660d634fd24f7d2",
+              "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    }
+  ]
+}

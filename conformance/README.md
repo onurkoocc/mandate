@@ -31,14 +31,14 @@ own input files (`program.mdt` or `program.ir.json`, module files,
   case checks (after the patch) must declare that language. A case that
   expects E0103 for a version no compiler reads may name instead the version
   of the compiler it is written for, when that is one only the Rust compiler
-  reads (`S02h`: a program of `mandate/0.7`, a case of `mandate/0.6`). So may a
+  reads (`S02h`: a program of `mandate/0.8`, a case of `mandate/0.6`). So may a
   case about how a program of an earlier version meets what that version adds,
   which the TypeScript could not run or would write vectors for (`E0104d`: a
   program of 0.5 with fields of 0.6; `E1603`: a program of 0.5 that imports a
   module of 0.6): its program declares a version the Rust reads that is older
   than the case's. A text that does not read declares the version of its header
-  (`mandate @ 0.6`). A case of `mandate/0.6` is a case of the Rust compiler alone
-  (see "Cases of 0.6").
+  (`mandate @ 0.6`). A case of `mandate/0.6` or `mandate/0.7` is a case of the Rust
+  compiler alone (see "Cases of 0.6" and "Cases of 0.7").
 - `input`: required except in a journal case and a library case. `{ "file": "<path>", "kind": "mdt" | "json" }` or
   `{ "text": "<source>", "kind": ... }`. Exactly one of `file` and `text`.
 - `modules`: optional list of module files, loaded the way `--module` loads them.
@@ -268,7 +268,7 @@ their whole results in `vectors/diagnostics-0.6/`.
 |---|---|---|
 | `S02f` | A 0.6 program with none of what 0.6 adds checks | — |
 | `S02g` | An unknown field of a 0.6 program is refused: its IR is closed by `spec/ir-0.6.schema.json` | E0104 |
-| `S02h` | An unknown version is refused, and the versions a 0.6 compiler reads are 0.1 to 0.6 | E0103 |
+| `S02h` | An unknown version (`mandate/0.8`) is refused, and the versions the Rust compiler reads are 0.1 to 0.7 | E0103 |
 | `E0140` | A 0.5 lock that carries `libraries`, a field of format 0.6 | E0140 |
 | `E0140a` | A 0.6 lock whose library has a version that is not `MAJOR.MINOR.PATCH` and a module with no program hash | E0140 |
 | `E0140b` | A 0.6 lock whose connector has no `tools` and a credential that is not a name | E0140 |
@@ -544,6 +544,24 @@ names, one letter for each further refused condition of the batch commit step, a
 E1708m, the connectors' own), N11 to N11e and E1710 to E1710b (shapes), E0104g and E1709d (0.6 extends
 them), and the code numbers of E13xx, E14xx, E1504 to E1508, E16xx, E1710 and E1711.
 
+## Cases of 0.7
+
+Language 0.7 (spec/attention.md) is the Rust compiler's alone, as 0.6 is. A case of
+it says `"language": "mandate/0.7"`, is written by a person and compared whole, and
+is skipped and counted by the TypeScript runners with the cases of 0.6
+(`RUST_ONLY_CASES`). The Rust writes their whole results in
+`vectors/diagnostics-0.7/`. A code 0.7 adds is listed in
+`mandate_ir::codes::CODES_0_7` and has a case of 0.7 that expects it
+(`crates/mandate-testkit/tests/language_0_7.rs`).
+
+| Case | Claim | Code |
+|---|---|---|
+| `S02i` | A 0.7 program with none of what 0.7 adds checks | — |
+| `S02j` | An unknown field of a 0.7 program is refused: its IR is closed by `spec/ir-0.7.schema.json` | E0104 |
+| `S02k` | A 0.7 program accepts a lock of an older format (0.6) | — |
+| `S02l` | A lock of format 0.7, read by `spec/lock-0.7.schema.json`, with a 0.7 program | — |
+| `E0140d` | An unknown field of a 0.7 lock is refused: the 0.7 lock schema is closed | E0140 |
+
 ## What the Rust crates run
 
 | Implementation | Runs | Where |
@@ -580,13 +598,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 390, passed 390, pending 0
+conformance cases: ran 395, passed 395, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 265 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 270 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
 ```
 
-(406 cases: 390 `compile`, 265 of them of language 0.6, and 16 `journal`; no case
+(411 cases: 395 `compile`, 265 of them of language 0.6 and 5 of 0.7, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

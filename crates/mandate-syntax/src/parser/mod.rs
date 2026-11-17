@@ -286,6 +286,18 @@ impl<'a> Parser<'a> {
         self.language.at_least(Language::V0_6)
     }
 
+    /// Whether the program reads what 0.7 adds (spec/attention.md): it is of
+    /// language 0.7 or later. Nothing reads it yet: each construct of 0.7
+    /// (`stage`, `report`, `owner`, `asks`) is read behind it by the slice
+    /// that adds it, and until then a 0.7 program reads as a 0.6 one.
+    #[expect(
+        dead_code,
+        reason = "the first slice of 0.7 that reads a construct calls it, and takes this away"
+    )]
+    pub(crate) fn reads_0_7(&self) -> bool {
+        self.language.at_least(Language::V0_7)
+    }
+
     /// `MDT-E0101` at the first doc line before the current token that no
     /// definition has taken: a `///` line stands only directly before a
     /// definition (or its `pub`). Nothing in a program that does not read

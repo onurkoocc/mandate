@@ -31,7 +31,10 @@
 //! does, with its `language`; the reserved words do not change, and a
 //! program under an older header reads exactly as before. The only text that
 //! differs for an older program is the list of versions an unknown one's
-//! E0103 names, which has 0.6 in it.
+//! E0103 names, which has 0.6 in it. The header `mandate @ 0.7`
+//! (spec/attention.md) is read the same way: until a construct of 0.7 is
+//! read behind it, a 0.7 program reads as the same program of 0.6, and the
+//! list has 0.7 too.
 //!
 //! What another implementation has to copy, and the vectors that hold this crate to it, are
 //! described in `vectors/README.md` ("Reading Mandate text"). In short:

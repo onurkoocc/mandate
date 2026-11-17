@@ -1,0 +1,27 @@
+// The smallest program of language 0.7 (spec/attention.md): an agent that
+// writes a greeting, and a workflow that asks it for one. Nothing here is
+// new in 0.7; the later slices of 0.7 add the constructs, and the program
+// stays as it is so that the 0.7 gates keep one that checks with none of
+// them. Only the Rust compiler reads it.
+
+mandate @ 0.7
+
+module example.attention.minimal @ 0.1
+
+use std.{model}
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+agent Greeter {
+  role   "Writes one line of greeting."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill greet(name: Text) -> Inferred<Text> ! {Model}
+}
+
+workflow Greet(name: Text) -> Inferred<Text>
+  caps   ModelStd
+  budget { time: 5m, steps: 4 }
+{
+  delegate Greeter.greet(name)
+}

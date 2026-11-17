@@ -374,8 +374,8 @@ describe("modules the host refuses, by name, from their bytes", () => {
 /** The `tables` output with the Rust's newest version as the TypeScript's (rust_only.rs, NEWEST_VERSION). */
 function tablesAsTypescript(v: unknown): unknown {
   const o = { ...(v as Record<string, unknown>) };
-  if (Array.isArray(o["LANGUAGE_VERSIONS"])) o["LANGUAGE_VERSIONS"] = (o["LANGUAGE_VERSIONS"] as string[]).filter((x) => x !== "mandate/0.6");
-  if (o["LANGUAGE_VERSION"] === "mandate/0.6") o["LANGUAGE_VERSION"] = "mandate/0.5";
+  if (Array.isArray(o["LANGUAGE_VERSIONS"])) o["LANGUAGE_VERSIONS"] = (o["LANGUAGE_VERSIONS"] as string[]).filter((x) => x !== "mandate/0.6" && x !== "mandate/0.7");
+  if (o["LANGUAGE_VERSION"] === "mandate/0.7") o["LANGUAGE_VERSION"] = "mandate/0.5";
   return o;
 }
 

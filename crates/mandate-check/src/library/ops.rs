@@ -429,7 +429,10 @@ fn refused(diagnostics: Vec<Diagnostic>, resolution: JsObject) -> Outcome {
     }
 }
 
-/// The lock with `pin` as the entry of `library`, the entries by name.
+/// The lock with `pin` as the entry of `library`, the entries by name. A
+/// lock of a format before 0.6 becomes one of 0.6, the first that has
+/// `libraries`; one of 0.6 or later (0.7, spec/attention.md "Lock 0.7")
+/// keeps its format, and so every field that format has.
 fn with_pin(lock: &Value, library: &str, pin: &LockLibrary) -> Value {
     let mut m = lock.as_object().cloned().unwrap_or_default();
     let mut libraries: Vec<(String, Value)> = m
@@ -453,8 +456,8 @@ fn with_pin(lock: &Value, library: &str, pin: &LockLibrary) -> Value {
         out.insert(k, v);
     }
     m.insert("libraries", Value::Object(out));
-    if m.get("lock").and_then(Value::as_str) != Some("mandate/lock/0.6") {
-        m.insert("lock", "mandate/lock/0.6");
+    if !mandate_ir::lock_at_least(lock, mandate_ir::LOCK_FORMAT_0_6) {
+        m.insert("lock", mandate_ir::LOCK_FORMAT_0_6);
     }
     Value::Object(m)
 }

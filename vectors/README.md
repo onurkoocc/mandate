@@ -16,9 +16,10 @@ Rust test that its section names. Together they define what "the same
 diagnostics" means for the Rust compiler, and the last section, "Where the
 Rust compiler is not held to the TypeScript", lists what they do not reach.
 
-Two other things here are not the TypeScript's: `golden/0.6.json` and
+Other things here are not the TypeScript's: `golden/0.6.json` and
 `diagnostics-0.6/`, which the Rust compiler writes about language 0.6, which
-only it reads ("The gates of 0.6" below).
+only it reads ("The gates of 0.6" below), and `golden/0.7.json` and
+`diagnostics-0.7/`, the same for language 0.7 ("The gates of 0.7").
 
 They are not conformance cases (`conformance/`): a case states a rule and
 is checked against the spec; a vector records what the reference
@@ -1196,7 +1197,7 @@ held by what a person writes and by what the Rust writes:
   (`compiler/test/cases-runner.ts`, 265 today): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
-  version, E0103, whose list has 0.6), `E0140` (a 0.5 lock that carries `libraries`),
+  version, `mandate/0.8`, E0103, whose list has 0.6 and 0.7), `E0140` (a 0.5 lock that carries `libraries`),
   `E0140a` and `E0140b` (a 0.6 lock with a malformed library and connector), and the
   25 of the 0.6 surface (`pub`, doc lines, closed imports: `P01`, `P01a`, `P01b`,
   `E0101` to `E0101g`, `E0104d`, `E1602` to `E1602c`, `E1603`, `E1603a`, `E1604` to
@@ -1241,8 +1242,40 @@ conformance case with only its header rewritten to 0.6, against its 0.5 run (ver
 and hashes aside; a program 0.6 reads otherwise on purpose, because it imports a module
 its check is not given or has a `///` line, would be left out by a named rule that lists
 it, and none does), and that every code whose reference is the Rust compiler
-(`mandate_ir::codes`, `Reference::Rust`) has a case of 0.6 that expects it, and every
+(`mandate_ir::codes`, `Reference::Rust`) and was added by 0.6 (every one but those
+`mandate_ir::codes::CODES_0_7` lists) has a case of 0.6 that expects it, and every
 code a case of 0.6 expects is in the table.
+
+## The gates of 0.7
+
+Language 0.7 (spec/attention.md) is the Rust compiler's alone too, and is held the
+same way, by gates of its own beside those of 0.6:
+
+- **Conformance cases of 0.7**, `"language": "mandate/0.7"`, written by hand and
+  skipped and counted by the TypeScript runners as those of 0.6 are
+  (`RUST_ONLY_LANGUAGES` is `mandate/0.6` and `mandate/0.7`, and `RUST_ONLY_CASES`
+  counts both, 270 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
+  unknown field of a 0.7 program, E0104), `S02k` and `S02l` (a 0.7 program with a lock
+  of format 0.6, and of 0.7), `E0140d` (an unknown field of a 0.7 lock, E0140).
+- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (one today,
+  `minimal.mdt`, 14 outputs), the digest of each output text, made by the code of
+  `golden/0.6.json` (`crates/mandate-testkit/tests/golden_0_7.rs`).
+- **`diagnostics-0.7/`**: the whole result of every compile case of 0.7 and of the
+  checks and `load` of every 0.7 program, in the layout of `diagnostics-0.6/`
+  (`crates/mandate-testkit/tests/diagnostics_0_7.rs`; the code is shared with
+  `diagnostics_0_6.rs`, `tests/rust_diagnostics/`).
+
+Both are written by the Rust with `MANDATE_UPDATE_0_7=1` (passed on by
+`scripts/wasi-test.mjs`) and compared on every other run. Beside them,
+`crates/mandate-testkit/tests/language_0_7.rs` checks that a 0.6 program relabelled
+`mandate @ 0.7` checks as it did: every 0.6 program of `fixtures/library/` (10, every
+output of `golden/0.6.json`), and every compile case of 0.6 whose program declares
+0.6 (251 of 265: the five library cases have no program, and nine cases of 0.6 hold a
+program of another version), with the whole result of its door; only the version's
+text may differ, and the hashes, each only as a renaming. It also checks that every
+code 0.7 adds (`CODES_0_7`, none yet) has a case of 0.7 that expects it.
+`crates/mandate-ir/tests/language_0_7.rs` holds the two schemas of 0.7 to those of 0.6,
+pointer by pointer.
 
 ## Where the Rust compiler is not held to the TypeScript
 
@@ -1263,7 +1296,7 @@ the compiler's order. The gates that do this:
 | diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
 | diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
 | corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 | `crates/mandate-testkit/tests/corpus.rs` |
-| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 390: the TypeScript's 125, and 265 of language 0.6 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
+| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 395: the TypeScript's 125, and 265 of language 0.6 and 5 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
 | JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 159 calls over 46 doors (`mandate-check`) and 68 over 13 (`mandate-views`), each also through the dispatcher of `mandate-doors` | `crates/mandate-check/tests/json_doors.rs`, `crates/mandate-views/tests/json_doors.rs`, `crates/mandate-doors/tests/doors.rs` |
@@ -1288,14 +1321,15 @@ listed by name. Each list is in the test that holds the Rust to the rest, and a 
 fails when an entry of a list passes or names nothing.
 
 - **The versions only the Rust compiler reads: 17 stored results, by one rule.** The
-  Rust compiler reads language 0.6 (spec/library.md), which the TypeScript never
-  will, so what lists the versions a compiler reads has one entry more: E0103's
-  message (`… or "mandate/0.5" or "mandate/0.6"`, and the parser's `'…'` form) and its
-  `facts.expected`, and `LANGUAGE_VERSIONS` of the `tables` door. Beside them, the
-  door's `LANGUAGE_VERSION`, the newest version, is `mandate/0.6` where the
-  TypeScript's is `mandate/0.5`. Before any comparison with a stored result of the
-  TypeScript, `mandate-testkit`'s module `rust_only` takes `mandate/0.6` out of that
-  list (`KNOWN_VERSIONS`) and gives `LANGUAGE_VERSION` the TypeScript's value
+  Rust compiler reads languages 0.6 (spec/library.md) and 0.7 (spec/attention.md),
+  which the TypeScript never will, so what lists the versions a compiler reads has two
+  entries more: E0103's message (`… or "mandate/0.5" or "mandate/0.6" or
+  "mandate/0.7"`, and the parser's `'…'` form) and its `facts.expected`, and
+  `LANGUAGE_VERSIONS` of the `tables` door. Beside them, the door's
+  `LANGUAGE_VERSION`, the newest version, is `mandate/0.7` where the TypeScript's is
+  `mandate/0.5`. Before any comparison with a stored result of the TypeScript,
+  `mandate-testkit`'s module `rust_only` takes `mandate/0.6` and `mandate/0.7` out of
+  that list (`KNOWN_VERSIONS`) and gives `LANGUAGE_VERSION` the TypeScript's value
   (`NEWEST_VERSION`); nothing else is changed, and no other module changes a result
   before it is compared. Each gate that applies the rule counts the stored results it
   changed something in, and `rust_only::PINNED` holds the count, so the rule cannot
