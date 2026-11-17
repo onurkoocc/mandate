@@ -675,6 +675,10 @@ pub fn run_library_case(dir: &str, case: &Value) -> Result<DoorResult, String> {
                 libraries: &deps,
                 config: config.as_ref(),
                 now,
+                // 0.7: the case's language is the program's the lock is for.
+                language: case
+                    .get("language")
+                    .and_then(mandate_ir::Language::from_value),
             };
             let r = if op == "add" {
                 add(&request)

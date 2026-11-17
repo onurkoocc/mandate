@@ -22,8 +22,8 @@ use mandate_check::{
     micros_text, own,
 };
 use mandate_ir::{
-    Application, ConnectorDef, Criterion, Definition, Expr, ExprOp, JsObject, JsValue, Map,
-    Program, Value, number_to_string, sort_utf16, unique_in_order, workflow_bounds,
+    Application, ConnectorDef, Criterion, Definition, Expr, ExprOp, JsObject, JsValue, Language,
+    Map, Program, Value, number_to_string, sort_utf16, unique_in_order, workflow_bounds,
 };
 
 use crate::card::{expr_text, limit_of, members_of};
@@ -806,8 +806,9 @@ fn contract_of(name: &str, d: &Value, lock: Option<&Value>) -> CardContract {
 }
 
 /// The library a module belongs to: the one the lock pins with it, else
-/// the built-in `std.patterns`.
-fn library_of(module: &str, lock: Option<&Value>) -> Pin {
+/// the built-in `std.patterns`, of the version a program of `language`
+/// reads without a pin.
+fn library_of(module: &str, lock: Option<&Value>, language: Option<Language>) -> Pin {
     if let Some(Value::Object(libs)) = lock.and_then(|l| l.get("libraries")) {
         for (lib, pin) in libs.iter() {
             if own(pin.get("modules"), module).is_some() {
@@ -822,7 +823,7 @@ fn library_of(module: &str, lock: Option<&Value>) -> Pin {
         }
     }
     if module == mandate_check::library::STD_PATTERNS
-        && let Some(built_in) = mandate_check::library::std_patterns()
+        && let Some(built_in) = mandate_check::library::std_patterns_for(language, None)
     {
         return Pin {
             library: Some(built_in.name().to_owned()),
@@ -863,7 +864,11 @@ pub(crate) fn pattern_of(
             .and_then(|u| u.module())
             .map(str::to_owned)
     };
-    let with_builtin = mandate_check::library::with_builtin(orig, modules);
+    let with_builtin = mandate_check::library::with_builtin(
+        orig,
+        modules,
+        mandate_check::library::std_patterns_pin(lock).as_ref(),
+    );
     let all = with_builtin.as_ref().or(modules);
     let home_defs: Option<&Map> = match &module {
         None => orig.defs(),
@@ -879,7 +884,7 @@ pub(crate) fn pattern_of(
         digest,
         pinned,
     } = match &module {
-        Some(m) => library_of(m, lock),
+        Some(m) => library_of(m, lock, orig.language()),
         None => Pin {
             library: None,
             version: None,

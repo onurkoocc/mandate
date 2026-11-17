@@ -917,7 +917,7 @@ fn add_pins_the_builtin_library_with_no_directory() {
     let mut io = MemoryIo::new();
     io.now = seconds("2026-11-15T00:00:00Z");
     assert_eq!(mandate(&mut io, &["add", "std.patterns"]), 0, "{}", io.err);
-    let digest = mandate_check::library::std_patterns_digest().unwrap();
+    let digest = mandate_check::library::std_patterns_digest(None).unwrap();
     assert!(
         io.out
             .starts_with(&format!("std.patterns 1.0.0 {digest}\n")),
