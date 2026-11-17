@@ -59,8 +59,6 @@ const namedIn = (message: string): string[] => /The package uses (.*) of mandate
 describe("the table of what 0.7 adds that this runtime does not run yet", () => {
   it("holds a line for each construct, with the slice that releases it: a slice that runs one takes its line out, and this list with it", () => {
     expect(NOT_RUN_YET_07.map((r) => [r.name, r.slice])).toEqual([
-      ["stage", "B2"],
-      ["report", "B2"],
       ["asks", "B3"],
       ["lock.role_classes", "B4"],
       ["owner", "B6"],
@@ -68,19 +66,13 @@ describe("the table of what 0.7 adds that this runtime does not run yet", () => 
     ]);
   });
 
-  it("finds a stage and a report wherever a statement of them stands, in a definition or a test", () => {
+  it("no longer names a stage or a report, which run (B2, test/stages.test.ts), wherever they stand", () => {
     const p = minimal();
     expect(notRunYet07([p])).toEqual([]);
-    expect(notRunYet07([withGreet(p, (d) => ({ ...d, body: [STAGE, ...(d["body"] as unknown[])] }))])).toEqual(["stage"]);
-    expect(notRunYet07([withGreet(p, (d) => ({ ...d, body: [...(d["body"] as unknown[]), REPORT] }))])).toEqual(["report"]);
-    // Nested: in a branch, and in a map's body (where the compiler will refuse them, E1901 and E1905, the table names them all the same).
+    expect(notRunYet07([withGreet(p, (d) => ({ ...d, body: [STAGE, ...(d["body"] as unknown[]), REPORT] }))])).toEqual([]);
     const nested = { op: "if", cond: { op: "bool", value: true }, then: [{ op: "let", name: "x", value: { op: "map", body: [REPORT] } }], else: [STAGE] };
-    expect(notRunYet07([withGreet(p, (d) => ({ ...d, body: [nested, ...(d["body"] as unknown[])] }))])).toEqual(["stage", "report"]);
-    // In a test of the program, and in a definition that is not a workflow.
-    expect(notRunYet07([{ ...p, tests: { t: { body: [STAGE] } } } as unknown as Program])).toEqual(["stage"]);
-    expect(notRunYet07([{ ...p, defs: { ...p.defs, f: { kind: "fn", params: [], returns: { ref: "Int" }, body: [REPORT] } } } as unknown as Program])).toEqual(["report"]);
-    // A member named `stage` or `report` that is no statement is nothing of 0.7.
-    expect(notRunYet07([withGreet(p, (d) => ({ ...d, body: [{ op: "let", name: "stage", value: { op: "str", value: "report" } }, ...(d["body"] as unknown[])] }))])).toEqual([]);
+    expect(notRunYet07([withGreet(p, (d) => ({ ...d, body: [nested, ...(d["body"] as unknown[])] }))])).toEqual([]);
+    expect(notRunYet07([{ ...p, tests: { t: { body: [STAGE] } } } as unknown as Program])).toEqual([]);
   });
 
   it("finds asks in a workflow's budget and in its envelope's, and nowhere else", () => {
@@ -109,9 +101,9 @@ describe("the table of what 0.7 adds that this runtime does not run yet", () => 
   it("names what it finds in the table's order, whatever order it is found in, each once", () => {
     const p = withGreet(minimal(), (d) => ({ ...d, owner: "reviewer", budget: { ...(d["budget"] as Obj), asks: 1 }, body: [REPORT, STAGE, REPORT, STAGE, ...(d["body"] as unknown[])] }));
     const all = notRunYet07([p, p], { modules: {}, promotion: "required", role_classes: {} });
-    expect(all).toEqual(["stage", "report", "asks", "lock.role_classes", "owner", "lock.promotion"]);
+    expect(all).toEqual(["asks", "lock.role_classes", "owner", "lock.promotion"]);
     expect(refusal07(all)).toMatchObject({ code: "unsupported_language" });
-    expect(refusal07(all).message).toBe("unsupported_language: The package uses stage (B2), report (B2), asks (B3), lock.role_classes (B4), owner (B6), lock.promotion (B6) of mandate/0.7, which this runtime does not run yet (spec/attention.md).");
+    expect(refusal07(all).message).toBe("unsupported_language: The package uses asks (B3), lock.role_classes (B4), owner (B6), lock.promotion (B6) of mandate/0.7, which this runtime does not run yet (spec/attention.md).");
     expect(namedIn(refusal07(all).message)).toEqual(NOT_RUN_YET_07.map((r) => `${r.name} (${r.slice})`));
   });
 });
@@ -127,11 +119,9 @@ describe("a package of 0.7 at load", () => {
   it("is refused by name for each construct its program holds, before the compiler's check is asked", () => {
     const p = minimal();
     const cases: Array<[Program, string[]]> = [
-      [withGreet(p, (d) => ({ ...d, body: [STAGE, ...(d["body"] as unknown[])] })), ["stage (B2)"]],
-      [withGreet(p, (d) => ({ ...d, body: [...(d["body"] as unknown[]), REPORT] })), ["report (B2)"]],
       [withGreet(p, (d) => ({ ...d, budget: { ...(d["budget"] as Obj), asks: 1 } })), ["asks (B3)"]],
       [withGreet(p, (d) => ({ ...d, owner: "reviewer" })), ["owner (B6)"]],
-      [withGreet(p, (d) => ({ ...d, owner: "reviewer", body: [STAGE, ...(d["body"] as unknown[]), REPORT] })), ["stage (B2)", "report (B2)", "owner (B6)"]],
+      [withGreet(p, (d) => ({ ...d, owner: "reviewer", budget: { ...(d["budget"] as Obj), asks: 1 }, body: [STAGE, ...(d["body"] as unknown[]), REPORT] })), ["asks (B3)", "owner (B6)"]],
     ];
     for (const [program, names] of cases) {
       const e = refusal(buildPackage(program));
@@ -152,12 +142,12 @@ describe("a package of 0.7 at load", () => {
 
   it("is refused by name for what a module it carries holds, before the module's check is asked", () => {
     const p = minimal();
-    const module: Program = { language: LANGUAGE_07, module: "example.attention.parts", version: "0.1", defs: { one: { kind: "fn", params: [], returns: { ref: "Int" }, body: [STAGE, { op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
+    const module: Program = { language: LANGUAGE_07, module: "example.attention.parts", version: "0.1", defs: { One: { kind: "workflow", params: [], returns: { ref: "Int" }, caps: [], owner: "reviewer", body: [STAGE, { op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
     const modules: Modules = { [module.module]: module };
     const lock = { modules: { [module.module]: hashProgram(module as unknown as Json).program } } as Lock;
-    const e = refusal(buildPackage({ ...p, uses: [...(p.uses ?? []), { module: module.module, names: ["one"] }] } as Program, lock, modules));
+    const e = refusal(buildPackage({ ...p, uses: [...(p.uses ?? []), { module: module.module, names: ["One"] }] } as Program, lock, modules));
     expect(e).toMatchObject({ code: "unsupported_language" });
-    expect(namedIn(e!.message)).toEqual(["stage (B2)"]);
+    expect(namedIn(e!.message)).toEqual(["owner (B6)"]);
   });
 
   it("a package of 0.6 is not read by the table: a lock of 0.6 with role_classes is refused by its schema, as before (E0140)", () => {
@@ -171,7 +161,7 @@ describe("a package of 0.7 at load", () => {
   it("a lead's sub-program of a 0.7 parent that holds a construct of the table is not run in a sub-program yet", () => {
     const parent = minimal();
     const sub = { language: LANGUAGE_07, module: "example.attention.minimal.plan_1", version: "0.1", defs: { Sub: { kind: "workflow", params: [], returns: { ref: "Int" }, caps: [], budget: { steps: 1, asks: 1 }, body: [STAGE, { op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
-    expect(subprogramNotRunYet(sub, parent, {})).toEqual(["stage", "asks"]);
+    expect(subprogramNotRunYet(sub, parent, {})).toEqual(["asks"]);
     const plain = { ...sub, defs: { Sub: { kind: "workflow", params: [], returns: { ref: "Int" }, caps: [], body: [{ op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
     expect(subprogramNotRunYet(plain, parent, {})).toEqual([]);
   });
@@ -261,4 +251,5 @@ describe("the sources of the runtime and the bridge", () => {
 // helpers.ts can start one; a construct a library's module or an expansion brings (library_verify and the check read
 // none before RL2, and std.patterns 2.0.0, whose stages a 0.7 program without a pin resolves, comes with RL6); a
 // lead's sub-program that holds one, which the compiler's check_subprogram refuses before the runtime reads it; and
-// a lock of 0.7 with role_classes or promotion as `mandate check` reads it (RL4, RL5).
+// a lock of 0.7 with role_classes or promotion as `mandate check` reads it (RL4, RL5). `stage` and `report` left the
+// table with slice B2, and are run end to end in test/stages.test.ts.
