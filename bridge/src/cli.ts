@@ -43,6 +43,8 @@
 //   mandate halt                           the operator's hard stop of a tenant or of all, its lift and
 //                                          the list of halts (spec/boundary.md, the runtime's CLI)
 //   mandate otel export --endpoint <url>   the journal as OpenTelemetry spans, without content (spec/boundary.md, the runtime's CLI)
+//   mandate tick [--follow]                the driver loop: deadlines pass, reviews escalate, notifications of 0.7
+//                                          runs go out (spec/attention.md, the runtime's CLI)
 //   mandate egress serve --config <file>   the reference egress proxy, which holds the secrets (spec/egress.md)
 //   mandate connector pin <program>        writes the schema digests of a program's connectors into its lock,
 //                                          asking each server through the egress proxy (0.6, spec/library.md; the runtime's CLI)
@@ -135,6 +137,7 @@ function usageText(): string {
       "  egress serve --config <mandate.egress.json>   (the reference egress proxy)",
       "  connector pin <program> [--lock FILE] [--module FILE]… [--libraries DIR] [--config FILE]",
       "  review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]",
+      "  tick [--follow] [--interval 10s] [--no-notify]",
       "  test <file> [--json] [--libraries <dir>]",
       "",
     ].join("\n")
@@ -464,7 +467,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review", "tick"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {

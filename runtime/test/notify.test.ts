@@ -143,8 +143,8 @@ describe("the notifications configuration", () => {
     expect(config({}).roles).toEqual({});
   });
 
-  const hook = (w: Obj): Obj => ({ ...ok, channels: { ...ok.channels, acct: { webhook: { ...ok.channels.acct.webhook, ...w } } } });
-  const without = (k: string): Obj => {
+  const hook = (w: Record<string, unknown>): unknown => ({ ...ok, channels: { ...ok.channels, acct: { webhook: { ...ok.channels.acct.webhook, ...w } } } });
+  const without = (k: string): unknown => {
     const { [k]: _gone, ...rest } = ok.channels.acct.webhook as Record<string, unknown>;
     return { ...ok, channels: { ...ok.channels, acct: { webhook: rest } } };
   };
@@ -502,9 +502,10 @@ describe("a webhook through the egress proxy", () => {
 
   it("never reaches the network with a URL that is not https", async () => {
     const w = await ownedRun();
-    const bad: NotificationsConfig = { channels: { hook: { webhook: { url: "http://hooks.acme.example/in", host: "hooks.acme.example", credential: "acme_hook", header: "authorization", template: "Bearer {secret}", format: "mandate" } } }, roles: { platform_lead: { channels: ["hook"], outcomes: false } }, link: null };
+    const plain = { url: "http://hooks.acme.example/in", host: "hooks.acme.example", credential: "acme_hook", header: "authorization", template: "Bearer {secret}", format: "mandate" as const };
+    const bad: NotificationsConfig = { channels: { hook: { webhook: plain } }, roles: { platform_lead: { channels: ["hook"], outcomes: false } }, link: null };
     await expect(notifyPass(w.db, { config: bad, ...opts() })).rejects.toMatchObject({ code: "bad_notification_channel" });
-    expect(() => webhookNotifier("hook", bad.channels["hook"]!.webhook as never, () => ({ fetch, ready: async () => undefined }))).toThrow(/https:\/\/ only/);
+    expect(() => webhookNotifier("hook", plain, () => ({ fetch, ready: async () => undefined }))).toThrow(/https:\/\/ only/);
     expect(ew.up.seen).toEqual([]);
     expect(ew.dials).toEqual([]);
     expect(ew.resolved).toEqual([]);
