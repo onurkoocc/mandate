@@ -15,12 +15,9 @@
 //   `mandate add`, `upgrade` and `publish` (`library_add`, `library_upgrade`, `library_publish`), the authority
 //   signature, and the reading of the configuration's `libraries` member.
 //
-// In `ts` mode a call of a Rust-only door has no reference to answer it: it throws NoReference, by name, and never
-// passes. A program of 0.6 given to the reference compiler is refused by it on its own (E0103).
+// A program of 0.6 given to the reference compiler is refused by it on its own (E0103); the bridge never gives it one.
 
 import { LANGUAGE_VERSIONS, type CheckOptions, type CheckResult, type Criterion, type Def, type Diagnostic, type Envelope, type Expr, type LanguageVersion as ReferenceLanguage, type Lock as ReferenceLock, type Param, type SourceKind, type Stmt, type SubprogramCheck, type SubprogramInput, type TestDef, type TypeExpr, type Use, type WorkflowDef } from "@mandate/compiler";
-import { countLanguage06 } from "./compare.js";
-import { compilerMode } from "./mode.js";
 import { rustCall } from "./wasm/call.js";
 import { DoorRefusal } from "./wasm/errors.js";
 
@@ -236,22 +233,8 @@ export interface LibraryVerified {
   signature?: Record<string, unknown>;
 }
 
-/** A call of a door only the Rust compiler has, in `ts` mode: the reference compiler, frozen at 0.5, has no answer. */
-export class NoReference extends Error {
-  override readonly name = "NoReference";
-
-  constructor(
-    /** The function of the bridge, such as `libraryVerify`. */
-    readonly fn: string,
-  ) {
-    super(`${fn} reads language 0.6, which only the Rust compiler reads: the TypeScript reference compiler (MANDATE_COMPILER=ts) is frozen at 0.5 and has no answer for it`);
-  }
-}
-
-/** The output of a Rust-only door: never asked of the TypeScript, which has no such function. */
-function rustOnly(fn: string, door: string, input: Record<string, unknown>): unknown {
-  if (compilerMode() === "ts") throw new NoReference(fn);
-  if (compilerMode() === "both") countLanguage06();
+/** The output of a Rust-only door: the reference compiler has no such function. */
+function rustOnly(door: string, input: Record<string, unknown>): unknown {
   try {
     return rustCall(door, input);
   } catch (e) {
@@ -265,7 +248,7 @@ function rustOnly(fn: string, door: string, input: Record<string, unknown>): unk
  * digest (spec/library.md "The digest"). A library that does not read has `ok: false` and no digest.
  */
 export function libraryVerify(library: LibrarySource, libraries?: LibrarySource[]): LibraryVerified {
-  return rustOnly("libraryVerify", "library_verify", { library, ...(libraries ? { libraries } : {}) }) as LibraryVerified;
+  return rustOnly("library_verify", { library, ...(libraries ? { libraries } : {}) }) as LibraryVerified;
 }
 
 // ── the doors of `mandate add`, `upgrade` and `publish` ─────────────────
@@ -345,7 +328,7 @@ export interface LibraryPublished {
  * lock that pins it.
  */
 export function libraryAdd(request: LibraryRequest): LibraryResolved {
-  return rustOnly("libraryAdd", "library_add", { ...request }) as LibraryResolved;
+  return rustOnly("library_add", { ...request }) as LibraryResolved;
 }
 
 /**
@@ -354,7 +337,7 @@ export function libraryAdd(request: LibraryRequest): LibraryResolved {
  * unless `accept_governance` is true.
  */
 export function libraryUpgrade(request: LibraryRequest & { pinned: LibrarySource; accept_governance?: boolean }): LibraryResolved {
-  return rustOnly("libraryUpgrade", "library_upgrade", { ...request }) as LibraryResolved;
+  return rustOnly("library_upgrade", { ...request }) as LibraryResolved;
 }
 
 /**
@@ -363,12 +346,12 @@ export function libraryUpgrade(request: LibraryRequest & { pinned: LibrarySource
  * the one below it, removes one of its criteria or adds a waiver, and is not a major version, is refused (E1607).
  */
 export function libraryPublish(request: { source: LibrarySource; published: PublishedVersion[]; libraries?: LibrarySource[]; now: string }): LibraryPublished {
-  return rustOnly("libraryPublish", "library_publish", { ...request }) as LibraryPublished;
+  return rustOnly("library_publish", { ...request }) as LibraryPublished;
 }
 
 /** `authority_signature`: the authority signature of a library's `pub` definitions, or null when the library does not read. */
 export function authoritySignature(library: LibrarySource, libraries?: LibrarySource[]): Record<string, unknown> | null {
-  return rustOnly("authoritySignature", "authority_signature", { library, ...(libraries ? { libraries } : {}) }) as Record<string, unknown> | null;
+  return rustOnly("authority_signature", { library, ...(libraries ? { libraries } : {}) }) as Record<string, unknown> | null;
 }
 
 /** What a door says of a `config` it does not read, before the identifiers of its problems. */
@@ -381,8 +364,6 @@ const CONFIG_REFUSED = "`config` is not the libraries member of a configuration:
  * resolves anything, in a request that resolves nothing.
  */
 export function librariesConfigProblems(member: unknown): string[] {
-  if (compilerMode() === "ts") throw new NoReference("librariesConfigProblems");
-  if (compilerMode() === "both") countLanguage06();
   // The door reads a `config` of null as none given, where the member null is not an object; and a request holds
   // whole numbers only, where a number that is not one is of the wrong type wherever the member has it.
   if (member === null) return ["wrong_type"];

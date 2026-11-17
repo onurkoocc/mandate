@@ -289,8 +289,7 @@ native command line; and an independent journal verifier.
 There are two executables called `mandate`. The one the runtime ships, from
 `bridge/` (`@mandate/bridge`, `bridge/dist/cli.js`), runs on Node and has
 every command, those that control a run included; it calls the Rust compiler
-as a WebAssembly module (`MANDATE_COMPILER=rust`, the default; `ts` calls the
-TypeScript compiler and `both` compares them). The native one, built from
+as a WebAssembly module, and no other compiler. The native one, built from
 `crates/mandate-cli` (`cargo build -p mandate-cli`), has the compiler's
 commands (`check`, `view`, `fmt`, `hash`, …) and `add`, `upgrade` and `publish`,
 with the same output byte for byte; the commands that control a run and

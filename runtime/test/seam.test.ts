@@ -7,6 +7,9 @@ import { describe, expect, it } from "vitest";
 // The runtime reaches the compiler only through the bridge (@mandate/bridge). The name is built here so that this
 // file does not itself name the package.
 const COMPILER = ["@mandate", "compiler"].join("/");
+// The bridge's entry for the reference compiler writes test data only (bridge/src/reference.ts): nothing of the runtime
+// reaches it either.
+const REFERENCE = ["@mandate", "bridge", "reference"].join("/");
 const runtimeDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const SKIP_DIRS = new Set(["node_modules", "dist", ".build"]);
 
@@ -28,6 +31,17 @@ describe("the seam between the runtime and the compiler", () => {
       });
     }
     expect(found, `import the compiler through @mandate/bridge, not ${COMPILER}:\n${found.join("\n")}`).toEqual([]);
+  });
+
+  it("does not reach the reference compiler: no file of the runtime names the bridge's reference entry", () => {
+    const found: string[] = [];
+    for (const file of files(runtimeDir)) {
+      if (file === fileURLToPath(import.meta.url)) continue;
+      readFileSync(file, "utf8").split(/\r?\n/).forEach((line, i) => {
+        if (line.includes(REFERENCE)) found.push(`${relative(runtimeDir, file).replaceAll("\\", "/")}:${i + 1}: ${line.trim()}`);
+      });
+    }
+    expect(found, `the runtime answers with the bridge, which answers with the Rust compiler; ${REFERENCE} is for test data:\n${found.join("\n")}`).toEqual([]);
   });
 
   // The run-time authority decisions are the bridge's (grant, narrow, mapScopes, inFlightOverlap): the runtime makes

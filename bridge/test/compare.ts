@@ -1,16 +1,14 @@
-// `both` mode: every call of a door-backed function asks the two compilers and compares what they give. The Rust's
-// result is what the caller gets, so that `both` is `rust` with the TypeScript as its witness; a difference throws
-// a CompilerDivergence that names the function and shows the two, and is kept besides, so that a caller that
-// catches it does not hide it (the test setup of the bridge and of the runtime fails a test that made one).
+// Test support: how the Rust compiler's answers are held to the reference compiler's, in bridge/test/roundtrip.test.ts
+// and bridge/test/facade.test.ts. Nothing in the bridge itself compares: one compiler, the Rust's, answers.
 //
-// The two agree when both give the same value (same.ts: the same kinds, members in the same order, Maps, Sets and
-// undefined told apart), or both throw: the TypeScript throws where the Rust's door refuses its input (`bad_input`,
-// which rust.ts throws as an Error), and where the TypeScript throws an Error of its own making (not a TypeError of
-// an input outside its types) the two messages are the same. A CompilerFailure of the Rust is not a refusal: it is
-// thrown as it is, in `both` as in `rust`.
+// A call is asked of the two compilers and what they give is compared. The two agree when both give the same value
+// (same.ts: the same kinds, members in the same order, Maps, Sets and undefined told apart), or both throw: the
+// TypeScript throws where the Rust's door refuses its input (`bad_input`, which rust.ts throws as an Error), and
+// where the TypeScript throws an Error of its own making (not a TypeError of an input outside its types) the two
+// messages are the same.
 //
-// What the TypeScript cannot be asked: an input of language 0.6 (`isV06`, the one place that says what that is),
-// which only the Rust reads. The TypeScript is not run for it, and the call is counted under `language-0.6`.
+// What the TypeScript cannot be asked: an input of a language only the Rust reads, 0.6 or later (`RUST_ONLY_INPUT`
+// over `RUST_ONLY_LANGUAGES`, the one place that says what that is).
 //
 // What the two are known to answer differently: the entries of vectors/README.md, "Where the Rust compiler is not
 // held to the TypeScript", each a named rule below that says which functions and which shape of input or outcome
@@ -18,10 +16,9 @@
 // after) or covers (on the inputs of its shape, the outcomes are not compared). Each counts the calls it excused,
 // and `exemptionCounts()` gives the counts; no other difference is excused.
 
-import { writeSync } from "node:fs";
-import { DOOR_BACKED, type DoorBacked } from "./doors.js";
+import { DOOR_BACKED, type DoorBacked } from "../src/doors.js";
 import { difference } from "./same.js";
-import { toWellFormed } from "./text.js";
+import { toWellFormed } from "../src/text.js";
 
 /** What one compiler did with a call: gave a value, or threw. */
 export type Outcome = { value: unknown } | { threw: unknown };
@@ -49,48 +46,42 @@ export function takeDivergences(): CompilerDivergence[] {
   return divergences.splice(0);
 }
 
-/** Keeps a divergence another thread found (a worker's check, mode.ts). */
-export function keepDivergence(d: CompilerDivergence): void {
-  keep(d);
-}
-
-let watching = false;
-
-/**
- * Keeps a divergence, and makes sure a process that ends with one still kept says so: a child process (the bundled
- * command line, a verifier) whose code caught it ends with exit status 70 and the divergences on its standard error,
- * so the test that started it sees it fail. A test file's own divergences are taken by its setup after each test.
- */
+/** Keeps a divergence, so that a test that caught it does not hide it: the divergences since the last take. */
 function keep(d: CompilerDivergence): void {
   divergences.push(d);
-  if (watching) return;
-  watching = true;
-  process.on("exit", (code) => {
-    if (!divergences.length) return;
-    writeSync(2, `mandate bridge: ${divergences.length} call(s) the TypeScript and the Rust compilers answered differently, which nothing took:\n${divergences.map((x) => x.message).join("\n")}\n`);
-    if (code === 0) process.exitCode = 70;
-  });
 }
 
-// ── the input of language 0.6 ───────────────────────────────────────────
+// ── the input of a language only the Rust reads ─────────────────────────
 
-const V06 = "mandate/0.6";
-const LOCK_06 = "mandate/lock/0.6";
-/** The members a lock has only from format 0.6 on (spec/library.md): a lock that has one is of 0.6 whatever it says. */
+/**
+ * The language versions the Rust compiler reads and the reference compiler does not, oldest first: 0.6
+ * (spec/library.md) and 0.7 (spec/attention.md). The one list of this file; everything below that says "0.6 or later"
+ * reads it, and compare.test.ts holds it to the Rust's own list (the `tables` door's LANGUAGE_VERSIONS without the
+ * reference compiler's). crates/mandate-testkit/src/rust_only.rs has the same list for the Rust's gates.
+ */
+export const RUST_ONLY_LANGUAGES: readonly string[] = ["mandate/0.6", "mandate/0.7"];
+/** Their numbers (`0.6`), as a header and a hash version write them. */
+const RUST_ONLY_NUMBERS = RUST_ONLY_LANGUAGES.map((l) => l.slice("mandate/".length));
+/** Their lock formats: a lock of `mandate/lock/<number>` is read by the schema of that format. */
+const RUST_ONLY_LOCKS = RUST_ONLY_NUMBERS.map((n) => `mandate/lock/${n}`);
+/** A header of one of them, after blank lines and comments: `mandate @ 0.6`, not `mandate @ 0.60`. */
+const RUST_ONLY_HEADER = new RegExp(`^(?:\\s|\\/\\/[^\\n]*\\n)*mandate\\s*@\\s*(?:${RUST_ONLY_NUMBERS.map((n) => n.replace(".", "\\.")).join("|")})(?![0-9.])`);
+/** The members a lock has only from format 0.6 on (spec/library.md): a lock that has one is of 0.6 or later whatever it says. */
 const LOCK_06_MEMBERS = ["libraries", "connectors"];
-/** The capability constructors only language 0.6 has (spec/library.md, `tool.call`). */
+/** The capability constructors only language 0.6 and later have (spec/library.md, `tool.call`). */
 const CTORS_06 = new Set(["tool.call"]);
 
 const obj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-/** A program (IR) of 0.6. */
-const program06 = (p: unknown): boolean => obj(p) && p["language"] === V06;
-/** A record of programs by name (Modules) with one of 0.6. */
+const rustOnly = (language: unknown): boolean => typeof language === "string" && RUST_ONLY_LANGUAGES.includes(language);
+/** A program (IR) of 0.6 or later. */
+const program06 = (p: unknown): boolean => obj(p) && rustOnly(p["language"]);
+/** A record of programs by name (Modules) with one of 0.6 or later. */
 const modules06 = (m: unknown): boolean => obj(m) && Object.values(m).some(program06);
-/** A lock of format 0.6, or one with a member only 0.6 has. */
-const lock06 = (l: unknown): boolean => obj(l) && (l["lock"] === LOCK_06 || LOCK_06_MEMBERS.some((k) => Object.hasOwn(l, k)));
-/** `{ before?, after? }` of two locks, one of 0.6. */
+/** A lock of format 0.6 or later, or one with a member only 0.6 and later have. */
+const lock06 = (l: unknown): boolean => obj(l) && ((typeof l["lock"] === "string" && RUST_ONLY_LOCKS.includes(l["lock"])) || LOCK_06_MEMBERS.some((k) => Object.hasOwn(l, k)));
+/** `{ before?, after? }` of two locks, one of 0.6 or later. */
 const locks06 = (l: unknown): boolean => obj(l) && (lock06(l["before"]) || lock06(l["after"]));
-/** A program's text of 0.6: `.mdt` whose header is `mandate @ 0.6`, or JSON IR whose `language` is mandate/0.6. */
+/** A program's text of 0.6 or later: `.mdt` whose header is `mandate @ 0.6` (or 0.7), or JSON IR whose `language` is one of them. */
 function text06(text: unknown, kind?: unknown): boolean {
   if (typeof text !== "string") return false;
   if (kind === "json" || (kind === undefined && text.trimStart().startsWith("{"))) {
@@ -100,11 +91,11 @@ function text06(text: unknown, kind?: unknown): boolean {
       return false;
     }
   }
-  return /^(?:\s|\/\/[^\n]*\n)*mandate\s*@\s*0\.6(?![0-9.])/.test(text);
+  return RUST_ONLY_HEADER.test(text);
 }
-/** Options with a `language`, a `lock` or `modules` of 0.6. */
-const opts06 = (o: unknown): boolean => obj(o) && (o["language"] === V06 || lock06(o["lock"]) || modules06(o["modules"]));
-/** A capability, or a list of them, of a constructor only 0.6 has, anywhere in `v`. */
+/** Options with a `language`, a `lock` or `modules` of 0.6 or later. */
+const opts06 = (o: unknown): boolean => obj(o) && (rustOnly(o["language"]) || lock06(o["lock"]) || modules06(o["modules"]));
+/** A capability, or a list of them, of a constructor only 0.6 and later have, anywhere in `v`. */
 function caps06(v: unknown, depth = 0): boolean {
   if (depth > 8) return false;
   if (Array.isArray(v)) return v.some((x) => caps06(x, depth + 1));
@@ -114,11 +105,12 @@ function caps06(v: unknown, depth = 0): boolean {
 }
 
 /**
- * Whether a call's input is of language 0.6, by function: what it carries that has a language (a program, a
- * program's text, a lock, a language parameter, a module, a capability) and is of 0.6. A function whose input has
- * no language (a document, a view, a JSON value) is never of 0.6.
+ * Whether a call's input is of a language only the Rust reads (0.6 or later, RUST_ONLY_LANGUAGES), by function: what
+ * it carries that has a language (a program, a program's text, a lock, a language parameter, a module, a
+ * capability) and is of one of them. A function whose input has no language (a document, a view, a JSON value) is
+ * never of one.
  */
-export const LANGUAGE_06: Record<DoorBacked, (a: unknown[]) => boolean> = {
+export const RUST_ONLY_INPUT: Record<DoorBacked, (a: unknown[]) => boolean> = {
   load: (a) => text06(a[0], a[1]),
   check: (a) => text06(a[0], a[1]) || opts06(a[2]),
   loadModules: (a) => Array.isArray(a[0]) && a[0].some((s) => obj(s) && text06(s["text"], s["kind"])),
@@ -126,7 +118,7 @@ export const LANGUAGE_06: Record<DoorBacked, (a: unknown[]) => boolean> = {
   canonicalize: () => false,
   hashProgram: (a) => program06(a[0]),
   packageHash: (a) => lock06(a[1]),
-  domainHash: (a) => a[0] === "library" || a[2] === "0.6",
+  domainHash: (a) => a[0] === "library" || (typeof a[2] === "string" && RUST_ONLY_NUMBERS.includes(a[2])),
   printProgram: (a) => program06(a[0]),
   link: (a) => program06(a[0]) || modules06(a[1]),
   linkedProgram: (a) => program06(a[0]) || modules06(a[1]),
@@ -138,7 +130,7 @@ export const LANGUAGE_06: Record<DoorBacked, (a: unknown[]) => boolean> = {
   capsOf: (a) => opts06(a[2]) || caps06(a[1]),
   showCap: (a) => caps06(a[0]),
   governanceFiles: () => false,
-  skeleton: (a) => a[2] === V06,
+  skeleton: (a) => rustOnly(a[2]),
   subprogramLinked: (a) => program06(a[0]) || program06(a[1]) || modules06(a[2]),
   validateLock: (a) => lock06(a[0]),
   roleLockChecks: (a) => program06(a[0]) || lock06(a[2]),
@@ -222,12 +214,18 @@ function mapDiagnostics(v: unknown, f: (d: Record<string, unknown>) => Record<st
   return { value: walk(v), changed };
 }
 
-/** The Rust's E0103 without the versions only it reads (crates/mandate-testkit/src/rust_only.rs, the same rule). */
+/**
+ * The Rust's E0103 without the versions only it reads, every one of RUST_ONLY_LANGUAGES (crates/mandate-testkit/src/
+ * rust_only.rs, the same rule). The message of a JSON IR with no `language` ("Missing "language" field; expected …")
+ * is an E0103 too, and loses them the same way.
+ */
 function e0103AsTypescript(v: unknown): { value: unknown; changed: boolean } {
   return mapDiagnostics(v, (d) => {
     if (d["code"] !== "MDT-E0103") return d;
-    const out: Record<string, unknown> = { ...d, message: (d["message"] as string).replaceAll(` or "${V06}"`, "").replaceAll(` or '${V06}'`, "") };
-    if (obj(out["facts"]) && Array.isArray(out["facts"]["expected"])) out["facts"] = { ...out["facts"], expected: out["facts"]["expected"].filter((e) => e !== V06) };
+    let message = d["message"] as string;
+    for (const l of RUST_ONLY_LANGUAGES) message = message.replaceAll(` or "${l}"`, "").replaceAll(` or '${l}'`, "");
+    const out: Record<string, unknown> = { ...d, message };
+    if (obj(out["facts"]) && Array.isArray(out["facts"]["expected"])) out["facts"] = { ...out["facts"], expected: out["facts"]["expected"].filter((e) => !rustOnly(e)) };
     return out;
   });
 }
@@ -303,7 +301,7 @@ const NOT_A_POINTER = "path must be a JSON Pointer starting with '/'";
 export const EXEMPTIONS: readonly Exemption[] = [
   {
     name: "versions-only-rust-reads",
-    readme: "The versions only the Rust compiler reads: E0103's message and its facts.expected list mandate/0.6, which the Rust reads and the TypeScript does not",
+    readme: "The versions only the Rust compiler reads: E0103's message and its facts.expected list mandate/0.6 and mandate/0.7, which the Rust reads and the TypeScript does not",
     functions: DIAGNOSING,
     normalize: (ts, rust) => {
       const r = e0103AsTypescript(rust);
@@ -399,23 +397,11 @@ export const EXEMPTIONS: readonly Exemption[] = [
   },
 ];
 
-const counts: Record<string, number> = Object.fromEntries([...EXEMPTIONS.map((e) => e.name), "language-0.6", "compared"].map((n) => [n, 0]));
+const counts: Record<string, number> = Object.fromEntries([...EXEMPTIONS.map((e) => e.name), "rust-only-language", "compared"].map((n) => [n, 0]));
 
-/** How many calls each exemption excused, how many calls of language 0.6 skipped the TypeScript, how many were compared. */
+/** How many calls each exemption excused, how many calls of a language only the Rust reads skipped the TypeScript, how many were compared. */
 export function exemptionCounts(): Record<string, number> {
   return { ...counts };
-}
-
-/** Adds a worker's counts (mode.ts). */
-export function addCounts(more: Record<string, number>): void {
-  for (const [k, n] of Object.entries(more)) if (Number.isSafeInteger(n)) counts[k] = (counts[k] ?? 0) + n;
-}
-
-/** The counts since they were last taken, taken: what a worker sends the thread that started it. */
-export function takeCounts(): Record<string, number> {
-  const out = Object.fromEntries(Object.entries(counts).filter(([, n]) => n > 0));
-  for (const k of Object.keys(counts)) counts[k] = 0;
-  return out;
 }
 
 /** Counts one use of a rule outside a call of the facade: the test of the constants (`tables`). */
@@ -488,7 +474,7 @@ export function compareOutcomes(fn: DoorBacked | "CODES", args: unknown[], ts: O
   throw d;
 }
 
-/** Counts a call the TypeScript was not asked, its input being of 0.6. */
-export function countLanguage06(): void {
-  counts["language-0.6"]!++;
+/** Counts a call the TypeScript was not asked, its input being of a language only the Rust reads. */
+export function countRustOnlyLanguage(): void {
+  counts["rust-only-language"]!++;
 }

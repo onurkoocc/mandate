@@ -4,12 +4,9 @@
 // a Verified value whose evidence holds a waiver beside its failed record, and a later effect accepts it only on that
 // waiver, for that very value. Each rule of the decision is shown by one decision that breaks it, refused by name,
 // with nothing changed; each rule of what a Verified value is accepted on, by one record forged against it.
-//
-// The Rust compiler alone reads a program of 0.6: with MANDATE_COMPILER=ts these tests are skipped by name.
 
 import { readFileSync } from "node:fs";
 import { toMarkdown, type Def, type LibrarySource, type Lock } from "@mandate/bridge";
-import { compilerMode } from "@mandate/bridge/mode";
 import { afterAll, describe, expect, it } from "vitest";
 import { commandClass, EVENT_CLASSES, stepClass, WAIT_KINDS } from "../src/classes.js";
 import { InvalidDecision, payloadOf, signDecision, type DecisionKind, type Shown, type SignedDecision } from "../src/decisions.js";
@@ -26,9 +23,6 @@ import { roleDoc, runDoc, runView } from "../src/views.js";
 import { closeAll, world, type World } from "./helpers.js";
 
 afterAll(closeAll);
-
-const rust = compilerMode() !== "ts";
-const needs06 = rust ? describe : describe.skip;
 
 const PROGRAM = `mandate @ 0.6
 
@@ -220,7 +214,7 @@ async function refusedAs(w: World, runId: string, make: () => Promise<unknown>, 
 
 // ── the wait ────────────────────────────────────────────────────────────
 
-needs06("a review's wait", () => {
+describe("a review's wait", () => {
   it("with every item passing, opens no wait: all are accepted and posted, and nobody is asked", async () => {
     const w = await rworld({ matches: { I0: inv("I0"), I1: inv("I1"), I2: inv("I2") } });
     const r = await start(w, "w1", [inv("I0"), inv("I1"), inv("I2")]);
@@ -359,7 +353,7 @@ needs06("a review's wait", () => {
 
 // ── the rules of the decision ───────────────────────────────────────────
 
-needs06("the rules of a review's decision, each refused by name with nothing changed", () => {
+describe("the rules of a review's decision, each refused by name with nothing changed", () => {
   it("refuses each decision that breaks a rule, and then takes one that keeps them", async () => {
     const w = await rworld();
     await start(w, "d1");
@@ -453,7 +447,7 @@ needs06("the rules of a review's decision, each refused by name with nothing cha
 
 // ── escalation and expiry ───────────────────────────────────────────────
 
-needs06("escalation and expiry (H08)", () => {
+describe("escalation and expiry (H08)", () => {
   it("past the deadline goes once to escalate_to, refusing the first role then; past the second every open item is declined", async () => {
     const w = await rworld();
     const r = await start(w, "e1");
@@ -571,7 +565,7 @@ async function forge(w: World, runId: string, change: (r: Obj) => void, key: Evi
   await w.db.query("update evidence set record = $2, key_id = $3, signature = $4, subject = $5, detail = $6 where evidence_id = $1", [row!.evidence_id, JSON.stringify(record), sig.key_id, sig.signature, JSON.stringify(record["subject"]), JSON.stringify(record["detail"])]);
 }
 
-needs06("what a Verified value is accepted on (H09)", () => {
+describe("what a Verified value is accepted on (H09)", () => {
   /**
    * A run of one open invoice, waived by Ana, that crashes once its post is dispatched: its waiver is then forged as
    * `change` says, and the run resumed. It stops for a person, `forged_evidence`, before anything is prepared.
@@ -723,7 +717,7 @@ needs06("what a Verified value is accepted on (H09)", () => {
 
 // ── what the journal holds of a review, changed under it ────────────────
 
-needs06("a review whose journal was changed under it", () => {
+describe("a review whose journal was changed under it", () => {
   it("a question changed while it waits: the decision is not taken (forged_evidence), and a resume stops for a person", async () => {
     const w = await rworld();
     await start(w, "j1");
@@ -964,7 +958,7 @@ workflow Probe(a: Item, b: Item) -> Bool
 }
 `;
 
-needs06("a value that rests on a waiver, or on a person's answer", () => {
+describe("a value that rests on a waiver, or on a person's answer", () => {
   it("a person's answer that holds the runtime's own members is refused by name, and the wait stays open (1a)", async () => {
     const who = people();
     const tool = new SimTool("tag_release");
@@ -1213,7 +1207,7 @@ needs06("a value that rests on a waiver, or on a person's answer", () => {
 
 // ── crash, resume and replay ────────────────────────────────────────────
 
-needs06("a review across crashes, resumes and a replay", () => {
+describe("a review across crashes, resumes and a replay", () => {
   it("while it waits: a resumed run asks the same question with the same deadline, once", async () => {
     const w = await rworld();
     const r = await start(w, "c1");
@@ -1262,7 +1256,7 @@ function fixtureLibrary(dir: string): LibrarySource {
   return { manifest, files };
 }
 
-needs06("the acceptance program (invoices.mdt)", () => {
+describe("the acceptance program (invoices.mdt)", () => {
   it("loads, starts in design mode, reaches its review wait, and once decided posts each accepted match as a simulated draft", async () => {
     const who = people();
     const { lock: _format, ...fixture } = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };

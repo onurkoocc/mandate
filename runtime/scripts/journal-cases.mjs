@@ -5,15 +5,13 @@
 // was written, as someone holding the file could: J09 spells the same values otherwise, J13 and J14 move or repeat
 // events, J15 is no export at all.
 //
-//   npm run build && node runtime/scripts/journal-cases.mjs [J09 J10 …]     (without ids: every case)
+//   npm run build && npm run build:wasm && node runtime/scripts/journal-cases.mjs [J09 J10 …]     (without ids: every case)
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// The runs are made with the reference compiler, which needs no module (the bridge's default is the Rust compiler's).
-// Set before the bridge is loaded, which reads it.
-process.env["MANDATE_COMPILER"] = "ts";
+// The runs are made with the runtime, whose compiler is the Rust compiler's module: `npm run build:wasm` builds it.
 const { check } = await import("@mandate/bridge");
 const { buildPackage, EvidenceSigner, EXPORT_LIMITS, openDb, Runtime, simulate, verifyExport } = await import("../dist/index.js");
 

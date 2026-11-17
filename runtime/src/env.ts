@@ -67,13 +67,12 @@ export const MODEL_ENV: readonly string[] = [
 ];
 
 /**
- * What decides which compiler a process that loads the bridge answers with, and where it finds the module: the
- * operator's MANDATE_COMPILER and MANDATE_WASM (bridge/src/mode.ts, bridge/src/wasm/module.ts). Neither is a secret.
- * A process the runtime starts that loads the bridge (the verifier process) gets them, so that it runs in the mode
- * the runtime runs in and takes the module the runtime takes: an unset MANDATE_COMPILER is the same default in both,
- * and without these a child would run the default whatever its parent was told to run.
+ * What decides where a process that loads the bridge finds the compiler's module: the operator's MANDATE_WASM
+ * (bridge/src/wasm/module.ts). It is not a secret. A process the runtime starts that loads the bridge (the verifier
+ * process) gets it, so that it takes the module the runtime takes: without it a child would take the bridge's own
+ * place whatever its parent was told to use.
  */
-export const COMPILER_ENV: readonly string[] = ["MANDATE_COMPILER", "MANDATE_WASM"];
+export const COMPILER_ENV: readonly string[] = ["MANDATE_WASM"];
 
 /** The Docker client's settings: which engine, its context, configuration and TLS, and a rootless engine's socket. */
 export const DOCKER_ENV: readonly string[] = ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY", "XDG_RUNTIME_DIR"];
@@ -82,7 +81,7 @@ export const DOCKER_ENV: readonly string[] = ["DOCKER_HOST", "DOCKER_CONTEXT", "
  * The verifier process's environment (verifier-main.ts): what a program needs, the sandbox SDK's settings, and,
  * when the configuration has a model and so the verifier runs model-backed checks (a review), what those need.
  * Never the GitHub token or the read broker's database logins: the verifier reads neither. It also gets the
- * compiler's mode and module (`COMPILER_ENV`), as the runtime that started it has them.
+ * compiler's module (`COMPILER_ENV`), as the runtime that started it has it.
  */
 export function verifierEnv(o: { model: boolean; gateway?: { url: string; placeholder: string } }, from: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const model = o.model;

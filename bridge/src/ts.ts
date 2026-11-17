@@ -1,6 +1,7 @@
-// The TypeScript side of the facade: every door-backed function (doors.ts) as the reference compiler, frozen at
-// language 0.5, and the bridge's own run-time authority decisions (authority.ts) give it. `ts` mode exports these
-// very functions (index.ts), so that it changes nothing of the reference compiler; it is not the default (`rust` is).
+// The reference compiler's side of the facade: every door-backed function (doors.ts) as the reference compiler,
+// frozen at language 0.5, and the bridge's own run-time authority decisions (authority.ts) give it. Nothing in the
+// bridge answers with these: rust.ts takes their signatures from here, and reference.ts (the entry
+// `@mandate/bridge/reference`) exports them for test data.
 
 export {
   acsTarget,
