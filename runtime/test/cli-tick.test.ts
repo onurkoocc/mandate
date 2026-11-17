@@ -7,9 +7,10 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
 import { EvidenceSigner } from "../src/evidence.js";
+import { WorkerChecker } from "../src/plan.js";
 import { world as egressWorld } from "./egress-world.js";
 import { lines, under } from "./notify-world.js";
 
@@ -96,14 +97,22 @@ describe("mandate tick", () => {
     expect(first.code, first.err).toBe(0);
     expect(first.out).toBe("tick: 1 run waiting, 0 moved; notifications: 1 sent, 0 given up, 0 to try again\n");
     expect(told()).toEqual(["c1 wait_opened reviewer"]);
-    // A run whose approval has a deadline of a moment, a pass once it has passed. The channel meets that run only
-    // after the pass ended it: nothing of its past is told, since none of its waits is open any more.
+    // A run whose approval has a deadline of a moment, a pass once it has passed. It began after the channel was in
+    // use, so all of it is told, the pass that ended it included: its question and how it ended. The one runtime the
+    // pass built, for the run with something due, is closed, its checker's worker with it.
     expect((await start("Rush", "c2")).code).toBe(0);
     await pause(400);
-    const second = await mandate("tick");
+    const closes = vi.spyOn(WorkerChecker.prototype, "close");
+    let second: Awaited<ReturnType<typeof mandate>>;
+    try {
+      second = await mandate("tick");
+      expect(closes).toHaveBeenCalledTimes(1);
+    } finally {
+      closes.mockRestore();
+    }
     expect(second.code, second.err).toBe(0);
-    expect(second.out).toMatch(/^run c2: waiting -> failed, revision \d+ -> \d+\ntick: 2 runs waiting, 1 moved; notifications: 0 sent, 0 given up, 0 to try again\n$/);
-    expect(told()).toEqual(["c1 wait_opened reviewer"]);
+    expect(second.out).toMatch(/^run c2: waiting -> failed, revision \d+ -> \d+\ntick: 2 runs waiting, 1 moved; notifications: 2 sent, 0 given up, 0 to try again\n$/);
+    expect(told()).toEqual(["c1 wait_opened reviewer", "c2 wait_opened reviewer", "c2 run_failed reviewer"]);
     expect((await mandate("status", "c2")).out).toMatch(/^run c2 {2}Rush {2}failed/);
     expect((await mandate("status", "c1")).out).toMatch(/^run c1 {2}Ship {2}waiting/);
     // A pass with nothing to do sends nothing.

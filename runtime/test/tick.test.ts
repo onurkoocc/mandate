@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { rmSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Db } from "../src/db.js";
+import { payloadOf } from "../src/decisions.js";
 import { notifyPass } from "../src/notify.js";
 import { driveLoop, MAX_INTERVAL_MS, STALE_DRIVE_MS, tickPass, type PassOptions, type PassReport } from "../src/tick.js";
 import type { Obj } from "../src/values.js";
@@ -105,6 +106,20 @@ describe("a pass of the driver loop over a 0.7 run", () => {
         expect(await types(w, r.run_id, "wait_expired")).toHaveLength(2);
       }
     }
+  });
+
+  it("tells all of a run that the tick pass itself ends: it began after the channel was in use", async () => {
+    const w = await nworld(BOTH, "0.7");
+    const d = dir();
+    const config = fileChannels(d, { accountant: true, finance_lead: false });
+    // The channels are in use before the run begins.
+    await pass(w, { config });
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Both", input: { n: { text: "x" } }, runId: "ends" });
+    w.clock.advance(2 * HOUR);
+    // Three notifications, each on its role's own channel and on the one all roles share.
+    expect(await pass(w, { config })).toMatchObject({ moved: 1, notify: { sent: 6 } });
+    expect((await w.rt.getRun("ends")).state).toBe("failed");
+    expect(lines(join(d, "all.jsonl")).map((n) => `${String(n["event"])} ${String(n["role"])}`)).toEqual(["wait_opened accountant", "wait_opened finance_lead", "run_failed accountant"]);
   });
 
   it("drives a run whose decision was given and not driven on; a 0.6 run's decision waits for its deadline, as before", async () => {
@@ -222,6 +237,26 @@ describe("a pass over a 0.6 run", () => {
     for (const f of ["accountant", "finance_lead", "all"]) expect(lines(join(d, `${f}.jsonl`))).toEqual([]);
     expect(await count(w, "select count(*) as n from notify_cursors")).toBe(0);
     expect(await notifyPass(w.db, { config })).toEqual({ sent: 0, failed: 0, dead: 0, pending: 0, failures: [] });
+  });
+
+  it("drives at once a 0.6 review that was decided and not driven on, as tick always did", async () => {
+    const w = await nworld(REVIEW, "0.6");
+    await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items: BATCH }, runId: "six-decided" });
+    const resume = w.rt.resume.bind(w.rt);
+    let failing = true;
+    w.rt.resume = async (runId: string) => {
+      if (failing) {
+        failing = false;
+        throw new Error("the drive did not run");
+      }
+      return resume(runId);
+    };
+    const lists = { waive: [1], decline: [2] };
+    await expect(w.rt.decideReview("six-decided", msg(), { ...lists, signed: await sign(w, "six-decided", w.who.ana, "review", payloadOf.review(lists)) })).rejects.toThrow("the drive did not run");
+    expect((await w.rt.getRun("six-decided")).state).toBe("waiting");
+    // No grace for a run of 0.6: the very next pass drives it.
+    expect(await pass(w)).toMatchObject({ due: 1, moved: 1 });
+    expect((await w.rt.getRun("six-decided")).state).toBe("succeeded");
   });
 
   it("with --no-notify (no notification options), ticks and sends nothing", async () => {

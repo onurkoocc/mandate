@@ -228,14 +228,6 @@ export function fileChannels(dir: string, roles: Record<string, boolean>, link?:
 /** What a notification says, in short: its event, its role and its command. */
 export const brief = (n: Obj): string => `${String(n["event"])} ${String(n["role"])}${n["command"] !== null ? ` ${String(n["command"])}` : ""}`;
 
-/**
- * A channel that has followed `runId` from its first event: its cursor stands before it, so the run's whole history
- * is told to it. A channel that meets a run later is told only of its open waits (notify.ts `notifyPass`).
- */
-export async function followed(w: World, channels: string[], runId: string): Promise<void> {
-  for (const channel of channels) await w.db.query("insert into notify_cursors (channel, run_id, seq, at, start_seq) values ($1, $2, 0, 0, 0) on conflict do nothing", [channel, runId]);
-}
-
 /** Appends an event to a run's journal, as the runtime writes one: under the run's lock. */
 export async function append(w: World, runId: string, type: string, data: Value): Promise<number> {
   return w.db.tx(async (tx) => {

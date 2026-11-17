@@ -12,8 +12,9 @@
 //   cursor, and the next attempt comes 1, 2, 4, 8 and 16 seconds later by the runtime's clock. The sixth failed attempt
 //   gives it up: it is recorded in `notify_dead` and the cursor moves past it. A way out that is not there (the proxy
 //   does not answer, or refuses the session) is no attempt: the channel's cursor stays, and the next pass tries again.
-// - A channel that meets a run for the first time does not replay its history: it is told of the waits still open
-//   (the latest question about each), and its cursor starts at the run's end.
+// - A channel that is new does not replay the history of the runs already there: it is told of their waits still
+//   open (the latest question about each) and of the runs that need a person now, and its cursors start at their
+//   ends (`notify_channels` records it as in use). A run that begins after that is told from its first event.
 // - A run in a halted scope is not notified, and its cursors do not move, until the halt is lifted.
 // - What is sent is fixed (`Notification`): ids, the kind, the role, the deadline, `as_of` and a link. Of an event the
 //   pump reads its type, its sequence number and its time, and of the four S0 events (and `asks_exhausted`) the role

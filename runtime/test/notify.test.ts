@@ -52,7 +52,7 @@ import { tickPass } from "../src/tick.js";
 import { digest, type Obj } from "../src/values.js";
 import { seenHeader, world as egressWorld, type World as EgressWorld } from "./egress-world.js";
 import { closeAll, until } from "./helpers.js";
-import { answer, append, approveCard, count, DAY, followed, inv, lines, msg, nworld, OWNED, REVIEW, REVIEW_AT, scratch, sign, BATCH, type NWorld } from "./notify-world.js";
+import { answer, append, approveCard, count, DAY, inv, lines, msg, nworld, OWNED, REVIEW, REVIEW_AT, scratch, sign, BATCH, type NWorld } from "./notify-world.js";
 
 const dirs: string[] = [];
 afterAll(async () => {
@@ -74,14 +74,22 @@ function config(raw: unknown, where = dir()): NotificationsConfig {
   return readNotifications(raw, { file: join(where, "mandate.runtime.json"), at: (p) => resolve(where, p), egress: true });
 }
 
+/** A first pass of each configuration's channels, which meets them: a run that begins after it is told from its first event. */
+async function meet(w: NWorld, ...configs: NotificationsConfig[]): Promise<void> {
+  for (const c of configs) await notifyPass(w.db, { config: c, now: () => w.clock.now(), transport: fakeWay().transport });
+}
+
 /**
  * A run of OWNED that asked the platform lead (no role), then the reviewer, and succeeded: three notifications to
- * `hook`, which has followed the run from its start.
+ * `hook` (or the channels of `meets`), met in a new world before its first run began. A later run of the same world
+ * begins with the channels in use already.
  */
-async function ownedRun(runId = "o1", tenant?: string, w0?: NWorld): Promise<NWorld> {
+async function ownedRun(runId = "o1", tenant?: string, w0?: NWorld, meets: NotificationsConfig[] = [config(HOOK_CONFIG)]): Promise<NWorld> {
   const w = w0 ?? (await nworld(OWNED, "0.7"));
-  if (!w0) await approveCard(w);
-  await followed(w, ["hook"], runId);
+  if (!w0) {
+    await approveCard(w);
+    await meet(w, ...meets);
+  }
   await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId, ...(tenant ? { tenant } : {}) });
   await answer(w, runId, w.who.pat, "because");
   await answer(w, runId, w.who.rex, "yes");
@@ -169,7 +177,9 @@ describe("the notifications configuration", () => {
     expect(config({ channels: { h: { webhook: { url: HOOK, credential: "c" } } } }).channels["h"]).toEqual({ webhook: { url: HOOK, host: "hooks.acme.example", credential: "c", header: "authorization", template: "Bearer {secret}", format: "mandate" } });
     expect(config({}).roles).toEqual({});
     // Placeholders after the host: in the path, the query or the fragment.
-    for (const link of ["https://m.example/{run}", "https://m.example/r?run={run}&role={role}", "http://localhost:8080/runs/{run}#{command}", "https://m.example?r={run}"]) expect(config({ link }).link).toBe(link);
+    // A link with no placeholder, with no path even, is a link.
+    for (const link of ["https://m.example/{run}", "https://m.example/r?run={run}&role={role}", "http://localhost:8080/runs/{run}#{command}", "https://m.example?r={run}", "https://m.example", "https://m.example/inbox"]) expect(config({ link }).link).toBe(link);
+    expect(linkOf("https://m.example", { run: "r", role: null, command: null })).toBe("https://m.example");
   });
 
   const hook = (w: Record<string, unknown>): unknown => ({ ...ok, channels: { ...ok.channels, acct: { webhook: { ...ok.channels.acct.webhook, ...w } } } });
@@ -290,7 +300,6 @@ describe("what a notification may carry", () => {
     await approveCard(w);
     const run = `two words <!channel> ${M}`;
     const tenant = `${M} ${"t".repeat(300)}`;
-    await followed(w, ["hook"], run);
     await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: run, tenant });
     const way = fakeWay();
     const c = config({ ...HOOK_CONFIG, channels: { hook: { webhook: { url: HOOK, credential: "acme_hook", format: "text" } } }, link: "https://m.acme.example/runs/{run}" });
@@ -309,6 +318,41 @@ describe("what a notification may carry", () => {
     const n = bodies(json.calls)[0]!;
     expect([n.run, n.tenant]).toEqual([carried(run, CARRIED.id), carried(tenant, CARRIED.id)]);
     for (const v of Object.values(n)) if (typeof v === "string") expect(v.length).toBeLessThanOrEqual(300);
+    // The operator finds the run and the tenant a digest stands for in the database (notify.ts `carried`).
+    const hexOf = (d: string): string => d.slice("digest:".length);
+    expect(await w.db.query("select run_id from runs where left(encode(sha256(convert_to(run_id, 'UTF8')), 'hex'), 32) = $1", [hexOf(n.run)])).toEqual([{ run_id: run }]);
+    expect(await w.db.query("select distinct tenant from runs where left(encode(sha256(convert_to(tenant, 'UTF8')), 'hex'), 32) = $1", [hexOf(n.tenant)])).toEqual([{ tenant }]);
+  });
+
+  it("replaces a value that would pass for another's digest", async () => {
+    const other = carried("two words", CARRIED.id);
+    expect(other).toMatch(/^digest:[0-9a-f]{32}$/);
+    // A run started with that very id is not carried as written: it reads as no other run's digest.
+    const forged = carried(other, CARRIED.id);
+    expect(forged).toMatch(/^digest:[0-9a-f]{32}$/);
+    expect(forged).not.toBe(other);
+    expect(carried("digest:x", CARRIED.id)).not.toBe("digest:x");
+    // End to end: a run whose id is a digest's form.
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: other });
+    const way = fakeWay();
+    await pass(w, config(HOOK_CONFIG), { transport: way.transport });
+    expect(bodies(way.calls).map((x) => x.run)).toEqual([forged]);
+  });
+
+  it("finds the command a sub-program's digest stands for in the database", async () => {
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "c1" });
+    const command = String((await w.db.query<{ command_id: string }>("select command_id from commands where run_id = 'c1' and state = 'waiting'"))[0]!.command_id);
+    // As if the run's first wait stood inside a sub-program admitted at /defs/Ship: its command is carried as that and a digest.
+    const prefix = "/defs/Ship";
+    const shown = commandShown(command, [prefix])!;
+    const hex = shown.slice(`${prefix}/digest:`.length);
+    expect(
+      await w.db.query("select command_id from commands where run_id = 'c1' and command_id like $1 and left(encode(sha256(convert_to(substr(command_id, $2), 'UTF8')), 'hex'), 32) = $3", [`${prefix}/%`, prefix.length + 2, hex]),
+    ).toEqual([{ command_id: command }]);
   });
 });
 
@@ -395,7 +439,8 @@ describe("the pump", () => {
     const way = fakeWay(() => new Response("busy", { status: 503 }));
     expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toEqual({ sent: 0, failed: 1, dead: 0, pending: 1, failures: [] });
     expect(way.calls).toHaveLength(1);
-    expect(await cursorRow(w.db, "hook", "o2")).toEqual({ seq: 0, pending: null, attempts: 0, retry_at: null });
+    // The second run was not come to: it has no cursor yet, and will be told from its first event.
+    expect(await cursorRow(w.db, "hook", "o2")).toBeNull();
   });
 
   it("gives a notification up at its sixth failed attempt, 1, 2, 4, 8 and 16 s apart: notify_dead, and the cursor moves past it", async () => {
@@ -511,13 +556,12 @@ describe("the pump", () => {
   });
 
   it("tries again a file that cannot be written, and gives it up at the sixth attempt", async () => {
-    const w = await ownedRun();
     const d = dir();
     const path = join(d, "a-directory.jsonl");
     mkdirSync(path);
     const c = config({ channels: { local: { file: path } }, roles: { platform_lead: { channels: ["local"] } } });
     expect(c.channels["local"]).toEqual({ file: path });
-    await followed(w, ["local"], "o1");
+    const w = await ownedRun("o1", undefined, undefined, [c]);
     for (let attempt = 1; attempt <= 5; attempt++) {
       expect(await pass(w, c), `attempt ${attempt}`).toMatchObject({ sent: 0, failed: 1, pending: 1 });
       w.clock.advance(backoffMs(attempt));
@@ -567,6 +611,51 @@ describe("the pump", () => {
     expect((await cursorRow(w.db, "hook", "o1"))!.seq).toBe(await lastSeq(w, "o1"));
   });
 
+  it("two pumps racing on a failing receiver spend six attempts in all, and report one dead letter", async () => {
+    const w = await ownedRun();
+    let first: string | undefined;
+    const way = fakeWay((id) => {
+      first ??= id;
+      return id === first ? new Response("no", { status: 500 }) : new Response("ok");
+    });
+    const c = config(HOOK_CONFIG);
+    const dead: unknown[] = [];
+    for (let round = 0; round < 12 && !dead.length; round++) {
+      await Promise.all([pass(w, c, { transport: way.transport, onDead: (d) => dead.push(d) }), pass(w, c, { transport: way.transport, onDead: (d) => dead.push(d) })]);
+      const row = await cursorRow(w.db, "hook", "o1");
+      if (row?.retry_at) w.clock.advance(Math.max(0, row.retry_at - w.clock.now()));
+    }
+    expect(ids(way.calls).filter((i) => i === first)).toHaveLength(6);
+    expect(dead).toHaveLength(1);
+    expect(await count(w, "select count(*) as n from notify_dead")).toBe(1);
+  });
+
+  it("takes a next attempt that a clock stepped back would put far ahead as due", async () => {
+    const w = await ownedRun();
+    let n = 0;
+    const way = fakeWay(() => (n++ === 0 ? new Response("busy", { status: 503 }) : new Response("ok")));
+    const c = config(HOOK_CONFIG);
+    expect(await pass(w, c, { transport: way.transport })).toMatchObject({ failed: 1, pending: 1 });
+    // The host's clock steps back an hour: the next attempt, due in a second, would be an hour and a second away.
+    w.clock.t -= 3_600_000;
+    expect(await pass(w, c, { transport: way.transport })).toMatchObject({ sent: 3, pending: 0 });
+  });
+
+  it("asks the halt again before each send: a halt committed during a pass stops its sends for the tenant", async () => {
+    const w = await ownedRun("h1");
+    await ownedRun("h2", undefined, w);
+    const way = fakeWay(async () => {
+      // The operator halts the tenant while the first request is in flight.
+      if (way.calls.length === 1) await w.rt.halt({ tenant: "default" }, { by: "ops" });
+      return new Response("ok");
+    });
+    await pass(w, config(HOOK_CONFIG), { transport: way.transport });
+    expect(way.calls).toHaveLength(1);
+    await w.rt.liftHalt({ tenant: "default" }, "ops");
+    await pass(w, config(HOOK_CONFIG), { transport: way.transport });
+    expect(way.calls).toHaveLength(6);
+  });
+
   it("sends no event outside the S0 and S1 lists; asks_exhausted joins them once slice B3 gives it its class", () => {
     for (const [type, kind] of Object.entries(NOTIFIED)) {
       if (type === "asks_exhausted") expect(Object.hasOwn(EVENT_CLASSES, type), "B3 adds asks_exhausted to EVENT_CLASSES as S1; then this line goes").toBe(false);
@@ -579,7 +668,7 @@ describe("the pump", () => {
     for (const batch of [500, 2]) {
       const w = await nworld(OWNED, "0.7");
       await approveCard(w);
-      await followed(w, ["hook"], "am");
+      await meet(w, config(HOOK_CONFIG));
       await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "am" });
       // An amendment a lead asked for, as the journal holds one: the request, then its wait, in one transaction.
       const command = "/defs/Ship/body/0/value/step/0/tool/0/amendment";
@@ -589,8 +678,9 @@ describe("the pump", () => {
         await w.rt.journal.event(tx, "am", "wait_opened", { command, kind: "amendment", request: { role: "platform_lead", reason: `${M} a lead's words`, deadline: 1234 } });
         return asked.seq;
       });
-      // A page that ends at the amendment's request, its wait on the next page: [at - 1, at], then [at + 1].
-      if (batch === 2) await w.db.query("update notify_cursors set seq = $1 where run_id = 'am'", [at - 2]);
+      // A page that ends at the amendment's request, its wait on the next page: [at - 1, at], then [at + 1]. (The
+      // cursor is placed by hand: this is about the pages, not about where a cursor starts.)
+      if (batch === 2) await w.db.query("insert into notify_cursors (channel, run_id, seq, at, start_seq) values ('hook', 'am', $1, 0, 0) on conflict (channel, run_id) do update set seq = excluded.seq", [at - 2]);
       const way = fakeWay();
       await pass(w, config(HOOK_CONFIG), { transport: way.transport, batch });
       const amendment = bodies(way.calls).find((n) => n.event === "amendment_requested");
@@ -605,27 +695,109 @@ describe("the pump", () => {
 // ── which runs, and when ────────────────────────────────────────────────
 
 describe("which runs a pass tells, and when", () => {
-  it("tells a channel that meets a run for the first time only of its waits still open, the latest question of each; its cursor starts at the end", async () => {
-    // Asked of the platform lead, answered, now asking the reviewer: only the reviewer's question is still open.
+  it("tells a channel that is new only of the waits still open of the runs already there, the latest question of each; its cursors start at their ends", async () => {
+    // Before the channel exists: one run asked the platform lead, was answered, and now asks the reviewer; another ended.
     const w = await nworld(OWNED, "0.7");
     await approveCard(w);
     await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "late" });
     await answer(w, "late", w.who.pat, "because");
+    await ownedRun("done", undefined, w, []);
     const way = fakeWay();
     expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toMatchObject({ sent: 1 });
-    expect(bodies(way.calls).map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened reviewer"]);
+    expect(bodies(way.calls).map((n) => `${n.run} ${n.event} ${n.role}`)).toEqual(["late wait_opened reviewer"]);
     expect((await cursorRow(w.db, "hook", "late"))!.seq).toBe(await lastSeq(w, "late"));
-    // A run that ended before the channel met it is not told at all.
-    const ended = await ownedRun("done", undefined, w);
-    await ended.db.query("delete from notify_cursors where run_id = 'done'");
-    const quiet = fakeWay();
-    await pass(w, config(HOOK_CONFIG), { transport: quiet.transport });
-    expect(quiet.calls).toEqual([]);
     expect((await cursorRow(w.db, "hook", "done"))!.seq).toBe(await lastSeq(w, "done"));
-    // A role added to a channel later is told only of what comes after the cursor.
+    expect(await w.db.query("select channel from notify_channels")).toEqual([{ channel: "hook" }]);
+    // A role added to the channel later is told only of what comes after its cursors.
     const more = fakeWay();
     await pass(w, config({ ...HOOK_CONFIG, roles: { ...HOOK_CONFIG.roles, finance_lead: { channels: ["hook"], outcomes: true } } }), { transport: more.transport });
     expect(more.calls).toEqual([]);
+    // A channel removed from the configuration and given again under its name goes on from its cursors: it is not met
+    // again (the reviewer's wait is not told twice), and what came since is told.
+    await pass(w, config({ channels: { other: { file: join(dir(), "other.jsonl") } }, roles: { reviewer: { channels: ["other"] } } }));
+    await append(w, "late", "run_attention_required", { attention: { violation: "made_up" } });
+    const back = fakeWay();
+    await pass(w, config(HOOK_CONFIG), { transport: back.transport });
+    expect(bodies(back.calls).map((n) => `${n.run} ${n.event}`)).toEqual(["late run_attention_required"]);
+  });
+
+  it("tells a new channel of a run that needs a person now, by its last run_attention_required", async () => {
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "stuck" });
+    // The run stops for a person, as the runtime stops one: its state and the event, under its lock.
+    await w.db.tx(async (tx) => {
+      await w.rt.journal.lock(tx, "stuck");
+      await w.rt.journal.setState(tx, "stuck", "attention_required", { attention: { violation: "made_up", message: `${M} details` } });
+    });
+    const way = fakeWay();
+    await pass(w, config(HOOK_CONFIG), { transport: way.transport });
+    // Its question is still open, and it needs a person: both are told, in the run's order.
+    expect(bodies(way.calls).map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened platform_lead", "run_attention_required platform_lead"]);
+    expect(way.calls.map((c) => c.body).join("")).not.toContain(M);
+    // A run that only needs a person, its waits closed, is told that alone.
+    await w.db.query("update commands set state = 'failed' where run_id = 'stuck'");
+    const fresh = fakeWay();
+    await pass(w, config({ channels: { fresh: { webhook: { url: HOOK, credential: "acme_hook" } } }, roles: { platform_lead: { channels: ["fresh"] } } }), { transport: fresh.transport });
+    expect(bodies(fresh.calls).map((n) => `${n.event} ${n.role}`)).toEqual(["run_attention_required platform_lead"]);
+  });
+
+  it("tells a run that began after the channel was in use from its first event, though it asked and ended between two passes", async () => {
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    const c = config(HOOK_CONFIG);
+    // The channel meets run a.
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "a" });
+    const way = fakeWay();
+    await pass(w, c, { transport: way.transport });
+    expect(bodies(way.calls).map((n) => `${n.run} ${n.event}`)).toEqual(["a wait_opened"]);
+    // Run b begins, asks twice, is answered twice and succeeds, all before the next pass.
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "b" });
+    await answer(w, "b", w.who.pat, "because");
+    await answer(w, "b", w.who.rex, "yes");
+    expect((await w.rt.getRun("b")).state).toBe("succeeded");
+    await pass(w, c, { transport: way.transport });
+    expect(bodies(way.calls).map((n) => `${n.run} ${n.event} ${n.role}`)).toEqual(["a wait_opened platform_lead", "b wait_opened platform_lead", "b wait_opened reviewer", "b run_succeeded platform_lead"]);
+  });
+
+  it("tells a run halted and lifted between two passes, its run_cancelled after the lift", async () => {
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    await meet(w, config(HOOK_CONFIG));
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "hl" });
+    await w.rt.halt({ tenant: "default" }, { by: "ops" });
+    await w.rt.liftHalt({ tenant: "default" }, "ops");
+    const way = fakeWay();
+    await pass(w, config(HOOK_CONFIG), { transport: way.transport });
+    expect(bodies(way.calls).map((n) => `${n.event} ${n.role}`)).toEqual(["wait_opened platform_lead", "run_cancelled platform_lead"]);
+  });
+
+  it("tells a run created while the channel is being met from its first event", async () => {
+    const w = await nworld(OWNED, "0.7");
+    await approveCard(w);
+    await ownedRun("before", undefined, w, []);
+    // A run is started while the meeting is under way, just before the channel is recorded as in use.
+    let started: Promise<unknown> | undefined;
+    const during: Db = {
+      query: ((sql: string, p?: unknown[]) => w.db.query(sql, p)) as Db["query"],
+      tx: (fn) =>
+        w.db.tx((tx) =>
+          fn({
+            query: (async (sql: string, p?: unknown[]) => {
+              if (sql.startsWith("insert into notify_channels")) started ??= w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "during" });
+              return tx.query(sql, p);
+            }) as Db["query"],
+          }),
+        ),
+      close: () => w.db.close(),
+    };
+    const way = fakeWay();
+    await notifyPass(during, { config: config(HOOK_CONFIG), transport: way.transport, now: () => w.clock.now() });
+    await started;
+    expect(way.calls).toEqual([]);
+    await answer(w, "during", w.who.pat, "because");
+    await pass(w, config(HOOK_CONFIG), { transport: way.transport });
+    expect(bodies(way.calls).map((n) => `${n.run} ${n.event} ${n.role}`)).toEqual(["during wait_opened platform_lead", "during wait_opened reviewer"]);
   });
 
   it("tells a channel meeting an escalated review the escalation alone, and not the request it replaced", async () => {
@@ -660,14 +832,14 @@ describe("which runs a pass tells, and when", () => {
   it("tells nothing of a run under a halt, opens no session and moves no cursor; once it is lifted, all of it in order", async () => {
     const w = await nworld(OWNED, "0.7");
     await approveCard(w);
-    await followed(w, ["hook"], "h1");
+    await meet(w, config(HOOK_CONFIG));
     await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { title: "v1" }, runId: "h1" });
     await w.rt.halt({ tenant: "default" }, { reason: "made up", by: "ops" });
     expect((await w.rt.getRun("h1")).state).toBe("cancelled");
     const way = fakeWay();
     expect(await pass(w, config(HOOK_CONFIG), { transport: way.transport })).toEqual({ sent: 0, failed: 0, dead: 0, pending: 0, failures: [] });
     expect(way.opened).toEqual([]);
-    expect(await cursorRow(w.db, "hook", "h1")).toEqual({ seq: 0, pending: null, attempts: 0, retry_at: null });
+    expect(await cursorRow(w.db, "hook", "h1")).toBeNull();
     // A halt of every tenant holds the same.
     await w.rt.liftHalt({ tenant: "default" }, "ops");
     await w.rt.halt({ all: true }, { by: "ops" });
@@ -908,10 +1080,11 @@ workflow Ship(title: Text) -> Untrusted<Text>
       },
       d,
     );
-    // Each channel follows each run from its start, so that everything the runs did is told.
-    for (const run of ["leak-review", "leak-fail", "leak-ship"]) await followed(w, channels, run);
     const notify = { config: c, transport: egressTransport({ admin: ew.config.admin }), now: () => w.clock.now() };
     const pass = () => tickPass(w.db, { runtimeFor: async () => ({ rt: w.rt }), notify, now: () => w.clock.now() });
+    // The channels are in use before the runs begin, so that everything the runs do is told.
+    await pass();
+    expect((await w.db.query<{ channel: string }>("select channel from notify_channels order by channel")).map((r) => r.channel)).toEqual(channels);
 
     // A review of three matches, escalated, and decided by the finance lead.
     await w.rt.startRun({ pkg: w.pkg, workflow: "ReviewAll", input: { items }, runId: "leak-review" });

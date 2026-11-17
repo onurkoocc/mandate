@@ -12,7 +12,7 @@ import { baseOf, type WorkerChecker } from "../src/plan.js";
 import { SimTool, toolUse } from "../src/sim.js";
 import type { Obj, Value } from "../src/values.js";
 import { closeAll, planChecker } from "./helpers.js";
-import { followed, lines, scratch } from "./notify-world.js";
+import { lines, scratch } from "./notify-world.js";
 import { BUDGET, CAPS, finish, MODULE, msg, planned, program, programAt, run, sign, sub, toolStep } from "./planning.js";
 
 const M = "LEAKMARK";
@@ -54,7 +54,8 @@ describe("a notification of what a lead wrote", () => {
     const submit = [toolUse("s1", "submit_program", { base: baseOf(MODULE, 1, "mandate/0.7" as never), ops: ops07(sub(body, BUDGET, `${CAPS}, Merge`, name)) })];
     const w = await planned(checker, [submit, finish("commented")], { src: src({ approve: "git.comment by release_manager" }), tools: [tool] });
     const { config, file } = channel();
-    await followed(w, ["local"], "sp");
+    // The channel is in use before the run begins: everything the run does is told.
+    await notifyPass(w.db, { config, now: () => w.clock.now() });
     const stopped = await run(w, "sp");
     // The run waits on the release manager's decision, at a command that holds the name the lead chose.
     const command = `${programAt(1)}/defs/${name}/body/1/value/authorize`;
@@ -77,7 +78,7 @@ describe("a notification of what a lead wrote", () => {
     const envelope = (wider.program!.defs["W"] as WorkflowDef).envelope as unknown as Obj;
     const w = await planned(checker, [[toolUse("a1", "request_amendment", { envelope, reason: `${M}-reason: three more repositories` })], finish("went on")], { src: src() });
     const { config, file } = channel();
-    await followed(w, ["local"], "am");
+    await notifyPass(w.db, { config, now: () => w.clock.now() });
     const r = await run(w, "am");
     expect(r.waiting).toMatchObject({ kind: "amendment", command: `${toolStep(1)}/amendment`, request: { reason: `${M}-reason: three more repositories` } });
     await notifyPass(w.db, { config, now: () => w.clock.now() });
