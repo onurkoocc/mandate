@@ -34,8 +34,8 @@
 //! # Libraries (language 0.6)
 //!
 //! ```text
-//! mandate add     <library>[@<range>] [--lock FILE] [--libraries DIR] [--config FILE] [--json]
-//! mandate upgrade <library>[@<range>] [--lock FILE] [--libraries DIR] [--config FILE] [--accept-governance] [--json]
+//! mandate add     <library>[@<range>] [--lock FILE] [--program FILE] [--libraries DIR] [--config FILE] [--json]
+//! mandate upgrade <library>[@<range>] [--lock FILE] [--program FILE] [--libraries DIR] [--config FILE] [--accept-governance] [--json]
 //! mandate publish <source dir> [--libraries DIR] [--config FILE] [--json]
 //! ```
 //!

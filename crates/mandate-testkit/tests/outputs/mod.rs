@@ -114,12 +114,26 @@ pub fn checked_text(
     with_modules: bool,
     with_lock: bool,
 ) -> Result<CheckResult, String> {
+    checked_text_more(program, text, with_modules, with_lock, None)
+}
+
+/// [`checked_text`] with `more` given besides the program's modules, with
+/// or without them: what a relabelled program is given
+/// ([`crate::common::relabelled_modules`]).
+pub fn checked_text_more(
+    program: &str,
+    text: &str,
+    with_modules: bool,
+    with_lock: bool,
+    more: Option<&mandate_check::Modules>,
+) -> Result<CheckResult, String> {
     let files = module_files_of(program);
     let modules = if with_modules {
         Some(modules_of(&files, &files)?)
     } else {
         None
     };
+    let modules = crate::common::with_more(modules.as_ref(), more).or(modules);
     let lock = if with_lock {
         Some(lock_file_of(program).ok_or("the program has no lock")?)
     } else {
@@ -167,14 +181,35 @@ pub fn outputs_of(program: &str) -> Result<Vec<(String, String)>, String> {
 ///
 /// As [`outputs_of`].
 pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)>, String> {
+    outputs_of_text_more(program, text, None)
+}
+
+/// [`outputs_of_text`] of a program of 0.6 relabelled 0.7: its checks and
+/// those of its sub-programs given what
+/// [`crate::common::relabelled_modules`] says a relabelled program is
+/// given, its views what they were given.
+///
+/// # Errors
+///
+/// As [`outputs_of`].
+pub fn outputs_of_relabelled(program: &str, text: &str) -> Result<Vec<(String, String)>, String> {
+    let more = crate::common::relabelled_modules(text, kind_of(program));
+    outputs_of_text_more(program, text, more.as_ref())
+}
+
+fn outputs_of_text_more(
+    program: &str,
+    text: &str,
+    more: Option<&mandate_check::Modules>,
+) -> Result<Vec<(String, String)>, String> {
     let mut out: Vec<(String, String)> = Vec::new();
     let lock_path = lock_file_of(program);
-    let plain = checked_text(program, text, false, false)?;
+    let plain = checked_text_more(program, text, false, false, more)?;
     out.push(("check".to_owned(), check_text(&plain)));
-    let linked = checked_text(program, text, true, false)?;
+    let linked = checked_text_more(program, text, true, false, more)?;
     out.push(("check --module".to_owned(), check_text(&linked)));
     let with_lock = match lock_path {
-        Some(_) => Some(checked_text(program, text, true, true)?),
+        Some(_) => Some(checked_text_more(program, text, true, true, more)?),
         None => None,
     };
     if let Some(r) = &with_lock {
@@ -253,7 +288,9 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
                 r#"{{"workflow":"{workflow}","number":{number},"defs":{{"file":"{file}","kind":"mdt"}},"room":{{"left":{{"tokens":50000000,"steps":1000,"agents":100,"spend:USD":100000000}},"time_left_ms":18000000}}}}"#
             ).as_bytes())?;
             let case = subprogram_case("fixtures/library", &s, p)?;
-            let r = run_subprogram(&case, p, &modules)?;
+            let given =
+                crate::common::with_more(Some(&modules), more).unwrap_or_else(|| modules.clone());
+            let r = run_subprogram(&case, p, &given)?;
             out.push((format!("check_subprogram {file}"), r.text));
         }
     }

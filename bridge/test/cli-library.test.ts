@@ -60,6 +60,7 @@ class World {
       if (x === "--lock") a.lock = rest[++i]!;
       else if (x === "--libraries") a.libraries = rest[++i]!;
       else if (x === "--config") a.config = rest[++i]!;
+      else if (x === "--program") a.program = rest[++i]!;
       else if (x === "--json") a.json = true;
       else if (x === "--accept-governance") a.acceptGovernance = true;
       else a.positional.push(x);
@@ -189,6 +190,33 @@ describe("mandate add", () => {
     }
     expect(w.mandate("add")).toBe(2);
     expect(w.err.startsWith("usage: mandate")).toBe(true);
+  });
+
+  it("pins, for the program --program names, the newest built-in version of no newer language, in a lock of its format (0.7)", () => {
+    const pin = (file: string): Json => (JSON.parse(repo(file)) as { libraries: Record<string, Json> }).libraries["std.patterns"]!;
+    const head = (v: string): string => `mandate @ ${v}\n\nmodule example.p @ 0.1\n\nuse std.patterns.{Batch}\n`;
+    // A program of 0.7: 2.0.0, and the new lock is of format 0.7.
+    const w = new World();
+    w.put("p.mdt", head("0.7"));
+    expect(w.mandate("add", "std.patterns", "--program", "p.mdt"), w.err).toBe(0);
+    const two = pin("fixtures/attention/batch.lock.json") as unknown as { digest: string };
+    expect(w.out.startsWith(`std.patterns 2.0.0 ${two.digest}\n`), w.out).toBe(true);
+    expect(JSON.parse(w.text("mandate.lock.json")!)).toEqual({ lock: "mandate/lock/0.7", modules: {}, libraries: { "std.patterns": two } });
+    // A program of 0.6: what a command that names no program writes, byte for byte.
+    const six = new World();
+    six.put("p.mdt", head("0.6"));
+    expect(six.mandate("add", "std.patterns", "--program", "p.mdt"), six.err).toBe(0);
+    const none = new World();
+    expect(none.mandate("add", "std.patterns"), none.err).toBe(0);
+    expect(six.text("mandate.lock.json")).toBe(none.text("mandate.lock.json"));
+    expect(six.out).toBe(none.out);
+    expect(JSON.parse(six.text("mandate.lock.json")!)).toEqual({ lock: "mandate/lock/0.6", modules: {}, libraries: { "std.patterns": pin("fixtures/library/invoices.lock.json") } });
+    // A program of 0.6 is offered nothing of 0.7; one that does not load is reported against its file.
+    expect(six.mandate("add", "std.patterns@^2.0", "--program", "p.mdt")).toBe(1);
+    expect(six.err).toContain("MDT-E1606");
+    six.put("bad.mdt", "mandate @ 0.7\n\nmodule\n");
+    expect(six.mandate("add", "std.patterns", "--program", "bad.mdt")).toBe(1);
+    expect(six.err).toContain("bad.mdt");
   });
 });
 

@@ -1,0 +1,29 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1609b",
+  "kind": "compile",
+  "title": "A program of 0.7 (the program of E1602 under the header of 0.7) reads a module of 0.6 given to the check: it checks.",
+  "spec": [
+    "spec/attention.md#stdpatterns-200"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../E1602/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602/types.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/language",
+      "value": "mandate/0.7"
+    }
+  ],
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

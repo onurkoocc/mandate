@@ -170,6 +170,24 @@ pub fn std_patterns_for(
     chosen.load()
 }
 
+/// The embedded version of `std.patterns` whose module `module` is (by its
+/// program hash), when it is one: a module given to a check as
+/// `std.patterns` stands, without a pin in the lock, for a pin of its
+/// version. `None` for any other module, which the check compares with the
+/// built-in it reads (E1605, `given_differs`), as before 0.7.
+#[must_use]
+pub fn embedded_version_of(module: Option<&Value>) -> Option<Version> {
+    let hash = hash_program(module?).program;
+    STD_PATTERNS_EMBEDDED.iter().find_map(|e| {
+        let l = e.load()?;
+        let same = l
+            .hashes
+            .get(STD_PATTERNS)
+            .is_some_and(|h| h.as_str() == hash);
+        same.then_some(*l.manifest.version())
+    })
+}
+
 /// The version of `std.patterns` a lock pins, when it pins one that reads.
 #[must_use]
 pub fn std_patterns_pin(lock: Option<&Value>) -> Option<Version> {
@@ -578,12 +596,16 @@ pub fn for_check(program: Program<'_>, opts: &CheckOptions<'_>) -> Option<ForChe
             .any(|l| l.manifest.requires().contains_key(STD_PATTERNS));
     let mut builtin: Option<LoadedLibrary> = None;
     if wants_std {
-        // The version the lock pins, or without a pin the one of the
-        // program's language (0.7: spec/attention.md "Which version").
+        // The version the lock pins; without a pin, the version whose
+        // module the check was given as `std.patterns`, when it is one the
+        // compiler embeds (a caller that holds the version a parent's check
+        // read hands it so); else the one of the program's language (0.7:
+        // spec/attention.md "Which version").
         let pinned = pins
             .as_ref()
             .and_then(|p| p.get(STD_PATTERNS))
-            .map(|p| *p.version());
+            .map(|p| *p.version())
+            .or_else(|| embedded_version_of(opts.modules.and_then(|m| m.get(STD_PATTERNS))));
         builtin = std_patterns_for(program.language(), pinned.as_ref());
     }
     let all: Vec<&LoadedLibrary> = builtin.iter().chain(loaded.iter()).collect();

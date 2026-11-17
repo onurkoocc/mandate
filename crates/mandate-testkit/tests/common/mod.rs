@@ -75,6 +75,50 @@ pub fn check_with(
     check_with_libraries(text, kind, modules, lock, &[], None)
 }
 
+/// The one place of the Rust gates that says what a program of 0.6
+/// relabelled `mandate @ 0.7` is given besides what it was given as 0.6
+/// (slice RL6, spec/attention.md "Which version"): without a pin, a
+/// program of 0.7 reads `std.patterns` 2.0.0, with its stages and reports,
+/// where the same program of 0.6 read 1.0.0; the faithful translation of
+/// a program of 0.6 that imports `std.patterns` pins 1.0.0. Its check (and
+/// a sub-program's or an amendment's check of it as a parent) is given the
+/// module of 1.0.0 as `std.patterns`, which stands for a pin of 1.0.0 when
+/// its lock has none and is the module its lock pins when it has one (a lock
+/// of 0.6 that the program checks with pins 1.0.0, or the check is E1605 as
+/// it was). `None` for a text that does not load or imports no
+/// `std.patterns`: it reads no version of it, and is given nothing more.
+///
+/// What it does not touch: the views, which are given the modules they were
+/// given (a view adds the built-in itself, and is compared as it is: a gate
+/// finds a view that shows the two versions apart), and nothing else of
+/// the program or its lock.
+pub fn relabelled_modules(text: &str, kind: SourceKind) -> Option<Modules> {
+    let program = mandate_syntax::load(text, kind).program?;
+    let imports = program
+        .get("uses")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .any(|u| u.get("module").and_then(Value::as_str) == Some("std.patterns"));
+    if !imports {
+        return None;
+    }
+    let one = mandate_check::library::STD_PATTERNS_EMBEDDED
+        .first()
+        .and_then(mandate_check::library::Embedded::load)?;
+    Some(one.modules)
+}
+
+/// `modules` with `more` added, each by its name.
+pub fn with_more(modules: Option<&Modules>, more: Option<&Modules>) -> Option<Modules> {
+    let more = more?;
+    let mut all = modules.cloned().unwrap_or_default();
+    for (m, ir) in more.iter() {
+        all.insert(m, ir.clone());
+    }
+    Some(all)
+}
+
 /// The libraries in the repository directories `dirs`, as a caller hands
 /// them to the compiler.
 pub fn libraries_of(dirs: &[String]) -> Result<Vec<LibrarySource>, String> {
