@@ -216,6 +216,17 @@ export interface ProgramOf {
   number: number;
 }
 
+/** `program_started` (spec/attention.md "Events", 0.7): the sub-program's `plan` node and number, its command, its workflow and the pattern it applies. */
+export interface ProgramStarted {
+  plan: string;
+  number: number;
+  command: string;
+  workflow: string;
+  shape?: { pattern: string; module: string };
+  /** The class of what its lead received (plan.ts `leadClass`): what the lead wrote into it is a value of that class a model wrote. */
+  class: string;
+}
+
 /** `stage_started` (spec/attention.md "Events"): the stage's node in the running program, its name, title and index. */
 export interface StageStarted {
   node: string;
@@ -1081,7 +1092,7 @@ export class Journal {
    * A sub-program ended, with a value or a fault. What is left of its reservation is released: its commands have
    * settled what they spent, and the rest is the run's again. A program that has ended stays as it ended.
    */
-  async closeProgram(runId: string, fence: number, command: string, outcome: { ok: Value } | { error: { tag: string; args?: Value[] } }): Promise<void> {
+  async closeProgram(runId: string, fence: number, command: string, outcome: { ok: Value } | { error: { tag: string; args?: Value[] } }, program?: ProgramOf): Promise<void> {
     await this.db.tx(async (tx) => {
       await this.lock(tx, runId, fence);
       const [row] = await tx.query<Row>("select kind, state from commands where run_id = $1 and command_id = $2", [runId, command]);
@@ -1091,6 +1102,20 @@ export class Journal {
       const ok = "ok" in outcome;
       await tx.query("update commands set state = $3, result = $4, error = $5 where run_id = $1 and command_id = $2", [runId, command, ok ? "succeeded" : "failed", json(ok ? outcome.ok : null), json(ok ? null : (outcome.error as unknown as Value))]);
       await this.event(tx, runId, "command_completed", { command, ok, cost: null });
+      // 0.7: the sub-program's end, with the end of its command (`program`, given in a run of 0.7 alone), once.
+      if (program) await this.event(tx, runId, "program_ended", { plan: program.plan, number: program.number, ok });
+    });
+  }
+
+  /**
+   * Records that a sub-program starts to run (spec/attention.md "Events", 0.7): `program_started` once for its `plan`
+   * node and number, however often the run is resumed and runs it again. Only the lease holder may write (R06).
+   */
+  async programStarted(runId: string, fence: number, data: ProgramStarted): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = 'program_started' and data->>'plan' = $2 and data->>'number' = $3 limit 1", [runId, data.plan, String(data.number)]);
+      if (!seen) await this.event(tx, runId, "program_started", data as unknown as Value);
     });
   }
 

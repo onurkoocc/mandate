@@ -457,16 +457,18 @@ describe("a report is addressed", () => {
     expect(shows({ role: "auditor" }, "S2", undefined, addressee("stage_started", {}))).toBe(true);
   });
 
-  it("is in no role's view and no projection that leaves the machine, and in the audit view with its values", async () => {
+  it("is in no role's view but that of the role it is to, masked by its cap (B4), in no projection that leaves the machine, and in the audit view with its values", async () => {
     const w = await greeting();
     await start(w, "v");
     expect((await answer(w, "v", w.ana, WHY)).state).toBe("succeeded");
     const values = [SECRET, LINE, WHY];
+    const titles: Record<string, string[]> = { reviewer: ["Greeting drafted", "Greeting checked"], auditor: ["One round", "One round"] };
     for (const role of ["reviewer", "auditor"]) {
       const { view } = await runView(w.rt, "v", { role });
-      const text = JSON.stringify(view);
-      for (const v of values.filter((x) => x !== LINE)) expect(text, `${role}: ${v}`).not.toContain(v);
-      expect(text).not.toContain("Greeting drafted");
+      // A role's view of 0.7 shows the reports to it (`reports`), each field above its cap (`internal`) masked.
+      expect(view.reports!.map((r) => r.title), role).toEqual(titles[role]);
+      expect(JSON.stringify(view), `${role}: ${SECRET}`).not.toContain(SECRET);
+      for (const other of Object.values(titles).flat().filter((t) => !titles[role]!.includes(t))) expect(JSON.stringify(view)).not.toContain(other);
     }
     const { view: audit } = await runView(w.rt, "v", { audit: true });
     const reports = audit.events.filter((e) => e.type === "report");

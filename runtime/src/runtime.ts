@@ -30,6 +30,8 @@ import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { givenValueProblem, listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
 import { canonical, digest, isObj, type Obj, type Value } from "./values.js";
+import { listWaits, watchRun, type WaitItem, type Watched } from "./watch.js";
+import type { Audience } from "./classes.js";
 import { shadowDiff } from "./views.js";
 
 export type { Lock };
@@ -1219,6 +1221,27 @@ export class Runtime {
     return this.journal.run(runId);
   }
 
+  /** A package's program and lock, as packaged: what a projection reads a role's cap from (0.7). */
+  async packageOf(packageHash: string): Promise<{ program: Program; lock: Lock }> {
+    const p = await this.packaged(packageHash);
+    return { program: p.program, lock: p.lock };
+  }
+
+  // ── WatchRun and ListWaits (0.7) ──────────────────────────────────────
+
+  /**
+   * The run's events after `afterSeq` that `audience` may see, each through its type's allow-list, a wait's values and
+   * a report's fields masked and labelled in a run of 0.7 (spec/attention.md "`WatchRun`"). Polled with `next`.
+   */
+  watchRun(runId: string, audience: Audience, o: { afterSeq?: number; limit?: number } = {}): Promise<Watched> {
+    return watchRun(this, runId, audience, o);
+  }
+
+  /** Every open question across all runs for a role or a member, masked by the role's cap (spec/attention.md "`ListWaits`"). */
+  listWaits(who: { role: string } | { member: string }, o: { tenant?: string } = {}): Promise<WaitItem[]> {
+    return listWaits(this, who, o);
+  }
+
   /** The run's budget table: limits, settled, reserved and available per dimension, and each command's share (§8.6). */
   budgetReport(runId: string): Promise<BudgetReport> {
     return this.journal.budgetReport(runId);
@@ -2143,7 +2166,7 @@ export interface HaltReport {
 }
 
 /** What a waiting command shows to whoever decides on it: its digest and the role it asks (`Shown`). */
-function shownBy(run: RunRow, commandId: string, row: Row): Shown {
+export function shownBy(run: RunRow, commandId: string, row: Row): Shown {
   const request = isObj((row["result"] ?? null) as Value) ? (row["result"] as Obj) : {};
   // A decision wait shows the digest it is bound to; an amendment's, the hash of the package it asks for; a review's,
   // the digest of what it asks, which its escalation leaves as it was (0.6); a question shows the digest of the

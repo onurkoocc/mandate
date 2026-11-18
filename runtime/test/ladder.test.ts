@@ -455,12 +455,12 @@ describe("the promotion ladder (spec/attention.md \"Promotion\")", () => {
 // ── the compiler's fixture ──────────────────────────────────────────────
 
 describe("the compiler's fixture of owners (fixtures/attention/owner.mdt)", () => {
-  /** Its lock, with keys made now for Ana and Ben, and without role_classes, which this runtime does not run yet (B4). */
+  /** Its lock as written, its `role_classes` and `promotion` with it (B4, B6), with keys made now for Ana and Ben. */
   function ownerLock(): Lock {
     const given = JSON.parse(readFileSync(new URL("../../fixtures/attention/owner.lock.json", import.meta.url), "utf8")) as Obj;
-    const { role_classes: _b4, ...rest } = given;
-    expect(rest["promotion"]).toBe("required");
-    return { ...rest, members: { ana: { keys: [ana.key.keyId] }, ben: { keys: [ben.key.keyId] } } } as unknown as Lock;
+    expect(given["promotion"]).toBe("required");
+    expect(given["role_classes"]).toBeDefined();
+    return { ...given, members: { ana: { keys: [ana.key.keyId] }, ben: { keys: [ben.key.keyId] } } } as unknown as Lock;
   }
 
   it("takes no promotion from a run that did not succeed, or has not ended", async () => {
@@ -527,16 +527,18 @@ test "it closes" {
 `;
 
 describe("mandate test of a 0.7 program whose lock asks for promotion", () => {
-  it("runs each test live, its card approved by the test's own people: a test climbs no ladder", async () => {
+  it("runs each test live, its card approved by the test's own people: a test climbs no ladder, and keeps the class of each role it binds (B4)", async () => {
     const r = check(TESTED, "mdt");
     expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => d.message)).toEqual([]);
-    const w = await ladder({ promotion: false });
-    const dir = mkdtempSync(join(tmpdir(), "mandate-ladder-tests-"));
-    try {
-      const results = await runTests(r.program!, { db: w.db, dir, lock: { modules: {}, promotion: "required" } as unknown as Lock });
-      expect(results.map((x) => [x.test, x.ok, x.state])).toEqual([["it closes", true, "succeeded"]]);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+    for (const lock of [{ modules: {}, promotion: "required" }, { modules: {}, promotion: "required", roles: { accountant: ["ana"] }, role_classes: { accountant: "confidential" } }, { modules: {}, roles: { accountant: ["ana"], clerk: ["ana"] }, role_classes: { accountant: "internal", clerk: "public" } }]) {
+      const w = await ladder({ promotion: false });
+      const dir = mkdtempSync(join(tmpdir(), "mandate-ladder-tests-"));
+      try {
+        const results = await runTests(r.program!, { db: w.db, dir, lock: lock as unknown as Lock });
+        expect(results.map((x) => [x.test, x.ok, x.state]), JSON.stringify(lock)).toEqual([["it closes", true, "succeeded"]]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     }
   });
 });
