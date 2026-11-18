@@ -332,8 +332,8 @@ by the real AppContainer sandbox reading a snapshot at a path of this shape on W
 The owner's limit is 20 USD for the session, and the runtime holds only each run's 6 USD. At most three spending runs
 fit in the 20 USD: the design run d1, the read_only run r1 and the live run l1 (3 × 6 = 18 USD at the most; the
 Reviewer's own bound makes it 14.40). `u0` and `x1` are refused before they start and spend nothing; a replay calls no
-model. A rerun of a run that failed or stopped is a spending run too: after one rerun, stop, and do not start another
-run without deciding to spend more. Add up `budget spend:USD … settled` of `status <run>` for every run as you go.
+model. A rerun of a run that failed or stopped counts as one of the three. Start no fourth spending run unless
+the settled spend of all runs so far, plus 6 USD, is at most 20 USD. Add up `budget spend:USD … settled` of `status <run>` for every run as you go.
 
 The outputs of steps 6 to 11 differ with a real model (step 12 says what must hold in both modes): how many items
 wait for you, which are declined and what the report holds depend on what the Reviewer found. Decide each waiting item
