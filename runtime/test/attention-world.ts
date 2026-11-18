@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import type { LibrarySource, Lock } from "@mandate/bridge";
 import { serveStdio } from "../../bridge/src/mcp.js";
+import { makeBook } from "../../scripts/lib/live-world.mjs";
 import { main } from "../src/cli.js";
 import { McpClient, type McpFetch } from "../src/mcp-client.js";
 import { SimAgents } from "../src/sim.js";
@@ -55,29 +56,26 @@ export function libraryDir(dir: string): string {
 
 // ── the book: six invoices and their orders ─────────────────────────────
 
-export const N = 6;
+// The book is the kit's (scripts/lib/live-world.mjs), with this rehearsal's names: the live session takes the same code
+// with names of its own.
+const BOOK = makeBook();
+export const N = BOOK.N;
 /** Off in total by 5%: they fail `totals` alone, the criterion the accountant and the finance lead may waive. */
-export const TOTALS = [1, 4];
+export const TOTALS = BOOK.TOTALS;
 /** Matched to an order of another vendor: they fail `vendor`, which nobody may waive, and are declined without asking. */
-export const VENDOR = [2];
-export const ALL = Array.from({ length: N }, (_, i) => i);
+export const VENDOR = BOOK.VENDOR;
+export const ALL = BOOK.ALL;
 /** What passes every criterion, and is committed without a question. */
-export const PASSED = ALL.filter((i) => !TOTALS.includes(i) && !VENDOR.includes(i));
+export const PASSED = BOOK.PASSED;
 
-export const invoiceNo = (i: number): string => `INV-B10-0${i}`;
-export const orderNo = (i: number): string => `PO-B10-0${i}`;
-const vendorOf = (i: number): string => `VENDOR-B10-0${i}`;
-const orderTotal = (i: number): number => 10_000 + i * 100;
-export const invoice = (i: number): Obj => ({ invoice_no: invoiceNo(i), vendor_id: vendorOf(i), total_cents: TOTALS.includes(i) ? Math.round(orderTotal(i) * 1.05) : orderTotal(i) });
-export const order = (i: number): Obj => ({ order_no: orderNo(i), vendor_id: VENDOR.includes(i) ? "VENDOR-B10-99" : vendorOf(i), total_cents: orderTotal(i) });
+export const invoiceNo = (i: number): string => BOOK.invoiceNo(i);
+export const orderNo = (i: number): string => BOOK.orderNo(i);
+export const invoice = (i: number): Obj => BOOK.invoice(i);
+export const order = (i: number): Obj => BOOK.order(i);
 
 /** Every value of the book: each text (invoice and order numbers, vendors) and each total, of the invoices and of the orders. */
 export function book(): { texts: string[]; numbers: number[] } {
-  const rows = ALL.flatMap((i) => [invoice(i), order(i)]);
-  return {
-    texts: [...new Set(rows.flatMap((r) => Object.values(r).filter((v): v is string => typeof v === "string")))],
-    numbers: [...new Set(rows.flatMap((r) => Object.values(r).filter((v): v is number => typeof v === "number")))],
-  };
+  return BOOK.values();
 }
 
 // ── the simulators ──────────────────────────────────────────────────────

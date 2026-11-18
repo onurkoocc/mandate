@@ -1,0 +1,35 @@
+{
+  "database": "<database>",
+  "decisions": {
+    "keys": "decision-keys",
+    "mode": "signed"
+  },
+  "libraries": {
+    "dir": "libraries"
+  },
+  "samples": "samples.json",
+  "egress": {
+    "admin": "<egress-admin>"
+  },
+  "notifications": {
+    "channels": {
+      "sink": {
+        "file": "notifications.jsonl"
+      }
+    },
+    "roles": {
+      "accountant": {
+        "channels": [
+          "sink"
+        ],
+        "outcomes": true
+      },
+      "finance_lead": {
+        "channels": [
+          "sink"
+        ],
+        "outcomes": false
+      }
+    }
+  }
+}
