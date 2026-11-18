@@ -358,9 +358,19 @@ a function as a public value: hand it to a model whose capability allows
 public data only, or to a delegation or a model under an envelope whose
 `spawn.max_class` is public, in the run or in a lead's sub-program, and its
 check passed. The check now refuses it (E0220, and E1706 in a sub-program;
-conformance cases `E0220i` and `E1706f`). This is the one place where a
-diagnostic of a 0.6 program changed after its release: every other output
-of a program of 0.1 to 0.6 stays byte for byte as it was.
+conformance cases `E0220i` and `E1706f`). The same rule changes one more
+output of 0.6 programs, programs the check accepts among them: the door
+`lead_classes` gives a `plan` the class of its arguments, so a `plan` handed
+a function's result that reads classified data now has that data's class
+where it had a lower one. The runtime passes that class to the check of
+each sub-program the lead writes as the class of what the lead received, so
+the same hole was open there: a sub-program could hand the data on as if the
+lead had received less. These two, a diagnostic and a door's value, both
+from this one rule, are the only outputs of a 0.6 program that changed after
+its release; every other output of a program of 0.1 to 0.6 stays byte for
+byte as it was. A run journaled before the change replays and resumes as
+it did: the lead's class is not journaled, a replay checks no sub-program
+again, and a resumed run does not check again one it admitted.
 
 Every new code has at least one conformance case of language `mandate/0.7`,
 a passing program, one patch and the one code expected, and a test fails on a

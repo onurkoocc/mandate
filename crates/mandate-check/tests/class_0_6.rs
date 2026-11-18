@@ -5,7 +5,8 @@
 //! row itself and hands it back as `Text` gave a public value in 0.6 as
 //! released; each route below passed the check then and is refused now
 //! (E0220, and E1706 in a sub-program), while a function that reads the row
-//! and returns a constant stays public. A program of 0.5 is checked as
+//! and returns a constant stays public. A `plan` handed such a result gives
+//! its lead that class (`lead_classes`). A program of 0.5 is checked as
 //! before. No TypeScript reads 0.6, so every expectation is written by hand.
 
 #![allow(
@@ -459,4 +460,43 @@ fn a_sub_programs_function_result_is_held_to_the_envelopes_max_class() {
     }
     let r = admit("let n = name_of(\"a\")\n  delegate Summarizer.summarize(\"a\")");
     assert!(r.ok, "{:?}", errors_of(&r.diagnostics));
+}
+
+/// The class `lead_classes` gives each `plan` of `text`, by its path.
+fn leads(text: &str) -> Vec<(String, &'static str)> {
+    let program = load(text, SourceKind::Mdt).program.unwrap();
+    let p = mandate_ir::Program::of(&program).unwrap();
+    mandate_check::lead_classes(p, None)
+        .into_iter()
+        .map(|(path, c)| (path, c.as_str()))
+        .collect()
+}
+
+#[test]
+fn a_plan_handed_a_functions_result_gives_its_lead_the_class_of_what_it_returns() {
+    // Under an envelope that allows confidential data the plan checks, and
+    // the lead receives the confidential row the function returns (in 0.6
+    // as released, public), which the runtime hands to the check of each
+    // sub-program the lead writes as the lead's class.
+    let open =
+        |body: &str| enveloped(body).replace("max_class: public }", "max_class: confidential }");
+    let text = open("plan Lead.finish(text_of(t)) within envelope");
+    let r = checked(&text);
+    assert!(errors(&r).is_empty(), "{:?}", errors(&r));
+    assert_eq!(
+        leads(&text),
+        [("/defs/Run/body/0/value".to_owned(), "confidential")]
+    );
+    // Its parameter alone stays public; and in 0.5 the function's result is
+    // of its arguments' class, as before.
+    let plain = open("plan Lead.finish(t) within envelope");
+    assert_eq!(
+        leads(&plain),
+        [("/defs/Run/body/0/value".to_owned(), "public")]
+    );
+    let five = text.replace("mandate @ 0.6", "mandate @ 0.5");
+    assert_eq!(
+        leads(&five),
+        [("/defs/Run/body/0/value".to_owned(), "public")]
+    );
 }
