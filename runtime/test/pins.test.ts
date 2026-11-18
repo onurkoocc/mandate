@@ -8,7 +8,8 @@
 //
 // The same check is handed the cap of every role the lock binds (its `role_classes` entry, else `internal`; slice
 // RL5b), to which it holds what the sub-program shows each role, and a question that names no role to the lowest of
-// them (E1909): the compiler's tests hold the refusal of a sub-program that shows a role
+// them (E1909), and the first by name of the members the lock lists who hold no role (`member_without_role`), to
+// whose cap, internal, it holds such a question too: the compiler's tests hold the refusal of a sub-program that shows a role
 // more than its class (crates/mandate-check/tests/patterns_0_7.rs, asks_0_7.rs); here, that the runtime hands them.
 //
 // Only the Rust compiler reads 0.7. Every rule holds on PGlite and on PostgreSQL (helpers.ts, MANDATE_TEST_DATABASE_URL).
@@ -83,11 +84,13 @@ afterAll(() => checker.close());
  * The parent on a runtime where Alice approved its envelope, with its lock pinning std.patterns at `pin` and holding
  * `role_classes` when given; its sub-programs checked by `by`, else the worker.
  */
-async function parentWith(pin: LibraryPin, o: { role_classes?: Record<string, string>; by?: ProgramChecker } = {}): Promise<World & { told: Obj[] }> {
+async function parentWith(pin: LibraryPin, o: { role_classes?: Record<string, string>; by?: ProgramChecker; roleless?: string[] } = {}): Promise<World & { told: Obj[] }> {
   const alice = EvidenceSigner.generate();
   const bob = EvidenceSigner.generate();
   const classes = o.role_classes ? { role_classes: o.role_classes } : {};
-  const lock = { modules: {}, libraries: { "std.patterns": pin }, members: { alice: { keys: [alice.keyId] }, bob: { keys: [bob.keyId] } }, roles: { platform_lead: ["alice"], release_manager: ["bob"] }, ...classes } as unknown as Lock;
+  // Members the lock lists and binds to no role, each with a key of their own.
+  const roleless = Object.fromEntries((o.roleless ?? []).map((m) => [m, { keys: [EvidenceSigner.generate().keyId] }]));
+  const lock = { modules: {}, libraries: { "std.patterns": pin }, members: { alice: { keys: [alice.keyId] }, bob: { keys: [bob.keyId] }, ...roleless }, roles: { platform_lead: ["alice"], release_manager: ["bob"] }, ...classes } as unknown as Lock;
   const w = await world(PARENT, { lock, decisions: { keys: new TrustedKeys([alice.publicKey, bob.publicKey]) }, plan: { checker: o.by ?? checker } });
   const submitting: SimTurn = [toolUse("s1", "submit_program", { base: BASE, ops: ops() })];
   const { chat, told } = leadChat([submitting, finish("planned")]);
@@ -166,6 +169,16 @@ describe("a lead's sub-program is checked against its parent's lock's role_class
       expect(r.state, state(r)).toBe("succeeded");
       expect(w.told[0]).toMatchObject({ admitted: true, number: 1 });
       expect(asked.map((i) => i["role_classes"])).toEqual([handed]);
+      expect(asked.map((i) => Object.hasOwn(i, "member_without_role"))).toEqual([false]);
     }
+  });
+
+  it("hands the check the first by name of the members the lock lists who hold no role, who may answer a question that names none", async () => {
+    const asked: Obj[] = [];
+    const w = await parentWith(TWO, { roleless: ["zed", "yan"], by: recording(asked) });
+    const r = await run(w, "roleless");
+    expect(r.state, state(r)).toBe("succeeded");
+    expect(w.told[0]).toMatchObject({ admitted: true, number: 1 });
+    expect(asked.map((i) => [i["role_classes"], i["member_without_role"]])).toEqual([[{ platform_lead: "internal", release_manager: "internal" }, "yan"]]);
   });
 });

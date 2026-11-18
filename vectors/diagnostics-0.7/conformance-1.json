@@ -5785,6 +5785,43 @@
       }
     },
     {
+      "name": "E1909f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../A05/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "In workflow Settle, human.ask, with its question and what it is given, names no role, so any member the lock lists may answer it, and it shows confidential data; member zed, whom the lock lists and binds to no role, may be shown data up to internal (the class of a role the lock does not name): nobody can decide on what they may not see. Ask a role whose class covers it, bind every member the lock lists to a role whose class covers it, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/3/value",
+              "span": [1, 2781, 1, 3012]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "member": "zed",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "ask",
+              "asked": "any_member"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1910",
       "kind": "compile",
       "door": "check_patched",

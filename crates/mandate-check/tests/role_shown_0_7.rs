@@ -2,7 +2,9 @@
 //! the runtime lists its wait to every role the lock binds and takes the
 //! answer of any member the lock lists, so the check holds what it shows to
 //! the lowest class of the roles the lock binds, one diagnostic for the site
-//! naming that role (fact `asked: any_member`). A `pause` shows nobody
+//! naming that role (fact `asked: any_member`), and, when the lock lists a
+//! member who holds no role, to `internal` too, naming that member (fact
+//! `member`); a lock that lists no member is not compared. A `pause` shows nobody
 //! content and is not compared. The programs are conformance/A05 with one
 //! change each, under its lock (the observer, who may be shown `internal`,
 //! the lowest-capped role it binds), and under that lock with every bound

@@ -30,9 +30,13 @@
 //!
 //! A question site or a plan that names no role is asked of anyone: the
 //! runtime lists its wait to every role the lock binds and takes the answer
-//! of any member the lock lists (`runtime/src/decisions.ts`). So it is held
-//! to the lowest class of the roles the lock binds, one diagnostic for the
-//! site naming that role (fact `asked: any_member`). A `pause`, and the
+//! of any member the lock lists (`runtime/src/decisions.ts`), a member who
+//! holds no role among them, at the class of a role the lock does not name.
+//! So it is held to the lowest class of the roles the lock binds and, when
+//! the lock lists a member who holds no role, to `internal`: one diagnostic
+//! for the site naming that role, or that member where `internal` is the
+//! lower (fact `asked: any_member`). A lock that lists no member and binds
+//! no role leaves it uncompared. A `pause`, and the
 //! pause a workflow without an `on budget_exceeded` handler falls back to,
 //! show nobody content (a role's view shows that the run waits; the
 //! notification carries ids, kinds, roles, deadlines and a link) and are not

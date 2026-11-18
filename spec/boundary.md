@@ -1112,9 +1112,11 @@ is a later release's). From 0.7, what a role is shown of a value in a run of
 0.1 to 0.6 is shown as before. A role is not shown, masked, what it is asked
 or reported with a lock that sets its cap too low: such a package is refused
 at load, and such a sub-program at its admission (E1909). A question that asks no
-role is held to the lowest cap of the roles the lock binds, since every one
+role is held to the lowest cap of the roles the lock binds, and to
+`internal` when the lock lists a member who holds no role, since every one
 of them may answer it (E1909), and a run whose configuration hands an
-authorization to a role below what it shows does not start. The mask is for
+authorization to a role below what it shows does not start, nor is such an
+amendment asked for or such a sub-program admitted. The mask is for
 a role that looks without being asked, for a value whose class the stored
 facts do not give, for the parameters of an effect only the runtime's
 configuration hands to a person, and for the text of a sub-program: what its

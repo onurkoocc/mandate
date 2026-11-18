@@ -365,9 +365,11 @@ describe("ListWaits", () => {
     expect(open.map((x) => x.role)).toEqual(["reviewer"]);
     expect((await w.rt.listWaits({ role: "auditor" })).map((x) => x.asked_of)).toEqual(["auditor"]);
     // A run of a wait that asks no role in the first package, and one in a second package of the same program, whose
-    // lock binds Ana, not Cy, to the observer: a member is resolved to roles through each package's own lock.
-    const roles = (w.lock as unknown as { roles: Record<string, string[]> }).roles;
-    const other = buildPackage(w.pkg.program, { ...w.lock, roles: { ...roles, observer: ["ana"] } } as unknown as Lock);
+    // lock binds Ana, not Cy, to the observer, and lists Cy no more (a member it listed and bound to no role could answer
+    // the wait, and would hold it to internal, E1909): a member is resolved to roles through each package's own lock.
+    const { roles, members } = w.lock as unknown as { roles: Record<string, string[]>; members: Record<string, unknown> };
+    const listed = Object.fromEntries(Object.entries(members).filter(([m]) => m !== "cy"));
+    const other = buildPackage(w.pkg.program, { ...w.lock, members: listed, roles: { ...roles, observer: ["ana"] } } as unknown as Lock);
     await start(w, "q", "Anyone");
     await start(w, "r", "Anyone", { name: "ana", secret: MARK }, other);
     const both = await w.rt.listWaits({ role: "observer" });
