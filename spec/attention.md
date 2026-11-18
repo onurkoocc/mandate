@@ -27,7 +27,7 @@ best-effort basis.
 | The MCP tools of 0.7 (`mcp_tools`); a native `mandate mcp` | RP3, RP4, B9 | the door `mcp_tools` and its data exist (RP3); neither server uses it yet, and the native server is not implemented yet |
 | Stages and reports at run time; the stored facts and `facts_mismatch` | B2 | not implemented yet |
 | `asks` at run time; the bound under the runtime's configuration and `attention_above_asks`; `asks_exhausted` | B3 | implemented (`runtime/src/asks.ts`, the count in `Journal.openWait`; the hook `runtime/test/asks-hook.ts` and the test of the sources in `runtime/test/asks.test.ts`) |
-| Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | not implemented yet |
+| Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | implemented (`runtime/src/mask.ts`, `runtime/src/projection.ts`, `runtime/src/watch.ts`; the allow-list of `WatchRun` in [`boundary.md`](boundary.md#classes), held to the runtime by `runtime/test/classes.test.ts`) |
 | `mandate watch`, `mandate waits`, `mandate decide` | B5 | not implemented yet |
 | Card approval of a workflow with an `owner`; the `promote` decision and the ladder; `mandate promote` | B6 | not implemented yet |
 | The driver loop `mandate tick`; notifications | B7 | not implemented yet |
@@ -1063,11 +1063,19 @@ In a 0.7 run, each value shown to a role is shown as:
 interface Shown { value: Value | { $masked: DataClass }; class: DataClass; known: "verified" | "plain" | "model" | "external" }
 ```
 
+The runtime calls this type `ShownValue` (`runtime/src/mask.ts`), because
+`Shown` is already the record a decision signs (`runtime/src/decisions.ts`).
+
 - **The cap.** A role's cap is `role_classes[role]` in the package's lock, or
   `internal` when the lock does not name the role.
 - **The mask.** For a value at a node whose facts give class `c`: when `c` is
   above the cap, the value is `{ "$masked": c }`; otherwise it is the value.
   Either way it carries `class` and `known`. The audit view sees every value.
+- **A class that is not known.** A value whose class the stored facts do not
+  give (facts that are missing or do not hash to their digest, a site with no
+  row, or a row with no class, such as an effect's) is masked for every role,
+  as `{ "$masked": "restricted" }` with class `restricted` and `known`
+  `external`. Nothing works a class out of a value.
 - **`known`** is the level of the value's type: `verified` for `Verified`,
   `plain` for a value the run computed or was given, `model` for `Inferred`,
   `external` for `Untrusted`. The weakest wrapper decides, and a value is
@@ -1142,6 +1150,13 @@ in this run".
 - A wait that asks no role is listed to every role the package's lock binds,
   with `asked_of: null`.
 - What it shows is masked and labelled, by the role it is asked of.
+- Each item also names `role`, the role it is listed to (for a wait that asks
+  none, each role in turn), and each value of `shown` its `name`, where it
+  stands in the wait's request. A member of the request that is the
+  runtime's own (the role asked, a deadline, a digest, a contract's name) is
+  no value it shows; any other is one, a member the runtime does not know
+  among them. A run of 0.1 to 0.6 gives the same values unmasked, with
+  `class` and `known` null.
 
 ### Card approval
 

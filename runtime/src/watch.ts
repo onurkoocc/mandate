@@ -42,11 +42,11 @@ const CONTEXT_TYPES = ["wait_opened", "review_requested", "review_escalated", "a
 
 const toEv = (r: { seq: unknown; type: unknown; data: unknown; at: unknown }): Ev => ({ seq: Number(r.seq), type: String(r.type), data: (r.data ?? null) as Value, at: Number(r.at) });
 
-/** The events of a run's context through `through`, in order. */
-async function contextEvents(rt: Runtime, runId: string, through: number): Promise<Ev[]> {
+/** The events of a run's context through `through` (every one without it), in order. */
+async function contextEvents(rt: Runtime, runId: string, through?: number): Promise<Ev[]> {
   const rows = await rt.db.query<{ seq: unknown; type: unknown; data: unknown; at: unknown }>(
-    `select seq, type, data, at from events where run_id = $1 and seq <= $2 and type in (${CONTEXT_TYPES.map((t) => `'${t}'`).join(", ")}) order by seq`,
-    [runId, through],
+    `select seq, type, data, at from events where run_id = $1${through === undefined ? "" : " and seq <= $2"} and type in (${CONTEXT_TYPES.map((t) => `'${t}'`).join(", ")}) order by seq`,
+    through === undefined ? [runId] : [runId, through],
   );
   return rows.map(toEv);
 }
@@ -149,7 +149,7 @@ export async function listWaits(rt: Runtime, who: { role: string } | { member: s
         runId,
         (async () => {
           const run = await rt.getRun(runId);
-          const events = await contextEvents(rt, runId, Number.MAX_SAFE_INTEGER);
+          const events = await contextEvents(rt, runId);
           const p = await packageOf(run.package_hash);
           return { run, events, ctx: p.is07 ? await attentionContext(rt, run, events, p.lock) : undefined };
         })(),
