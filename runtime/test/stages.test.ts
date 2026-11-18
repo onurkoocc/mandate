@@ -37,12 +37,25 @@ interface Person {
   key: EvidenceSigner;
 }
 
-/** Ana is the reviewer, Ben the auditor. */
+/** Ana is the reviewer, Ben the auditor, Cy the observer: a role no workflow asks or reports to, which looks at a run without being asked. */
 function people() {
   const ana: Person = { member: "ana", key: EvidenceSigner.generate() };
   const ben: Person = { member: "ben", key: EvidenceSigner.generate() };
-  return { ana, ben, lock: { modules: {}, members: { ana: { keys: [ana.key.keyId] }, ben: { keys: [ben.key.keyId] } }, roles: { reviewer: ["ana"], auditor: ["ben"] } } as Lock, keys: new TrustedKeys([ana.key.publicKey, ben.key.publicKey]) };
+  const cy: Person = { member: "cy", key: EvidenceSigner.generate() };
+  return {
+    ana,
+    ben,
+    cy,
+    lock: { modules: {}, members: { ana: { keys: [ana.key.keyId] }, ben: { keys: [ben.key.keyId] }, cy: { keys: [cy.key.keyId] } }, roles: { reviewer: ["ana"], auditor: ["ben"], observer: ["cy"] } } as Lock,
+    keys: new TrustedKeys([ana.key.publicKey, ben.key.publicKey, cy.key.publicKey]),
+  };
 }
+
+/**
+ * The caps PROGRAM needs to load: it reports a confidential value to the reviewer, so a lock that gives the reviewer
+ * less (the default, internal) is refused at load (E1909). The auditor and the observer keep internal.
+ */
+const ROLE_CLASSES = { reviewer: "confidential" } as const;
 
 let n = 0;
 const msg = () => ({ sender: "test", messageId: `m${++n}` });
@@ -68,6 +81,7 @@ use std.{human, model}
 
 role reviewer "Reviewer"
 role auditor  "Auditor"
+role observer "Observer"
 
 type Secret = Text classified confidential
 type Note = { text: Text, words: Int }
@@ -158,7 +172,7 @@ async function greeting(o: { src?: string } = {}): Promise<World & ReturnType<ty
     .on("Greeter.greet", (req) => ({ ok: `hello, ${String((req.args as unknown[])[0])}`, cost: { steps: 1 } }))
     .on("Greeter.note", () => ({ ok: { text: "a note" }, cost: { steps: 1 } }))
     .on("Greeter.fail", () => ({ error: { tag: "SkillFailed", args: ["no greeting"] }, cost: { steps: 1 } }));
-  const w = await world(o.src ?? PROGRAM, { agents, lock: who.lock, decisions: { keys: who.keys } });
+  const w = await world(o.src ?? PROGRAM, { agents, lock: { ...who.lock, role_classes: ROLE_CLASSES } as Lock, decisions: { keys: who.keys } });
   return { ...w, ...who };
 }
 
@@ -457,18 +471,22 @@ describe("a report is addressed", () => {
     expect(shows({ role: "auditor" }, "S2", undefined, addressee("stage_started", {}))).toBe(true);
   });
 
-  it("is in no role's view but that of the role it is to, masked by its cap (B4), in no projection that leaves the machine, and in the audit view with its values", async () => {
+  it("is in no role's view but that of the role it is to, labelled by its cap (B4), in no projection that leaves the machine, and in the audit view with its values", async () => {
     const w = await greeting();
     await start(w, "v");
     expect((await answer(w, "v", w.ana, WHY)).state).toBe("succeeded");
     const values = [SECRET, LINE, WHY];
-    const titles: Record<string, string[]> = { reviewer: ["Greeting drafted", "Greeting checked"], auditor: ["One round", "One round"] };
-    for (const role of ["reviewer", "auditor"]) {
+    const titles: Record<string, string[]> = { reviewer: ["Greeting drafted", "Greeting checked"], auditor: ["One round", "One round"], observer: [] };
+    for (const role of ["reviewer", "auditor", "observer"]) {
       const { view } = await runView(w.rt, "v", { role });
-      // A role's view of 0.7 shows the reports to it (`reports`), each field above its cap (`internal`) masked.
+      // A role's view of 0.7 shows the reports to it (`reports`), each field labelled with its class. The reviewer's cap
+      // is the secret's class (a lock that gives it less is refused at load, E1909): it is shown the secret, labelled.
+      // No other role is given a report to the reviewer, the observer, which looks without being asked, none at all.
       expect(view.reports!.map((r) => r.title), role).toEqual(titles[role]);
-      expect(JSON.stringify(view), `${role}: ${SECRET}`).not.toContain(SECRET);
+      if (role === "reviewer") expect(view.reports![0]!.fields.find((f) => f.name === "secret")).toEqual({ name: "secret", type: "Secret", masked: false, value: SECRET, class: "confidential", known: "plain" });
+      else expect(JSON.stringify(view), `${role}: ${SECRET}`).not.toContain(SECRET);
       for (const other of Object.values(titles).flat().filter((t) => !titles[role]!.includes(t))) expect(JSON.stringify(view)).not.toContain(other);
+      expect((await w.rt.watchRun("v", { role }, { limit: 500 })).events.filter((e) => e.type === "report").map((e) => e.data!["title"]), role).toEqual(titles[role]);
     }
     const { view: audit } = await runView(w.rt, "v", { audit: true });
     const reports = audit.events.filter((e) => e.type === "report");

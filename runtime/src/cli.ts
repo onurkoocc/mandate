@@ -1545,10 +1545,10 @@ async function waitsOfKey(reader: Runtime, db: Db, key: EvidenceSigner, explicit
   for (const member of explicit !== undefined ? [explicit] : members) {
     for (const item of await reader.listWaits({ member })) {
       const lock = locks.get(item.package);
-      if (lock !== undefined && memberOf(lock, key.keyId) === member) seen.set(`${item.run}\u0000${item.command}\u0000${item.role}`, item);
+      if (lock !== undefined && memberOf(lock, key.keyId) === member) seen.set(`${item.run}\u0000${item.command}\u0000${item.role ?? ""}`, item);
     }
   }
-  return [...seen.values()].sort((x, y) => x.since - y.since || (x.run < y.run ? -1 : x.run > y.run ? 1 : 0) || (x.command < y.command ? -1 : x.command > y.command ? 1 : 0) || (x.role < y.role ? -1 : 1));
+  return [...seen.values()].sort((x, y) => x.since - y.since || (x.run < y.run ? -1 : x.run > y.run ? 1 : 0) || (x.command < y.command ? -1 : x.command > y.command ? 1 : 0) || ((x.role ?? "") < (y.role ?? "") ? -1 : 1));
 }
 
 /**
@@ -1623,7 +1623,8 @@ async function decide(a: Args, config: RuntimeConfig, db: Db, out: (s: string) =
     }
     // What the role's view of the run holds of the wait: the runtime's own members of its request (what an item of a review failed, an amendment's changes).
     let request: Obj | undefined;
-    try {
+    // A member of no role has no view of the run: the wait as listed is what they are shown.
+    if (item.role !== null) try {
       const w = ((await runView(rt, item.run, { role: item.role })).view as unknown as { waiting: Value }).waiting;
       if (isObj(w) && w["command"] === item.command && isObj(w["request"] ?? null)) request = w["request"] as Obj;
     } catch (e) {
@@ -1632,7 +1633,7 @@ async function decide(a: Args, config: RuntimeConfig, db: Db, out: (s: string) =
     }
     const masked = hidesFromRole(item);
     const shownOut = [...waitLines(item, undefined, !(item.kind === "review" && request))];
-    if (masked) shownOut.push(`  what you are asked to decide is masked for ${terminalText(item.role)}: it is above what that role may be shown, so its value is not printed, only its class and how it is known`);
+    if (masked) shownOut.push(`  what you are asked to decide is masked for ${item.role === null ? "a member of no role" : terminalText(item.role)}: it is above what ${item.role === null ? "such a member" : "that role"} may be shown, so its value is not printed, only its class and how it is known`);
     const open = item.kind === "review" && request ? openItems(request) : [];
     if (item.kind === "review") {
       if (!request) return cancelled("the role's view of the run does not hold this review, so its items cannot be shown");
@@ -1671,7 +1672,7 @@ async function decide(a: Args, config: RuntimeConfig, db: Db, out: (s: string) =
     const role = now.role !== undefined ? terminalText(now.role) : "a member the lock lists";
     out(`About to sign as ${terminalText(member)} (${role}): ${what}\n  run ${terminalText(item.run)}, wait ${terminalText(item.command)}, revision ${item.revision}\n`);
     if (masked) {
-      out(`  You are deciding on something you are not shown: what this asks is above what ${terminalText(item.role)} may be shown. It is signed for its digest all the same.\n`);
+      out(`  You are deciding on something you are not shown: what this asks is above what ${item.role === null ? "a member of no role" : terminalText(item.role)} may be shown. It is signed for its digest all the same.\n`);
       const said = await ask("Type yes to sign it anyway: ");
       if (said === undefined || said.trim().toLowerCase() !== "yes") return cancelled(said === undefined ? "the input ended before the confirmation" : "not confirmed");
     } else {

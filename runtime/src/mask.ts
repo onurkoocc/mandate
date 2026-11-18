@@ -19,6 +19,7 @@
 
 import { classRank, DATA_CLASSES, type AttentionFacts, type DataClass, type Known, type Lock } from "@mandate/bridge";
 import { rowOf, type SiteTag } from "./asks.js";
+import type { AuthorizePolicy } from "./interp.js";
 import { isObj, type Obj, type Value } from "./values.js";
 
 export type { DataClass, Known };
@@ -69,6 +70,34 @@ export function capOf(lock: Lock | undefined, role: string): DataClass {
   if (!classes || !Object.hasOwn(classes, role)) return DEFAULT_CAP;
   const c = classes[role];
   return isClass(c) ? c : DATA_CLASSES[0]!;
+}
+
+/**
+ * The cap of every role `lock` binds (its `roles`), and of every role its `role_classes` names: what a lead's
+ * sub-program's check is held to (E1909), which holds a question that names no role to the lowest of them, since any
+ * member the lock lists may answer it.
+ */
+export function roleCaps(lock: Lock): Record<string, DataClass> {
+  const named = (v: unknown): string[] => (isObj((v ?? null) as Value) ? Object.keys(v as Obj) : []);
+  const roles = [...new Set([...named(lock.roles), ...named((lock as { role_classes?: unknown }).role_classes)])].sort();
+  return Object.fromEntries(roles.map((r) => [r, capOf(lock, r)]));
+}
+
+/**
+ * Whether `member` is one `lock` lists (its `members`) and binds to no role (its `roles`): such a member may answer a
+ * question that names no role, in no role, and is shown it at the cap of a role the lock does not name, `internal`.
+ */
+export function holdsNoRole(lock: Lock, member: string): boolean {
+  const members = isObj((lock.members ?? null) as Value) ? (lock.members as Obj) : {};
+  if (!Object.hasOwn(members, member)) return false;
+  const roles = isObj((lock.roles ?? null) as Value) ? (lock.roles as Obj) : {};
+  return !Object.values(roles).some((ms) => Array.isArray(ms) && ms.includes(member));
+}
+
+/** The first by name of the members `lock` lists who hold no role in it (`holdsNoRole`), or undefined when each holds one. */
+export function memberWithoutRole(lock: Lock): string | undefined {
+  const members = isObj((lock.members ?? null) as Value) ? Object.keys(lock.members as Obj) : [];
+  return members.filter((m) => holdsNoRole(lock, m)).sort()[0];
 }
 
 /** A label from a class and a level as given, or undefined when either is not one the runtime knows. */
@@ -246,4 +275,43 @@ export function waitFacts(facts: AttentionFacts | undefined, site: SiteTag | und
     on_no_answer: typeof row["on_no_answer"] === "string" ? row["on_no_answer"] : null,
     escalates_to: esc && typeof esc["to"] === "string" ? esc["to"] : null,
   };
+}
+
+/** An authorization the runtime's configuration hands to a role whose cap is below the class it shows (`authorizerBelowClass`). */
+export interface AuthorizerBelow {
+  effect: string;
+  /** The role the configuration names, and the one the program's row names. */
+  role: string;
+  named: string | null;
+  cap: DataClass;
+  shown: DataClass;
+  path: string;
+}
+
+/** What `authorizerBelowClass` found, as a refusal says it: the effect, the role the configuration names, its cap, and what it shows. */
+export function authorizerBelowText(b: AuthorizerBelow): string {
+  return `The runtime's configuration hands the authorization of ${b.effect} to role ${b.role}, which may be shown data up to ${b.cap} (its class in the lock's role_classes, internal when the lock does not name it), and it shows ${b.shown} data (the program names ${b.named ?? "no role"} for it)`;
+}
+
+/**
+ * 0.7 (spec/attention.md "Effects and the runtime's configuration"): the first authorization the runtime's
+ * configuration (`authorize`) hands to another role than the program's row names, whose cap in the lock is below the
+ * class the row shows (its `shown`, which the wait is labelled with): an irreversible action's `owner` or a change set
+ * member's approver, which `authorize[E] = { by: "human", role }` overrides. The envelope's `approve E by r` is not
+ * overridden (`approve`); an environment's tier, which also is, is not known at the start, so the comparison takes the
+ * configured role as the one asked. An effect site only the configuration hands to a person has no class in the facts
+ * and is not compared: the mask hides its values from every role.
+ */
+export function authorizerBelowClass(facts: AttentionFacts, authorize: Record<string, AuthorizePolicy> | undefined, lock: Lock, approve: Readonly<Record<string, string>> | undefined): AuthorizerBelow | undefined {
+  if (!authorize) return undefined;
+  for (const q of [...(facts.questions ?? []), ...(facts.budget_exceeded ?? [])]) {
+    if (q.kind !== "effect" && q.kind !== "changeset") continue;
+    const effect = (facts.effects ?? []).find((e) => e.path === q.path)?.effect;
+    if (effect === undefined || (approve && Object.hasOwn(approve, effect))) continue;
+    const conf = Object.hasOwn(authorize, effect) ? authorize[effect] : undefined;
+    if (conf?.by !== "human" || conf.role === q.role) continue;
+    const cap = capOf(lock, conf.role);
+    if (classRank(q.shown) > classRank(cap)) return { effect, role: conf.role, named: q.role, cap, shown: q.shown, path: q.path };
+  }
+  return undefined;
 }

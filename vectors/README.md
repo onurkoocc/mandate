@@ -1280,7 +1280,7 @@ held by what a person writes and by what the Rust writes:
   `diagnostic-vectors.test.ts`, `diff-vectors.test.ts`) skip them, and each checks
   that what it skipped is exactly the directories whose `case.json` names 0.6, read
   as plain JSON, and that there are `RUST_ONLY_CASES` of them
-  (`compiler/test/cases-runner.ts`, 410 today, of 0.6 and 0.7): a case of 0.6 added or taken away
+  (`compiler/test/cases-runner.ts`, 418 today, of 0.6 and 0.7): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
   version, `mandate/0.8`, E0103, whose list has 0.6 and 0.7), `E0140` (a 0.5 lock that carries `libraries`),
@@ -1341,7 +1341,7 @@ same way, by gates of its own beside those of 0.6:
 - **Conformance cases of 0.7**, `"language": "mandate/0.7"`, written by hand and
   skipped and counted by the TypeScript runners as those of 0.6 are
   (`RUST_ONLY_LANGUAGES` is `mandate/0.6` and `mandate/0.7`, and `RUST_ONLY_CASES`
-  counts both, 410 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
+  counts both, 418 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
   unknown field of a 0.7 program, E0104), `S02k` and `S02l` (a 0.7 program with a lock
   of format 0.6, and of 0.7), `E0140d` (an unknown field of a 0.7 lock, E0140), `E1509` to `E1509b`
   (slice RL7), the stages (slice RL2): `A01` to `A01b`, `E0101h`, `E0104h` to `E0104j`, `E1901` to
@@ -1351,7 +1351,8 @@ same way, by gates of its own beside those of 0.6:
   `E1603b` and `L10` to `L10e`, the attention bound (slice RL4): `E1906` to `E1906p`,
   `E1907` to `E1907c`, `E1908` to `E1908e`, `E1706c` to `E1706e`, `E1709e` to `E1709g`, `E1501c`, `E1501d`, `S04b`, `S04c` and `E0220h`,
   and the owner and the lock of 0.7 (slice RL5): `A04`, `E1910` to `E1910b`, `E1911`, `E1911a`, `E1705d`,
-  `E1501e`, `E1502b`, `E0140e` to `E0140h`, `E1307f`, `L11` and `L11a`
+  `E1501e`, `E1502b`, `E0140e` to `E0140h`, `E1307f`, `L11` and `L11a`, and E1909 (slice RL5b): `A05`,
+  `E1909` to `E1909f` and `E1609c` (whose lock now gives the two roles their classes)
   (`conformance/README.md`, "Cases of 0.7").
 - **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (ten today,
   `asks.mdt`, `minimal.mdt`, `owner.mdt` (with its lock of 0.7, which gives role classes and asks for the
@@ -1399,7 +1400,7 @@ output of `golden/0.6.json`), and every compile case of 0.6 whose program declar
 0.6 (253 of 267: the five library cases have no program, and nine cases of 0.6 hold a
 program of another version), with the whole result of its door; only the version's
 text may differ, and the hashes, each only as a renaming. It also checks that every
-code 0.7 adds (`CODES_0_7`: E1509, E1901 to E1908) has a case of 0.7 that expects it.
+code 0.7 adds (`CODES_0_7`: E1509, E1901 to E1911) has a case of 0.7 that expects it.
 `crates/mandate-testkit/tests/asks_0_7.rs` holds the attention bound on generated
 programs (240 programs, 908 counts): a body of the constructs of the table of sites,
 `if`, `switch`, `loop max_iter n`, `par` (`restart_all` nested through calls), `on error`, a contract's `require`, a map's body and calls, against the generator's own count, role by

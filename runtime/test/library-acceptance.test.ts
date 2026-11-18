@@ -650,10 +650,11 @@ describe("the acceptance program's card", () => {
     for (const line of [
       "| map it | items | 60 | 6 | Matcher.match | — |",
       "Spend bound of map it: 60 × 0.30 USD = 18 USD ≤ 20 USD.",
-      // A card of 0.7 tells the batch decision under "When it asks whom", in the rows of its table, not in the review's paragraph.
+      // A card of 0.7 tells the batch decision under "When it asks whom", in the rows of its table, not in the review's paragraph;
+      // the relabelled lock gives every role `restricted` (lockUnder, relabel.ts: a run of 0.6 masks nothing).
       ...(relabelled()
         ? [
-            "| accountant | ana | up to internal | outside any stage | Waive or decline the open items of the batch (Matched.totals may be waived); one decision about up to 60 items | 1 decision | 1 day from when it is asked | It goes to finance\\_lead, who has 1 day of their own |",
+            "| accountant | ana | up to restricted | outside any stage | Waive or decline the open items of the batch (Matched.totals may be waived); one decision about up to 60 items | 1 decision | 1 day from when it is asked | It goes to finance\\_lead, who has 1 day of their own |",
             "| Every open item is declined, by nobody, and the run goes on with the items that were accepted |",
           ]
         : [

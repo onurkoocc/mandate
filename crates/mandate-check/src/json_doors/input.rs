@@ -349,6 +349,26 @@ impl<'a> Members<'a> {
         })
     }
 
+    /// The member `name` (0.7, `role_classes`), an object from a role to a
+    /// data class, as a lock's `role_classes` holds it, when it is there: a
+    /// member that is no data class is refused, and never read as another.
+    pub fn opt_role_classes(self, name: &str) -> Result<Option<&'a Value>, DoorError> {
+        let Some(classes) = self.opt_map(name)? else {
+            return Ok(None);
+        };
+        if let Some((role, v)) = classes
+            .iter()
+            .find(|(_, v)| v.as_str().and_then(DataClass::from_name).is_none())
+        {
+            return Err(DoorError::bad_input(format!(
+                "`{}{name}.{role}` is {}, not a data class",
+                self.at,
+                type_name(v)
+            )));
+        }
+        Ok(self.opt_value(name))
+    }
+
     /// The member `name`, loaded modules by name (an object whose every
     /// member is a program, an object), when it is there.
     pub fn opt_modules(self, name: &str) -> Result<Option<&'a Modules>, DoorError> {

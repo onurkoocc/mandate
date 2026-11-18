@@ -76,6 +76,9 @@
 //! - [`owner`]: a workflow's `owner` of 0.7 ([`owner::owner_checks`]) and,
 //!   with a lock that asks for the promotion ladder, a workflow nobody could
 //!   promote ([`owner::promotion_checks`]): E1910. Rust only.
+//! - [`role_shown`]: with a lock, what each role of a program of 0.7 is
+//!   shown, held to its class in the lock's `role_classes`
+//!   ([`role_shown::role_class_checks`]): E1909. Rust only.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
 //!   `compiler/src/check/roles.ts`.
 //! - [`lock`]: the lock, `compiler/src/lock.ts`: [`Lock`], [`validate_lock`],
@@ -205,6 +208,7 @@ pub mod posix;
 pub mod report_sig;
 pub mod reports;
 pub mod resolve;
+pub mod role_shown;
 pub mod roles;
 pub mod sandbox;
 pub mod shapes;

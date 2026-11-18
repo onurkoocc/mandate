@@ -51,6 +51,10 @@
       "ben"
     ]
   },
+  "role_classes": {
+    "accountant": "confidential",
+    "finance_lead": "confidential"
+  },
   "tariffs": {
     "claude-opus-5-5": {
       "currency": "USD",

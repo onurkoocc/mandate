@@ -271,6 +271,29 @@ pub(crate) fn check_shown(
     opts: &CheckOptions<'_>,
     shown: Option<&mut crate::statics::Typing>,
 ) -> CheckResult {
+    check_capped(text, kind, opts, shown, None)
+}
+
+/// [`check_shown`], and, given `caps` and no lock, E1909 held to the
+/// classes `caps` gives each role ([`crate::lock::Lock::role_class`]): a
+/// lead's sub-program, whose check is given no lock, held to the
+/// `role_classes` of its parent's lock (`crate::doors::check_subprogram`).
+/// With a lock, the lock's classes are the ones, and `caps` is not read.
+#[must_use]
+pub(crate) fn check_capped(
+    text: &str,
+    kind: SourceKind,
+    opts: &CheckOptions<'_>,
+    shown: Option<&mut crate::statics::Typing>,
+    caps: Option<Lock<'_>>,
+) -> CheckResult {
+    // What the typing gives the facts, which E1909 reads too: the caller's,
+    // or one of the check's own (boxed, so that the frame stays small).
+    let mut own_typing: Option<Box<crate::statics::Typing>> = None;
+    let typing: &mut crate::statics::Typing = match shown {
+        Some(t) => t,
+        None => own_typing.insert(Box::default()),
+    };
     let loaded = load(text, kind);
     let mut diagnostics = loaded.diagnostics.clone();
     let program_value = match &loaded.program {
@@ -433,13 +456,20 @@ pub(crate) fn check_shown(
     // Static checks assume every name resolves.
     if !has_errors(&diagnostics) {
         diagnostics.extend(
-            static_check(target, &loaded.spans, target_linked, opts.claim, shown)
-                .into_iter()
-                .map(back),
+            static_check(
+                target,
+                &loaded.spans,
+                target_linked,
+                opts.claim,
+                Some(&mut *typing),
+            )
+            .into_iter()
+            .map(back),
         );
     }
     // `opts.lock && !hasErrors(diagnostics)`: a lock that is falsy is none.
-    if let Some(lock) = opts.lock.filter(|l| l.is_truthy())
+    let lock = opts.lock.filter(|l| l.is_truthy());
+    if let Some(lock) = lock
         && !has_errors(&diagnostics)
     {
         let pinned = libraries.as_ref().map(|l| &l.pinned);
@@ -454,9 +484,33 @@ pub(crate) fn check_shown(
                     Lock::of(lock),
                     Some(&loaded.spans),
                 ));
+                // 0.7: no role is shown data above its class in the lock
+                // (E1909), from what the typing gave the facts.
+                diagnostics.extend(
+                    crate::role_shown::role_class_checks(
+                        target,
+                        typing,
+                        Lock::of(lock),
+                        Some(&loaded.spans),
+                    )
+                    .into_iter()
+                    .map(back),
+                );
             }
             Err(lock_diags) => diagnostics.extend(lock_diags),
         }
+    }
+    // 0.7: a lead's sub-program, given no lock, held to the classes of its
+    // parent's (E1909).
+    if lock.is_none()
+        && let Some(caps) = caps
+        && !has_errors(&diagnostics)
+    {
+        diagnostics.extend(
+            crate::role_shown::role_class_checks(target, typing, caps, Some(&loaded.spans))
+                .into_iter()
+                .map(back),
+        );
     }
     let ok = !has_errors(&diagnostics);
     // The program hash covers the application, not the expansion; and the

@@ -828,6 +828,12 @@ pub const CODES: &[CodeRow] = &[
         explain: "`role_classes` and `promotion` in a lock of format 0.7 are read by a run of a program of mandate/0.7 or later: it masks each value above a role's class and climbs the promotion ladder. A run of an older program masks nothing and climbs no ladder, so in a lock packaged with one the field would not apply, and a field that silently does not apply misleads whoever reads the lock, so it is refused, at the field, as E1803 refuses `isolation` and `egress` for a program before 0.5. Write the program in mandate/0.7, or take the field out. Facts: `field`, `language` (spec/attention.md \"Lock 0.7\").",
         reference: Reference::Rust,
     },
+    CodeRow {
+        code: "MDT-E1909",
+        title: "Role shown data above its class",
+        explain: "With a lock, a role of a program of 0.7 may be shown data up to its class in the lock's `role_classes` (`internal` for a role it does not name), since nobody can decide on, or be told, what they may not see. Each place a workflow shows a role data is held to that class, at the class the attention facts give it: a question asked of the role (an approval a `verify` asks, `human.ask`, `escalate`, the escalations of `supervise escalate`, a review, an effect or a change set the program hands to it, the owner's gate of a governance-class file, a question of the `on budget_exceeded` handler), the role a review escalates to, a `plan`'s amendment request to the envelope's owner, and each field of a report to the role. Data above the class is refused at the place (the `verify`, the question, the field's value; at the application for one a pattern's expansion brings). Raise the role's class in the lock, or show it less; the runtime masks such data as well. A pause, and the notification of a budget run out, show no data. A lead's sub-program is held to its parent's lock's classes at admission when its caller passes them. Facts: `workflow`, `role`, `class` (the role's), `shown`, `site` (the kind of question, `plan` or `report`), `only`, `field` (spec/attention.md \"Lock 0.7\").",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.
@@ -859,6 +865,7 @@ pub const CODES_0_7: &[&str] = &[
     "MDT-E1908",
     "MDT-E1910",
     "MDT-E1911",
+    "MDT-E1909",
 ];
 
 impl CodeRow {

@@ -259,7 +259,7 @@ const item = (i: number): string => `/defs/PostAll/body/0/value[${i}]/body/1/val
 describe("what 0.6 has that this runtime does not run yet, after connectors", () => {
   it("runs the program of connectors (drafts.mdt), and the acceptance program, whose review and waiver run too (B10)", () => {
     const connectors = LIB();
-    const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
+    const lock = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string });
     const { lock: _format, ...packaged } = lock;
     const drafts = check(relabel(read("fixtures/library/drafts.mdt")), "mdt", { libraries: [connectors], lock, linked: true });
     expect(drafts.diagnostics.filter((d) => d.severity === "error")).toEqual([]);

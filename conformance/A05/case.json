@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "A05",
+  "kind": "compile",
+  "title": "A program of 0.7 that shows confidential data to the accountant and the finance lead in a review and its escalation, an approval, a question and a report checks with a lock that gives both of them confidential.",
+  "spec": [
+    "spec/attention.md#lock-07",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

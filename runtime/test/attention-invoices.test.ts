@@ -7,7 +7,8 @@
 // One world: a mailbox holding six invoices and an ERP holding their orders (fake-mcp.ts), the matcher as an agent of
 // its own. Invoice 1 is off in total by 5%, which fails only `totals`, the criterion a person may waive; invoice 2 names
 // another vendor, which nobody may waive. Keys are made at run time (GitGuardian scans each commit); the values are
-// plain words.
+// plain words. A lock that lowers the accountant's cap below what the review shows her is refused at load (E1909); a
+// role that looks without being asked is given none of the values.
 
 import { readFileSync } from "node:fs";
 import type { LibrarySource, Lock } from "@mandate/bridge";
@@ -33,6 +34,8 @@ function fixtureLibrary(dir: string): LibrarySource {
 }
 
 const SOURCE = read("fixtures/attention/invoices.mdt");
+/** The fixture's last role declaration, after which a variant declares the observer. */
+const OBSERVED = 'role finance_lead "Finance lead"';
 const LOCK = JSON.parse(read("fixtures/attention/invoices.lock.json")) as Obj;
 const ERP = "acme.connectors.erp";
 const MAIL = "acme.connectors.mailbox";
@@ -67,8 +70,12 @@ interface IWorld extends World {
   mailbox: ReturnType<typeof declaredMailbox>;
 }
 
-/** The fixture on a runtime whose connectors answer from the fakes, under its lock with `classes` in place of its `role_classes`, if given. */
-async function invoices(classes?: Record<string, string>): Promise<IWorld> {
+/**
+ * The fixture on a runtime whose connectors answer from the fakes, under its lock with `classes` in place of its
+ * `role_classes`, if given. With `observer`, the program also declares a role `observer` that no workflow asks or
+ * reports to, and the lock binds it to Cy: a role that looks at the runs without being asked.
+ */
+async function invoices(classes?: Record<string, string>, o: { observer?: boolean } = {}): Promise<IWorld & { cy: EvidenceSigner }> {
   const erp = declaredErp();
   const mailbox = declaredMailbox();
   for (const i of ALL) {
@@ -77,18 +84,21 @@ async function invoices(classes?: Record<string, string>): Promise<IWorld> {
   }
   const ana: Person = { member: "ana", key: EvidenceSigner.generate() };
   const ben: Person = { member: "ben", key: EvidenceSigner.generate() };
+  const cy = EvidenceSigner.generate();
   const connectors = LOCK["connectors"] as Record<string, Obj>;
   const lock = {
     ...LOCK,
     connectors: { [ERP]: { ...connectors[ERP], tools: await digests(erp) }, [MAIL]: { ...connectors[MAIL], tools: await digests(mailbox) } },
-    members: { ana: { keys: [ana.key.keyId] }, ben: { keys: [ben.key.keyId] } },
+    members: { ana: { keys: [ana.key.keyId] }, ben: { keys: [ben.key.keyId] }, ...(o.observer ? { cy: { keys: [cy.keyId] } } : {}) },
+    ...(o.observer ? { roles: { ...(LOCK["roles"] as Obj), observer: ["cy"] } } : {}),
     ...(classes ? { role_classes: classes } : {}),
   } as unknown as Lock;
   const agents = new SimAgents().on("Matcher.match", (req) => {
     const i = Number(/INV-0(\d)/.exec(JSON.stringify(req.args[0]))![1]);
     return { ok: { invoice_no: invoiceNo(i), order: order(i) }, cost: { steps: 2 } };
   });
-  const w = await world(SOURCE, { libraries: [fixtureLibrary("acme.connectors")], lock, decisions: { keys: new TrustedKeys([ana.key.publicKey, ben.key.publicKey]) }, agents });
+  const src = o.observer ? SOURCE.replace(OBSERVED, `${OBSERVED}\nrole observer    "Observer"`) : SOURCE;
+  const w = await world(src, { libraries: [fixtureLibrary("acme.connectors")], lock, decisions: { keys: new TrustedKeys([ana.key.publicKey, ben.key.publicKey]) }, agents });
   w.adapters.connectors = {
     fetch: (gateway: { spec: { host: string } }): McpFetch => {
       const server = gateway.spec.host === erp.host ? erp : mailbox;
@@ -96,7 +106,7 @@ async function invoices(classes?: Record<string, string>): Promise<IWorld> {
     },
   } as never;
   w.adapters.samples = { tool: (name: string) => (name === `${MAIL}.list_invoices` ? { result: ALL.map(invoice) } : name === `${ERP}.list_open_orders` ? { result: ALL.map(order) } : undefined) } as never;
-  return { ...w, ana, ben, erp, mailbox };
+  return { ...w, ana, ben, cy, erp, mailbox };
 }
 
 const at = (w: World): Date => new Date(w.adapters.clock.now());
@@ -177,18 +187,36 @@ describe("the attention fixture fixtures/attention/invoices.mdt under its own lo
     expect(owner.view.manifest.mode).toBe("read_only");
   });
 
-  it("masks the same values, on every path, for a role whose cap the lock sets below their class", HEAVY, async () => {
-    const w = await invoices({ accountant: "internal", finance_lead: "confidential" });
+  it("gives a role that looks without being asked none of the values, on every path, while the role asked is given them", HEAVY, async () => {
+    // A variant that declares a third role, bound in the lock to Cy with the lowest cap; the fixture's own roles keep theirs.
+    const w = await invoices({ ...(LOCK["role_classes"] as Record<string, string>), observer: "public" }, { observer: true });
     await w.rt.approveEnvelope(w.pkg, signDecision(w.ana.key, shownPackage(w.pkg.hash, "accountant"), { kind: "envelope", member: "ana", at: at(w) }));
     const d = await start(w, "d1", "design");
     expect(d.state, state(d)).toBe("waiting");
     const asked = await given(w, "d1", "accountant");
-    expect(itemsOf(asked.view.waiting)[0]!["value"]).toMatchObject({ masked: true, class: "confidential" });
-    expect(asked.waits).toHaveLength(1);
-    expect(asked.waits[0]!.shown.length).toBeGreaterThan(0);
-    expect(asked.waits[0]!.shown.every((s) => "masked" in s && s.masked)).toBe(true);
-    for (const [where, text] of Object.entries(asked.text)) {
-      for (const i of ALL) expect(text, `${where}: invoice ${i}`).not.toContain(invoiceNo(i));
-    }
+    expect(itemsOf(asked.view.waiting)[0]!["value"]).toMatchObject({ masked: false, class: "confidential" });
+    for (const [where, text] of Object.entries(asked.text)) expect(text, where).toContain(invoiceNo(1));
+    // Every question and report of the fixture names its role, so the observer is listed no wait and given no report:
+    // the run's stages and how it ends, nothing of an invoice, by its view, WatchRun and ListWaits, before and after.
+    const look = async (): Promise<void> => {
+      const watcher = await given(w, "d1", "observer");
+      expect([watcher.view.waiting, watcher.waits, watcher.view.reports]).toEqual([null, [], []]);
+      expect(watcher.watched.events.filter((e) => e.class === "S0" || e.type === "report")).toEqual([]);
+      for (const [where, text] of Object.entries(watcher.text)) {
+        for (const i of ALL) expect(text, `${where}: invoice ${i}`).not.toContain(invoiceNo(i));
+      }
+    };
+    await look();
+    expect(state(await decide(w, "d1", w.ana, { waive: [1], decline: [] }))).toBe("succeeded null");
+    await look();
+  });
+
+  it("is refused at load under a lock that sets the cap of the role it asks below the class it shows it (E1909): nothing is run or asked", HEAVY, async () => {
+    const w = await invoices({ accountant: "internal", finance_lead: "confidential" });
+    await expect(start(w, "d1", "design")).rejects.toMatchObject({ code: "load_verification_failed", message: expect.stringContaining("MDT-E1909") });
+    expect(await w.db.query("select run_id from runs")).toEqual([]);
+    expect(await w.db.query("select command_id from commands")).toEqual([]);
+    expect(await w.rt.listWaits({ role: "accountant" })).toEqual([]);
+    expect([w.mailbox.received.length, w.erp.postings]).toEqual([0, 0]);
   });
 });
