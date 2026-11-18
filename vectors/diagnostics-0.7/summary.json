@@ -8,8 +8,8 @@
     "check_subprogram": 7,
     "library": 8
   },
-  "golden_results": 35,
-  "diagnostics": 186,
+  "golden_results": 39,
+  "diagnostics": 194,
   "by_code": {
     "MDT-E0101": 2,
     "MDT-E0104": 9,
@@ -23,6 +23,7 @@
     "MDT-E1502": 2,
     "MDT-E1509": 2,
     "MDT-E1603": 1,
+    "MDT-E1604": 2,
     "MDT-E1607": 5,
     "MDT-E1609": 3,
     "MDT-E1705": 3,
@@ -40,6 +41,6 @@
     "MDT-E1911": 2,
     "MDT-W0310": 3,
     "MDT-W0504": 5,
-    "MDT-W0601": 43
+    "MDT-W0601": 49
   }
 }
