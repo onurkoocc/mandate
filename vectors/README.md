@@ -1274,7 +1274,7 @@ held by what a person writes and by what the Rust writes:
   `diagnostic-vectors.test.ts`, `diff-vectors.test.ts`) skip them, and each checks
   that what it skipped is exactly the directories whose `case.json` names 0.6, read
   as plain JSON, and that there are `RUST_ONLY_CASES` of them
-  (`compiler/test/cases-runner.ts`, 392 today, of 0.6 and 0.7): a case of 0.6 added or taken away
+  (`compiler/test/cases-runner.ts`, 410 today, of 0.6 and 0.7): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
   version, `mandate/0.8`, E0103, whose list has 0.6 and 0.7), `E0140` (a 0.5 lock that carries `libraries`),
@@ -1293,7 +1293,8 @@ held by what a person writes and by what the Rust writes:
   patterns (`P02` to `P06b`, `E1301` to `E1307` with their variants, `E1602d`, `E1602e`,
   `E0104e`, `E0104f`, and the rules of earlier slices held in an expansion: `E1708n`,
   `E1708o`, `E1505m`, `E1506j`, `E1501a`, `E0301d`, `E0220g`, `E0210`), and the 13 of
-  shapes (`N11` to `N11e`, `E1710` to `E1710b`, `E1711`, `E1711a`, `E1709d`, `E0104g`), listed in
+  shapes (`N11` to `N11e`, `E1710` to `E1710b`, `E1711`, `E1711a`, `E1709d`, `E0104g`), and the
+  2 of the class of a function's result, added on 2026-11-18 (`E0220i`, `E1706f`), listed in
   `conformance/README.md`.
 - **`golden/0.6.json`**: for every 0.6 program of the repository (each `.mdt` and
   `.ir.json` file of `fixtures/library/`, 10 today, 114 outputs), the digest of each
@@ -1334,7 +1335,7 @@ same way, by gates of its own beside those of 0.6:
 - **Conformance cases of 0.7**, `"language": "mandate/0.7"`, written by hand and
   skipped and counted by the TypeScript runners as those of 0.6 are
   (`RUST_ONLY_LANGUAGES` is `mandate/0.6` and `mandate/0.7`, and `RUST_ONLY_CASES`
-  counts both, 392 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
+  counts both, 410 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
   unknown field of a 0.7 program, E0104), `S02k` and `S02l` (a 0.7 program with a lock
   of format 0.6, and of 0.7), `E0140d` (an unknown field of a 0.7 lock, E0140), `E1509` to `E1509b`
   (slice RL7), the stages (slice RL2): `A01` to `A01b`, `E0101h`, `E0104h` to `E0104j`, `E1901` to
@@ -1389,7 +1390,7 @@ The four are written by the Rust with `MANDATE_UPDATE_0_7=1` (passed on by
 `crates/mandate-testkit/tests/language_0_7.rs` checks that a 0.6 program relabelled
 `mandate @ 0.7` checks as it did: every 0.6 program of `fixtures/library/` (10, every
 output of `golden/0.6.json`), and every compile case of 0.6 whose program declares
-0.6 (251 of 265: the five library cases have no program, and nine cases of 0.6 hold a
+0.6 (253 of 267: the five library cases have no program, and nine cases of 0.6 hold a
 program of another version), with the whole result of its door; only the version's
 text may differ, and the hashes, each only as a renaming. It also checks that every
 code 0.7 adds (`CODES_0_7`: E1509, E1901 to E1908) has a case of 0.7 that expects it.
