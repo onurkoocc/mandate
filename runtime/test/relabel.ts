@@ -72,9 +72,14 @@ export function relabelIr<P extends Pick<Program, "language">>(p: P): P {
   return relabelled() && String(p.language) === WRITTEN ? { ...p, language: under as Program["language"] } : p;
 }
 
-/** The lock a suite gives a relabelled package: the one it was given, with every role it binds `restricted` (see above). */
-export function lockUnder<L extends Lock | undefined>(lock: L): L {
+/**
+ * The lock a suite gives a relabelled package: the one it was given, with every role it binds `restricted` (see
+ * above). Given the package's `program`, a program the suite did not relabel (one of an earlier language) is given
+ * its lock as it is.
+ */
+export function lockUnder<L extends Lock | undefined>(lock: L, program?: Pick<Program, "language">): L {
   if (!relabelled() || lock === undefined || !lock.roles) return lock;
+  if (program !== undefined && String(program.language) !== under) return lock;
   const format = (lock as { lock?: string }).lock;
   if (format === "mandate/lock/0.7" || lock.role_classes) return lock;
   const role_classes = Object.fromEntries(Object.keys(lock.roles).map((r) => [r, "restricted" as const]));

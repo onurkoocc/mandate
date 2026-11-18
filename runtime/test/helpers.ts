@@ -97,7 +97,7 @@ export async function world(
   const sim = simulate(o);
   if (o.realModel) sim.adapters.model = o.realModel;
   const faults = new Faults();
-  return { ...sim, rt: new Runtime(db, sim.adapters, faults, undefined, { decisions: o.decisions ?? UNSIGNED.decisions, ...(o.plan ? { plan: o.plan } : {}), ...(o.hostProbe ? { hostProbe: o.hostProbe } : {}), ...(o.config ? { libraries: o.config } : {}) }), db, pkg: buildPackage(r.program!, lockUnder(o.lock ?? LOCK), o.modules, o.libraries), faults };
+  return { ...sim, rt: new Runtime(db, sim.adapters, faults, undefined, { decisions: o.decisions ?? UNSIGNED.decisions, ...(o.plan ? { plan: o.plan } : {}), ...(o.hostProbe ? { hostProbe: o.hostProbe } : {}), ...(o.config ? { libraries: o.config } : {}) }), db, pkg: buildPackage(r.program!, lockUnder(o.lock ?? LOCK, r.program!), o.modules, o.libraries), faults };
 }
 
 const TABLES = ["notify_dead", "notify_cursors", "notify_channels", "otel_cursors", "halts", "journal_anchors", "decisions", "changesets", "workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];
