@@ -19,7 +19,7 @@ use mandate_syntax::{kind_of, load};
 use mandate_testkit::read_json;
 use mandate_views::{
     architecture_with_lock, attention_doc, attention_program_doc, attention_view,
-    attention_views_js, authority_with, card, card_doc, cost_with, envelope_workflows,
+    attention_views_js, authority_with, card_doc_given, card_given, cost_with, envelope_workflows,
     has_attention, program_doc_given, to_html, to_markdown, workflow_names,
 };
 
@@ -342,12 +342,20 @@ fn outputs_of_text_more(
         // program has exactly one, with its modules and its lock.
         if let [name] = envelope_workflows(p).as_slice() {
             let missing = || format!("{name} has no card");
-            let view = card(p, name, lock.as_ref(), Some(&modules)).ok_or_else(missing)?;
+            // A program of 0.7 has its attention part made by a check that is
+            // given its own modules and libraries, as the document's is.
+            let opts = CheckOptions {
+                lock: lock.as_ref(),
+                ..check_with
+            };
+            let view =
+                card_given(p, name, lock.as_ref(), Some(&modules), &opts).ok_or_else(missing)?;
             out.push((
                 "view --card --format json".to_owned(),
                 pretty(&view.to_js()),
             ));
-            let doc = card_doc(p, name, lock.as_ref(), Some(&modules)).ok_or_else(missing)?;
+            let doc = card_doc_given(p, name, lock.as_ref(), Some(&modules), &opts)
+                .ok_or_else(missing)?;
             out.push(("view --card --format md".to_owned(), to_markdown(&doc)));
             out.push(("view --card --format html".to_owned(), to_html(&doc)));
         }
@@ -365,6 +373,17 @@ fn outputs_of_text_more(
         }
     }
     Ok(out)
+}
+
+/// The outputs without the card's: a 0.7 card is made from the attention
+/// view (its stages, reports, owner and ladder, and the exact deadlines of a
+/// review), so a gate that compares a program relabelled 0.7, or given
+/// stages and reports, with the program it was holds the card out by name.
+/// `card_0_7.rs` and `vectors/golden/0.7.json` hold the card of 0.7.
+pub fn without_card(outs: Vec<(String, String)>) -> Vec<(String, String)> {
+    outs.into_iter()
+        .filter(|(n, _)| !n.starts_with("view --card"))
+        .collect()
 }
 
 /// The outputs of a program without what its attention view adds: the

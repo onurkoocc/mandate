@@ -690,9 +690,13 @@ impl Server {
             // 0.7: the envelope card of one workflow.
             Some("card") => {
                 let workflow = str_arg(args, "workflow")?;
+                // The attention part of a program of 0.7 is made by a check
+                // that is given the libraries the lock pins, as the view
+                // `attention` is.
                 let opts = JObj::new()
                     .with("modules", J::Js(JsValue::Object(linked)))
-                    .with_some("lock", lock.filter(|l| l.truthy()).cloned());
+                    .with_some("lock", lock.filter(|l| l.truthy()).cloned())
+                    .with_some("libraries", libraries.cloned());
                 let card = door(
                     "card",
                     JObj::new()

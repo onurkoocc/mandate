@@ -14,7 +14,7 @@ use mandate_ir::{
 use mandate_syntax::{kind_of, load, print_program};
 use mandate_views::{
     acs_target, architecture_pinned, attention_doc, attention_program_doc, attention_view,
-    attention_views_js, authority_pinned, card, card_doc, cost_with, diff_doc_with,
+    attention_views_js, authority_pinned, card_doc_given, card_given, cost_with, diff_doc_with,
     envelope_workflows, has_attention, program_doc_given, to_html, to_markdown, workflow_names,
 };
 
@@ -722,9 +722,10 @@ impl<'a> Cli<'a> {
                 }
             };
             let text = if format == "json" {
-                card(&program, name, lock.as_ref(), Some(&all)).map(|view| pretty(&view.to_js()))
+                card_given(&program, name, lock.as_ref(), Some(&all), &attention_opts)
+                    .map(|view| pretty(&view.to_js()))
             } else {
-                card_doc(&program, name, lock.as_ref(), Some(&all))
+                card_doc_given(&program, name, lock.as_ref(), Some(&all), &attention_opts)
                     .map(|doc| rendered(&doc, format))
             };
             match text {

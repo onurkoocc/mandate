@@ -31,9 +31,9 @@
     "view --attention --format html": "sha256:036815d56b586c813273d7a97ed29961bf4e4a37405141d143eed3143b037f88",
     "view --against itself": "sha256:f25e3be8d26d7bf2fa0ba0686422a2369ccc8ad6a69230ffd2c89547ebf8c9f0",
     "sandbox": "sha256:cf50616a5577be68aeb01eb5b40122d776d08a4fae80b21a50f669337c82aff4",
-    "view --card --format json": "sha256:4561c4c9a1729a6b481a9f0b3e2198e29ee8f702705dbb82235a3e7bf730c6d0",
-    "view --card --format md": "sha256:1df60de602b8d11bb30d13a0e35d94e5ee87729f9731c20f68445f674df2ff9b",
-    "view --card --format html": "sha256:6d00d4e5849968180cef32248ff77243c556289b159b7aec6cfaeac23b661be0"
+    "view --card --format json": "sha256:dac051ebe6521c7c2d362ffa4074d8589e9d589cfb19fd0622ba5cae2af339a2",
+    "view --card --format md": "sha256:b609128fbf7ae15e00d2a9755db871164cc033fd56326536a0f05ae00eb5bf9d",
+    "view --card --format html": "sha256:4c2979f0a8fab75b5b27d812e0a46f188d259302666f6dcefca0362c1d991f9f"
   },
   "fixtures/attention/fan-out.mdt": {
     "check": "sha256:a37580fef87aecef6f985c5669a2e591437856ad06fb8f83a9076011733ed155",
@@ -51,9 +51,9 @@
     "view --attention --format html": "sha256:634b16706dbfbfa0b1cd4fd2da4e34e084b99cb4bd84bda2a17a4da4a11b0591",
     "view --against itself": "sha256:dfa6e3e9bef90e88b816c732b35aaef2573f2f9b324144d8708461484ed305d5",
     "sandbox": "sha256:f1d1414e6c54cb8102ecab01384b209adc568b2ba9a22c0d9c0fe93cc42e680b",
-    "view --card --format json": "sha256:238a4e28d92fadfa901f66f7b6a38aaf7320f3881f77f57291fca7c6ea8f1630",
-    "view --card --format md": "sha256:649e0cb3ce05218f97e7445e82ccbe7c4649ffd04bdcc5cdd6d44855652e4ae1",
-    "view --card --format html": "sha256:f8ac04952994c6b32b9ce25318e67b9123655c508a331b2bc439137dd337954a"
+    "view --card --format json": "sha256:d3f7ff7294b32f9075b3ee6ef30b842efba4c6f0faa17283a09626c0ea2254af",
+    "view --card --format md": "sha256:6f5b62a84167e9b4bb48c3adc4361f4b58a380d99d6b2b1b4f1aa81dd58eaf8d",
+    "view --card --format html": "sha256:9669c7c06eee635de411e0651f007f4389810d4aa9121db9b5ab64453b468b15"
   },
   "fixtures/attention/invoices.mdt": {
     "check": "sha256:cf79a3d21965992ef51ad635030ab5c79a583f1c9460f0dafa368b57a5976788",
@@ -70,9 +70,9 @@
     "view --attention --format html": "sha256:a3cf058d1489aa9aad0c1e4eacf7000dd734c80562caffbaca42eb7772f6c6bb",
     "view --against itself": "sha256:1866967bdc99cdcb256759b9e9fe5cd3aef253ed00ebf4ebaa6c85bdd1cce94a",
     "sandbox": "sha256:65fb72087e8a6e83d42f1f3a6fada732e8c9ec35135bea0c1f9d228787298b60",
-    "view --card --format json": "sha256:6b90d7d418cd66bdcbcc5c72182da82156672fa2e7cb74d27bf50ddae4b1ac0a",
-    "view --card --format md": "sha256:c76797306f701accaefd3826675e5dbbba5f0753a753285913bb3ead42716d05",
-    "view --card --format html": "sha256:f6b5bfe6302a62d54bb696c171cfe416274282268a579bcb03a70f4d4ffe4a92"
+    "view --card --format json": "sha256:3f5d931dd462d4a95f0252fab73815bbaac5ab4cbb5f935efe752e2c1da24403",
+    "view --card --format md": "sha256:fd17e7cdcc38a455d87af9b91f77a683e046584c0d062ca769555f6cffb71caf",
+    "view --card --format html": "sha256:625bdec5a7393cf22ea9fdc86d2f648b76ffd15da72d6372a51aa8615693240f"
   },
   "fixtures/attention/maker-checker.mdt": {
     "check": "sha256:5b9a8e84b7108c096eb08c9226a412c048d5ab559fa149c7e5b269a1459336e0",
@@ -90,9 +90,9 @@
     "view --attention --format html": "sha256:8d3643106eb3ba00fd89192df0090f76b585c538d51e16c488906c7cb9d85947",
     "view --against itself": "sha256:741983bc5d0f469e40bcf8ac1599e5de45d72f52a37ebdf16870f2167da2c61c",
     "sandbox": "sha256:521f0d31aebd174648c2c4b2d869eeec4c4e6a073bfbb53be705291e81de8699",
-    "view --card --format json": "sha256:8d4d98e6a1fc23627c2248347c970fe7c4c9faae543c30a3a4055d7f5de176e2",
-    "view --card --format md": "sha256:c358677813cd41b52bb43e665f4df5efaed97aecdf8a42a039dc54b15a430e63",
-    "view --card --format html": "sha256:b3197088ccfc789d520e61a5cff5e2bda33cae522fbcc98c3958bea6400ac148"
+    "view --card --format json": "sha256:dbb2c32563f17d0b8df28f2a2d69841654131020a824e3b965a17a922578673f",
+    "view --card --format md": "sha256:efee01e84978f94d0e6d8fa9a0d3e7bcba5ca79ee4ac548fc0c7508dabe5482c",
+    "view --card --format html": "sha256:78f5748df3adf2173b2c7b371f7441c6e80af59f90f6480c6df6d0c4a1fcd583"
   },
   "fixtures/attention/minimal.mdt": {
     "check": "sha256:3a042d103225a768981a698f1c2fde31f8028b085036e0b0cd18c967f7c0483c",
@@ -109,9 +109,9 @@
     "view --attention --format html": "sha256:4e8516e8c5621969151a6156d180d742e040aa8c19b2722bcad99c9a5c81ea90",
     "view --against itself": "sha256:660664d061f1b42a4caf7c877e8d341d43cabcae4e9770fcd7fec4324bbc1dd7",
     "sandbox": "sha256:a8a1a3797c6e58de889541553b57b7096fa630219663dac34e46ae2efba98b8a",
-    "view --card --format json": "sha256:8971c8cfb4018e8d02bc883caf366c08aad2aae2faff81ee63c377bb94862418",
-    "view --card --format md": "sha256:1bc4792414dddeba3eca99a731ae497571ee337305ecb9e9a817e8cef579eedd",
-    "view --card --format html": "sha256:05540827ce4de234f0f14e1c018b554aa40919b9b53f434391b34f1508b16133"
+    "view --card --format json": "sha256:c87e220a2e192273b39049be25016fedff5abc9dcdcd7feabb167100d7c4fd62",
+    "view --card --format md": "sha256:8026d7423bb85f67b4d14572a04fbf7dba284f2526f53157b24d7a85ec8a8bb5",
+    "view --card --format html": "sha256:d13c6a74ca303b48bc16dc868f50ceabc43b382eadc803cb45eeb8e15e895ae2"
   },
   "fixtures/attention/owner.mdt": {
     "check": "sha256:064c6dd7308d780150b46cda32fc97eb89c450a4a5b25569061168e063107fef",
@@ -161,9 +161,9 @@
     "view --attention --format html": "sha256:c1cf4cda956f32fd4ac2f259eea8184b2d1b8d3c680c3d07714a257bc52889c2",
     "view --against itself": "sha256:591edef19564f16ab061fe555398d8bfb60649e258b9fa6c490534e13678991d",
     "sandbox": "sha256:0f9c9fb60dbce2af4b5d40aaa6b307fe2bf568a60c3aecffe5a49239297fd426",
-    "view --card --format json": "sha256:e65dc37e415902331e6657ff370e251f8e4cca132e61c09f4fc42a307f65e736",
-    "view --card --format md": "sha256:eaab330d88044e20ac39d69227d2c8a0693e56d7cc4e25f2915108f71afa6327",
-    "view --card --format html": "sha256:bfd84ad256f24e62bc96b2ecb5fdc7a3228fd0f7d5670c2839125c55618baa32"
+    "view --card --format json": "sha256:cb080415c2ed127b5dbe9e858a62ccc8df840cdad6926f7c8be00d5822eb83bf",
+    "view --card --format md": "sha256:1ca723c08879cca8fc7e07bde27fbd17ba002fe4533e65af792e7a4019f80d70",
+    "view --card --format html": "sha256:4f594bc891f8e0d17749d3c42a463055f2e62dc5489bde6684ed7ce63f131e91"
   },
   "fixtures/attention/stages.mdt": {
     "check": "sha256:105e897a9a353c25a98f62ae2e9ec6707b3845b27c9d7037b40a01b4b815c8cf",

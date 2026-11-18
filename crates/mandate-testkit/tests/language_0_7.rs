@@ -6,7 +6,9 @@
 //!   `language`) rewritten to 0.7 and nothing else, gives every output it
 //!   gives as 0.6: the checks with their diagnostics whole (messages, spans,
 //!   facts), `load`, the IR, `fmt`, the hashes, the views, the document, the
-//!   comparison with itself, `sandbox`, the card and the sub-programs.
+//!   comparison with itself, `sandbox` and the sub-programs. The card is
+//!   left out by name: a card of 0.7 is made from the attention view (RP2),
+//!   and `card_0_7.rs` and `vectors/golden/0.7.json` hold it.
 //! - Every compile case of 0.6 (`"language": "mandate/0.6"`) whose program
 //!   declares 0.6 gives, with that program relabelled 0.7, the whole result
 //!   its door gives: `check`, `check_patched` (the patched program
@@ -206,9 +208,12 @@ fn every_0_6_fixture_under_the_0_7_header_gives_what_it_gives_as_0_6() {
         if common::relabelled_modules(&rewritten, kind, &outputs::library_dirs_of(p)).is_some() {
             pinned_1_0_0.push(p.clone());
         }
-        let as_0_6 = outputs::outputs_of(p)?;
-        // The attention view is new in 0.7: the old views are compared.
-        let as_0_7 = outputs::without_attention(outputs::outputs_of_relabelled(p, &rewritten)?);
+        // The attention view and the card made from it are new in 0.7: the
+        // old views are compared.
+        let as_0_6 = outputs::without_card(outputs::outputs_of(p)?);
+        let as_0_7 = outputs::without_card(outputs::without_attention(
+            outputs::outputs_of_relabelled(p, &rewritten)?,
+        ));
         let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
         if names(&as_0_6) != names(&as_0_7) {
             return Err(format!(

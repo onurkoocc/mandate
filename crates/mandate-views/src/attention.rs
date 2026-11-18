@@ -1113,11 +1113,27 @@ pub fn attention_blocks(v: &AttentionView) -> Vec<Block> {
                 .join(" · ")
         )
     }));
-    let owner = v.owner.as_ref().map_or_else(
-        || "It names no owner, so no role approves its card.".to_owned(),
-        |o| o.text.clone(),
-    );
-    out.push(Block::P(format!("{} {owner}", v.bound.text)));
+    out.extend(asks_blocks(v, true));
+    out.extend(reports_blocks(v, true));
+    out
+}
+
+/// The blocks that say how many questions the workflow asks and whom it asks
+/// what: the bound (with who approves the card, when `owner` is wanted), the
+/// note on the runtime's configuration, and the table of questions. The
+/// card of a 0.7 program puts them under "When it asks whom".
+#[must_use]
+pub(crate) fn asks_blocks(v: &AttentionView, owner: bool) -> Vec<Block> {
+    let mut out: Vec<Block> = Vec::new();
+    if owner {
+        let who = v.owner.as_ref().map_or_else(
+            || "It names no owner, so no role approves its card.".to_owned(),
+            |o| o.text.clone(),
+        );
+        out.push(Block::P(format!("{} {who}", v.bound.text)));
+    } else {
+        out.push(Block::P(v.bound.text.clone()));
+    }
     if !v.lock {
         out.push(Block::P(NO_LOCK.to_owned()));
     }
@@ -1161,12 +1177,25 @@ pub fn attention_blocks(v: &AttentionView) -> Vec<Block> {
             rows,
         });
     }
+    out
+}
+
+/// The blocks that say what the workflow tells whom: the table of reports,
+/// or that it makes none; `lead` puts the words "What it tells whom" before
+/// them, where no heading says it.
+#[must_use]
+pub(crate) fn reports_blocks(v: &AttentionView, lead: bool) -> Vec<Block> {
+    let mut out: Vec<Block> = Vec::new();
     if v.reports.is_empty() {
-        out.push(Block::P(
-            "What it tells whom: nothing, it makes no report.".to_owned(),
-        ));
+        out.push(Block::P(if lead {
+            "What it tells whom: nothing, it makes no report.".to_owned()
+        } else {
+            "Nothing: it makes no report.".to_owned()
+        }));
     } else {
-        out.push(Block::P("What it tells whom:".to_owned()));
+        if lead {
+            out.push(Block::P("What it tells whom:".to_owned()));
+        }
         let rows = v
             .reports
             .iter()
