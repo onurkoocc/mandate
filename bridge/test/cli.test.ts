@@ -191,6 +191,8 @@ const LINES_06 = [
   "  review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]\n",
   // The driver loop of 0.7, which the runtime answers too.
   "  tick [--follow] [--interval 10s] [--no-notify]\n",
+  // The attention view of 0.7, which the compiler's own command line (frozen at 0.5) does not make.
+  "  view <file> --attention [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]\n",
   // The promotion of 0.7, which the runtime answers too.
   "  promote <run> --to read_only|live --key FILE [--member NAME] [--yes]\n",
   // What a person is shown and decides in 0.7, which the runtime answers too.

@@ -96,6 +96,11 @@ export const RUST_ONLY = {
   toolSchemaDigest: { door: "tool_schema_digest", params: ["tool"] },
   // Language 0.7's attention facts of a workflow (spec/attention.md "The facts"): what a run of 0.7 stores at its start.
   attentionFacts: { door: "attention_facts", params: ["text", "kind", "opts", "workflow"] },
+  // Language 0.7's attention view of a workflow, or of every workflow of a program (spec/attention.md "The attention view"):
+  // `mandate view --attention` and the MCP server's `project` ask it.
+  attentionView: { door: "attention", params: ["text", "kind", "opts", "workflow", "format"] },
+  // The tools of the MCP servers of a language (spec/attention.md "The MCP server"): both servers take their list from it.
+  mcpTools: { door: "mcp_tools", params: ["language"] },
   // Whether a value is the `libraries` member of a configuration: asked of the door that reads one before it resolves
   // anything, in a request that resolves nothing.
   librariesConfigProblems: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now", "language"] },

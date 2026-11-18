@@ -6,7 +6,8 @@
 //! carry, and a door's refusal, are the bridge's failures, in its words.
 //!
 //! What language 0.7 adds (spec/attention.md "The MCP server"), which the
-//! Node server does not do yet:
+//! Node server does too, serving `mandate/0.7` (the recorded conversations
+//! of 0.7 in `vectors/mcp/`):
 //!
 //! - `check`, `project`, `caps_of` and `apply_patch` take `libraries`, a list of `{
 //!   manifest, files }` (each a string `manifest` and an object `files` of

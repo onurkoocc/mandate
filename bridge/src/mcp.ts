@@ -9,6 +9,14 @@
 //   mandate.project      a program → a human view: architecture, authority, cost, or a diff
 //   mandate.spec         the core specification, or one of its sections
 //
+// Which tools there are, and what each takes, depends on the language the server serves (`language`, McpServer). The
+// list is not kept here: for a language given it is the Rust compiler's door `mcp_tools`, which the native `mandate mcp`
+// takes its list from too, so that the two servers cannot drift. Up to language 0.6 it is the frozen list (TOOLS, which
+// the reference compiler's server has) and nothing changes. For 0.7 (spec/attention.md "The MCP server") `check`,
+// `apply_patch`, `caps_of` and `project` take the libraries a lock pins (`apply_patch` and `caps_of` the lock too),
+// `project` shows the card and the attention view, and `spec` serves the sections `patterns` and `attention`. No tool
+// of any language signs, approves, decides or promotes.
+//
 // The server only computes. It reads no file and writes none, runs nothing
 // and holds no credentials: a patch's result is returned, never saved. A
 // patch that widens authority, raises a budget, removes a criterion or adds
@@ -32,7 +40,8 @@
 
 import { readFileSync } from "node:fs";
 import type { Readable, Writable } from "node:stream";
-import { architecture, authority, check, checkPatch, CODES, cost, hasErrors, LIMITS, load, loadModules, programRef, semanticDiff, type Lock, type Modules, type PatchOp, type Program, type SourceKind } from "./index.js";
+import { architecture, atLeast, attentionView, authority, card, check, checkPatch, CODES, cost, hasErrors, isProgram07OrLater, LANGUAGE_07, LIMITS, load, loadModules, mcpTools, programRef, semanticDiff, type LanguageVersion, type LibrarySource, type Lock, type Modules, type PatchOp, type Program, type SourceKind } from "./index.js";
+import { modulesOf } from "./libraries.js";
 import { ptrToken, viewModules } from "./util.js";
 import { CompilerFailure } from "./wasm/errors.js";
 
@@ -131,16 +140,20 @@ function str(args: Record<string, unknown>, k: string): string {
 }
 
 /** A program that passes its checks, or a ToolError with the diagnostics. */
-function program(source: string, kind: unknown, modules: Modules, lock?: Lock): Program {
-  const r = check(source, kindFor(source, kind), { modules, ...(lock ? { lock } : {}) });
+function program(source: string, kind: unknown, modules: Modules, lock?: Lock, libraries?: LibrarySource[]): Program {
+  const r = check(source, kindFor(source, kind), { modules, ...(lock ? { lock } : {}), ...(libraries ? { libraries } : {}) });
   if (!r.ok) throw new ToolError(`the program does not check: ${r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`).join("; ")}`);
   return r.program!;
 }
 
-function specText(section: unknown): string {
+/** 0.7: the sections that are a specification of their own, whole: `patterns` (spec/library.md) and `attention` (spec/attention.md). */
+const SPEC_FILES: Record<string, string> = { patterns: "library.md", attention: "attention.md" };
+
+function specText(section: unknown, v07 = false): string {
   const text = readFileSync(new URL("../../spec/core.md", import.meta.url), "utf8");
   if (section === undefined) return text;
   const want = String(section).trim();
+  if (v07 && Object.hasOwn(SPEC_FILES, want)) return readFileSync(new URL(`../../spec/${SPEC_FILES[want]}`, import.meta.url), "utf8");
   const lines = text.split("\n");
   // The section is matched as the text it is, with no regular expression made of it (the reference compiler's server
   // makes one, escaping only `.`, so that there `(` is an error, `4+` or `\d` another section, and a section of more
@@ -168,13 +181,102 @@ function modulesFor(args: Record<string, unknown>, base: Modules): Modules {
   return { ...base, ...modules };
 }
 
-/** Runs one tool; the structured result, or a ToolError for a call the tool cannot serve. */
-export function callTool(name: string, args: Record<string, unknown>, serverModules: Modules = {}): unknown {
+/** A facade function called with an argument its TypeScript signature has not (the Rust's alone: 0.7's `std_patterns`, `opts`). */
+type Loose = (...args: unknown[]) => any;
+
+/** 0.7: whether a value is a library as a call gives one: a text `manifest` and `files`, an object of texts. What else it holds is the compiler's to refuse. */
+function isLibrary(v: unknown): v is LibrarySource {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const { manifest, files } = v as { manifest?: unknown; files?: unknown };
+  return typeof manifest === "string" && typeof files === "object" && files !== null && !Array.isArray(files) && Object.values(files).every((t) => typeof t === "string");
+}
+
+/** 0.7: the call's `libraries` when it has a non-empty list of them; a ToolError when it is not a list of libraries. */
+function librariesArg(args: Record<string, unknown>): LibrarySource[] | undefined {
+  if (!Object.hasOwn(args, "libraries")) return undefined;
+  const given = args["libraries"];
+  if (!Array.isArray(given) || !given.every(isLibrary)) throw new ToolError("libraries must be a list of libraries, each { manifest, files }");
+  return given.length ? given : undefined;
+}
+
+/** 0.7: the version of `std.patterns` the lock pins, when it pins one: what a view is given, so that it shows the version the check read. */
+function pinOf(lock: unknown): string | undefined {
+  const version = (lock as { libraries?: { "std.patterns"?: { version?: unknown } } } | null | undefined)?.libraries?.["std.patterns"]?.version;
+  return typeof version === "string" ? version : undefined;
+}
+
+/** 0.7: the call's modules and, when it gives libraries, theirs after them: what a view is given. */
+function linkedModules(modules: Modules, libraries: LibrarySource[] | undefined): Modules {
+  return libraries ? { ...modules, ...modulesOf(libraries) } : modules;
+}
+
+/** 0.7: `mandate.project`: a view of the program, its card, its attention view, or the diff from `before`. */
+function project07(args: Record<string, unknown>, modules: Modules): unknown {
+  const lock = args["lock"] ? (args["lock"] as Lock) : undefined;
+  const source = str(args, "source");
+  const libraries = librariesArg(args);
+  const p = program(source, args["kind"], modules, lock, libraries);
+  const linked = linkedModules(modules, libraries);
+  const pin = pinOf(args["lock"]);
+  switch (args["view"]) {
+    case "architecture":
+      return (architecture as Loose)(p, viewModules(linked, p), undefined, pin);
+    case "authority":
+      return (authority as Loose)(p, viewModules(linked, p), pin);
+    case "cost":
+      return (cost as Loose)(p, args["lock"], viewModules(linked, p), pin);
+    case "diff": {
+      const before = program(str(args, "before"), args["before_kind"], modules, undefined, libraries);
+      return (semanticDiff as Loose)(before, p, undefined, viewModules(linked, before, p), pin);
+    }
+    // The envelope card of one workflow. A card of 0.7 is made by a check given the libraries; the door refuses, with
+    // what is missing, a program that does not check with what it is given, and that is the tool's error.
+    case "card": {
+      const workflow = str(args, "workflow");
+      let made: unknown;
+      try {
+        made = card(p, workflow, { modules: linked, ...(lock ? { lock } : {}), ...(libraries ? { libraries } : {}) });
+      } catch (e) {
+        if (e instanceof Error && !(e instanceof CompilerFailure)) throw new ToolError(e.message);
+        throw e;
+      }
+      if (made === undefined) throw new ToolError(`${workflow} is not a workflow with an envelope of this program`);
+      return made;
+    }
+    // The attention view of one workflow, or of each.
+    case "attention": {
+      if (!isProgram07OrLater(p)) throw new ToolError("view attention is of a program of language 0.7 or later");
+      const opts = { modules, ...(lock ? { lock } : {}), ...(libraries ? { libraries } : {}), ...(lock && pin !== undefined ? { std_patterns: pin } : {}) };
+      const kind = kindFor(source, args["kind"]);
+      const ask = (workflow: string): { format: unknown; program: unknown } | null => attentionView({ text: source, kind, opts, workflow, format: "json" }) as { format: unknown; program: unknown } | null;
+      if (args["workflow"] !== undefined && args["workflow"] !== null) {
+        const workflow = str(args, "workflow");
+        const view = ask(workflow);
+        if (view === null) throw new ToolError(`${workflow} is not a workflow of this program`);
+        return view;
+      }
+      const views = Object.entries(p.defs).filter(([, d]) => d.kind === "workflow").map(([name]) => ask(name));
+      const first = views[0];
+      if (first === undefined) throw new ToolError("this program has no workflow, so it has no attention view");
+      return { format: first?.format, kind: "attention", program: first?.program, workflows: views };
+    }
+  }
+  throw new ToolError("view must be architecture, authority, cost, diff, card or attention");
+}
+
+/**
+ * Runs one tool; the structured result, or a ToolError for a call the tool cannot serve. `language` is the language the
+ * server serves (McpServer): from 0.7 on a tool takes what the list of 0.7 says it takes; before it, or with none, it
+ * is the frozen tool, unchanged.
+ */
+export function callTool(name: string, args: Record<string, unknown>, serverModules: Modules = {}, language?: string): unknown {
+  const v07 = language !== undefined && atLeast(language as LanguageVersion, LANGUAGE_07);
   const modules = modulesFor(args, serverModules);
   switch (name) {
     case "mandate.check": {
       const source = str(args, "source");
-      const r = check(source, kindFor(source, args["kind"]), { modules, ...(args["lock"] ? { lock: args["lock"] as Lock } : {}) });
+      const libraries = v07 ? librariesArg(args) : undefined;
+      const r = check(source, kindFor(source, args["kind"]), { modules, ...(args["lock"] ? { lock: args["lock"] as Lock } : {}), ...(libraries ? { libraries } : {}) });
       return { ok: r.ok, ...(r.hashes ? { hashes: r.hashes } : {}), diagnostics: r.diagnostics };
     }
     case "mandate.explain": {
@@ -189,16 +291,29 @@ export function callTool(name: string, args: Record<string, unknown>, serverModu
       const loaded = load(source, kindFor(source, args["kind"]));
       if (!loaded.program || hasErrors(loaded.diagnostics)) return { ok: false, diagnostics: loaded.diagnostics, governance: [] };
       if (!Array.isArray(args["ops"])) throw new ToolError("ops must be a list of RFC 6902 operations");
-      return checkPatch(loaded.program, str(args, "base"), args["ops"] as PatchOp[], modules);
+      const base = str(args, "base");
+      if (v07) {
+        // The lock and the libraries, as `check` takes them: the door checks the patched program with them.
+        const libraries = librariesArg(args);
+        const lock = args["lock"] ? (args["lock"] as Lock) : undefined;
+        const opts = lock || libraries ? [{ ...(lock ? { lock } : {}), ...(libraries ? { libraries } : {}) }] : [];
+        return (checkPatch as Loose)(loaded.program, base, args["ops"] as PatchOp[], modules, ...opts);
+      }
+      return checkPatch(loaded.program, base, args["ops"] as PatchOp[], modules);
     }
     case "mandate.caps_of": {
-      const p = program(str(args, "source"), args["kind"], modules);
+      // 0.7: the lock and the libraries, as `check` and `project` take them.
+      const libraries = v07 ? librariesArg(args) : undefined;
+      const lock = v07 ? (args["lock"] as Lock | undefined) : undefined;
+      const p = program(str(args, "source"), args["kind"], modules, lock, libraries);
       const who = str(args, "name");
-      const rows = authority(p, viewModules(modules, p)).rows.filter((r) => r.who === who || r.who === `${who} (remote)` || r.who.startsWith(`${who} → `));
+      const shown = v07 ? ((authority as Loose)(p, viewModules(linkedModules(modules, libraries), p), pinOf(lock)) as ReturnType<typeof authority>) : authority(p, viewModules(modules, p));
+      const rows = shown.rows.filter((r) => r.who === who || r.who === `${who} (remote)` || r.who.startsWith(`${who} → `));
       if (!rows.length) throw new ToolError(`${who} is not an agent or workflow of this program`);
       return { program: programRef(p), rows };
     }
     case "mandate.project": {
+      if (v07) return project07(args, modules);
       const lock = args["lock"] as Lock | undefined;
       const p = program(str(args, "source"), args["kind"], modules, lock);
       switch (args["view"]) {
@@ -217,7 +332,7 @@ export function callTool(name: string, args: Record<string, unknown>, serverModu
       throw new ToolError("view must be architecture, authority, cost or diff");
     }
     case "mandate.spec":
-      return { text: specText(args["section"]) };
+      return { text: specText(args["section"], v07) };
   }
   throw new ToolError(`no tool ${name}`);
 }
@@ -225,9 +340,22 @@ export function callTool(name: string, args: Record<string, unknown>, serverModu
 /** One server: one process, which may open a legacy session with `initialize`. */
 export class McpServer {
   private legacy: string | undefined;
+  /** What `tools/list` gives: the tools, and what the modern era adds beside them. */
+  private readonly list: { tools: ReadonlyArray<{ readonly name: string }>; modern: Record<string, unknown> };
 
-  /** `modules`: what every call's program may import, e.g. the system model (`mandate mcp --module <file>`). */
-  constructor(private readonly modules: Modules = {}) {}
+  /**
+   * `modules`: what every call's program may import, e.g. the system model (`mandate mcp --module <file>`).
+   * `language`: the language whose tools the server serves, `mandate/0.1` to `mandate/0.7`, as the Rust compiler's door
+   * `mcp_tools` lists them (a language it does not know is an Error). Left out, the frozen list (TOOLS), which is the
+   * door's for each language up to 0.6 (test/mcp-0-7.test.ts).
+   */
+  constructor(private readonly modules: Modules = {}, private readonly language?: string) {
+    if (language === undefined) this.list = { tools: TOOLS, modern: { ttlMs: 3_600_000, cacheScope: "public" } };
+    else {
+      const { tools, modern } = mcpTools(language);
+      this.list = { tools, modern };
+    }
+  }
 
   /** Answers one JSON-RPC message; undefined for a notification. */
   handle(msg: unknown): Response | undefined {
@@ -269,13 +397,13 @@ export class McpServer {
       case "ping":
         return ok({}, modern);
       case "tools/list":
-        return ok({ tools: TOOLS, ...(modern ? { ttlMs: 3_600_000, cacheScope: "public" } : {}) }, modern);
+        return ok({ tools: this.list.tools, ...(modern ? this.list.modern : {}) }, modern);
       case "tools/call": {
         const name = params["name"];
         const args = (params["arguments"] && typeof params["arguments"] === "object" ? params["arguments"] : {}) as Record<string, unknown>;
-        if (typeof name !== "string" || !TOOLS.some((t) => t.name === name)) return fail(-32602, `Unknown tool: ${String(name)}`);
+        if (typeof name !== "string" || !this.list.tools.some((t) => t.name === name)) return fail(-32602, `Unknown tool: ${String(name)}`);
         try {
-          const structured = callTool(name, args, this.modules);
+          const structured = callTool(name, args, this.modules, this.language);
           return ok({ content: [{ type: "text", text: JSON.stringify(structured, null, 2) }], structuredContent: structured, isError: false }, modern);
         } catch (e) {
           if (!(e instanceof ToolError)) throw e;
@@ -381,8 +509,8 @@ function idOf(msg: unknown): string | number | null {
 }
 
 /** Serves newline-delimited JSON-RPC on a pair of streams until the input ends. */
-export async function serveStdio(input: Readable = process.stdin, output: Writable = process.stdout, modules: Modules = {}): Promise<void> {
-  const server = new McpServer(modules);
+export async function serveStdio(input: Readable = process.stdin, output: Writable = process.stdout, modules: Modules = {}, language?: string): Promise<void> {
+  const server = new McpServer(modules, language);
   for await (const line of readLines(input, MESSAGE_LIMITS.bytes)) {
     if (typeof line !== "string") {
       const data = { reason: "E_INPUT_TOO_LARGE", limit: MESSAGE_LIMITS.bytes, bytes: line.tooLarge };
