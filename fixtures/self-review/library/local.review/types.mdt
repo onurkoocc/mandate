@@ -1,0 +1,33 @@
+// The types of the local.review library (fixtures/self-review/README.md): what
+// the review connector lists and takes. A component of the repository to
+// review is a task with its files; a finding names one of those files and a
+// line in it. Its sibling connectors.mdt declares the connector over them.
+
+mandate @ 0.6
+
+module local.review.types @ 1.0
+
+/// A file of the snapshot under review, by its path from the snapshot's root,
+/// with the number of lines it has.
+pub type SourceFile = { path: Text, lines: Int }
+
+/// A component of the repository to review: its task id, what to look at,
+/// and every file of it in the snapshot.
+pub type Component = { task: Text, title: Text, focus: Text, files: List<SourceFile> }
+
+/// One finding of a review: the file (as the component lists it) and the
+/// line, what is wrong, the evidence for it, how bad it is and how sure the
+/// reviewer is.
+pub type Finding = {
+  task:       Text,
+  file:       SourceFile,
+  line:       Int,
+  title:      Text,
+  what:       Text,
+  evidence:   Text,
+  severity:   Text,
+  confidence: Text
+}
+
+/// An entry of the report the connector keeps.
+pub type Entry = { entry_id: Text }

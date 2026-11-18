@@ -1,0 +1,58 @@
+mandate @ 0.7
+
+module mandate.selfreview @ 1.0
+
+use std.{fs, model, tool}
+use std.patterns.{BatchWithExceptions}
+use local.review.{report}
+use local.review.types.{Component, Finding, Entry}
+
+role maintainer "Maintainer"
+role deputy     "Deputy maintainer"
+
+capability Components = tool.call(report, list_components)
+capability Append     = tool.call(report, append_finding)
+capability Snapshot   = fs.read("/mandate-self-review/snapshot")
+capability ModelStd   = model.infer(tier: standard, max_class: internal)
+
+/// A finding is grounded when it is for this component, names one of its
+/// files and a line inside that file, quotes evidence and grades itself; a
+/// finding the reviewer is not highly confident of may be accepted.
+contract Grounded(c: Component, f: Finding) {
+  accept same_task "The finding is for this component"
+    by static f.task == c.task
+  accept known_file "It names a file of the component"
+    by static f.file in c.files
+  accept known_line "Its line is inside that file"
+    by static (f.line >= 1 and f.line <= f.file.lines)
+  accept evidence "It quotes the evidence"
+    by static len(f.evidence) >= 20
+  accept graded "Its severity is low, medium or high"
+    by static f.severity in ["low", "medium", "high"]
+  accept confident "The reviewer is highly confident"
+    by static f.confidence == "high"
+    waive by maintainer, deputy
+}
+
+agent Reviewer {
+  role   "Reviews one component of a read-only snapshot of the Mandate repository and reports the one finding it is most sure matters: a defect, a security weakness, or a statement of the code or its documentation that is not true. Read the component's files (their paths are relative to your working directory, the snapshot's root); you may read the rest of the snapshot for context. Report: task as given; file copied exactly from the component's files; the line the finding is at; a short title; what is wrong; evidence quoting the lines; severity low, medium or high; confidence high, medium or low. Writes nothing."
+  caps   Snapshot, ModelStd
+  budget { tokens: 300k, spend: 1.20 USD, steps: 12 }
+  skill review(c: Untrusted<Component>) -> Inferred<Finding> ! {Fs.Read, Model}
+}
+
+/// Reviews each component of the snapshot and appends each grounded finding
+/// to the local report. Asks the maintainer once about the rest.
+///
+/// Spend: at most 20 USD. Only the Reviewer spends: 4 components, at most
+/// 1.20 USD each on the standard tier (Opus 5.5 in the lock), so a run's
+/// static bound is 4.80 USD, and the three runs of the ladder (design,
+/// read_only, live) at most 14.40 USD together.
+workflow ReviewRepository = BatchWithExceptions<Component, Finding, Entry>(
+    source: report.list_components, work: Reviewer.review, accepted: Grounded,
+    reviewer: maintainer, escalate_to: deputy,
+    commit: report.append_finding, key: task,
+    max_items: 4, concurrency: 2, deadline: 1d)
+  owner  maintainer
+  caps   Components, Append, Snapshot, ModelStd
+  budget { spend: 20 USD, time: 2h, asks: 2 }

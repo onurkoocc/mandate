@@ -1,0 +1,6 @@
+{
+  "library": "mandate/library/0.6",
+  "name": "local.review",
+  "version": "1.0.0",
+  "modules": ["connectors.mdt", "types.mdt"]
+}

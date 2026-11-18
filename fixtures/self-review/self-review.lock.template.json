@@ -1,0 +1,68 @@
+{
+  "lock": "mandate/lock/0.7",
+  "modules": {},
+  "libraries": {
+    "local.review": {
+      "version": "1.0.0",
+      "digest": "sha256:39eb510cd3af877d35d7a7205711f5cb9f414a35ba137936065e5a792bdbf37d",
+      "modules": {
+        "local.review": "sha256:fd87ebfe47bbbb57fea8820137b076a58ee64ed6cc9ec41c6de7a64793cfb16e",
+        "local.review.types": "sha256:ba53749e140999a2e3a45e600b57f955c8be8617f8c1b628a6da1bf511373119"
+      }
+    },
+    "std.patterns": {
+      "version": "2.0.0",
+      "digest": "sha256:7a690cb097e22b999be322ff02b2c145dc7292a968b01bd9cadd4bc7c7ee33b7",
+      "modules": {
+        "std.patterns": "sha256:6318fc65ec6213dfbe1d3f390a1b3d8020608ffe7cc8e4b9006a86dd1140d755"
+      }
+    }
+  },
+  "connectors": {
+    "local.review.report": {
+      "credential": "self_review",
+      "url": "https://review.self.example/mcp"
+    }
+  },
+  "models": {
+    "standard": {
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "max_input_tokens": 40000,
+      "max_output_tokens": 4000
+    }
+  },
+  "members": {
+    "<maintainer-member>": {
+      "keys": [
+        "<maintainer-key>"
+      ]
+    }
+  },
+  "roles": {
+    "maintainer": [
+      "<maintainer-member>"
+    ],
+    "deputy": [
+      "<maintainer-member>"
+    ]
+  },
+  "role_classes": {
+    "maintainer": "internal",
+    "deputy": "internal"
+  },
+  "promotion": "required",
+  "tariffs": {
+    "claude-opus-5-5": {
+      "currency": "USD",
+      "as_of": "2026-11-03",
+      "micros_per_mtok": {
+        "input": 4000000,
+        "output": 20000000,
+        "cache_read": 200000,
+        "cache_write": 5000000
+      }
+    }
+  }
+}

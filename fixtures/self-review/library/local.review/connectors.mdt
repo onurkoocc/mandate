@@ -1,0 +1,31 @@
+// The connector of the local.review library (fixtures/self-review/README.md):
+// a small server on this machine's loopback address, which the self-review kit
+// (scripts/self-review.mjs) serves behind the egress proxy. It lists the
+// components of a snapshot of the repository and appends accepted findings to
+// a report file in the session's directory. Nothing it does leaves the
+// machine. Its types are in types.mdt beside it.
+
+mandate @ 0.6
+
+module local.review @ 1.0
+
+use local.review.types.{Component, Finding, Entry}
+
+/// The review report. Lists the components to review; appends a finding to
+/// the report, once per operation key.
+pub connector report = mcp("https://review.self.example/mcp")
+  version "1.0"
+  class   internal
+{
+  tool list_components() -> Untrusted<List<Component>>
+    read_only
+
+  tool find_entry(key: Text) -> Untrusted<Option<Entry>>
+    read_only
+
+  tool append_finding(f: Verified<Finding>, key: Text) -> Receipt<Entry>
+    critical
+    idempotency key key
+    retry_class reconcilable
+    reconcile by find_entry
+}
