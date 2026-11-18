@@ -192,6 +192,8 @@ pub fn import_checks_known(
     own: Option<&str>,
 ) -> Vec<Diagnostic> {
     let language = program.language();
+    // The language the messages of E1604 name: the program's own (0.6 or later here).
+    let named = language.map_or(Language::V0_6.as_str(), Language::as_str);
     let mut out = Vec::new();
     for (i, u) in program.use_values().iter().enumerate() {
         let Some(module) = u.get("module").and_then(Value::as_str) else {
@@ -220,7 +222,7 @@ pub fn import_checks_known(
             out.push(Diagnostic::new(
                 "E1604",
                 format!(
-                    "Module {module} is not known to this check: a program of mandate/0.6 imports only {}. Give the module, or remove the use.",
+                    "Module {module} is not known to this check: a program of {named} imports only {}. Give the module, or remove the use.",
                     known.described()
                 ),
                 Location::path_span(&path, nearest_span(spans, &path)),
@@ -232,7 +234,7 @@ pub fn import_checks_known(
             out.push(Diagnostic::new(
                 "E1604",
                 format!(
-                    "The use of {module} lists no names: in a program of mandate/0.6 an import of a module that is not the standard library's brings only the names it lists. List them, as in use {module}.{{…}}."
+                    "The use of {module} lists no names: in a program of {named} an import of a module that is not the standard library's brings only the names it lists. List them, as in use {module}.{{…}}."
                 ),
                 Location::path_span(&path, nearest_span(spans, &path)),
                 Some(JsObject::new().with("module", module)),

@@ -133,23 +133,29 @@ of long names above many values (`long-names`, answered in time proportional
 to the line), a call's module of a server module's name, and the failures of a
 door in the bridge's words.
 
-The lines of `tools_list` are the one place the two servers differ until slice
-B9 moves the Node server to the door `mcp_tools`: the Node server serves the
-frozen tool list, the native one the list of 0.7. There the native line must be
-the Node line with the list of 0.7 (the door's `tools` for `mandate/0.7`, as it
-writes them) in the place of the frozen list (the door's for `mandate/0.6`),
-which is so only when the Node server's list is the door's frozen list. What
-0.7 adds to the tools (`libraries` of `check`, `project` and `caps_of`, the
-`lock` of `caps_of`, the card, the attention view, the sections `patterns` and
-`attention`, the message for a view that is not one, which names the views of
-0.7, and the version of `std.patterns` the lock pins, which the native
-`project` hands each view it renders and `caps_of` its authority view as
-`std_patterns` (slice RL6: a program of 0.7 whose lock pins 1.0.0 is shown
-with 1.0.0's expansion), which the Node server must match when its slice
-comes, and the `lock` and `libraries` of `apply_patch`, which the native server hands to the door
-`check_patch` as its `opts`) has no Node answer yet and is not here; `tests/mcp.rs` holds it. No
-recorded conversation holds a program of 0.7 that imports `std.patterns`, so
-the pin changes none of them.
+The files of `mcp/` come in two kinds. Those without a `language` member (every
+conversation of 0.1 to 0.6) were recorded from the Node server serving the frozen tool
+list, which the native server, that serves 0.7 alone, does not: for the lines of
+`tools_list` the native line must be the Node line with the list of 0.7 (the door's
+`tools` for `mandate/0.7`, as it writes them) in the place of the frozen list (the door's
+for `mandate/0.6`), which is so because the Node server's list for those languages is
+the door's frozen list (`bridge/test/mcp-0-7.test.ts` holds it, byte for byte, for each
+of `mandate/0.1` to `mandate/0.6`). The files whose `language` is `mandate/0.7` (slice B9:
+`tools-0.7`, `check-libraries-0.7`, `project-views-0.7`, `project-card-0.7`,
+`project-attention-0.7`, `pinned-patterns-0.7`, `spec-0.7`, `caps-and-patch-0.7` and the
+authoring session `authoring-0.7`) were recorded from the Node server serving `mandate/0.7`,
+whose `tools/list` is the door's list, and the native server answers every line of them as
+it is, `tools_list` among them. They hold what 0.7 adds to the tools: the `libraries` of
+`check`, `project`, `caps_of` and `apply_patch`, the `lock` of `caps_of` and `apply_patch`,
+the card, the attention view (of one workflow and of every workflow), the sections
+`patterns` and `attention`, the message for a view that is not one, which names the views
+of 0.7, and the version of `std.patterns` the lock pins (`pinned-patterns-0.7`: 1.0.0's
+expansion with the lock, 2.0.0's without it). `authoring-0.7` is the session an agent has:
+a draft with `asks: 1` is checked (E1906), the code is explained, the budget is patched,
+the result is checked, and the card and the attention view are read; no tool signs, approves
+or promotes (`tools-0.7` calls `sign`, `approve`, `approve_envelope`, `decide`, `promote`
+and `run`: each is an unknown tool). `tests/mcp.rs` holds the native server's own tests of
+the same.
 
 The `section` of `mandate.spec` is found as the text it is: the bridge's server
 compares it with each heading, and makes no regular expression of it. The
@@ -1366,8 +1372,8 @@ same way, by gates of its own beside those of 0.6:
   program of `fixtures/attention/`, as the door `attention` (a Rust-only door of
   `mandate-views`, `RUST_DOORS`) gives it with the program's modules and its lock (the
   `<name>.lock.json` beside it), `{ "<program>": { "<workflow>": { "json", "md", "html" } } }`
-  (`crates/mandate-testkit/tests/attention_view_0_7.rs`). **What the Node server must match
-  (slice B9):**
+  (`crates/mandate-testkit/tests/attention_view_0_7.rs`). **What the Node server matches
+  (slice B9; `bridge/test/cli-library.test.ts`, `bridge/test/mcp-0-7.test.ts`):**
   - the command `view <program> --attention --workflow W --format json|md|html` gives these
     texts for that workflow (the JSON as the door gives it, pretty-printed; the Markdown and the
     HTML are the document `# Attention: W`);
@@ -1381,9 +1387,9 @@ same way, by gates of its own beside those of 0.6:
     that workflow (`"<w> is not a workflow of this program"` for another name), without it the
     object of every workflow, the very text the command prints with `--format json`; it takes
     `lock` and `libraries` (the lock's `std.patterns` pin is read) and answers a program
-    before 0.7 with `"view attention is of a program of language 0.7 or later"`. No stored
-    conversation of `mcp/` asks for this view (the Node server has none until B9), so none
-    changed; `crates/mandate-cli/tests/mcp.rs` holds the native answer to the command's output.
+    before 0.7 with `"view attention is of a program of language 0.7 or later"`. The stored
+    conversations `project-attention-0.7` and `authoring-0.7` of `mcp/` ask for this view, and
+    `crates/mandate-cli/tests/mcp.rs` holds the native answer to the command's output.
 
 The four are written by the Rust with `MANDATE_UPDATE_0_7=1` (passed on by
 `scripts/wasi-test.mjs`) and compared on every other run. Beside them,

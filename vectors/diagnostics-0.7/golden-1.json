@@ -352,7 +352,7 @@
             {
               "code": "MDT-E1604",
               "severity": "error",
-              "message": "Module acme.connectors is not known to this check: a program of mandate/0.6 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.",
+              "message": "Module acme.connectors is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.",
               "at": {
                 "path": "/uses/0",
                 "span": [7, 1, 7, 35]
@@ -365,7 +365,7 @@
             {
               "code": "MDT-E1604",
               "severity": "error",
-              "message": "Module acme.connectors.types is not known to this check: a program of mandate/0.6 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.",
+              "message": "Module acme.connectors.types is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.",
               "at": {
                 "path": "/uses/1",
                 "span": [8, 1, 8, 58]

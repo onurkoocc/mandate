@@ -14,7 +14,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { libraryCommand, Stop, type LibraryArgs } from "../src/cli-library.js";
-import { authoritySignature, canonicalize, librariesConfigProblems, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, type Json, type LibrarySource } from "../src/index.js";
+import { authoritySignature, canonicalize, librariesConfigProblems, mcpTools, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, type Json, type LibrarySource } from "../src/index.js";
+import { TOOLS } from "../src/mcp.js";
 import { beside, Files, isLibraryName, isModulePath, joinPath, libraryIn, lockPins, parseVersion, pinnedIn, rangeHolds, readManifest, versionsIn } from "../src/libraries.js";
 import { modulePath } from "../src/wasm/module.js";
 import { buildTree, repoRoot, type Tree } from "./tree.js";
@@ -857,5 +858,95 @@ describe("the mandate executable with libraries", () => {
       expect(r.out, args.join(" ")).toBe("");
       expect(r.err, args.join(" ")).toContain(" error MDT-E1605: ");
     }
+  }, 120_000);
+
+  // `view --attention` prints for every program of 0.7 what the native command prints: the digests of the golden file of
+  // 0.7 (the view of every workflow, in each format), and, with --workflow, what vectors/attention-0.7/view.json holds of
+  // that workflow (the door's answer: the view as an object, its Markdown, its page).
+  it("prints the attention view the golden files pin, for every program of 0.7 and every workflow", async () => {
+    const golden = JSON.parse(repo("vectors/golden/0.7.json")) as Record<string, Record<string, string>>;
+    const views = JSON.parse(repo("vectors/attention-0.7/view.json")) as Record<string, Record<string, { json: unknown; md: string; html: string }>>;
+    const sha = (text: string): string => `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+    const problems: string[] = [];
+    let compared = 0;
+    await Promise.all(
+      Object.entries(golden).map(async ([program, pinned]) => {
+        const lockFile = program.replace(/\.[^./]+$/, ".lock.json");
+        const argv: string[] = [];
+        if (existsSync(join(repoRoot, lockFile))) argv.push("--lock", lockFile);
+        // The acceptance program's modules are its libraries'; the others are given the system's.
+        if (program === "fixtures/attention/invoices.mdt") argv.push("--libraries", "libs");
+        else for (const m of ["fixtures/system/acme.system.mdt", "fixtures/system/repos.mdt"]) argv.push("--module", join(repoRoot, m));
+        for (const [format, extra] of [["json", ["--format", "json"]], ["md", []], ["html", ["--format", "html"]]] as const) {
+          const r = await mandate("view", program, "--attention", ...extra, ...argv);
+          compared++;
+          if (r.code !== 0 || r.err !== "") problems.push(`${program} ${format}: exit ${r.code}: ${r.err.slice(0, 300)}`);
+          else if (sha(r.out) !== pinned[`view --attention --format ${format}`]) problems.push(`${program} ${format}: not the pinned output; it begins\n${r.out.slice(0, 300)}`);
+        }
+        for (const [workflow, view] of Object.entries(views[program] ?? {})) {
+          const json = await mandate("view", program, "--attention", "--workflow", workflow, "--format", "json", ...argv);
+          const md = await mandate("view", program, "--attention", "--workflow", workflow, ...argv);
+          const html = await mandate("view", program, "--attention", "--workflow", workflow, "--format", "html", ...argv);
+          compared += 3;
+          if (json.code !== 0 || JSON.stringify(JSON.parse(json.out)) !== JSON.stringify(view.json) || json.out !== JSON.stringify(view.json, null, 2) + "\n") problems.push(`${program} ${workflow} json: not the view of the file`);
+          if (md.out !== view.md) problems.push(`${program} ${workflow} md: not the view of the file`);
+          if (html.out !== view.html) problems.push(`${program} ${workflow} html: not the view of the file`);
+        }
+      }),
+    );
+    expect(problems.join("\n")).toBe("");
+    expect(compared).toBeGreaterThanOrEqual(90);
+  }, 280_000);
+
+  // `mandate mcp` serves the tools of 0.7 as the native command does (the library API's default, with no language, is the
+  // frozen list: bridge/test/mcp-0-7.test.ts). The command takes no option for another language.
+  it("serves, as a command, the tool list of 0.7 the door gives, in both eras", async () => {
+    const V = { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": { name: "test", version: "1" }, "io.modelcontextprotocol/clientCapabilities": {} };
+    const messages = [
+      { jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: V } },
+      { jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "2025-06-18" } },
+      { jsonrpc: "2.0", id: 3, method: "tools/list" },
+    ];
+    const run = await new Promise<Run>((resolve, reject) => {
+      const child = spawn(process.execPath, [tree.bridgeCli, "mcp"], { cwd: work, stdio: ["pipe", "pipe", "pipe"] });
+      const out: Buffer[] = [];
+      const err: Buffer[] = [];
+      child.stdout.on("data", (c: Buffer) => out.push(c));
+      child.stderr.on("data", (c: Buffer) => err.push(c));
+      child.on("error", reject);
+      child.on("close", (code) => resolve({ code, out: Buffer.concat(out).toString("utf8"), err: Buffer.concat(err).toString("utf8") }));
+      child.stdin.end(messages.map((m) => JSON.stringify(m) + "\n").join(""));
+    });
+    expect(run.err).toBe("");
+    expect(run.code).toBe(0);
+    const answers = run.out.trimEnd().split("\n").map((l) => JSON.parse(l) as { id: number; result: { tools?: unknown[]; ttlMs?: number } });
+    const door = mcpTools("mandate/0.7");
+    expect(JSON.stringify(answers[0]!.result.tools)).toBe(JSON.stringify(door.tools));
+    expect(answers[0]!.result.ttlMs).toBe(door.modern.ttlMs);
+    expect(JSON.stringify(answers[2]!.result.tools)).toBe(JSON.stringify(door.tools));
+    expect(JSON.stringify(door.tools)).not.toBe(JSON.stringify(TOOLS));
+  });
+
+  it("refuses a view --attention it cannot make, with the native command's words and statuses", async () => {
+    const lib = ["--lock", "fixtures/attention/invoices.lock.json", "--libraries", "libs"];
+    // A program before 0.7 has no attention view.
+    const old = await mandate("view", INVOICES, "--lock", INVOICES_LOCK, "--libraries", "libs", "--attention");
+    expect(old.code).toBe(1);
+    expect(old.err).toBe(`mandate: ${INVOICES} is not a program of language 0.7, so it has no attention view\n`);
+    expect(old.out).toBe("");
+    // A workflow it has not: named, with those it has.
+    const absent = await mandate("view", "fixtures/attention/invoices.mdt", ...lib, "--attention", "--workflow", "Nope");
+    expect(absent.code).toBe(2);
+    expect(absent.err).toBe("mandate: no workflow Nope in fixtures/attention/invoices.mdt; name one of: MatchInvoices\n");
+    // The card and --against do not go with it: a usage error.
+    for (const other of [["--card"], ["--against", "fixtures/attention/invoices.mdt"]]) {
+      const r = await mandate("view", "fixtures/attention/invoices.mdt", ...lib, "--attention", ...other);
+      expect(r.code, other.join(" ")).toBe(2);
+      expect(r.err.startsWith("usage: mandate <command> [options]\n"), other.join(" ")).toBe(true);
+    }
+    // The program must check as it is given, the libraries its lock pins among them.
+    const without = await mandate("view", "fixtures/attention/invoices.mdt", "--lock", "fixtures/attention/invoices.lock.json", "--attention");
+    expect(without.code).toBe(1);
+    expect(without.err).toContain(" error MDT-E1605: ");
   }, 120_000);
 });

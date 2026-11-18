@@ -1,9 +1,10 @@
 //! `mandate mcp`, the native MCP server, run in memory (over a `MemoryIo`,
 //! so that it runs under `scripts/wasi-test.mjs` too): the recorded
 //! conversations of `vectors/mcp/` give the Node server's bytes, read whole
-//! and in small reads; and what language 0.7 adds, which the Node server
-//! does not do yet (slice B9): the tool list of the door `mcp_tools`,
-//! `libraries`, the card, the attention view, the two sections of `spec`.
+//! and in small reads (those of 0.7, recorded from the Node server serving
+//! 0.7 since slice B9, hold the tool list of the door `mcp_tools`,
+//! `libraries`, the card, the attention view and the two sections of `spec`
+//! to it); and the native server's own tests of what language 0.7 adds.
 //! `tests/mcp_process.rs` runs the same conversations through the
 //! executable, and holds what only a process shows (memory, pipes).
 
@@ -92,6 +93,16 @@ fn every_recorded_conversation_gets_the_node_servers_bytes() {
     assert_ne!(frozen, of_0_7);
     let all = conversations();
     assert!(all.len() >= 15, "{} conversations", all.len());
+    // The conversations of 0.7: the authoring session among them.
+    let recorded_0_7: Vec<&str> = all
+        .iter()
+        .filter(|c| c.language.as_deref() == Some("mandate/0.7"))
+        .map(|c| c.name.as_str())
+        .collect();
+    assert!(
+        recorded_0_7.len() >= 9 && recorded_0_7.contains(&"authoring-0.7"),
+        "{recorded_0_7:?}"
+    );
     let mut problems = Vec::new();
     let mut answers = 0;
     for c in &all {
@@ -789,8 +800,8 @@ fn project_views_of_a_program_that_applies_a_pinned_librarys_pattern_are_mandate
 /// 0.7 (RL6): a program of 0.7 whose lock pins std.patterns 1.0.0 is
 /// projected, in every view, with 1.0.0's expansion, as `mandate view`
 /// shows it with that lock; without the lock, with 2.0.0's, the version of
-/// its language. The Node server does not hand the pin yet (its slice comes
-/// later), and no recorded conversation holds such a program.
+/// its language. The Node server hands the pin to its views too, and the
+/// conversation `pinned-patterns-0.7` of `vectors/mcp/` holds it to this.
 #[test]
 fn project_shows_the_version_of_std_patterns_the_lock_pins() {
     const PROGRAM: &str = "fixtures/attention/batch.mdt";

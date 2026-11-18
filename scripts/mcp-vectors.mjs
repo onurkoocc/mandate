@@ -43,8 +43,8 @@ import { Readable, Writable } from "node:stream";
 
 const root = new URL("..", import.meta.url);
 const dist = (path) => import(new URL(`bridge/dist/${path}`, root).href);
-const { serveStdio } = await dist("mcp.js");
-const { check, kindOf, loadModules } = await dist("index.js");
+const { callTool, serveStdio } = await dist("mcp.js");
+const { check, hashProgram, kindOf, load, loadModules } = await dist("index.js");
 
 const read = (p) => readFileSync(new URL(p, root), "utf8");
 const FIXBUG = read("fixtures/fixbug/fixbug.mdt");
@@ -554,6 +554,191 @@ const CONVERSATIONS = [
   ],
 ];
 
+// ── 0.7: what the tools of language 0.7 do (spec/attention.md "The MCP server") ──────────────────────────────
+// Recorded from the Node server serving `mandate/0.7`, and replayed against the native `mandate mcp` byte for
+// byte, `tools/list` among the answers (the list of the door `mcp_tools`). Their files carry `language`.
+
+const read_json = (p) => JSON.parse(read(p));
+const CONNECTORS_DIR = "fixtures/library/acme.connectors/";
+/** acme.connectors as a call gives a library: the manifest's text and each module file's. */
+const ACME_CONNECTORS = { manifest: read(`${CONNECTORS_DIR}mandate.library.json`), files: { "connectors.mdt": read(`${CONNECTORS_DIR}connectors.mdt`), "types.mdt": read(`${CONNECTORS_DIR}types.mdt`) } };
+const INVOICES_07 = read("fixtures/attention/invoices.mdt");
+const INVOICES_07_LOCK = read_json("fixtures/attention/invoices.lock.json");
+const INVOICES_06 = read("fixtures/library/invoices.mdt");
+const INVOICES_06_LOCK = read_json("fixtures/library/invoices.lock.json");
+const VIEW_07 = read("fixtures/attention/view.mdt");
+const VIEW_07_LOCK = read_json("fixtures/attention/view.lock.json");
+const OWNER_07 = read("fixtures/attention/owner.mdt");
+const OWNER_07_LOCK = read_json("fixtures/attention/owner.lock.json");
+/** A program of 0.7 that applies a pattern of std.patterns, and a lock that pins std.patterns at 1.0.0 (not at the version of its language). */
+const BATCH_07 = read("fixtures/attention/batch.mdt");
+const BATCH_07_LOCK = read_json("conformance/E1609c/mandate.lock.json");
+/** A program of 0.7 that defines no workflow. */
+const NO_WORKFLOW_07 = "mandate @ 0.7\n\nmodule example.types @ 0.1\n\ntype Note = { text: Text }\n";
+
+/** The invoices program (0.7) with the budget's `asks` at `n`: the acceptance program, or a draft of it. */
+const withAsks = (n) => INVOICES_07.replace("asks: 2", `asks: ${n}`);
+/** The arguments of a call about the invoices program of 0.7: its lock and its library, and `extra`. */
+const invoices = (extra = {}) => ({ source: INVOICES_07, lock: INVOICES_07_LOCK, libraries: [ACME_CONNECTORS], ...extra });
+const hashOf = (text) => hashProgram(load(text, "mdt").program).program;
+const ASKS_OP = (value) => [{ op: "replace", path: "/defs/MatchInvoices/budget/asks", value }];
+
+// The authoring session: an agent drafts the flow with `asks: 1`, is told (E1906) that the workflow can put two
+// questions to people in one run, patches the budget, checks again, and reads the card and the attention view.
+const DRAFT_07 = withAsks(1);
+const FIXED = callTool("mandate.apply_patch", { source: DRAFT_07, base: hashOf(DRAFT_07), ops: ASKS_OP(2), lock: INVOICES_07_LOCK, libraries: [ACME_CONNECTORS] }, {}, "mandate/0.7");
+if (!FIXED.ok) throw new Error("the authoring session's patch does not apply: " + JSON.stringify(FIXED.diagnostics));
+const FIXED_IR = JSON.stringify(FIXED.program);
+
+/** The conversations of 0.7: [name, about, args, parts, language]. */
+const CONVERSATIONS_07 = [
+  [
+    "tools-0.7",
+    "language 0.7: the tool list is the door's, in both eras, discover and ping as before, and no tool signs, approves, decides or promotes: a call of one is an unknown tool",
+    [],
+    [
+      modern(1, "server/discover"),
+      modern(2, "tools/list"),
+      init(3, "2025-06-18"),
+      legacy(4, "tools/list"),
+      legacy(5, "ping"),
+      ...["mandate.sign", "mandate.approve", "mandate.approve_envelope", "mandate.decide", "mandate.promote", "mandate.run"].map((n, i) => tool(6 + i, n, {})),
+      tool(12, "mandate.explain", { code: "E1906" }),
+    ].map(msg),
+  ],
+  [
+    "check-libraries-0.7",
+    "language 0.7: check takes the libraries a lock pins, and finds std.patterns itself; without them the pin is E1605; what is not a list of libraries is a tool error",
+    [],
+    [
+      tool(1, "mandate.check", invoices()),
+      tool(2, "mandate.check", { source: INVOICES_07, lock: INVOICES_07_LOCK }),
+      tool(3, "mandate.check", invoices({ libraries: [] })),
+      tool(4, "mandate.check", invoices({ libraries: "none" })),
+      tool(5, "mandate.check", invoices({ libraries: [{ manifest: 1, files: {} }] })),
+      tool(6, "mandate.check", invoices({ libraries: [{ manifest: "{}", files: { "a.mdt": 1 } }] })),
+      tool(7, "mandate.check", invoices({ libraries: [ACME_CONNECTORS, null] })),
+      tool(8, "mandate.check", invoices({ libraries: [{ manifest: "not a manifest", files: {} }] })),
+      tool(9, "mandate.check", { source: INVOICES_06, lock: INVOICES_06_LOCK, libraries: [ACME_CONNECTORS] }),
+      tool(10, "mandate.check", { source: MINIMAL_07 }),
+      tool(11, "mandate.check", { source: STAGES_07 }),
+      tool(12, "mandate.check", invoices({ source: withAsks(1) })),
+      tool(13, "mandate.check", { source: MIGRATE_06, lock: MIGRATE_06_LOCK }),
+    ].map(msg),
+  ],
+  [
+    "project-views-0.7",
+    "language 0.7: project takes the lock and the libraries for each view, the diff's earlier program is checked with them, and a view that is not one names the views of 0.7",
+    [],
+    [
+      ...["architecture", "authority", "cost"].map((view, i) => tool(1 + i, "mandate.project", invoices({ view }))),
+      tool(4, "mandate.project", invoices({ view: "diff", before: INVOICES_07, before_kind: "mdt", source: withAsks(3) })),
+      tool(5, "mandate.project", { source: INVOICES_07, lock: INVOICES_07_LOCK, view: "cost" }),
+      tool(6, "mandate.project", invoices({ view: "summary" })),
+      tool(7, "mandate.project", invoices({})),
+      tool(8, "mandate.project", invoices({ view: "diff" })),
+      tool(9, "mandate.project", invoices({ view: "card", libraries: "none" })),
+      tool(10, "mandate.project", { source: MINIMAL_07, view: "architecture" }),
+      tool(11, "mandate.project", { source: MIGRATE_06, lock: MIGRATE_06_LOCK, view: "authority" }),
+    ].map(msg),
+  ],
+  [
+    "project-card-0.7",
+    "language 0.7: project's view card, of the workflow named: the card of a program with its attention part, refused where the program does not check or has no such workflow",
+    [],
+    [
+      tool(1, "mandate.project", invoices({ view: "card", workflow: "MatchInvoices" })),
+      tool(2, "mandate.project", invoices({ view: "card", workflow: "Nope" })),
+      tool(3, "mandate.project", invoices({ view: "card" })),
+      tool(4, "mandate.project", invoices({ view: "card", workflow: 7 })),
+      tool(5, "mandate.project", { source: INVOICES_07, lock: INVOICES_07_LOCK, view: "card", workflow: "MatchInvoices" }),
+      tool(6, "mandate.project", invoices({ source: withAsks(1), view: "card", workflow: "MatchInvoices" })),
+      tool(7, "mandate.project", { source: MIGRATE, modules: [DOMAIN], view: "card", workflow: "MigrateAll" }),
+      tool(8, "mandate.project", { source: MIGRATE_06, lock: MIGRATE_06_LOCK, view: "card", workflow: "MigrateAll" }),
+    ].map(msg),
+  ],
+  [
+    "project-attention-0.7",
+    "language 0.7: project's view attention, of the workflow named or of every workflow, with the lock and the libraries; refused for a program before 0.7, a workflow it has not, a program with no workflow, one that does not check",
+    [],
+    [
+      tool(1, "mandate.project", invoices({ view: "attention", workflow: "MatchInvoices" })),
+      tool(2, "mandate.project", invoices({ view: "attention" })),
+      tool(3, "mandate.project", { source: VIEW_07, lock: VIEW_07_LOCK, view: "attention" }),
+      tool(4, "mandate.project", { source: VIEW_07, lock: VIEW_07_LOCK, view: "attention", workflow: "Notify" }),
+      tool(5, "mandate.project", { source: VIEW_07, view: "attention", workflow: "Settle" }),
+      tool(6, "mandate.project", { source: OWNER_07, lock: OWNER_07_LOCK, view: "attention" }),
+      tool(7, "mandate.project", { source: VIEW_07, lock: VIEW_07_LOCK, view: "attention", workflow: "Nope" }),
+      tool(8, "mandate.project", { source: VIEW_07, lock: VIEW_07_LOCK, view: "attention", workflow: null }),
+      tool(9, "mandate.project", { source: VIEW_07, lock: VIEW_07_LOCK, view: "attention", workflow: 7 }),
+      tool(10, "mandate.project", { source: NO_WORKFLOW_07, view: "attention" }),
+      tool(11, "mandate.project", { source: MIGRATE_06, lock: MIGRATE_06_LOCK, view: "attention" }),
+      tool(12, "mandate.project", { source: FIXBUG, view: "attention" }),
+      tool(13, "mandate.project", { source: INVOICES_07, lock: INVOICES_07_LOCK, view: "attention", workflow: "MatchInvoices" }),
+      tool(14, "mandate.project", { source: MINIMAL_07, view: "attention" }),
+      tool(15, "mandate.project", { source: STAGES_07, view: "attention" }),
+    ].map(msg),
+  ],
+  [
+    "pinned-patterns-0.7",
+    "language 0.7: a view reads std.patterns at the version the lock pins (1.0.0), and at the version of the program's language (2.0.0) with no lock; caps_of reads the authority view of that expansion",
+    [],
+    [
+      ...["architecture", "authority", "cost"].map((view, i) => tool(1 + i, "mandate.project", { source: BATCH_07, lock: BATCH_07_LOCK, view })),
+      tool(4, "mandate.project", { source: BATCH_07, view: "architecture" }),
+      tool(5, "mandate.project", { source: BATCH_07, lock: BATCH_07_LOCK, view: "diff", before: BATCH_07 }),
+      tool(6, "mandate.caps_of", { source: BATCH_07, lock: BATCH_07_LOCK, name: "MatchAll" }),
+      tool(7, "mandate.project", { source: BATCH_07, lock: BATCH_07_LOCK, view: "attention" }),
+      tool(8, "mandate.project", { source: BATCH_07, lock: BATCH_07_LOCK, view: "card", workflow: "MatchAll" }),
+    ].map(msg),
+  ],
+  [
+    "spec-0.7",
+    // The whole text of the sections `patterns` and `attention` is not recorded: a digest of it would change with every edit of
+    // spec/attention.md (the status rows), and this file with it. Both servers read the file itself; bridge/test/mcp-0-7.test.ts
+    // and crates/mandate-cli/tests/mcp.rs hold each to it.
+    "language 0.7: spec's section is found as the text it is, as in 0.6: a section of the core specification, and what is not one (a name of the other specifications in another case, a number, null)",
+    [],
+    [
+      ...["Patterns", "Attention", "4", "7.2", "nope"].map((section, i) => tool(1 + i, "mandate.spec", { section })),
+      tool(6, "mandate.spec", { section: null }),
+      tool(7, "mandate.spec", { section: 4 }),
+    ].map(msg),
+  ],
+  [
+    "caps-and-patch-0.7",
+    "language 0.7: caps_of and apply_patch take the lock and the libraries as check does: the authority of a workflow that applies a pinned library's pattern, and a patch whose result is checked with them",
+    [],
+    [
+      tool(1, "mandate.caps_of", invoices({ name: "MatchInvoices" })),
+      tool(2, "mandate.caps_of", { source: INVOICES_07, lock: INVOICES_07_LOCK, name: "MatchInvoices" }),
+      tool(3, "mandate.caps_of", invoices({ name: "Nobody" })),
+      tool(4, "mandate.caps_of", invoices({ name: "Matcher", libraries: "none" })),
+      tool(5, "mandate.apply_patch", invoices({ base: hashOf(INVOICES_07), ops: ASKS_OP(3) })),
+      tool(6, "mandate.apply_patch", { source: INVOICES_07, base: hashOf(INVOICES_07), ops: ASKS_OP(3), lock: INVOICES_07_LOCK }),
+      tool(7, "mandate.apply_patch", invoices({ base: hashOf(INVOICES_07), ops: ASKS_OP(1) })),
+      tool(8, "mandate.apply_patch", invoices({ base: "sha256:" + "0".repeat(64), ops: ASKS_OP(2) })),
+      tool(9, "mandate.apply_patch", invoices({ base: hashOf(INVOICES_07), ops: ASKS_OP(2), libraries: "none" })),
+      tool(10, "mandate.apply_patch", { source: MINIMAL_07, base: hashOf(MINIMAL_07), ops: [] }),
+    ].map(msg),
+  ],
+  [
+    "authoring-0.7",
+    "language 0.7: an agent drafts the invoice flow with asks: 1, is told E1906, reads the code, patches the budget, checks the result, and reads the card and the attention view; the server only computes",
+    [],
+    [
+      modern(1, "server/discover"),
+      modern(2, "tools/list"),
+      tool(3, "mandate.check", { source: DRAFT_07, lock: INVOICES_07_LOCK, libraries: [ACME_CONNECTORS] }),
+      tool(4, "mandate.explain", { code: "E1906" }),
+      tool(5, "mandate.apply_patch", { source: DRAFT_07, base: hashOf(DRAFT_07), ops: ASKS_OP(2), lock: INVOICES_07_LOCK, libraries: [ACME_CONNECTORS] }),
+      tool(6, "mandate.check", { source: FIXED_IR, kind: "json", lock: INVOICES_07_LOCK, libraries: [ACME_CONNECTORS] }),
+      tool(7, "mandate.project", { source: FIXED_IR, kind: "json", lock: INVOICES_07_LOCK, libraries: [ACME_CONNECTORS], view: "card", workflow: "MatchInvoices" }),
+      tool(8, "mandate.project", { source: FIXED_IR, kind: "json", lock: INVOICES_07_LOCK, libraries: [ACME_CONNECTORS], view: "attention", workflow: "MatchInvoices" }),
+    ].map(msg),
+  ],
+];
+
 /** The bytes of the parts. */
 function bytesOf(parts) {
   return Buffer.concat(
@@ -600,8 +785,12 @@ function stored(parts) {
   });
 }
 
-/** What the Node server writes for `input`, started with the modules of `args`, as `mandate mcp` starts it. */
-async function serve(args, input) {
+/**
+ * What the Node server writes for `input`, started with the modules of `args`, as `mandate mcp` starts it, serving
+ * `language`: the conversations of 0.1 to 0.6 are recorded as the server of `mandate/0.6` writes them (the frozen
+ * tool list, which the door `mcp_tools` gives for each of those languages), those of 0.7 as the server of `mandate/0.7`.
+ */
+async function serve(args, input, language) {
   const files = [];
   for (let i = 0; i < args.length; i += 2) if (args[i] === "--module") files.push(args[i + 1]);
   const { modules, problems } = loadModules(files.map((file) => ({ file, text: read(file), kind: kindOf(file) })));
@@ -613,7 +802,7 @@ async function serve(args, input) {
       done();
     },
   });
-  await serveStdio(Readable.from([input]), output, modules);
+  await serveStdio(Readable.from([input]), output, modules, language);
   return Buffer.concat(out).toString("utf8");
 }
 
@@ -625,8 +814,8 @@ const dir = new URL("vectors/mcp/", root);
 rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 let lines = 0;
-for (const [name, about, args, parts] of CONVERSATIONS) {
-  const written = await serve(args, bytesOf(parts));
+for (const [name, about, args, parts, language = "mandate/0.6"] of [...CONVERSATIONS, ...CONVERSATIONS_07.map((c) => [...c, "mandate/0.7"])]) {
+  const written = await serve(args, bytesOf(parts), language);
   if (!written.endsWith("\n") && written !== "") throw new Error(`${name}: the output does not end with a line feed`);
   const answers = written === "" ? [] : written.slice(0, -1).split("\n");
   const toolsList = [];
@@ -635,7 +824,8 @@ for (const [name, about, args, parts] of CONVERSATIONS) {
     if (a.result && Array.isArray(a.result.tools)) toolsList.push(i);
   });
   const output = answers.map((l) => (Buffer.byteLength(l, "utf8") > LONG_LINE ? { sha256: sha256(l), bytes: Buffer.byteLength(l, "utf8") } : l));
-  const file = { format: "mandate/vectors/mcp/0.1", name, about, args: ["mcp", ...args], input: stored(parts), output, tools_list: toolsList };
+  // A conversation of 0.7 names its language; one of 0.1 to 0.6 does not (its files are what they were before 0.7).
+  const file = { format: "mandate/vectors/mcp/0.1", name, about, ...(language === "mandate/0.7" ? { language } : {}), args: ["mcp", ...args], input: stored(parts), output, tools_list: toolsList };
   const text = ascii(JSON.stringify(file, null, 1));
   if (!bytesOf(stored(parts)).equals(bytesOf(parts))) throw new Error(`${name}: the stored input is not the input`);
   writeFileSync(new URL(`${name}.json`, dir), `${text}\n`);
