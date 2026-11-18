@@ -723,14 +723,17 @@ impl<'a> Cli<'a> {
             };
             let text = if format == "json" {
                 card_given(&program, name, lock.as_ref(), Some(&all), &attention_opts)
-                    .map(|view| pretty(&view.to_js()))
+                    .map(|card| card.map(|view| pretty(&view.to_js())))
             } else {
                 card_doc_given(&program, name, lock.as_ref(), Some(&all), &attention_opts)
-                    .map(|doc| rendered(&doc, format))
+                    .map(|doc| doc.map(|doc| rendered(&doc, format)))
             };
             match text {
-                Some(text) => self.out(&text),
-                None => return Err(self.fail(1, &format!("{name} of {file} has no card"))),
+                Ok(Some(text)) => self.out(&text),
+                Ok(None) => return Err(self.fail(1, &format!("{name} of {file} has no card"))),
+                Err(refused) => {
+                    return Err(self.fail(1, &format!("{file}: {}", refused.message)));
+                }
             }
         } else if let Some(against) = a.against.as_deref() {
             // The old version is checked without its lock, as cli.ts checks

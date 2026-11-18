@@ -208,10 +208,10 @@ fn every_0_6_fixture_under_the_0_7_header_gives_what_it_gives_as_0_6() {
         if common::relabelled_modules(&rewritten, kind, &outputs::library_dirs_of(p)).is_some() {
             pinned_1_0_0.push(p.clone());
         }
-        // The attention view and the card made from it are new in 0.7: the
-        // old views are compared.
-        let as_0_6 = outputs::without_card(outputs::outputs_of(p)?);
-        let as_0_7 = outputs::without_card(outputs::without_attention(
+        // The attention view and the card made from it are new in 0.7: the old
+        // views are compared, and of the card what 0.7 leaves as it was.
+        let as_0_6 = outputs::card_unchanged(outputs::outputs_of(p)?);
+        let as_0_7 = outputs::card_unchanged(outputs::without_attention(
             outputs::outputs_of_relabelled(p, &rewritten)?,
         ));
         let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();

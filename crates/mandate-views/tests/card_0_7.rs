@@ -59,7 +59,9 @@ fn invoices_doc(lock: Option<&Value>) -> Doc {
         libraries: Some(&libs),
         ..CheckOptions::default()
     };
-    card_doc_given(&p, "MatchInvoices", lock, Some(&m), &given).unwrap()
+    card_doc_given(&p, "MatchInvoices", lock, Some(&m), &given)
+        .unwrap()
+        .unwrap()
 }
 
 fn invoices_lock() -> Value {
@@ -143,9 +145,7 @@ fn row(cells: &[&str]) -> Vec<String> {
     cells.iter().map(|c| (*c).to_owned()).collect()
 }
 
-const NOT_SHOWN: &str = "This card is incomplete: the program does not check with the modules and the lock it is given, so what it asks whom, when and how often, and what it tells whom, cannot be shown.";
-
-const LADDER: &str = "Every run in read_only mode and in live mode needs a promotion signed by a member of accountant (ana): a run in read_only needs a succeeded design run of this package, and a run in live needs a succeeded read_only run of it, with the shadow diff of that run against its design run. A promotion holds for later runs of the same package and mode; a changed package needs new promotions.";
+const LADDER: &str = "Every run in read_only mode and in live mode needs a promotion signed by a member of accountant (ana): a run in read_only needs a succeeded design run of this package and workflow, and a run in live needs a succeeded read_only run of them, with the shadow diff of that run against its design run. A promotion holds for every later run of the same package hash and workflow in its target mode; a changed package is a new hash and needs new promotions.";
 
 #[test]
 fn the_card_of_the_invoice_flow_lists_its_stages_and_asks_whom() {
@@ -196,8 +196,9 @@ fn the_card_of_the_invoice_flow_lists_its_stages_and_asks_whom() {
         ])
     );
     assert_eq!(questions.len(), 3);
-    // The 0.6 sentences and tables, which would say it twice and say the
-    // longest wait as twice the deadline, are not shown beside it.
+    // The 0.6 sentence of the review, which would say the longest wait as
+    // twice the deadline, is not shown beside it. This flow has no wait by
+    // role and no authorization, so the tables of 0.6 for them have no rows.
     assert!(
         !paragraphs(&asks)
             .iter()
@@ -214,12 +215,22 @@ fn the_card_of_the_invoice_flow_lists_its_stages_and_asks_whom() {
 fn a_reviews_wait_is_apart_from_the_time_budget_and_says_where_its_deadlines_are() {
     let doc = invoices_doc(Some(&invoices_lock()));
     let spends = section(&doc, "The most it spends");
+    // The name the note is about is shown as code, in a list, not inside
+    // the sentence.
     assert_eq!(
         notes(&spends),
         [
-            "The review of checked waits apart from the time budget; its deadlines are given under \"When it asks whom\"."
+            "The review of each of these waits apart from the time budget; its deadlines are given under \"When it asks whom\"."
         ]
     );
+    assert_eq!(list(&spends), ["checked"]);
+    let html = to_html(&doc);
+    assert!(
+        html.contains("<li><span class=\"mono\">checked</span></li>"),
+        "{html}"
+    );
+    let md = to_markdown(&doc);
+    assert!(md.contains("- ` checked `"), "{md}");
     // The 0.6 figure, twice the deadline, is not said.
     let md = to_markdown(&doc);
     assert!(!md.contains("at most 2d"), "{md}");
@@ -318,6 +329,7 @@ fn card_js_of(lock: Option<&Value>) -> JsValue {
     };
     card_given(&p, "MatchInvoices", lock, Some(&m), &given)
         .unwrap()
+        .unwrap()
         .to_js()
 }
 
@@ -380,37 +392,122 @@ fn the_card_of_a_program_of_0_6_has_none_of_what_0_7_adds() {
     assert!(!md.contains("What it tells whom"));
 }
 
+/// The card of the invoice flow with the libraries given, or not.
+fn given_card(
+    p: &Value,
+    lock: Option<&Value>,
+    libraries: Option<&[LibrarySource]>,
+) -> Result<Option<mandate_views::CardView>, mandate_views::CardRefused> {
+    let m = library_modules();
+    let given = CheckOptions {
+        lock,
+        modules: Some(&m),
+        libraries,
+        ..CheckOptions::default()
+    };
+    card_given(p, "MatchInvoices", lock, Some(&m), &given)
+}
+
+/// No card, in any form, from a program of 0.7 whose facts cannot be made;
+/// the refusal's message.
+fn assert_no_card_in_any_form(
+    p: &Value,
+    workflow: &str,
+    lock: Option<&Value>,
+    modules: &Modules,
+    given: &CheckOptions<'_>,
+) -> String {
+    let refused = card_given(p, workflow, lock, Some(modules), given).unwrap_err();
+    let again = card_doc_given(p, workflow, lock, Some(modules), given).unwrap_err();
+    assert_eq!(refused, again);
+    // The doors that give no reason give no card either.
+    assert!(card(p, workflow, lock, Some(modules)).is_none());
+    assert!(card_doc(p, workflow, lock, Some(modules)).is_none());
+    refused.message
+}
+
 #[test]
-fn a_program_that_does_not_check_without_its_libraries_has_a_card_that_says_so() {
-    // The door `card_doc` takes the lock and the modules, and the invoice
-    // flow needs the library its lock pins: its attention part cannot be
-    // made, and the card does not invent it.
+fn a_program_that_needs_libraries_that_were_not_given_has_no_card() {
+    // The invoice flow needs the library its lock pins: without it the
+    // program does not check, so its attention part cannot be made, and the
+    // card is not made without it, in any form.
     let (p, m, lock) = (program(INVOICES), library_modules(), invoices_lock());
-    let doc = card_doc(&p, "MatchInvoices", Some(&lock), Some(&m)).unwrap();
-    let asks = section(&doc, "When it asks whom");
-    assert_eq!(notes(&asks)[0], NOT_SHOWN);
-    // What does not need the check is still there: the 0.6 sentence of the
-    // review, the criteria, the owner and the ladder.
+    let given = CheckOptions {
+        lock: Some(&lock),
+        modules: Some(&m),
+        ..CheckOptions::default()
+    };
+    let message = assert_no_card_in_any_form(&p, "MatchInvoices", Some(&lock), &m, &given);
     assert!(
-        paragraphs(&asks)
-            .iter()
-            .any(|p| p.starts_with("At most one batch decision to accountant (ana)"))
+        message.starts_with("the card of MatchInvoices is not made: "),
+        "{message}"
     );
-    assert_eq!(rows(&asks, "Contract").len(), 3);
-    assert_eq!(
-        paragraphs(&section(&doc, "What it tells whom")),
-        ["Not shown, for the reason given above."]
+    assert!(
+        message.contains("the libraries the lock pins were not given"),
+        "{message}"
     );
-    let who = section(&doc, "Who approves it, and who may amend it");
-    assert!(paragraphs(&who).contains(&LADDER.to_owned()));
+    assert!(message.contains("MDT-E1605"), "{message}");
     // The libraries make it whole.
-    let whole = invoices_doc(Some(&lock));
-    assert!(!to_markdown(&whole).contains("incomplete"));
-    // As JSON the part is `null`.
-    let js = card(&p, "MatchInvoices", Some(&lock), Some(&m))
+    let libs = [source()];
+    assert!(given_card(&p, Some(&lock), Some(&libs)).unwrap().is_some());
+}
+
+#[test]
+fn a_lock_that_fails_its_schema_has_no_card() {
+    let (p, m) = (program(INVOICES), library_modules());
+    let text = text_of(&JsValue::from(&invoices_lock()));
+    assert!(text.contains("\"promotion\":\"required\""), "{text}");
+    let lock = json(&text.replace("\"promotion\":\"required\"", "\"promotion\":\"always\""));
+    let libs = [source()];
+    let given = CheckOptions {
+        lock: Some(&lock),
+        modules: Some(&m),
+        libraries: Some(&libs),
+        ..CheckOptions::default()
+    };
+    let message = assert_no_card_in_any_form(&p, "MatchInvoices", Some(&lock), &m, &given);
+    assert!(message.contains("MDT-E0140"), "{message}");
+}
+
+#[test]
+fn a_program_that_does_not_check_has_no_card_in_markdown_html_or_json() {
+    // The envelope names a pattern that no module gives.
+    let text = read_text("fixtures/attention/shapes.mdt")
         .unwrap()
-        .to_js();
-    assert_eq!(json(&text_of(&js)).get("attention"), Some(&Value::Null));
+        .replace("shapes  [Noted]", "shapes  [Missing]");
+    let p = program_of(&text);
+    let m = Modules::new();
+    let given = CheckOptions::default();
+    let message = assert_no_card_in_any_form(&p, "Planning", None, &m, &given);
+    assert!(
+        message.starts_with("the card of Planning is not made: "),
+        "{message}"
+    );
+    assert!(
+        !message.contains("the libraries the lock pins"),
+        "{message}"
+    );
+    assert!(message.contains("MDT-E"), "{message}");
+    // The same program with the pattern the envelope names has one.
+    assert!(
+        card_doc(
+            &program("fixtures/attention/shapes.mdt"),
+            "Planning",
+            None,
+            None
+        )
+        .is_some()
+    );
+}
+
+#[test]
+fn a_program_of_0_6_still_has_a_card_without_what_it_needs_to_check() {
+    // 0.1 to 0.6 are not changed: their card is made whatever the check says.
+    let p = program("fixtures/library/invoices.mdt");
+    let lock = read_json("fixtures/library/invoices.lock.json").unwrap();
+    let m = library_modules();
+    let doc = card_doc(&p, "MatchInvoices", Some(&lock), Some(&m)).unwrap();
+    assert!(!has_heading(&doc, "What it tells whom"));
 }
 
 #[test]
@@ -487,29 +584,6 @@ fn an_envelope_with_shapes_says_what_their_sub_programs_may_report() {
         Some("Noted")
     );
     assert_eq!(shapes[0].get("known"), Some(&Value::Bool(true)));
-}
-
-#[test]
-fn a_shape_the_card_is_not_given_the_definition_of_is_said_not_to_be_known() {
-    // The envelope names a pattern of a module the card is not given.
-    let text = read_text("fixtures/attention/shapes.mdt")
-        .unwrap()
-        .replace("shapes  [Noted]", "shapes  [Missing]");
-    let doc = card_doc(&program_of(&text), "Planning", None, None);
-    // The program does not check, so the card is incomplete and says so;
-    // it does not invent the shape's reports, and it says what it is not
-    // given.
-    let doc = doc.unwrap();
-    let tells = section(&doc, "What it tells whom");
-    assert_eq!(
-        rows(&tells, "Shape"),
-        [row(&[
-            "Missing",
-            "not known: the card is not given the pattern's definition",
-            "not known: the card is not given the pattern's definition"
-        ])]
-    );
-    assert_eq!(notes(&section(&doc, "When it asks whom"))[0], NOT_SHOWN);
 }
 
 /// Text that reaches the output from the program, in each place the card
@@ -633,5 +707,144 @@ fn the_markdown_the_html_and_the_json_say_the_same() {
     for r in att.get("reports").and_then(Value::as_array).unwrap() {
         let title = r.get("title").and_then(Value::as_str).unwrap();
         assert!(md.contains(title) && html.contains(title), "{title}");
+    }
+}
+
+/// The migration of `fixtures/envelope`, written as `language` says, with
+/// its module.
+fn migrate_all(language: &str) -> (Value, Modules) {
+    let relabel = |t: String| t.replace("mandate @ 0.4", &format!("mandate @ {language}"));
+    let p = program_of(&relabel(
+        read_text("fixtures/envelope/migrate-all.mdt").unwrap(),
+    ));
+    let mut m = Modules::new();
+    m.insert(
+        "company.domain",
+        program_of(&relabel(
+            // A module of 0.6 or later lets another name only its pub definitions.
+            read_text("fixtures/envelope/domain.mdt").unwrap().replace(
+                "
+type ",
+                if language == "0.7" {
+                    "
+pub type "
+                } else {
+                    "
+type "
+                },
+            ),
+        )),
+    );
+    (p, m)
+}
+
+#[test]
+fn the_card_of_0_7_names_an_authorization_the_envelope_declares_for_an_effect_no_step_reaches() {
+    // The envelope says `approve git.merge by release_manager`; no step of
+    // the workflow's own body merges, a lead's sub-program may. The card of
+    // 0.4 says so, and the card of 0.7 keeps every question of it.
+    let (old, old_modules) = migrate_all("0.4");
+    let (new, new_modules) = migrate_all("0.7");
+    let before = card_doc(&old, "MigrateAll", None, Some(&old_modules)).unwrap();
+    let after = card_doc(&new, "MigrateAll", None, Some(&new_modules)).unwrap_or_else(|| {
+        let given = CheckOptions {
+            modules: Some(&new_modules),
+            ..CheckOptions::default()
+        };
+        panic!(
+            "{}",
+            card_doc_given(&new, "MigrateAll", None, Some(&new_modules), &given).unwrap_err()
+        )
+    });
+    let want = row(&[
+        "git.merge",
+        "release_manager",
+        "release_manager is not in the lock, so no member can decide it",
+    ]);
+    let asked = |doc: &Doc| rows(&section(doc, "When it asks whom"), "Effect");
+    assert_eq!(asked(&before).len(), 1);
+    assert_eq!(asked(&before)[0][..2], want[..2]);
+    // The same row, word for word, and the note that says what the table of
+    // questions does not.
+    assert_eq!(asked(&after), asked(&before));
+    let asks = section(&after, "When it asks whom");
+    assert!(
+        notes(&asks)
+            .iter()
+            .any(|n| n
+                .starts_with("These authorizations are decided by the role the table above names")),
+        "{:?}",
+        notes(&asks)
+    );
+    assert_eq!(list(&asks), ["git.merge"]);
+    // Every role the card of 0.4 names is named on that of 0.7.
+    let md = to_markdown(&after);
+    for role in ["release\\_manager", "platform\\_lead"] {
+        assert!(to_markdown(&before).contains(role), "{role}");
+        assert!(md.contains(role), "{role}");
+    }
+}
+
+#[test]
+fn an_authorization_with_a_row_in_the_table_of_questions_is_not_said_to_be_missing_from_it() {
+    // `Releasing` merges itself: its row is in the table of questions, and
+    // the card says nothing of an authorization outside it.
+    let p = program("fixtures/attention/asks.mdt");
+    let doc = card_doc(&p, "Releasing", None, None).unwrap();
+    let asks = section(&doc, "When it asks whom");
+    assert!(
+        !notes(&asks)
+            .iter()
+            .any(|n| n.starts_with("These authorizations")),
+        "{:?}",
+        notes(&asks)
+    );
+}
+
+#[test]
+fn two_waits_of_one_role_are_told_apart_by_where_they_are_asked() {
+    let p = program("fixtures/attention/asks.mdt");
+    let doc = card_doc(&p, "Approving", None, None).unwrap();
+    let asks = section(&doc, "When it asks whom");
+    let waits = rows(&asks, "Wait");
+    let accountant: Vec<&Vec<String>> = waits.iter().filter(|w| w[1] == "accountant").collect();
+    assert!(accountant.len() >= 2, "{waits:?}");
+    let places: std::collections::BTreeSet<&str> =
+        accountant.iter().map(|w| w[2].as_str()).collect();
+    assert_eq!(places.len(), accountant.len(), "{waits:?}");
+    assert!(places.contains("function confirm"), "{places:?}");
+}
+
+#[test]
+fn the_doors_refuse_the_card_of_a_program_that_does_not_check_and_say_what_is_missing() {
+    // The door is what the Node command and the tools call: no card, in any
+    // form, and the reason where it can be read.
+    let (p, m, lock) = (program(INVOICES), library_modules(), invoices_lock());
+    let input = parse(&format!(
+        r#"{{"program":{},"workflow":"MatchInvoices","opts":{{"lock":{},"modules":{}}}}}"#,
+        text_of(&JsValue::from(&p)),
+        text_of(&JsValue::from(&lock)),
+        text_of(&JsValue::from(&Value::Object(m)))
+    ))
+    .unwrap()
+    .value;
+    for name in ["card", "card_doc"] {
+        let door = mandate_views::json_doors::door(name).unwrap();
+        let refused = (door.call)(&input).unwrap_err();
+        assert_eq!(refused.kind.as_str(), "bad_input", "{name}");
+        assert!(
+            refused
+                .message
+                .starts_with("the card of MatchInvoices is not made: "),
+            "{name}: {}",
+            refused.message
+        );
+        assert!(
+            refused
+                .message
+                .contains("the libraries the lock pins were not given"),
+            "{name}: {}",
+            refused.message
+        );
     }
 }

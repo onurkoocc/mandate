@@ -703,12 +703,12 @@ fn compare_with(program: &str, t: &mut Tally, marker: Marker) -> Result<Marks, S
     let op = marker.op();
     // The attention view shows the stages and the reports themselves: what
     // is compared is every other output, and the document without it.
-    let outs_a = outputs::without_card(outputs::without_attention(outputs::outputs_of_relabelled(
-        program, &unmarked,
-    )?));
-    let outs_b = outputs::without_card(outputs::without_attention(outputs::outputs_of_relabelled(
-        program, &marked,
-    )?));
+    let outs_a = outputs::card_unchanged(outputs::without_attention(
+        outputs::outputs_of_relabelled(program, &unmarked)?,
+    ));
+    let outs_b = outputs::card_unchanged(outputs::without_attention(
+        outputs::outputs_of_relabelled(program, &marked)?,
+    ));
     let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
     if names(&outs_a) != names(&outs_b) {
         return Err(format!(

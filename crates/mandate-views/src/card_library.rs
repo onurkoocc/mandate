@@ -1312,16 +1312,29 @@ impl CardLibrary {
     /// How long a review waits, apart from the time budget. With `exact`
     /// (0.7) it says no total: the deadlines are in the table of questions.
     pub(crate) fn spend_blocks(&self, exact: bool) -> Vec<Block> {
+        if exact {
+            // 0.7: the names of the program are shown as code, in a list.
+            let over: Vec<Cell> = self
+                .reviews
+                .iter()
+                .filter(|r| r.deadline_ms.is_finite())
+                .map(|r| Cell::mono(r.over.as_str()))
+                .collect();
+            if over.is_empty() {
+                return Vec::new();
+            }
+            return vec![
+                Block::Note(
+                    "The review of each of these waits apart from the time budget; its deadlines are given under \"When it asks whom\"."
+                        .to_owned(),
+                ),
+                Block::List(over),
+            ];
+        }
         self.reviews
             .iter()
             .filter(|r| r.deadline_ms.is_finite())
             .map(|r| {
-                if exact {
-                    return Block::Note(format!(
-                        "The review of {} waits apart from the time budget; its deadlines are given under \"When it asks whom\".",
-                        r.over
-                    ));
-                }
                 let then = match &r.escalate_to {
                     Some(e) => format!(
                         " ({}, then {} more after it is escalated to {})",

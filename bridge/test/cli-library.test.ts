@@ -627,6 +627,8 @@ describe("the mandate executable with libraries", () => {
     tree = buildTree();
     // The repository's fixtures under the same paths, and the acceptance library in the layout of the operator's directory.
     cpSync(join(repoRoot, "fixtures", "library"), join(work, "fixtures", "library"), { recursive: true });
+    // The program of 0.7 whose card is held to the golden file's below.
+    cpSync(join(repoRoot, "fixtures", "attention"), join(work, "fixtures", "attention"), { recursive: true });
     for (const v of VERSIONS) cpSync(join(repoRoot, OPS, v), join(work, "libs", "acme.ops", v), { recursive: true });
     for (const f of ["mandate.library.json", "connectors.mdt", "types.mdt"]) cpSync(join(repoRoot, "fixtures/library/acme.connectors", f), join(work, "libs", "acme.connectors", "2.3.0", f));
     writeFileSync(join(work, "libs", "acme.connectors", "2.3.0", "index.json"), '{ "published_at": "2026-11-01T09:00:00Z" }\n');
@@ -823,4 +825,37 @@ describe("the mandate executable with libraries", () => {
     expect(problems.join("\n")).toBe("");
     expect(compared).toBeGreaterThanOrEqual(60);
   }, 240_000);
+
+  // The card of a program of 0.7 is made from a check that is given the libraries the lock pins: the command gives
+  // them to the card as it gives them to the check, so what it prints is what the native command prints, the card
+  // vectors/golden/0.7.json pins (stages, the table of questions, what it tells whom), and not a card without them.
+  it("prints for the acceptance program of 0.7 the card the golden file pins, with the libraries it was given", async () => {
+    const golden = (JSON.parse(repo("vectors/golden/0.7.json")) as Record<string, Record<string, string>>)["fixtures/attention/invoices.mdt"]!;
+    const sha = (text: string): string => `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+    const program = "fixtures/attention/invoices.mdt";
+    const lock = "fixtures/attention/invoices.lock.json";
+    const forms: Array<[name: string, args: string[]]> = [
+      ["view --card --format json", ["--format", "json"]],
+      ["view --card --format md", []],
+      ["view --card --format html", ["--format", "html"]],
+    ];
+    for (const [name, args] of forms) {
+      const r = await mandate("view", program, "--lock", lock, "--libraries", "libs", "--card", ...args);
+      expect(r.code, `${name}: ${r.err}`).toBe(0);
+      expect(r.err, name).toBe("");
+      expect(sha(r.out), name).toBe(golden[name]);
+    }
+    const md = (await mandate("view", program, "--lock", lock, "--libraries", "libs", "--card")).out;
+    expect(md).toContain("At most 2 questions in all (asks: 2).");
+    expect(md).toContain("## What it tells whom");
+    expect(md).not.toContain("incomplete");
+    expect(md).not.toContain("Not shown");
+    // Without the libraries the program does not check, and no card is made in any form.
+    for (const args of [[], ["--format", "json"], ["--format", "html"]]) {
+      const r = await mandate("view", program, "--lock", lock, "--card", ...args);
+      expect(r.code, args.join(" ")).toBe(1);
+      expect(r.out, args.join(" ")).toBe("");
+      expect(r.err, args.join(" ")).toContain(" error MDT-E1605: ");
+    }
+  }, 120_000);
 });

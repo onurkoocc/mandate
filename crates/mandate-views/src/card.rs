@@ -368,9 +368,10 @@ pub struct CardLadder {
 /// 0.7 program"): the attention view, the ladder and the shapes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CardAttention {
-    /// The attention view of the workflow; `None` when the program does not
-    /// check with the modules and the lock the card is given.
-    pub view: Option<AttentionView>,
+    /// The attention view of the workflow. A card of 0.7 is not made without
+    /// it: a program that does not check with what the card is given has no
+    /// card ([`CardRefused`]).
+    pub view: AttentionView,
     /// The ladder.
     pub ladder: CardLadder,
     /// What the shapes of the envelope may report.
@@ -443,12 +444,7 @@ impl CardAttention {
                     .map_or(JsValue::Null, JsValue::from),
             );
         [
-            (
-                "attention",
-                self.view
-                    .as_ref()
-                    .map_or(JsValue::Null, AttentionView::to_js),
-            ),
+            ("attention", self.view.to_js()),
             ("ladder", ladder.into()),
             (
                 "shapes",
@@ -1032,6 +1028,10 @@ fn in_flight(maps: &[CardMap], wf: &Value) -> f64 {
 /// seen. The package hash is the one the runtime checks at load and an
 /// approval is signed for. `None` for a workflow without an envelope, or no
 /// workflow: `card(program, workflow, { lock, modules })`.
+///
+/// A program of 0.7 whose attention part cannot be made (it does not check
+/// with these modules and this lock) has no card either: use [`card_given`]
+/// to be told why.
 #[must_use]
 pub fn card(
     program: &Value,
@@ -1044,6 +1044,51 @@ pub fn card(
         ..CheckOptions::default()
     };
     card_given(program, workflow, lock, modules, &given)
+        .ok()
+        .flatten()
+}
+
+/// Why a card cannot be made: a program of 0.7 or later that does not check
+/// with the modules, libraries and lock the card is given. A card of such a
+/// program is not made in any form, not even without its attention part,
+/// since what a person would sign would leave out what the workflow asks and
+/// tells.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CardRefused {
+    /// What is missing: the diagnostics of the check, one after the other.
+    pub message: String,
+}
+
+impl std::fmt::Display for CardRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl CardRefused {
+    /// The refusal of the card of `workflow`, from the check that failed.
+    fn of(workflow: &str, diagnostics: &[mandate_ir::Diagnostic]) -> CardRefused {
+        let errors: Vec<String> = diagnostics
+            .iter()
+            .filter(|d| d.severity == mandate_ir::Severity::Error)
+            .map(|d| format!("{}: {}", d.code, d.message))
+            .collect();
+        let why = if errors.is_empty() {
+            "its attention facts could not be made".to_owned()
+        } else {
+            errors.join("; ")
+        };
+        let libraries = if diagnostics.iter().any(|d| d.code == "MDT-E1605") {
+            " (the libraries the lock pins were not given, or are not what it pins)"
+        } else {
+            ""
+        };
+        CardRefused {
+            message: format!(
+                "the card of {workflow} is not made: the program does not check with the modules, libraries and lock it is given{libraries}: {why}"
+            ),
+        }
+    }
 }
 
 /// [`card`], with the options the check of a program of 0.7 is given besides
@@ -1051,13 +1096,51 @@ pub fn card(
 /// check, which a program that needs libraries read from a directory is
 /// given by this function (`CheckOptions`; its `lock` is the one given
 /// here). `modules` is what the other parts of the card are given.
-#[must_use]
+///
+/// `Ok(None)` where [`card`] is `None` for want of a workflow. For a
+/// program of 0.7 or later that does not check with these options there is
+/// no card in any form: the refusal says what is missing.
+///
+/// # Errors
+/// [`CardRefused`] for such a program.
 pub fn card_given(
     program: &Value,
     workflow: &str,
     lock: Option<&Value>,
     modules: Option<&Modules>,
     check_with: &CheckOptions<'_>,
+) -> Result<Option<CardView>, CardRefused> {
+    let Some(written) = Program::of(program) else {
+        return Ok(None);
+    };
+    let has_workflow = defs_of(written)
+        .get(workflow)
+        .is_some_and(|d| is_kind(d, "workflow"));
+    if !has_workflow || !reads_0_7(written) {
+        return Ok(card_made(program, workflow, lock, modules, None));
+    }
+    let opts = CheckOptions {
+        lock,
+        ..*check_with
+    };
+    let text = mandate_ir::canonicalize(program);
+    let view = attention_view(&text, SourceKind::Json, &opts, workflow);
+    match view {
+        Some(view) => Ok(card_made(program, workflow, lock, modules, Some(view))),
+        None => Err(CardRefused::of(
+            workflow,
+            &mandate_check::check(&text, SourceKind::Json, &opts).diagnostics,
+        )),
+    }
+}
+
+/// The card, with the attention view of a program of 0.7.
+fn card_made(
+    program: &Value,
+    workflow: &str,
+    lock: Option<&Value>,
+    modules: Option<&Modules>,
+    view: Option<AttentionView>,
 ) -> Option<CardView> {
     let written = Program::of(program)?;
     let is_0_6 = reads_0_6(written);
@@ -1349,21 +1432,10 @@ pub fn card_given(
             })
         })
         .filter(|l| !l.envelope || l.has_content());
-    let attention = reads_0_7(written).then(|| {
-        let opts = CheckOptions {
-            lock,
-            ..*check_with
-        };
-        CardAttention {
-            view: attention_view(
-                &mandate_ir::canonicalize(program),
-                SourceKind::Json,
-                &opts,
-                workflow,
-            ),
-            ladder: ladder_of(lock, owner.as_deref(), &members),
-            shapes: env.map_or_else(Vec::new, |e| shapes_of_card(written, e, modules, lock)),
-        }
+    let attention = view.map(|view| CardAttention {
+        view,
+        ladder: ladder_of(lock, owner.as_deref(), &members),
+        shapes: env.map_or_else(Vec::new, |e| shapes_of_card(written, e, modules, lock)),
     });
     Some(CardView {
         program: r,
@@ -1409,7 +1481,7 @@ fn ladder_of(lock: Option<&Value>, owner: Option<&str>, members: &[CardMember]) 
             None => "nobody: the workflow names no owner, so no one could sign one".to_owned(),
         };
         format!(
-            "Every run in read_only mode and in live mode needs a promotion signed by {by}: a run in read_only needs a succeeded design run of this package, and a run in live needs a succeeded read_only run of it, with the shadow diff of that run against its design run. A promotion holds for later runs of the same package and mode; a changed package needs new promotions."
+            "Every run in read_only mode and in live mode needs a promotion signed by {by}: a run in read_only needs a succeeded design run of this package and workflow, and a run in live needs a succeeded read_only run of them, with the shadow diff of that run against its design run. A promotion holds for every later run of the same package hash and workflow in its target mode; a changed package is a new hash and needs new promotions."
         )
     });
     CardLadder {
@@ -1496,8 +1568,10 @@ fn reads_0_7(p: Program<'_>) -> bool {
     p.language().is_some_and(|l| l.at_least(Language::V0_7))
 }
 
-/// What the card of a 0.7 program says where the attention view is missing.
-const NO_ATTENTION: &str = "This card is incomplete: the program does not check with the modules and the lock it is given, so what it asks whom, when and how often, and what it tells whom, cannot be shown.";
+/// What the card of a 0.7 program says of the authorizations the envelope
+/// declares for effects that no step of the workflow itself reaches (the
+/// list that follows names them).
+const UNLISTED_APPROVALS: &str = "These authorizations are decided by the role the table above names, but no step of the workflow itself reaches the effect, so the table of questions has no row for them and its total does not count them. A sub-program a lead writes under the envelope may reach them: each decision is then one of that sub-program's questions, taken, where the envelope limits asks, from what is left of the run's asks at its admission (E1706), and held by that limit while the run goes on.";
 
 /// What a card of a workflow without an envelope says of who approves it.
 const NO_ENVELOPE: &str = "No envelope is approved before a run, and nobody may amend it.";
@@ -1628,7 +1702,7 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
     // 0.7: the attention view (or why there is none), and a workflow that
     // names its own owner, whose card a member of that role approves.
     let attention = v.attention.as_ref();
-    let view = attention.and_then(|x| x.view.as_ref());
+    let view = attention.map(|x| &x.view);
     let owned = !enveloped && a.role.is_some();
     let mut out: Vec<Block> = lib.map(CardLibrary::head_blocks).unwrap_or_default();
     out.push(Block::H("What it does".to_owned()));
@@ -1763,20 +1837,26 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
     out.push(Block::H("When it asks whom".to_owned()));
     if let Some(view) = view {
         // 0.7: what the attention view says, with the two deadlines of a
-        // review exact; the 0.6 sentences and tables would say it twice.
+        // review exact; the 0.6 sentences would say them twice.
         out.extend(asks_blocks(view, false));
-    } else if attention.is_some() {
-        out.push(Block::Note(NO_ATTENTION.to_owned()));
     }
-    // What the table of questions says is not said again.
+    // What the card of 0.6 says of the waits and the authorizations stays on
+    // the card of 0.7: the table of questions counts the sites the facts
+    // hold, and does not say where a wait is asked.
     let old_asks = view.is_none();
-    if old_asks && v.waits.is_empty() {
-        if lib.is_none_or(|l| l.reviews.is_empty()) {
+    if v.waits.is_empty() {
+        if old_asks && lib.is_none_or(|l| l.reviews.is_empty()) {
             out.push(Block::P(
                 "No step it reaches waits for a person by role.".to_owned(),
             ));
         }
-    } else if old_asks {
+    } else {
+        if !old_asks {
+            out.push(Block::P(
+                "The steps it reaches that wait for a person by role, and where each is:"
+                    .to_owned(),
+            ));
+        }
         out.push(Block::Table {
             head: heads(&["Wait", "Role", "In", "Members"]),
             rows: v
@@ -1793,7 +1873,7 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
                 .collect(),
         });
     }
-    if old_asks && !v.approvals.is_empty() {
+    if !v.approvals.is_empty() {
         out.push(Block::Table {
             head: heads(&["Effect", "Authorized only by a decision of", "Members"]),
             rows: v
@@ -1809,15 +1889,31 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
                 .collect(),
         });
     }
+    // 0.7: an authorization the envelope declares for an effect that no step
+    // of the workflow itself reaches has no row in the table of questions.
+    if let Some(view) = view {
+        let unlisted: Vec<Cell> = v
+            .approvals
+            .iter()
+            .filter(|p| {
+                !view
+                    .questions
+                    .iter()
+                    .any(|r| r.effect.as_deref() == Some(p.effect.as_str()))
+            })
+            .map(|p| Cell::mono(p.effect.as_str()))
+            .collect();
+        if !unlisted.is_empty() {
+            out.push(Block::Note(UNLISTED_APPROVALS.to_owned()));
+            out.push(Block::List(unlisted));
+        }
+    }
     out.extend(lib.map(|l| l.ask_blocks(old_asks)).unwrap_or_default());
     out.extend(lib.map(CardLibrary::commit_blocks).unwrap_or_default());
     if let Some(att) = attention {
         out.push(Block::H("What it tells whom".to_owned()));
-        match view {
-            Some(view) => out.extend(reports_blocks(view, false)),
-            None => out.push(Block::P(
-                "Not shown, for the reason given above.".to_owned(),
-            )),
+        if let Some(view) = view {
+            out.extend(reports_blocks(view, false));
         }
         out.extend(shape_blocks(&att.shapes));
     }
@@ -1892,21 +1988,27 @@ pub fn card_doc(
         ..CheckOptions::default()
     };
     card_doc_given(program, workflow, lock, modules, &given)
+        .ok()
+        .flatten()
 }
 
 /// [`card_doc`], with the options the check of a program of 0.7 is given
 /// besides the lock ([`card_given`]).
-#[must_use]
+///
+/// # Errors
+/// [`CardRefused`], as [`card_given`] gives it.
 pub fn card_doc_given(
     program: &Value,
     workflow: &str,
     lock: Option<&Value>,
     modules: Option<&Modules>,
     check_with: &CheckOptions<'_>,
-) -> Option<Doc> {
-    let v = card_given(program, workflow, lock, modules, check_with)?;
+) -> Result<Option<Doc>, CardRefused> {
+    let Some(v) = card_given(program, workflow, lock, modules, check_with)? else {
+        return Ok(None);
+    };
     let imports = modules.is_some_and(|m| !m.is_empty());
-    Some(Doc {
+    Ok(Some(Doc {
         title: format!("{} {}: {}", v.program.module, v.program.version, v.workflow),
         meta: vec![
             ("Package".to_owned(), v.package.clone()),
@@ -1930,5 +2032,5 @@ pub fn card_doc_given(
             ),
         ],
         blocks: card_blocks(&v),
-    })
+    }))
 }

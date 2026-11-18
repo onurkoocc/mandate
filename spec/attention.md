@@ -668,7 +668,30 @@ these:
   declared bound.
 - **The ladder**: with `promotion: "required"` in the lock, that every run
   of `read_only` and of `live` needs a signed promotion by the owner role
-  ([Promotion](#promotion)).
+  ([Promotion](#promotion)): it holds for every later run of the same
+  package hash and workflow in its target mode, and a changed package needs
+  new ones.
+
+Nothing of the 0.6 card is left out: the table of waits (with where each is
+asked) and the table of the envelope's authorizations, with the role that
+decides each, stay beside the table of questions, so that every role and
+every authorization the 0.6 card names is on the 0.7 card. Where the facts
+hold a site for an authorization, its row in "When it asks whom" and the row
+of the authorizations say the same. An authorization the envelope declares
+for an effect that no step of the workflow itself reaches has no row in the
+table of questions and is not in its total; the card says so, and that a
+sub-program a lead writes may reach it, whose questions come out of what is
+left of the run's `asks` ([Sub-programs and amendments](#sub-programs-and-amendments)).
+
+**No card without the facts.** The card of a program of 0.7 is made from the
+facts of a check that is given the program's modules, its lock and the
+libraries the lock pins. A program that does not check with them (a library
+the lock pins that was not given, a lock that fails its schema, any other
+error) has no card, in any form (Markdown, HTML, JSON): the card's doors, the
+`mandate view --card` command and the `project` tool refuse, and say what is
+missing (the diagnostics, or that the libraries the lock pins were not
+given). A card that left out what the workflow asks and tells would be
+signed as if it were whole. Programs of 0.1 to 0.6 are as they were.
 
 How a value is known is worded `verified`, "counted or given by the run"
 (`plain`), "a model's output" (`model`) and "outside content" (`external`).

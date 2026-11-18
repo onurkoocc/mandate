@@ -413,8 +413,18 @@ function main(argv: string[]): void {
           process.exit(2);
         }
         const name = workflow ?? all[0]!;
-        const opts = { modules: linked, ...(lock ? { lock } : {}) };
-        process.stdout.write(format === "json" ? JSON.stringify(card(program, name, opts), null, 2) + "\n" : format === "html" ? toHtml(cardDoc(program, name, opts)!) : toMarkdown(cardDoc(program, name, opts)!));
+        // The libraries the command was given go to the card as they went to the check: a card of 0.7 is made from a check
+        // that has them, and without them it is not made (the call throws, saying what is missing).
+        const opts = { modules: linked, ...(lock ? { lock } : {}), ...(g.libraries.length ? { libraries: g.libraries } : {}) };
+        let text: string;
+        try {
+          text = format === "json" ? JSON.stringify(card(program, name, opts), null, 2) + "\n" : format === "html" ? toHtml(cardDoc(program, name, opts)!) : toMarkdown(cardDoc(program, name, opts)!);
+        } catch (e) {
+          if (!(e instanceof Error) || e instanceof CompilerFailure) throw e;
+          process.stderr.write(`mandate: ${file}: ${e.message}\n`);
+          process.exit(1);
+        }
+        process.stdout.write(text);
       } else if (against !== undefined) {
         // The old version is checked without its lock, as before 0.6, but with the libraries that lock pins (0.6).
         const old = givenFor(library, peekLock(against, againstLock));

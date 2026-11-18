@@ -199,7 +199,7 @@ pub(super) const CARD: &[&str] = &["program", "workflow", "opts"];
 /// `libraries` (0.7) are the libraries the lock pins, with which a program
 /// of 0.7 is checked for the attention part of its card, as the door
 /// `attention` takes them; without them a program that needs its libraries
-/// to check has a card that says so.
+/// to check has no card (a `bad_input` that says what is missing).
 /// Output: `CardView`, or `null` for a workflow that has no envelope or is
 /// not there (the TypeScript gives `undefined`).
 pub(super) fn card(input: &Value) -> Result<JsValue, DoorError> {
@@ -207,11 +207,10 @@ pub(super) fn card(input: &Value) -> Result<JsValue, DoorError> {
     let program = a.program("program")?;
     let workflow = a.str("workflow")?;
     let o = CardOpts::of(a)?;
-    Ok(
-        crate::card_given(program, workflow, o.lock, o.modules, &o.check())
-            .as_ref()
-            .map_or(JsValue::Null, CardView::to_js),
-    )
+    match crate::card_given(program, workflow, o.lock, o.modules, &o.check()) {
+        Ok(card) => Ok(card.as_ref().map_or(JsValue::Null, CardView::to_js)),
+        Err(refused) => Err(DoorError::bad_input(refused.message)),
+    }
 }
 
 /// The parameters of [`card_doc`].
@@ -227,11 +226,10 @@ pub(super) fn card_doc(input: &Value) -> Result<JsValue, DoorError> {
     let program = a.program("program")?;
     let workflow = a.str("workflow")?;
     let o = CardOpts::of(a)?;
-    Ok(
-        crate::card_doc_given(program, workflow, o.lock, o.modules, &o.check())
-            .as_ref()
-            .map_or(JsValue::Null, doc_js),
-    )
+    match crate::card_doc_given(program, workflow, o.lock, o.modules, &o.check()) {
+        Ok(doc) => Ok(doc.as_ref().map_or(JsValue::Null, doc_js)),
+        Err(refused) => Err(DoorError::bad_input(refused.message)),
+    }
 }
 
 /// The parameters of [`acs_target`].

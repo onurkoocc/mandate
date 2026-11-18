@@ -1047,7 +1047,7 @@ fn members_cell(r: &ViewRow, owner: Option<&ViewOwner>) -> String {
         (Some(_), None) => NO_LOCK_CELL.to_owned(),
         (None, _) => match owner {
             Some(o) => format!(
-                "no role is asked; the owner, {}, is notified",
+                "no role is asked; the owner, {}, is notified where the runtime's configuration names a channel for the role",
                 role_text(&o.role, o.members.as_deref())
             ),
             None => "no role is asked; with no owner, nobody is notified, and every role the lock binds can list it".to_owned(),
@@ -1139,19 +1139,29 @@ pub(crate) fn asks_blocks(v: &AttentionView, owner: bool) -> Vec<Block> {
     }
     out.push(Block::Note(CONFIGURATION.to_owned()));
     if !v.uncounted_effects.is_empty() {
-        let list: Vec<String> = v
+        // The effects are names of the program: shown as code.
+        let rows: Vec<Vec<Cell>> = v
             .uncounted_effects
             .iter()
-            .map(|e| match e.multiplicity {
-                Count::Finite(1) => format!("{} (once)", e.effect),
-                Count::Finite(n) => format!("{} ({n} times)", e.effect),
-                Count::Unbounded => format!("{} (unbounded)", e.effect),
+            .map(|e| {
+                vec![
+                    Cell::mono(e.effect.as_str()),
+                    Cell::plain(match e.multiplicity {
+                        Count::Finite(1) => "once".to_owned(),
+                        Count::Finite(n) => format!("{n} times"),
+                        Count::Unbounded => "unbounded".to_owned(),
+                    }),
+                ]
             })
             .collect();
-        out.push(Block::P(format!(
-            "The total above does not count the authorization of these effects, which the runtime's configuration may hand to a person as well: {}.",
-            list.join(", ")
-        )));
+        out.push(Block::P(
+            "The total above does not count the authorization of these effects, which the runtime's configuration may hand to a person as well:"
+                .to_owned(),
+        ));
+        out.push(Block::Table {
+            head: vec!["Effect".to_owned(), "Sites".to_owned()],
+            rows,
+        });
     }
     if v.questions.is_empty() {
         out.push(Block::P("It asks nobody anything.".to_owned()));
