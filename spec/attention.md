@@ -28,7 +28,7 @@ best-effort basis.
 | Stages and reports at run time; the stored facts and `facts_mismatch` | B2 | not implemented yet |
 | `asks` at run time; the bound under the runtime's configuration and `attention_above_asks`; `asks_exhausted` | B3 | implemented (`runtime/src/asks.ts`, the count in `Journal.openWait`; the hook `runtime/test/asks-hook.ts` and the test of the sources in `runtime/test/asks.test.ts`) |
 | Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | implemented (`runtime/src/mask.ts`, `runtime/src/projection.ts`, `runtime/src/watch.ts`; the allow-list of `WatchRun` in [`boundary.md`](boundary.md#classes), held to the runtime by `runtime/test/classes.test.ts`) |
-| `mandate watch`, `mandate waits`, `mandate decide` | B5 | not implemented yet |
+| `mandate watch`, `mandate waits`, `mandate decide` | B5 | implemented (`runtime/src/person.ts`, `runtime/src/terminal.ts`, the commands in `runtime/src/cli.ts`; `runtime/test/cli-person.test.ts`, `runtime/test/cli-person-amend.test.ts`) |
 | Card approval of a workflow with an `owner`; the `promote` decision and the ladder; `mandate promote` | B6 | implemented (`Runtime.promote`, the ladder in `startRun`, `mandate promote`; `runtime/test/ladder.test.ts`, `runtime/test/cli-promote.test.ts`) |
 | The driver loop `mandate tick`; notifications | B7 | not implemented yet |
 | The acceptance rehearsal | B10 | not implemented yet |
@@ -1485,7 +1485,7 @@ mandate promote <run> --to read_only|live --key FILE [--yes]
 mandate watch --member M --out DIR [--follow] [--refresh SECONDS]
 mandate watch <run> --role R --jsonl
 mandate waits (--role R | --member M) [--tenant T] [--json]
-mandate decide --key FILE
+mandate decide --key FILE [--member NAME]
 mandate tick [--follow] [--interval 10s] [--no-notify]
 mandate run … --limit asks=N
 mandate mcp                                                # native, in crates/mandate-cli
@@ -1495,7 +1495,8 @@ mandate mcp                                                # native, in crates/m
   all the member's waits and runs, and one page per run and role the member
   holds, `<run>.<role>.html`, with that role's view, each file written
   atomically. `--refresh SECONDS` adds a `<meta refresh>`; without it there is
-  none. `--follow` keeps the pages up to date.
+  none. `--follow` keeps the pages up to date, a pass every `--interval`
+  (default 10 s) until SIGINT or SIGTERM, which stop it between two passes.
 - **`watch <run> --role R --jsonl`** prints the role's projected events, one
   JSON line each.
 - **`waits`** prints the open decisions of a role or a member, as `ListWaits`
@@ -1508,6 +1509,57 @@ mandate mcp                                                # native, in crates/m
 - There is no server, no listener and no authenticated read: whoever reaches
   the database reads everything already, so the pages and the stream are
   projections for people, not a security boundary of their own.
+
+### How the commands are built
+
+The three commands read nothing but B4's projections (`ListWaits`, a role's view
+`runView(…, { role })`, `WatchRun`) and submit a decision through the paths `approve`,
+`decline`, `answer`, `review` and `amend` already use. They add no way to decide and no
+record kind, and none of them calls `report()`, which prints the raw `run.waiting` and is the
+operator's, or reads a run's values from the store.
+
+- **Reading is not authenticated.** The caller names its own role or member, and only the
+  lock's bindings and, for signing, the key bind them. A listing or a page is a convenience for
+  an honest member; only the signed decision is evidence.
+- **Masking.** A value above the cap of the role it is shown to (`role_classes`, else
+  `internal`), or whose class is not known, has no value and no digest on any page, line or
+  JSON text of these commands: only its class and how it is known. A subject that is masked is
+  printed as `masked (class …; known …)`.
+- **Escaping.** A text a lead model or a program chose (a run id, a stage title, a question, a
+  `known: model` value) goes to a terminal through `terminalText` (`\uXXXX` for every code
+  point a terminal does not print as itself) and to a page through the document builders and
+  then `terminalDocument`. A value a model wrote is marked as one (`value (model output)`, a
+  page's `untrusted` class). `waits --json` and `watch --jsonl` print the same JSON values,
+  with each such code point written as a JSON escape.
+- **The pages.** The HTML has no `<script>`, no event-handler attribute, no external resource
+  and no `javascript:` URL; it carries a `Content-Security-Policy` of `default-src 'none'`. The
+  builders have no link block, so `index.html` names a run's pages as text, not as links. A
+  page holds no moment of its own, so two passes over the same runs write the same bytes, and a
+  pass writes a file only when its content changed. A member's runs are those of the packages
+  whose lock lists them under a role, not finished or finished within 7 days, newest first, at
+  most 200.
+- **File names.** A page is `<run>.<role>.html`. A run id or a role that is not made of
+  letters, digits, dot, underscore and hyphen only (never `..`, a separator, or a Windows device
+  name) is replaced in the name by `_h-` and 16 hexadecimal digits of its SHA-256, so nothing a
+  run says steers where a file is written. Files are written under a temporary name in the
+  directory and renamed.
+- **`decide`.** It lists the waits of whoever holds the key (the members the key is listed
+  under in a package's lock, or the one `--member` names), asks for one, shows it as its role
+  is shown it, and reads one answer per prompt: the wait's number; `approve` or `decline` for a
+  decision or an amendment; the text for a question; for a review each open item in turn
+  (`waive`, `decline`), or all at once as `waive 0,2 decline 1`; then `y` or `yes` to sign.
+  Anything else, and the end of the input before the confirmation, signs nothing (exit 1 at the
+  end of the input and for a refusal, 2 for an answer that is not understood). A prompt is
+  written without a line end and a piped line is echoed after it. The subject it signs is what
+  `Runtime.shown` gives for the run now, at the revision the list showed, so a run that moved
+  on is refused as `stale_revision`; the runtime refuses what it would refuse from any client,
+  and the refusal is printed with its reason.
+- **A masked wait.** The role is not shown what it is asked to decide. `decide` says so
+  plainly, and takes the signature only after the full word `yes`: the member may still sign
+  for the digest the run shows. (The alternative, refusing to sign what is masked, is an open
+  question for the owner of the release.)
+- **A `par` with several waits.** The runtime decides the wait the run shows now. `decide` lists
+  every open wait, and for one that is not the run's current one it says so and signs nothing.
 
 ## The MCP server
 

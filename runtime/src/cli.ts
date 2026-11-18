@@ -74,9 +74,10 @@ import { Connectors } from "./connectors.js";
 import { adaptersFor, anthropicClient, connect, connectorEgress, operatorAdapters, readConfig, replayAdapters, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { credentialAdvice } from "./gateway.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
-import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type PromotedMode, type SignedDecision } from "./decisions.js";
+import { decisionId, InvalidDecision, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type PromotedMode, type SignedDecision } from "./decisions.js";
 import { EvidenceSigner, keyIdOf, TrustedKeys } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
+import { hidesFromRole, openItemLines, openItems, pass, requestLines, waitLines, waitListLine, waitsText, type PagesState, type PassResult } from "./person.js";
 import { serveUntilSignalled } from "./egress/main.js";
 import { limitDims, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, parseExportJson, publicKeysIn, readExport, verifyExport, type FindingCode } from "./journal-chain.js";
@@ -87,9 +88,14 @@ import { driveLoop, MAX_INTERVAL_MS, TICK_INTERVAL_MS } from "./tick.js";
 import { libraryModules, refuseRevoked } from "./package.js";
 import { buildPackage, Runtime, workflowOwner } from "./runtime.js";
 import { Violation } from "./signals.js";
+import { shownSafe, terminalDocument, terminalText } from "./terminal.js";
 import { runTests } from "./testing.js";
+import { WATCH_LIMIT, type WaitItem } from "./watch.js";
 import { auditDoc, roleDoc, runDoc, runView, shadowDiff, type ShadowRow } from "./views.js";
-import { canonical, isObj, show, tagOf, unwrap, type Obj, type Value } from "./values.js";
+import { canonical, isObj, show, type Obj, type Value } from "./values.js";
+
+// The terminal escaping of 0.6 output lives in terminal.ts, which the commands of 0.7 that print a run use as well.
+export { shownSafe, terminalDocument, terminalText } from "./terminal.js";
 
 interface Args {
   positional: string[];
@@ -102,7 +108,7 @@ interface Args {
   all: Record<string, string[]>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries", "--waive", "--decline", "--interval", "--to"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries", "--waive", "--decline", "--interval", "--to", "--refresh"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -166,6 +172,10 @@ const USAGE = `usage:
   mandate otel export --endpoint URL [--run R | --tenant T] [--follow] [--json]
   mandate tick [--follow] [--interval 10s] [--no-notify]
   mandate promote <run> --to read_only|live --key FILE [--member NAME] [--yes]
+  mandate waits (--role R | --member M) [--tenant T] [--json]
+  mandate watch --member M --out DIR [--follow] [--interval 10s] [--refresh SECONDS]
+  mandate watch <run> --role R --jsonl
+  mandate decide --key FILE [--member NAME]
   mandate denials <run>
   mandate rotate-key
   mandate test <program> [--json] [--lock FILE] [--libraries DIR]
@@ -178,10 +188,10 @@ options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 --libraries DIR is the directory of libraries a lock of 0.6 pins its libraries in (default: libraries.dir of the configuration)
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review", "tick", "promote"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review", "tick", "promote", "waits", "watch", "decide"]);
 
 /** Runs one control command; returns the exit status. */
-export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env, answer: () => Promise<string> = stdinLine): Promise<number> {
+export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env, answer: () => Promise<string> = stdinLine, standardInput?: AsyncIterable<string>): Promise<number> {
   let db: Db | undefined;
   /** The runtime the command made: what its gateways opened at the proxy is closed when the command ends. */
   let made: Runtime | undefined;
@@ -235,6 +245,9 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "halt") return await halt(a, config, db, out, (r) => (made = r));
     if (cmd === "otel") return await otel(a, db, out);
     if (cmd === "tick") return await tick(a, config, db, out, env);
+    if (cmd === "waits") return await waits(a, config, db, out, (r) => (made = r));
+    if (cmd === "watch") return await watch(a, config, db, out, env, (r) => (made = r));
+    if (cmd === "decide") return await decide(a, config, db, out, env, standardInput, (r) => (made = r));
 
     if (cmd === "approve-envelope") {
       // A member of the envelope's owner role signs for the package hash its card shows (`mandate view --card`).
@@ -262,11 +275,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (key && member === undefined) throw new Violation("invalid_decision", `unknown_key: the lock of run ${runId}'s package lists key ${key.keyId} under no member.`);
     const msg = { sender: member ?? (typeof a.flags["--by"] === "string" ? a.flags["--by"] : "cli"), messageId: typeof a.flags["--message-id"] === "string" ? a.flags["--message-id"] : randomUUID() };
     /** The person's signed record of a decision on what the run shows; it names the revision they saw (--revision). */
-    const sign = async (about: "wait" | "run" | { reconcile: string }, kind: DecisionKind, payload?: string): Promise<SignedDecision> => {
-      const shown = await rt.shown(runId, about);
-      const seen = typeof a.flags["--revision"] === "string" ? revision(a) : shown.revision;
-      return signDecision(key!, { ...shown, revision: seen }, { kind, member: member!, ...(payload !== undefined ? { payload } : {}), at: new Date() });
-    };
+    const sign = (about: "wait" | "run" | { reconcile: string }, kind: DecisionKind, payload?: string): Promise<SignedDecision> => signedFor(rt, runId, key!, member!, about, kind, payload, (shownRevision) => (typeof a.flags["--revision"] === "string" ? revision(a) : shownRevision));
     /** In unsigned mode, the name of who decides. */
     const by = (): string => {
       if (typeof a.flags["--by"] === "string") return a.flags["--by"];
@@ -860,7 +869,7 @@ async function connectorPin(a: Args, out: (s: string) => void, env: NodeJS.Proce
  * use a secret, so the environment may hold one (no `credential_in_environment`). Add a command here only after reading
  * its code path in `main`; `cancel` is not one, since it asks an adapter about an action whose outcome is unknown.
  */
-const READ_ONLY_COMMANDS: ReadonlySet<string> = new Set(["status", "show", "denials", "artifact", "decision", "shadow-diff"]);
+const READ_ONLY_COMMANDS: ReadonlySet<string> = new Set(["status", "show", "denials", "artifact", "decision", "shadow-diff", "waits", "watch"]);
 
 /**
  * The runtime for a run's package, and the package's lock: it says which member a key belongs to. How it is built
@@ -1064,6 +1073,18 @@ async function otel(a: Args, db: Db, out: (s: string) => void): Promise<number> 
   }
 }
 
+/** `--interval` of `tick` and of `watch --follow`: how long a pass waits for the next, a duration (default 10 s), only with `--follow`. */
+function intervalOf(a: Args, follow: boolean): number {
+  const given = a.flags["--interval"];
+  if (given !== undefined && !follow) throw new Usage("--interval is how long --follow waits between two passes");
+  const m = typeof given === "string" ? /^([1-9][0-9]{0,8})(ms|s|m|h)?$/.exec(given) : null;
+  if (typeof given === "string" && !m) throw new Usage("--interval is a duration: 500ms, 10s, 2m or 1h (a number alone is seconds)");
+  const intervalMs = m ? Number(m[1]) * { ms: 1, s: 1000, m: 60_000, h: 3_600_000 }[(m[2] ?? "s") as "ms" | "s" | "m" | "h"] : TICK_INTERVAL_MS;
+  // Node cuts a longer timer to 1 ms: the loop would pass without pause.
+  if (intervalMs > MAX_INTERVAL_MS) throw new Usage(`--interval is at most ${MAX_INTERVAL_MS} ms (about 24 days)`);
+  return intervalMs;
+}
+
 /**
  * `mandate tick` (spec/attention.md "The driver loop"): one pass, or with `--follow` one pass every `--interval`
  * (10 s unless given) until SIGINT or SIGTERM. Each run that waits is ticked by a runtime built for its own package,
@@ -1076,13 +1097,7 @@ async function otel(a: Args, db: Db, out: (s: string) => void): Promise<number> 
 async function tick(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => void, env: NodeJS.ProcessEnv): Promise<number> {
   if (a.positional.length) throw new Usage("tick takes no run: mandate tick [--follow] [--interval 10s] [--no-notify]");
   const follow = a.flags["--follow"] === true;
-  const given = a.flags["--interval"];
-  if (given !== undefined && !follow) throw new Usage("--interval is how long --follow waits between two passes");
-  const m = typeof given === "string" ? /^([1-9][0-9]{0,8})(ms|s|m|h)?$/.exec(given) : null;
-  if (typeof given === "string" && !m) throw new Usage("--interval is a duration: 500ms, 10s, 2m or 1h (a number alone is seconds)");
-  const intervalMs = m ? Number(m[1]) * { ms: 1, s: 1000, m: 60_000, h: 3_600_000 }[(m[2] ?? "s") as "ms" | "s" | "m" | "h"] : TICK_INTERVAL_MS;
-  // Node cuts a longer timer to 1 ms: the loop would pass without pause.
-  if (intervalMs > MAX_INTERVAL_MS) throw new Usage(`--interval is at most ${MAX_INTERVAL_MS} ms (about 24 days)`);
+  const intervalMs = intervalOf(a, follow);
   const notifications = a.flags["--no-notify"] === true ? undefined : config.notifications;
   const err = (s: string): void => void process.stderr.write(`mandate: ${s}\n`);
   const message = (e: unknown): string => terminalText(e instanceof Error ? e.message : String(e));
@@ -1287,30 +1302,6 @@ function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
 }
 
 /**
- * Untrusted text as a terminal shows it (0.6 output): every code point that is not printed as itself is written as
- * JSON writes an escape, `\uXXXX` (each UTF-16 unit of it): controls (C0, DEL, C1), format characters (bidirectional
- * overrides and isolates, zero-width characters, the byte order mark), line and paragraph separators, private-use,
- * unassigned and lone surrogate code points. So no text a model or a person wrote can move the cursor, reorder or
- * hide the lines a reviewer reads. Within a JSON text the result is still the same JSON value.
- */
-export function terminalText(s: string): string {
-  return s.replace(UNPRINTED, escaped);
-}
-
-/** What a terminal does not print as itself: controls, format characters, separators, private-use, unassigned, lone surrogates. */
-const UNPRINTED = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Cs}]/gu;
-const escaped = (ch: string): string => Array.from({ length: ch.length }, (_, k) => `\\u${ch.charCodeAt(k).toString(16).toUpperCase().padStart(4, "0")}`).join("");
-
-/**
- * A document (Markdown, HTML) as `terminalText` would write each fragment of it: the line feeds and tabs that lay it
- * out stay, and every other code point a terminal does not print as itself is written `\uXXXX`. A renderer writes
- * none of those itself, so what is escaped is what a fragment of the run brought.
- */
-export function terminalDocument(s: string): string {
-  return s.replace(UNPRINTED, (ch) => (ch === "\n" || ch === "\t" ? ch : escaped(ch)));
-}
-
-/**
  * What a review's wait asks (0.6), as `status` shows it: the role asked, its deadline and who it escalates to, each
  * open item by its index with what it failed and who may waive that, and its value, which a model wrote; then the
  * command that decides it.
@@ -1398,22 +1389,6 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
   return lines.join("\n") + "\n";
 }
 
-/**
- * A value as a status line of a 0.6 run shows it: as `show` writes it, with each text quoted as JSON writes it, so
- * a reader sees where one ends, and with every code point a terminal does not print as itself escaped
- * (`terminalText`), so no text a model, a person or a server wrote can move the cursor or clear the lines around it.
- */
-export function shownSafe(v: Value): string {
-  const quoted = (x: Value): string => {
-    const t = tagOf(x);
-    if (t) return t.args.length ? `${t.tag}(${t.args.map(quoted).join(", ")})` : t.tag;
-    if (isObj(x) && "$money" in x) return show(x);
-    if (isObj(x) && "$verified" in x) return quoted(unwrap(x));
-    return typeof x === "string" ? JSON.stringify(x) : canonical(x);
-  };
-  return terminalText(quoted(v));
-}
-
 function subjectLines(subject: Value, shown: (v: Value) => string = show): string[] {
   const parts = Array.isArray(subject) ? subject : [subject];
   const out: string[] = [];
@@ -1425,4 +1400,326 @@ function subjectLines(subject: Value, shown: (v: Value) => string = show): strin
     }
   }
   return out;
+}
+
+/** The runtime of a command that only reads: built without an adapter that could use a secret, so the environment may hold one. */
+function readerRuntime(config: RuntimeConfig, db: Db): Runtime {
+  return new Runtime(db, operatorAdapters(config), undefined, undefined, runtimeOptions(config, db));
+}
+
+/**
+ * A person's signed record of a decision on what the run shows now (`Runtime.shown`), naming the revision they decided
+ * on: `seen` is given the run's revision and says which one (the one `--revision` names, or the one a listing showed).
+ * The one place a command signs a decision about a wait or a run, for `approve`, `answer`, `review`, `amend`, `cancel`
+ * and the others, and for `decide`.
+ */
+async function signedFor(rt: Runtime, runId: string, key: EvidenceSigner, member: string, about: "wait" | "run" | { reconcile: string }, kind: DecisionKind, payload: string | undefined, seen: (shownRevision: number) => number): Promise<SignedDecision> {
+  const shown = await rt.shown(runId, about);
+  return signDecision(key, { ...shown, revision: seen(shown.revision) }, { kind, member, ...(payload !== undefined ? { payload } : {}), at: new Date() });
+}
+
+/** JSON as a terminal may be shown it: the same value, with every code point a terminal does not print as itself written `\uXXXX` inside its texts. */
+const jsonText = (v: unknown, indent?: number): string => terminalDocument(JSON.stringify(v, null, indent));
+
+/**
+ * `mandate waits (--role R | --member M) [--tenant T] [--json]` (spec/attention.md "The command line"): the open
+ * decisions of a role or a member across all runs, as `Runtime.listWaits` gives them, each value masked by the cap of
+ * the role it is listed to and labelled. Read-only. A role or member no package binds lists nothing, and is no error.
+ * `--json` prints the list as JSON; its texts are escaped as every other output's are, and are the same values.
+ */
+async function waits(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => void, made: (rt: Runtime) => void): Promise<number> {
+  if (a.positional.length) throw new Usage("waits takes no run: mandate waits (--role R | --member M) [--tenant T] [--json]");
+  const role = a.flags["--role"];
+  const member = a.flags["--member"];
+  if ((typeof role === "string") === (typeof member === "string")) throw new Usage("waits takes one of --role R and --member M: mandate waits (--role R | --member M) [--tenant T] [--json]");
+  const tenant = a.flags["--tenant"];
+  const who = typeof role === "string" ? { role } : { member: member as string };
+  const rt = readerRuntime(config, db);
+  made(rt);
+  const items = await rt.listWaits(who, typeof tenant === "string" ? { tenant } : {});
+  out(a.flags["--json"] === true ? jsonText(items, 2) + "\n" : waitsText(who, items));
+  return 0;
+}
+
+/** Waits `ms` or until `signal` aborts. */
+const pause = (ms: number, signal: AbortSignal): Promise<void> =>
+  new Promise((done) => {
+    const t = setTimeout(done, ms);
+    signal.addEventListener("abort", () => (clearTimeout(t), done()), { once: true });
+  });
+
+/**
+ * `mandate watch` (spec/attention.md "The command line"), two forms:
+ *
+ * - `watch <run> --role R --jsonl`: the role's projected events (`Runtime.watchRun`) from the first, one JSON line each,
+ *   in order, and the command ends. There is no audit audience here, and no `--follow` (following a run is polling with
+ *   the cursor `next`, which is not a command of 0.7).
+ * - `watch --member M --out DIR [--follow] [--interval 10s] [--refresh SECONDS]`: script-free pages in DIR (person.ts),
+ *   once, or with `--follow` again every `--interval` until SIGINT or SIGTERM, which stop it between two passes.
+ *
+ * Exit 1 when a page could not be made (it is said on standard error) or a refusal; 2 for a usage error.
+ */
+async function watch(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => void, env: NodeJS.ProcessEnv, made: (rt: Runtime) => void): Promise<number> {
+  if (a.flags["--audit"] !== undefined) throw new Usage("watch has no audit audience: it shows a role or a member what they may be shown");
+  if (a.positional.length > 1) throw new Usage("watch takes one run: mandate watch <run> --role R --jsonl");
+  const [run] = a.positional;
+  const given = (...flags: string[]): string | undefined => flags.find((f) => a.flags[f] !== undefined);
+  if (run !== undefined) {
+    const wrong = given("--member", "--out", "--refresh", "--interval", "--follow");
+    if (wrong !== undefined) throw new Usage(`${wrong} is for the pages: mandate watch --member M --out DIR [--follow] [--interval 10s] [--refresh SECONDS]; the events of a run are mandate watch <run> --role R --jsonl, which prints what there is and ends`);
+    if (a.flags["--jsonl"] !== true) throw new Usage("watch <run> prints events as JSON lines: mandate watch <run> --role R --jsonl");
+    const role = a.flags["--role"];
+    if (typeof role !== "string") throw new Usage("--role R is required: the role whose projection of the run is printed");
+    const { rt } = await runtimeFor(db, config, "watch", run, env);
+    made(rt);
+    let after = 0;
+    for (;;) {
+      const w = await rt.watchRun(run, { role }, { afterSeq: after, limit: WATCH_LIMIT });
+      for (const e of w.events) out(jsonText(e) + "\n");
+      if (w.next === after) return 0;
+      after = w.next;
+    }
+  }
+  const wrong = given("--role", "--jsonl");
+  if (wrong !== undefined) throw new Usage(`${wrong} is for the events of a run: mandate watch <run> --role R --jsonl`);
+  const member = a.flags["--member"];
+  if (typeof member !== "string") throw new Usage("watch needs --member M --out DIR (pages), or a run with --role R --jsonl (events)");
+  if (typeof a.flags["--out"] !== "string") throw new Usage("--out DIR is required: the directory the pages are written in");
+  const dir = resolve(a.flags["--out"]);
+  const follow = a.flags["--follow"] === true;
+  const intervalMs = intervalOf(a, follow);
+  const asked = a.flags["--refresh"];
+  if (asked !== undefined && !/^[1-9][0-9]{0,4}$/.test(String(asked))) throw new Usage("--refresh is a number of seconds, 1 to 99999: the pages reload themselves that often; without it they do not");
+  const refresh = asked === undefined ? undefined : Number(asked);
+  const rt = readerRuntime(config, db);
+  made(rt);
+  const state: PagesState = { content: new Map(), runs: new Map() };
+  const once = async (): Promise<PassResult> => {
+    const r = await pass(rt, member, dir, { ...(refresh !== undefined ? { refresh } : {}), state });
+    for (const p of r.problems) process.stderr.write(`mandate: ${p}\n`);
+    if (r.written.length) out(`watch: wrote ${r.written.length === 1 ? "1 file" : `${r.written.length} files`} in ${terminalText(dir)}: ${r.written.join(", ")}\n`);
+    return r;
+  };
+  if (!follow) return (await once()).problems.length ? 1 : 0;
+  const stop = new AbortController();
+  const interrupt = (): void => stop.abort();
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", interrupt);
+  let passes = 0;
+  let failed = false;
+  try {
+    while (!stop.signal.aborted) {
+      try {
+        failed = (await once()).problems.length > 0;
+      } catch (e) {
+        failed = true;
+        process.stderr.write(`mandate: a pass failed: ${terminalText(e instanceof Error ? e.message : String(e))}; the next one comes in ${intervalMs} ms\n`);
+      }
+      passes++;
+      await pause(intervalMs, stop.signal);
+    }
+  } finally {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", interrupt);
+  }
+  out(`watch: stopped after ${passes === 1 ? "1 pass" : `${passes} passes`}\n`);
+  return failed ? 1 : 0;
+}
+
+/** Standard input as lines, from one reader for every prompt (a reader made for each would drop what it had buffered). */
+function stdinLines(): { lines: AsyncIterator<string>; close: () => void } {
+  const reader = createInterface({ input: process.stdin, terminal: false });
+  return { lines: reader[Symbol.asyncIterator](), close: () => reader.close() };
+}
+
+/**
+ * The open waits of the person who holds `key`: for each member the key is listed under in a package's lock (or the
+ * member `--member` names), the waits `listWaits` gives that member, kept where that package's lock lists the key under
+ * that member, as the lock says per wait. Sorted as `listWaits` sorts.
+ */
+async function waitsOfKey(reader: Runtime, db: Db, key: EvidenceSigner, explicit: string | undefined): Promise<WaitItem[]> {
+  if (explicit !== undefined) return await reader.listWaits({ member: explicit });
+  const locks = new Map((await db.query<{ package_hash: string; lock: Lock }>("select package_hash, lock from packages")).map((p) => [p.package_hash, p.lock] as const));
+  const members = [...new Set([...locks.values()].map((l) => memberOf(l, key.keyId)).filter((m): m is string => m !== undefined))].sort();
+  const seen = new Map<string, WaitItem>();
+  for (const member of members) {
+    for (const item of await reader.listWaits({ member })) {
+      const lock = locks.get(item.package);
+      if (lock !== undefined && memberOf(lock, key.keyId) === member) seen.set(`${item.run}\u0000${item.command}\u0000${item.role}`, item);
+    }
+  }
+  return [...seen.values()].sort((x, y) => x.since - y.since || (x.run < y.run ? -1 : x.run > y.run ? 1 : 0) || (x.command < y.command ? -1 : x.command > y.command ? 1 : 0) || (x.role < y.role ? -1 : 1));
+}
+
+/**
+ * `mandate decide --key FILE [--member NAME]` (spec/attention.md "The command line"): lists the open waits of whoever
+ * holds the key, shows the one chosen as its role is shown it (masked above the role's cap, with each value's class and
+ * how it is known, its deadline and what happens with no answer), asks for a choice and for a confirmation, signs, and
+ * submits through the very paths `approve`, `decline`, `answer`, `review` and `amend` use (`signedFor`, then
+ * `decideAction`, `submitInput`, `decideReview`, `decideAmendment`). It adds no check and removes none: the runtime
+ * refuses what it would refuse from any client, and a refusal is printed with its reason, nothing retried.
+ *
+ * It reads one line of `input` (standard input) per prompt, in this order: the wait's number in the list; for a decision
+ * or an amendment `approve` or `decline`; for a question the text of the answer; for a review each open item in turn,
+ * `waive` or `decline` (or, at the first, every item in one line: `waive 0,2 decline 1`); then `yes` (or `y`) to sign.
+ * Anything else, and the end of the input before the confirmation, signs nothing. When what is asked is masked for the
+ * member's role, the confirmation says so and takes only `yes`. The subject it signs is obtained from `Runtime.shown`, as
+ * `approve` obtains it: a role the wait is masked from cannot read it from a listing, and is not shown it here.
+ *
+ * It signs for the revision the list showed, so a run that has moved on is refused as `stale_revision`. Exit 0 when the
+ * decision was taken; 1 when it was refused, cancelled or could not be made; 2 for a usage error or an answer not understood.
+ */
+async function decide(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => void, env: NodeJS.ProcessEnv, input: AsyncIterable<string> | undefined, made: (rt: Runtime) => void): Promise<number> {
+  if (a.positional.length) throw new Usage("decide takes no run: mandate decide --key FILE [--member NAME]");
+  if (typeof a.flags["--key"] !== "string") throw new Usage("--key FILE is required: a decision is signed");
+  if (config.decisions.mode === "unsigned") throw new Usage("decide signs each decision with --key, and this configuration takes decisions in unsigned mode (decisions.mode): mandate approve <run> --by NAME takes them there");
+  const key = readDecisionKey(a.flags["--key"]);
+  const explicit = typeof a.flags["--member"] === "string" ? a.flags["--member"] : undefined;
+  const reader = readerRuntime(config, db);
+  made(reader);
+  const items = await waitsOfKey(reader, db, key, explicit);
+  const who = explicit !== undefined ? `member ${terminalText(explicit)}` : `key ${key.keyId}`;
+  if (!items.length) {
+    out(`nothing waits for ${who}\n`);
+    return 0;
+  }
+  const reading = input === undefined ? stdinLines() : undefined;
+  const lines = input !== undefined ? input[Symbol.asyncIterator]() : reading!.lines;
+  const interactive = input === undefined && process.stdin.isTTY === true;
+  // One line per prompt; the prompt is written without a line end, and a line that was piped in is echoed after it, so the transcript reads as a terminal's would.
+  const ask = async (prompt: string): Promise<string | undefined> => {
+    out(prompt);
+    const r = await lines.next();
+    if (r.done) {
+      out("\n");
+      return undefined;
+    }
+    const line = String(r.value).replace(/\r$/, "");
+    if (!interactive) out(terminalText(line) + "\n");
+    return line;
+  };
+  const cancelled = (why: string): number => {
+    out(`${why}; nothing was signed\n`);
+    return 1;
+  };
+  const notUnderstood = (said: string, wanted: string): never => {
+    throw new Unchecked(`${JSON.stringify(terminalText(said))} is not ${wanted}; nothing was signed`);
+  };
+  try {
+    out([`${items.length === 1 ? "1 open decision" : `${items.length} open decisions`} for ${who}:`, ...items.map((item, i) => waitListLine(item, i + 1))].join("\n") + "\n");
+    const picked = await ask(`Which one? [1-${items.length}] `);
+    if (picked === undefined) return cancelled("the input ended before a wait was chosen");
+    if (!/^[1-9][0-9]*$/.test(picked.trim()) || Number(picked.trim()) > items.length) return notUnderstood(picked, `a number from 1 to ${items.length}`);
+    const item = items[Number(picked.trim()) - 1]!;
+    const { rt, lock } = await runtimeFor(db, config, "decide", item.run, env);
+    made(rt);
+    const member = explicit ?? memberOf(lock, key.keyId);
+    if (member === undefined) throw new Violation("invalid_decision", `unknown_key: the lock of run ${item.run}'s package lists key ${key.keyId} under no member.`);
+    // The subject this signs is the wait's digest as the run shows it now, obtained as `approve` obtains it. The run takes
+    // a decision on one wait at a time, the one it shows (a `par` can leave several open).
+    const now = await rt.shown(item.run, "wait");
+    if (now.command !== item.command) {
+      return cancelled(`run ${terminalText(item.run)} has more than one wait open and takes a decision on ${terminalText(now.command ?? "another one")} first; this one, ${terminalText(item.command)}, can be decided once that one is`);
+    }
+    // What the role's view of the run holds of the wait: the runtime's own members of its request (what an item of a review failed, an amendment's changes).
+    let request: Obj | undefined;
+    try {
+      const w = ((await runView(rt, item.run, { role: item.role })).view as unknown as { waiting: Value }).waiting;
+      if (isObj(w) && w["command"] === item.command && isObj(w["request"] ?? null)) request = w["request"] as Obj;
+    } catch (e) {
+      // A role the lock binds and the program does not name has no view.
+      if (!(e instanceof Violation)) throw e;
+    }
+    const masked = hidesFromRole(item);
+    const shownOut = [...waitLines(item, undefined, !(item.kind === "review" && request))];
+    if (masked) shownOut.push(`  what you are asked to decide is masked for ${terminalText(item.role)}: it is above what that role may be shown, so its value is not printed, only its class and how it is known`);
+    const open = item.kind === "review" && request ? openItems(request) : [];
+    if (item.kind === "review") {
+      if (!request) return cancelled("the role's view of the run does not hold this review, so its items cannot be shown");
+      shownOut.push(...open.flatMap((o, i) => openItemLines(item, o, i)));
+    } else if (request) shownOut.push(...requestLines(item.kind, request));
+    out("\n" + shownOut.join("\n") + "\n\n");
+
+    let kind: DecisionKind;
+    let payload: string | undefined;
+    let what: string;
+    let submit: (msg: { sender: string; messageId: string }, signed: SignedDecision) => Promise<RunRow>;
+    if (item.kind === "decision" || item.kind === "amendment") {
+      const said = await ask(`${item.kind === "amendment" ? "Approve or decline the amendment" : "Approve or decline"}? [approve/decline] `);
+      if (said === undefined) return cancelled("the input ended before a choice was made");
+      const choice = said.trim().toLowerCase();
+      if (choice !== "approve" && choice !== "decline") return notUnderstood(said, "approve or decline");
+      kind = item.kind === "amendment" ? (choice === "approve" ? "amend" : "decline") : choice;
+      what = choice;
+      submit = item.kind === "amendment" ? (msg, signed) => rt.decideAmendment(item.run, msg, signed) : (msg, signed) => rt.decideAction(item.run, msg, { signed });
+    } else if (item.kind === "input") {
+      const text = await ask("Your answer: ");
+      if (text === undefined) return cancelled("the input ended before an answer was given");
+      if (text === "") throw new Unchecked("an answer needs text; nothing was signed");
+      kind = "answer";
+      payload = payloadOf.answer(text);
+      what = `answer ${shownSafe(text)}`;
+      submit = (msg, signed) => rt.submitInput(item.run, msg, { value: text, signed });
+    } else {
+      const lists = await askReview(open.map((o) => o.index), ask);
+      if (lists === undefined) return cancelled("the input ended before every item was decided");
+      kind = "review";
+      payload = payloadOf.review(lists);
+      what = `waive ${lists.waive.join(",") || "nothing"}, decline ${lists.decline.join(",") || "nothing"}`;
+      submit = (msg, signed) => rt.decideReview(item.run, msg, { ...lists, signed });
+    }
+    const role = now.role !== undefined ? terminalText(now.role) : "a member the lock lists";
+    out(`About to sign as ${terminalText(member)} (${role}): ${what}\n  run ${terminalText(item.run)}, wait ${terminalText(item.command)}, revision ${item.revision}\n`);
+    if (masked) {
+      out(`  You are deciding on something you are not shown: what this asks is above what ${terminalText(item.role)} may be shown. It is signed for its digest all the same.\n`);
+      const said = await ask("Type yes to sign it anyway: ");
+      if (said === undefined || said.trim().toLowerCase() !== "yes") return cancelled(said === undefined ? "the input ended before the confirmation" : "not confirmed");
+    } else {
+      const said = await ask("Sign and submit? [y/N] ");
+      const answer = said?.trim().toLowerCase();
+      if (answer !== "y" && answer !== "yes") return cancelled(said === undefined ? "the input ended before the confirmation" : "not confirmed");
+    }
+    // Signed for the revision the list showed: a run that has moved on since is refused by the runtime as stale.
+    const signed = await signedFor(rt, item.run, key, member, "wait", kind, payload, () => item.revision);
+    let run: RunRow;
+    try {
+      run = await submit({ sender: member, messageId: randomUUID() }, signed);
+    } catch (e) {
+      if (e instanceof InvalidDecision && e.reason === "stale_revision") throw new Violation("stale_revision", `${e.message.slice("stale_revision: ".length)} The run moved on after the list was shown; nothing was decided. Run mandate decide again to see what it asks now.`);
+      throw e;
+    }
+    out(`decision  ${decisionId(signed.record)}\nsigned by ${terminalText(member)}: ${what}\nrun ${terminalText(run.run_id)} is now ${run.state}, revision ${run.revision}\n`);
+    return 0;
+  } finally {
+    reading?.close();
+  }
+}
+
+/**
+ * The open items of a review, each waived or declined: one line `waive 0,2 decline 1` for all of them (a script's form),
+ * or one answer per item in turn, `waive` or `decline`. Undefined when the input ends. An answer that is neither is not
+ * understood (`Unchecked`). Whether the lists decide every item exactly once is the runtime's to say.
+ */
+async function askReview(indices: number[], ask: (prompt: string) => Promise<string | undefined>): Promise<{ waive: number[]; decline: number[] } | undefined> {
+  const lists = { waive: [] as number[], decline: [] as number[] };
+  const first = await ask(`Decide every open item (${indices.join(", ")}) once. All in one line, \`waive 0,2 decline 1\`, or item ${indices[0] ?? "?"} first [waive/decline]: `);
+  if (first === undefined) return undefined;
+  const words = first.trim().toLowerCase().split(/\s+/);
+  if (words.length > 1) {
+    for (let i = 0; i < words.length; i += 2) {
+      const list = words[i + 1];
+      if ((words[i] !== "waive" && words[i] !== "decline") || list === undefined || !/^[0-9]+(,[0-9]+)*$/.test(list)) throw new Unchecked(`${JSON.stringify(terminalText(first))} is not \`waive 0,2 decline 1\`; nothing was signed`);
+      lists[words[i] as "waive" | "decline"].push(...list.split(",").map(Number));
+    }
+    return lists;
+  }
+  let said: string | undefined = first;
+  for (const [n, index] of indices.entries()) {
+    if (n > 0) said = await ask(`item ${index} [waive/decline]: `);
+    if (said === undefined) return undefined;
+    const choice = said.trim().toLowerCase();
+    if (choice !== "waive" && choice !== "decline") throw new Unchecked(`${JSON.stringify(terminalText(said))} is not waive or decline; nothing was signed`);
+    lists[choice].push(index);
+  }
+  return lists;
 }

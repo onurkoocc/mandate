@@ -976,12 +976,20 @@ mandate drift --module MODEL --component NAME=DIR… [--json]
 mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [--name PREFIX] [--harness-tokens N]
 mandate connector pin <program> [--lock FILE] [--config FILE] [--module FILE]… [--libraries DIR]
 mandate promote <run> --to read_only|live --key FILE [--member NAME] [--yes]
+mandate waits (--role R | --member M) [--tenant T] [--json]
+mandate watch --member M --out DIR [--follow] [--interval 10s] [--refresh SECONDS]
+mandate watch <run> --role R --jsonl
+mandate decide --key FILE [--member NAME]
 ```
 
 `review` decides a 0.6 review wait and `connector pin` writes the schema
 digests of a 0.6 package's connectors into its lock
 ([`library.md`](library.md#the-lock-binding-and-schema-digests)); `--libraries`
 names the directory the libraries a lock pins are read from.
+
+`waits`, `watch` and `decide` (0.7) read only the projections of a run for a role
+and submit decisions through the paths above; they are described in
+[`attention.md`](attention.md#the-command-line).
 
 `reconcile` is signed when `--key` is given. A run of a signed package (a
 0.4 program, or a runtime configured for signed decisions) requires the key;
