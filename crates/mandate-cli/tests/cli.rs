@@ -121,7 +121,9 @@ fn module_files_of(program: &str) -> Vec<&'static str> {
         ],
         // Their modules are their libraries': the acceptance program's from
         // its lock, the shaped migration's the built-in std.patterns alone.
-        "fixtures/library/invoices.mdt" | "fixtures/library/migrate-all.mdt" => Vec::new(),
+        "fixtures/library/invoices.mdt"
+        | "fixtures/attention/invoices.mdt"
+        | "fixtures/library/migrate-all.mdt" => Vec::new(),
         "fixtures/library/batch.mdt" => vec![
             "fixtures/library/acme.connectors/types.mdt",
             "fixtures/library/acme.connectors/connectors.mdt",
@@ -182,7 +184,9 @@ fn output(program: &str, locked: bool, with_modules: bool, command: &[&str]) -> 
         if !lock.ends_with("/mandate.lock.json") {
             args.extend(["--lock".to_owned(), lock]);
         }
-        if program == "fixtures/library/invoices.mdt" {
+        if program == "fixtures/library/invoices.mdt"
+            || program == "fixtures/attention/invoices.mdt"
+        {
             acme_connectors(&mut io);
             args.extend(["--libraries".to_owned(), "libs".to_owned()]);
         }
@@ -213,7 +217,8 @@ fn every_command_prints_what_the_golden_files_pin() {
             // A program whose modules are its libraries' has them from its
             // lock alone: the command line has no check of it with its
             // libraries and without its lock.
-            let from_libraries = program == "fixtures/library/invoices.mdt";
+            let from_libraries = program == "fixtures/library/invoices.mdt"
+                || program == "fixtures/attention/invoices.mdt";
             let commands: Vec<Pinned> = vec![
                 ("check", false, false, vec!["check", "FILE", "--json"]),
                 (

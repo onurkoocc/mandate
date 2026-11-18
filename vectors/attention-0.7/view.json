@@ -1599,6 +1599,193 @@
       "html": "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\n<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; frame-ancestors 'none'\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Attention: MigrateTwo</title><style>\nbody { font: 14px/1.45 system-ui, sans-serif; margin: 2rem auto; max-width: 72rem; padding: 0 1rem; color: #1b1b1b; background: #fff; }\nh1 { font-size: 1.4rem; } h2 { font-size: 1.1rem; margin-top: 2rem; border-bottom: 1px solid #ddd; }\ntable { border-collapse: collapse; margin: .5rem 0 1rem; } th, td { border: 1px solid #ccc; padding: .3rem .5rem; text-align: left; vertical-align: top; }\nth { background: #f3f3f3; } .meta td:first-child { font-weight: 600; }\npre { background: #f6f6f6; padding: .6rem; overflow-x: auto; white-space: pre-wrap; }\n.mono, code { font-family: ui-monospace, monospace; font-size: 12px; }\n.untrusted { font-family: ui-monospace, monospace; font-size: 12px; background: #fff7e0; border: 1px dashed #c9a227; padding: 0 .2rem; white-space: pre-wrap; }\npre.untrusted { display: block; padding: .6rem; }\n.note { color: #555; border-left: 3px solid #bbb; padding-left: .6rem; }\n</style></head><body>\n<h1>Attention: MigrateTwo</h1>\n<table class=\"meta\">\n<tr><td>Program</td><td class=\"mono\">sha256:d329cff8568fc4ad04cbed0421d0aed2a53202bbc87bec1852fdc895c2401826</td></tr>\n<tr><td>Language</td><td class=\"mono\">mandate/0.7</td></tr>\n<tr><td>View</td><td class=\"mono\">mandate/view/0.1 attention, generated from the program and its lock</td></tr>\n</table>\n<p>Stages: Work on each part · Merge the results</p>\n<p>At most 0 questions in all; no bound is declared (asks is not set). It names no owner, so no role approves its card.</p>\n<p class=\"note\">The runtime&#39;s configuration may add authorizations by a person that this program does not name, and may hand one to a role other than the one a row names: only the total is held at run time, not the count of each role. A run whose configuration adds more questions than the asks limit leaves room for does not start.</p>\n<table><thead><tr><th>Role</th><th>Members</th><th>May be shown</th><th>When</th><th>What is asked</th><th>At most</th><th>Deadline</th><th>If no answer</th></tr></thead><tbody>\n<tr><td>no role</td><td>no role is asked; with no owner, nobody is notified, and every role the lock binds can list it</td><td>—</td><td>only if the budget runs out, and again each time it runs out after an answer that does not raise the limits</td><td>Resume the run, which is paused</td><td>not bounded (once each time it runs out)</td><td>no deadline</td><td>The run waits for an answer</td></tr>\n</tbody></table>\n<p>What it tells whom: nothing, it makes no report.</p>\n</body></html>\n"
     }
   },
+  "fixtures/attention/invoices.mdt": {
+    "MatchInvoices": {
+      "json": {
+        "format": "mandate/view/0.1",
+        "kind": "attention",
+        "program": "sha256:ca800dff12f11f79bcf93c7f1c457ecbae477435cf5e3092b6bcdff896a03ef8",
+        "workflow": "MatchInvoices",
+        "stages": [
+          {
+            "name": "collect",
+            "title": "Collect the items"
+          },
+          {
+            "name": "work",
+            "title": "Work on each item"
+          },
+          {
+            "name": "exceptions",
+            "title": "Decide on the exceptions"
+          },
+          {
+            "name": "commit",
+            "title": "Commit what was accepted"
+          }
+        ],
+        "lock": true,
+        "bound": {
+          "total": 2,
+          "asks": 2,
+          "left": 0,
+          "declared": true,
+          "unbounded_because": [],
+          "leaves_out_plans": false,
+          "text": "At most 2 questions in all (asks: 2)."
+        },
+        "owner": {
+          "role": "accountant",
+          "members": [
+            "ana"
+          ],
+          "from": "workflow",
+          "promotion": true,
+          "text": "Its card is approved, and it is promoted, by accountant (ana)."
+        },
+        "configuration": "The runtime's configuration may add authorizations by a person that this program does not name, and may hand one to a role other than the one a row names: only the total is held at run time, not the count of each role. A run whose configuration adds more questions than the asks limit leaves room for does not start.",
+        "uncounted_effects": [],
+        "questions": [
+          {
+            "kind": "review",
+            "role": "accountant",
+            "members": [
+              "ana"
+            ],
+            "notified": null,
+            "class": "confidential",
+            "shown": "confidential",
+            "known": "model",
+            "stage": "exceptions",
+            "only": null,
+            "effect": null,
+            "at_most": 1,
+            "unbounded_because": null,
+            "deadline_ms": 86400000,
+            "on_no_answer": "escalates",
+            "escalates_to": "finance_lead",
+            "contract": null,
+            "criterion": null,
+            "items": 60,
+            "waivable": [
+              "Matched.totals"
+            ],
+            "when": "Decide on the exceptions",
+            "what": "Waive or decline the open items of the batch (Matched.totals may be waived); one decision about up to 60 items",
+            "at_most_text": "1 decision",
+            "deadline": "1 day from when it is asked",
+            "if_no_answer": "It goes to finance_lead, who has 1 day of their own"
+          },
+          {
+            "kind": "review",
+            "role": "finance_lead",
+            "members": [
+              "ben"
+            ],
+            "notified": null,
+            "class": "confidential",
+            "shown": "confidential",
+            "known": "model",
+            "stage": "exceptions",
+            "only": "on_escalation",
+            "effect": null,
+            "at_most": 1,
+            "unbounded_because": null,
+            "deadline_ms": 86400000,
+            "on_no_answer": "declined",
+            "escalates_to": null,
+            "contract": null,
+            "criterion": null,
+            "items": 60,
+            "waivable": [
+              "Matched.totals"
+            ],
+            "when": "Decide on the exceptions, only after the accountant's deadline",
+            "what": "The same decision",
+            "at_most_text": "1 decision",
+            "deadline": "1 day from the escalation, which comes at the first tick after the accountant's deadline",
+            "if_no_answer": "Every open item is declined, by nobody, and the run goes on with the items that were accepted"
+          },
+          {
+            "kind": "pause",
+            "role": null,
+            "members": null,
+            "notified": "accountant",
+            "class": null,
+            "shown": "public",
+            "known": "plain",
+            "stage": null,
+            "only": "budget_exceeded",
+            "effect": null,
+            "at_most": 1,
+            "unbounded_because": null,
+            "deadline_ms": null,
+            "on_no_answer": "waits",
+            "escalates_to": null,
+            "contract": null,
+            "criterion": null,
+            "items": null,
+            "waivable": null,
+            "when": "only if the budget runs out, and again each time it runs out after an answer that does not raise the limits",
+            "what": "Resume the run, which is paused",
+            "at_most_text": "not bounded (once each time it runs out)",
+            "deadline": "no deadline",
+            "if_no_answer": "The run waits for an answer"
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "stage": "collect",
+            "when": "Collect the items",
+            "title": "Items collected",
+            "at_most": 1,
+            "fields": [
+              {
+                "name": "items",
+                "type": "Int",
+                "class": "confidential",
+                "known": "plain",
+                "known_text": "counted or given by the run"
+              }
+            ]
+          },
+          {
+            "role": "accountant",
+            "stage": "commit",
+            "when": "Commit what was accepted",
+            "title": "Batch done",
+            "at_most": 1,
+            "fields": [
+              {
+                "name": "posted",
+                "type": "Int",
+                "class": "confidential",
+                "known": "plain",
+                "known_text": "counted or given by the run"
+              },
+              {
+                "name": "declined",
+                "type": "Int",
+                "class": "confidential",
+                "known": "plain",
+                "known_text": "counted or given by the run"
+              },
+              {
+                "name": "failed",
+                "type": "Int",
+                "class": "confidential",
+                "known": "plain",
+                "known_text": "counted or given by the run"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "# Attention: MatchInvoices\n\n- **Program:** ` sha256:ca800dff12f11f79bcf93c7f1c457ecbae477435cf5e3092b6bcdff896a03ef8 `\n- **Language:** ` mandate/0.7 `\n- **View:** ` mandate/view/0.1 attention, generated from the program and its lock `\n\nStages: Collect the items · Work on each item · Decide on the exceptions · Commit what was accepted\n\nAt most 2 questions in all (asks: 2). Its card is approved, and it is promoted, by accountant (ana).\n\n> The runtime's configuration may add authorizations by a person that this program does not name, and may hand one to a role other than the one a row names: only the total is held at run time, not the count of each role. A run whose configuration adds more questions than the asks limit leaves room for does not start.\n\n| Role | Members | May be shown | When | What is asked | At most | Deadline | If no answer |\n|---|---|---|---|---|---|---|---|\n| accountant | ana | up to confidential | Decide on the exceptions | Waive or decline the open items of the batch (Matched.totals may be waived); one decision about up to 60 items | 1 decision | 1 day from when it is asked | It goes to finance\\_lead, who has 1 day of their own |\n| finance\\_lead | ben | up to confidential | Decide on the exceptions, only after the accountant's deadline | The same decision | 1 decision | 1 day from the escalation, which comes at the first tick after the accountant's deadline | Every open item is declined, by nobody, and the run goes on with the items that were accepted |\n| no role | no role is asked; the owner, accountant (ana), is notified | — | only if the budget runs out, and again each time it runs out after an answer that does not raise the limits | Resume the run, which is paused | not bounded (once each time it runs out) | no deadline | The run waits for an answer |\n\nWhat it tells whom:\n\n| To | When | Report | Fields (class · how known) |\n|---|---|---|---|\n| accountant | Collect the items | Items collected | items (Int · confidential · counted or given by the run) |\n| accountant | Commit what was accepted | Batch done | posted, declined, failed (Int · confidential · counted or given by the run) |\n",
+      "html": "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\n<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; frame-ancestors 'none'\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Attention: MatchInvoices</title><style>\nbody { font: 14px/1.45 system-ui, sans-serif; margin: 2rem auto; max-width: 72rem; padding: 0 1rem; color: #1b1b1b; background: #fff; }\nh1 { font-size: 1.4rem; } h2 { font-size: 1.1rem; margin-top: 2rem; border-bottom: 1px solid #ddd; }\ntable { border-collapse: collapse; margin: .5rem 0 1rem; } th, td { border: 1px solid #ccc; padding: .3rem .5rem; text-align: left; vertical-align: top; }\nth { background: #f3f3f3; } .meta td:first-child { font-weight: 600; }\npre { background: #f6f6f6; padding: .6rem; overflow-x: auto; white-space: pre-wrap; }\n.mono, code { font-family: ui-monospace, monospace; font-size: 12px; }\n.untrusted { font-family: ui-monospace, monospace; font-size: 12px; background: #fff7e0; border: 1px dashed #c9a227; padding: 0 .2rem; white-space: pre-wrap; }\npre.untrusted { display: block; padding: .6rem; }\n.note { color: #555; border-left: 3px solid #bbb; padding-left: .6rem; }\n</style></head><body>\n<h1>Attention: MatchInvoices</h1>\n<table class=\"meta\">\n<tr><td>Program</td><td class=\"mono\">sha256:ca800dff12f11f79bcf93c7f1c457ecbae477435cf5e3092b6bcdff896a03ef8</td></tr>\n<tr><td>Language</td><td class=\"mono\">mandate/0.7</td></tr>\n<tr><td>View</td><td class=\"mono\">mandate/view/0.1 attention, generated from the program and its lock</td></tr>\n</table>\n<p>Stages: Collect the items · Work on each item · Decide on the exceptions · Commit what was accepted</p>\n<p>At most 2 questions in all (asks: 2). Its card is approved, and it is promoted, by accountant (ana).</p>\n<p class=\"note\">The runtime&#39;s configuration may add authorizations by a person that this program does not name, and may hand one to a role other than the one a row names: only the total is held at run time, not the count of each role. A run whose configuration adds more questions than the asks limit leaves room for does not start.</p>\n<table><thead><tr><th>Role</th><th>Members</th><th>May be shown</th><th>When</th><th>What is asked</th><th>At most</th><th>Deadline</th><th>If no answer</th></tr></thead><tbody>\n<tr><td>accountant</td><td>ana</td><td>up to confidential</td><td>Decide on the exceptions</td><td>Waive or decline the open items of the batch (Matched.totals may be waived); one decision about up to 60 items</td><td>1 decision</td><td>1 day from when it is asked</td><td>It goes to finance_lead, who has 1 day of their own</td></tr>\n<tr><td>finance_lead</td><td>ben</td><td>up to confidential</td><td>Decide on the exceptions, only after the accountant&#39;s deadline</td><td>The same decision</td><td>1 decision</td><td>1 day from the escalation, which comes at the first tick after the accountant&#39;s deadline</td><td>Every open item is declined, by nobody, and the run goes on with the items that were accepted</td></tr>\n<tr><td>no role</td><td>no role is asked; the owner, accountant (ana), is notified</td><td>—</td><td>only if the budget runs out, and again each time it runs out after an answer that does not raise the limits</td><td>Resume the run, which is paused</td><td>not bounded (once each time it runs out)</td><td>no deadline</td><td>The run waits for an answer</td></tr>\n</tbody></table>\n<p>What it tells whom:</p>\n<table><thead><tr><th>To</th><th>When</th><th>Report</th><th>Fields (class · how known)</th></tr></thead><tbody>\n<tr><td>accountant</td><td>Collect the items</td><td>Items collected</td><td>items (Int · confidential · counted or given by the run)</td></tr>\n<tr><td>accountant</td><td>Commit what was accepted</td><td>Batch done</td><td>posted, declined, failed (Int · confidential · counted or given by the run)</td></tr>\n</tbody></table>\n</body></html>\n"
+    }
+  },
   "fixtures/attention/maker-checker.mdt": {
     "Billing": {
       "json": {
