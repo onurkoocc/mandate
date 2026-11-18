@@ -33,8 +33,11 @@ import { digest, isObj, type Value } from "./values.js";
 
 export const DECISION_FORMAT = "mandate/decision/0.1";
 
-/** `review` (0.6): a person's decision on a review's wait, naming each open item waived or declined (review.ts). */
-export const DECISION_KINDS = ["approve", "decline", "answer", "raise_limits", "reconcile", "envelope", "amend", "cancel", "review"] as const;
+/**
+ * `review` (0.6): a person's decision on a review's wait, naming each open item waived or declined (review.ts).
+ * `promote` (0.7): the owner's promotion of a workflow up the ladder, from a run that succeeded (spec/attention.md "Promotion").
+ */
+export const DECISION_KINDS = ["approve", "decline", "answer", "raise_limits", "reconcile", "envelope", "amend", "cancel", "review", "promote"] as const;
 export type DecisionKind = (typeof DECISION_KINDS)[number];
 
 export interface DecisionRecord {
@@ -150,7 +153,29 @@ export const payloadOf = {
    * waives and those it declines, each list in ascending order (spec/library.md "The wait and the decision").
    */
   review: (d: { waive: readonly number[]; decline: readonly number[] }): string => digest("request", { waive: [...d.waive].sort((a, b) => a - b), decline: [...d.decline].sort((a, b) => a - b) }),
+  /** A promotion (0.7): the request digest of `{ to }`, the mode it promotes the workflow to (spec/attention.md "Promotion"). */
+  promotion: (to: PromotedMode): string => digest("request", { to }),
 };
+
+// ── promotion (0.7; spec/attention.md "Promotion") ──────────────────────
+
+/** The format of what a promotion's subject is the digest of. */
+export const PROMOTION_FORMAT = "mandate/promotion/0.1";
+
+/** The modes a workflow is promoted to. A `design` run needs no promotion. */
+export type PromotedMode = "read_only" | "live";
+
+/** The mode a run must be in to promote its workflow to `to`: the one directly below it on the ladder. */
+export const PROMOTED_FROM: Readonly<Record<PromotedMode, "design" | "read_only">> = { read_only: "design", live: "read_only" };
+
+/**
+ * The subject of a promotion of `workflow` of package `pkg` to `to`, from run `from` (its id, its mode and its manifest
+ * hash): the request digest of the promotion, with, for a promotion to `live`, the digest of the shadow diff of the
+ * from-run against the `design` run it itself started under (`shadow`), and null for one to `read_only`.
+ */
+export function promotionSubject(o: { package: string; workflow: string; from: { run: string; mode: string; manifest: string }; to: PromotedMode; shadow: string | null }): string {
+  return digest("request", { format: PROMOTION_FORMAT, package: o.package, workflow: o.workflow, from: { run: o.from.run, mode: o.from.mode, manifest: o.from.manifest }, to: o.to, shadow: o.shadow });
+}
 
 const FIELDS = new Set(["format", "kind", "package", "run", "revision", "command", "subject", "role", "member", "key", "payload", "at"]);
 

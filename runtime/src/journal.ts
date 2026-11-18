@@ -1302,6 +1302,19 @@ export class Journal {
     return rows.map((r) => ({ decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) }));
   }
 
+  /**
+   * The stored promotions of a package's workflow, oldest first (spec/attention.md "Promotion"): decisions of kind
+   * `promote` for the package hash whose from-run is a run of that package and workflow. As with an approval, whoever
+   * reads them checks each one again.
+   */
+  async promotions(packageHash: string, workflow: string): Promise<StoredDecision[]> {
+    const rows = await this.db.query<Row>(
+      "select d.decision_id, d.record, d.signature from decisions d join runs r on r.run_id = d.run_id where d.package_hash = $1 and d.kind = 'promote' and r.package_hash = $1 and r.workflow = $2 order by d.accepted_at, d.decision_id",
+      [packageHash, workflow],
+    );
+    return rows.map((r) => ({ decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) }));
+  }
+
   /** A stored decision by its digest, whatever it is about. */
   async decision(decisionId: string): Promise<StoredDecision | undefined> {
     const [r] = await this.db.query<Row>("select decision_id, record, signature from decisions where decision_id = $1", [decisionId]);
