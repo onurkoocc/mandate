@@ -10,11 +10,11 @@
 // made (runtime/dist) and a test gives the one of the sources (runtime/src).
 
 import { randomBytes } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { connect, isIP } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 // ── the book ────────────────────────────────────────────────────────────
 
@@ -150,23 +150,23 @@ export function mcpServer(o) {
 
 /**
  * The state and the tools of the fake ERP, as `acme.connectors` declares it: `list_open_orders` and
- * `find_draft_invoice` read; `post_draft_invoice` and `delete_draft_invoice` write, each applied once for a key
- * however often it is sent. `drafts` holds what a live run wrote.
+ * `find_draft_invoice` read; `post_draft_invoice` and `delete_draft_invoice` write. Like a server that honours the
+ * idempotency key, it applies a post once per KEY: the same key sent again (a retry) is one post. It does not know
+ * invoices: a second post of an invoice under another key is another draft, and it is recorded as that. `posts` keeps
+ * every post, by the key it came with, with how many times that key was sent, so that nothing a run did is hidden.
  *
  * @param {ReturnType<typeof makeBook>} book
  */
 export function erpState(book) {
   const orders = book.ALL.map((i) => book.order(i));
-  /** @type {Map<string, { draft_id: string, invoice_no: string, order_no: string, key: string }>} */
-  const drafts = new Map();
-  /** @type {Map<string, { draft_id: string, invoice_no: string, order_no: string, key: string }>} */
-  const byKey = new Map();
+  /** @type {Map<string, { draft_id: string, invoice_no: string, order_no: string, key: string, calls: number }>} */
+  const posts = new Map();
   const tools = [
     { name: "list_open_orders", title: "List open orders", description: "Lists a vendor's open orders.", inputSchema: obj({ vendor_id: { type: "string" } }, ["vendor_id"]), outputSchema: obj({ result: { type: "array", items: orderSchema } }, ["result"]), annotations: { readOnlyHint: true },
       run: (a) => (typeof a["vendor_id"] !== "string" ? { error: "vendor_id is required." } : { structured: { result: orders.filter((o) => o.vendor_id === a["vendor_id"]) }, text: "orders" }) },
     { name: "find_draft_invoice", title: "Find a draft invoice", description: "Finds the draft an operation key posted.", inputSchema: obj({ key: { type: "string" } }, ["key"]), outputSchema: obj({ result: { anyOf: [obj({ draft_id: { type: "string" } }, ["draft_id"]), { type: "null" }] } }, ["result"]), annotations: { readOnlyHint: true },
       run: (a) => {
-        const d = typeof a["key"] === "string" ? byKey.get(a["key"]) : undefined;
+        const d = typeof a["key"] === "string" ? posts.get(a["key"]) : undefined;
         return { structured: { result: d ? { draft_id: d.draft_id } : null }, text: d ? "found" : "none" };
       } },
     { name: "post_draft_invoice", title: "Post a draft invoice", description: "Posts a draft invoice for a match.", inputSchema: obj({ m: matchSchema, key: { type: "string" } }, ["m", "key"]), outputSchema: obj({ draft_id: { type: "string" } }, ["draft_id"]), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
@@ -174,23 +174,33 @@ export function erpState(book) {
         const m = a["m"];
         const order = isObj(m) ? m["order"] : undefined;
         if (!isObj(m) || typeof m["invoice_no"] !== "string" || !isObj(order) || typeof order["order_no"] !== "string" || typeof a["key"] !== "string") return { error: "a match and a key are required." };
-        const had = byKey.get(a["key"]);
-        const d = had ?? { draft_id: `D-${m["invoice_no"]}`, invoice_no: m["invoice_no"], order_no: order["order_no"], key: a["key"] };
-        if (!had) {
-          byKey.set(a["key"], d);
-          drafts.set(d.invoice_no, d);
+        const had = posts.get(a["key"]);
+        if (had) {
+          had.calls++;
+          return { structured: { draft_id: had.draft_id }, text: `the key was sent again: no new draft (${had.draft_id})` };
         }
-        return { structured: { draft_id: d.draft_id }, text: had ? "already posted" : "posted a draft" };
+        const before = [...posts.values()].filter((p) => p.invoice_no === m["invoice_no"]).length;
+        const d = { draft_id: before === 0 ? `D-${m["invoice_no"]}` : `D-${m["invoice_no"]}-${before + 1}`, invoice_no: m["invoice_no"], order_no: order["order_no"], key: a["key"], calls: 1 };
+        posts.set(a["key"], d);
+        return { structured: { draft_id: d.draft_id }, text: before === 0 ? `posted a draft (${d.draft_id})` : `posted ANOTHER draft of an invoice already posted (${d.draft_id})` };
       } },
     { name: "delete_draft_invoice", title: "Delete a draft invoice", description: "Deletes a draft invoice.", inputSchema: obj({ id: obj({ draft_id: { type: "string" } }, ["draft_id"]), key: { type: "string" } }, ["id", "key"]), outputSchema: obj({ draft_id: { type: "string" } }, ["draft_id"]), annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
       run: (a) => {
         const id = a["id"];
         if (!isObj(id) || typeof id["draft_id"] !== "string") return { error: "a draft is required." };
-        for (const [k, d] of drafts) if (d.draft_id === id["draft_id"]) drafts.delete(k);
+        for (const [k, d] of posts) if (d.draft_id === id["draft_id"]) posts.delete(k);
         return { structured: { draft_id: id["draft_id"] }, text: "deleted" };
       } },
   ];
-  return { orders, drafts, tools };
+  return { orders, posts, tools };
+}
+
+/** What the fake ERP holds, as the guide reads it: every post, the invoices posted, and the invoices posted more than once. */
+export function postsSummary(posts) {
+  const all = [...posts];
+  const count = new Map();
+  for (const p of all) count.set(p.invoice_no, (count.get(p.invoice_no) ?? 0) + 1);
+  return { posts: all.length, invoices: count.size, duplicated: [...count].filter(([, n]) => n > 1).map(([i, n]) => ({ invoice_no: i, posts: n })), retried: all.filter((p) => p.calls > 1).length };
 }
 
 /**
@@ -348,7 +358,8 @@ export async function startWorld(o, deps) {
   for (const host of [...hostsIn(lockTemplate), ...hostsIn(declared)]) assertLocalOnly("a connector's host", host);
   if (o.database !== undefined && !/^(pglite:|postgres(ql)?:\/\/)/.test(o.database)) throw new Error("the database is a PostgreSQL URL (postgresql://…) or pglite:<directory>");
 
-  mkdirSync(dir, { recursive: true });
+  checkSessionDir(dir);
+  const sessionId = markSessionDir(dir);
   for (const d of ["people", "decision-keys", "libraries", "pages"]) mkdirSync(join(dir, d), { recursive: true });
   const version = JSON.parse(readFileSync(join(libraryDir, "mandate.library.json"), "utf8")).version;
   cpSync(libraryDir, join(dir, "libraries", "acme.connectors", version), { recursive: true });
@@ -400,6 +411,7 @@ export async function startWorld(o, deps) {
 
   return {
     dir,
+    id: sessionId,
     config: join(dir, "mandate.runtime.json"),
     erp,
     mailbox,
@@ -419,4 +431,109 @@ export async function startWorld(o, deps) {
 /** The directory of a new session, outside the repository: under the operating system's temporary directory. */
 export function newSessionDir() {
   return join(tmpdir(), `mandate-live-${randomBytes(4).toString("hex")}`);
+}
+
+// ── the session directory: what the kit may write into and remove ───────
+
+/** The file that says a directory is a live session's, with the session's random id (session.json carries the same id). */
+export const MARKER = ".mandate-live-session";
+/** Every entry of the top of a session directory that the kit makes; `clean` removes these and nothing else. */
+export const KNOWN = [MARKER, "session.json", "clock-offset-ms", "mandate.runtime.json", "mandate.egress.json", "samples.json", "invoices.lock.json", "notifications.jsonl", "egress.sock", "people", "decision-keys", "libraries", "pages", "store", ".mandate"];
+
+/** The real path of `p`, or, when it does not exist yet, of its nearest ancestor that does, with the rest appended. */
+export function realPathOf(p) {
+  const rest = [];
+  let at = resolve(p);
+  for (;;) {
+    try {
+      return join(realpathSync(at), ...rest.reverse());
+    } catch {
+      const up = dirname(at);
+      if (up === at) return resolve(p);
+      rest.push(basename(at));
+      at = up;
+    }
+  }
+}
+
+/** The directory, `p` or one above it, that holds a `.git` (a repository's work tree, or a linked worktree's), or undefined. */
+export function insideGitWorkTree(p) {
+  for (let at = resolve(p); ; at = dirname(at)) {
+    if (existsSync(join(at, ".git"))) return at;
+    if (dirname(at) === at) return undefined;
+  }
+}
+
+/** The marker of the session directory `dir`, or undefined when there is none or it is not the kit's. */
+export function readMarker(dir) {
+  try {
+    const m = JSON.parse(readFileSync(join(dir, MARKER), "utf8"));
+    return m && m.format === "mandate/live-session-marker/0.1" && /^[0-9a-f]{32}$/.test(m.id) ? m : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether the kit may bring a world up in `dir`: not inside a git work tree, and either new, empty, or a session
+ * directory of its own (its marker). Gives `{ resume }`; refuses by saying why. Nothing is made.
+ */
+export function checkSessionDir(dir) {
+  const real = realPathOf(dir);
+  const repository = insideGitWorkTree(real);
+  if (repository) throw new Error(`${dir} is inside a git work tree (${repository}): the session writes keys and a store, and the kit will not put them in a repository`);
+  if (!existsSync(dir)) return { resume: false };
+  if (!statSync(dir).isDirectory()) throw new Error(`${dir} is not a directory`);
+  if (readMarker(dir)) return { resume: true };
+  if (readdirSync(dir).length > 0) throw new Error(`${dir} is not empty and is not a live session's directory (it has no ${MARKER}): the kit writes only into a new or an empty directory, or its own`);
+  return { resume: false };
+}
+
+/** Makes `dir` (if need be) and its marker, once. Gives the session id. */
+export function markSessionDir(dir) {
+  mkdirSync(dir, { recursive: true });
+  const had = readMarker(dir);
+  if (had) return had.id;
+  const id = randomBytes(16).toString("hex");
+  writeFileSync(join(dir, MARKER), JSON.stringify({ format: "mandate/live-session-marker/0.1", id, created: new Date().toISOString() }) + "\n");
+  return id;
+}
+
+/** The id `dir`'s session.json carries, or undefined. */
+function sessionIdIn(dir) {
+  try {
+    return JSON.parse(readFileSync(join(dir, "session.json"), "utf8")).id;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether `dir` is a session directory of the kit's: its marker, and a session.json (if any) of the same id. Throws when not. */
+export function assertSessionDir(dir) {
+  const m = readMarker(dir);
+  if (!m) throw new Error(`${dir} is not a live session's directory (no ${MARKER} of the kit's)`);
+  const id = sessionIdIn(dir);
+  if (existsSync(join(dir, "session.json")) && id !== m.id) throw new Error(`${dir}: session.json does not belong to the marker's session`);
+  return m;
+}
+
+/**
+ * Removes what the kit made in the session directory `dir`: only the entries it knows (KNOWN), by name. When nothing
+ * else is there, the directory goes too; when something else is, it stays, and `left` names it. Refuses a directory
+ * that has no marker of the kit's, or whose real path is inside a git work tree.
+ */
+export function cleanSession(dir) {
+  assertSessionDir(dir);
+  const real = realPathOf(dir);
+  const repository = insideGitWorkTree(real);
+  if (repository) throw new Error(`${dir} is inside a git work tree (${repository}): the kit removes nothing there`);
+  const removed = [];
+  for (const name of readdirSync(dir)) {
+    if (!KNOWN.includes(name)) continue;
+    rmSync(join(dir, name), { recursive: true, force: true });
+    removed.push(name);
+  }
+  const left = readdirSync(dir);
+  if (left.length === 0) rmdirSync(dir);
+  return { removed, left, dirRemoved: left.length === 0 };
 }

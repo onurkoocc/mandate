@@ -12,20 +12,21 @@
 //   node scripts/live-session.mjs status   --session DIR   what is running, and the session's clock
 //   node scripts/live-session.mjs inbox    --session DIR   the invoices in the fake mailbox
 //   node scripts/live-session.mjs orders   --session DIR   the open orders in the fake ERP
-//   node scripts/live-session.mjs drafts   --session DIR   the draft invoices a live run wrote into the fake ERP
+//   node scripts/live-session.mjs drafts   --session DIR   every post the fake ERP was sent, and the invoices posted more than once
 //   node scripts/live-session.mjs advance DURATION --session DIR   move the session's clock forward (90m, 25h, 2d)
 //   node scripts/live-session.mjs down     --session DIR   stop the world (the session directory is kept)
-//   node scripts/live-session.mjs clean    --session DIR   remove the session directory (the world must be down)
+//   node scripts/live-session.mjs clean    --session DIR   remove what the kit made in the session directory (the world must be down)
 //
 // What it needs: the build (`npm ci && npm run build`) and the compiler's module (`npm run build:wasm`), as every
-// script of this repository that runs the bridge. No dependency. The session directory is new and outside the
-// repository (the operating system's temporary directory unless --dir says another): the persons' keys, the store and
-// the notifications are in it and never in git. Private keys are never printed.
+// script of this repository that runs the bridge. No dependency. The session directory is new (or empty, or an earlier
+// session's of this kit, which it knows by its marker file) and never inside a git work tree: the operating system's
+// temporary directory unless --dir says another. The persons' keys, the store and the notifications are in it and never
+// in git. `clean` removes only the entries the kit makes. Private keys are never printed.
 
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { advanceClock, assertLocalOnly, clockOffsetMs, durationMs, listen, LIVE, lockFrom, newSessionDir, startWorld } from "./lib/live-world.mjs";
+import { advanceClock, assertLocalOnly, assertSessionDir, checkSessionDir, cleanSession, clockOffsetMs, durationMs, listen, LIVE, lockFrom, newSessionDir, postsSummary, startWorld } from "./lib/live-world.mjs";
 
 const repo = fileURLToPath(new URL("..", import.meta.url));
 const say = (line = "") => process.stdout.write(`${line}\n`);
@@ -66,11 +67,18 @@ function sessionDir() {
   const given = flags["--session"] ?? process.env["MANDATE_LIVE_SESSION"];
   if (typeof given !== "string") fail("which session? name its directory with --session DIR (`up` printed it)");
   const dir = resolve(given);
-  if (!existsSync(join(dir, "session.json"))) fail(`${dir} is not a live session's directory (no session.json)`);
+  try {
+    assertSessionDir(dir);
+  } catch (e) {
+    fail(e instanceof Error ? e.message : String(e));
+  }
   return dir;
 }
 
-const sessionOf = (dir) => JSON.parse(readFileSync(join(dir, "session.json"), "utf8"));
+const sessionOf = (dir) => (existsSync(join(dir, "session.json")) ? JSON.parse(readFileSync(join(dir, "session.json"), "utf8")) : {});
+
+/** The wall clock, whatever a preload did to `Date` in this process (the kit's own commands are not shifted, and if one were, this undoes it). */
+const wallNow = () => (typeof globalThis.__mandateLiveRealNow === "function" ? globalThis.__mandateLiveRealNow() : Date.now());
 
 /** The running world's answer to a request of the control server, or undefined when nothing answers. */
 async function control(dir, path, init) {
@@ -110,6 +118,11 @@ function shellLines(dir, real) {
 
 async function up() {
   const dir = resolve(typeof flags["--dir"] === "string" ? flags["--dir"] : newSessionDir());
+  try {
+    checkSessionDir(dir);
+  } catch (e) {
+    fail(e instanceof Error ? e.message : String(e));
+  }
   if (existsSync(join(dir, "session.json")) && (await running(dir))) fail(`a world is already running in ${dir}`);
   const real = flags["--real-model"] === true;
   let realKey;
@@ -142,10 +155,10 @@ async function up() {
     };
   });
   const answers = {
-    "/status": () => ({ erp: world.ports.erp, mailbox: world.ports.mailbox, model: real ? "real" : "simulated", drafts: world.erp.drafts.size, orders: world.erp.orders.length, invoices: world.mailbox.invoices.length }),
+    "/status": () => ({ erp: world.ports.erp, mailbox: world.ports.mailbox, model: real ? "real" : "simulated", ...postsSummary(world.erp.posts.values()), orders: world.erp.orders.length, mailbox_invoices: world.mailbox.invoices.length }),
     "/orders": () => world.erp.orders,
     "/inbox": () => world.mailbox.invoices,
-    "/drafts": () => [...world.erp.drafts.values()],
+    "/drafts": () => ({ list: [...world.erp.posts.values()], ...postsSummary(world.erp.posts.values()) }),
   };
   // The control server answers this script only: a page in a browser cannot send the header, and a name that is not the
   // loopback address (DNS rebinding) is not answered.
@@ -158,7 +171,7 @@ async function up() {
     const answer = req.method === "GET" ? answers[req.url] : undefined;
     return answer ? { status: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(answer()) } : { status: 404, headers: { "content-type": "text/plain" }, body: "not found" };
   });
-  writeFileSync(join(dir, "session.json"), JSON.stringify({ format: "mandate/live-session/0.1", pid: process.pid, control: ctl.port, model: real ? "real" : "simulated", database: database ? "(a PostgreSQL URL, in mandate.runtime.json)" : "pglite:store", started: startedAt }, null, 2) + "\n");
+  writeFileSync(join(dir, "session.json"), JSON.stringify({ format: "mandate/live-session/0.1", id: world.id, pid: process.pid, control: ctl.port, model: real ? "real" : "simulated", database: database ? "(a PostgreSQL URL, in mandate.runtime.json)" : "pglite:store", started: startedAt }, null, 2) + "\n");
   for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => void globalThis.__liveStop());
 
   const sh = shellLines(dir, real);
@@ -166,7 +179,7 @@ async function up() {
   say("");
   say("  fake ERP      https://erp.acme.example/mcp   (served on this machine only, behind the egress proxy)");
   say("  fake mailbox  https://mail.acme.example/mcp  (the same)");
-  say(`  invoices in the mailbox: ${world.mailbox.invoices.length}, open orders in the ERP: ${world.erp.orders.length}, drafts: 0`);
+  say(`  invoices in the mailbox: ${world.mailbox.invoices.length}, open orders in the ERP: ${world.erp.orders.length}, posts: 0`);
   say(`  model for the Matcher: ${real ? `REAL (the key from ${realKey} is held by this process only)` : "simulated (no key needed)"}`);
   say(`  store: ${database ? "PostgreSQL, the URL you gave" : join(dir, "store")}`);
   say("");
@@ -179,7 +192,7 @@ async function up() {
   for (const l of sh.posix) say(`    ${l}`);
   say(`  (${sh.note})`);
   say("");
-  say("Then go on with step 1 of the guide (fixtures/attention/live/README.md). Ctrl+C here stops the world.");
+  say("Then go on with step 2 of the guide (fixtures/attention/live/README.md). Ctrl+C here stops the world.");
   say("");
   await stopped;
   await new Promise((ok) => ctl.server.close(() => ok()));
@@ -222,7 +235,7 @@ async function lock() {
 
 async function show(what) {
   const dir = sessionDir();
-  const rows = await control(dir, `/${what}`);
+  let rows = await control(dir, `/${what}`);
   if (rows === undefined) fail(NOT_RUNNING);
   if (what === "orders") {
     say(`${rows.length} open orders in the fake ERP:`);
@@ -231,21 +244,24 @@ async function show(what) {
     say(`${rows.length} invoices in the fake mailbox:`);
     table(rows.map((i) => ({ invoice: i.invoice_no, vendor: i.vendor_id, total: money(i.total_cents) })), ["invoice", "vendor", "total"]);
   } else {
-    say(rows.length === 0 ? "the fake ERP holds no draft invoice" : `${rows.length} draft invoices in the fake ERP:`);
-    if (rows.length) table(rows.map((d) => ({ draft: d.draft_id, invoice: d.invoice_no, order: d.order_no })), ["draft", "invoice", "order"]);
+    // What the fake ERP holds is every post it was sent, by the key it came with: it does not merge two posts of one invoice.
+    say(rows.list.length === 0 ? "the fake ERP holds no draft invoice" : `${rows.posts} posts in the fake ERP, of ${rows.invoices} different invoices:`);
+    if (rows.list.length) table(rows.list.map((d) => ({ draft: d.draft_id, invoice: d.invoice_no, order: d.order_no, "key (start)": d.key.slice(0, 18), sent: d.calls })), ["draft", "invoice", "order", "key (start)", "sent"]);
+    if (rows.duplicated.length) say(`${rows.duplicated.length} invoices were posted more than once, each time under another operation key: ${rows.duplicated.map((d) => `${d.invoice_no} (${d.posts})`).join(", ")}`);
+    else if (rows.list.length) say("no invoice was posted twice");
   }
 }
 
 async function status() {
   const dir = sessionDir();
   const s = sessionOf(dir);
-  const now = new Date(Date.now() + clockOffsetMs(dir));
+  const now = new Date(wallNow() + clockOffsetMs(dir));
   const up = await control(dir, "/status");
   say(`session   ${dir}`);
   say(`world     ${up ? `running (pid ${s.pid})` : "not running"}`);
   say(`model     ${s.model}`);
   say(`clock     ${now.toISOString()}  (the wall clock + ${(clockOffsetMs(dir) / 3_600_000).toFixed(2)} h)`);
-  if (up) say(`ERP       ${up.orders} open orders, ${up.drafts} draft invoices; mailbox ${up.invoices} invoices`);
+  if (up) say(`ERP       ${up.orders} open orders, ${up.posts} posts of ${up.invoices} invoices, ${up.duplicated.length} invoices posted more than once; mailbox ${up.mailbox_invoices} invoices`);
   say(`lock      ${existsSync(join(dir, "invoices.lock.json")) ? "made" : "not made yet (step 3 of the guide)"}`);
   const sink = join(dir, "notifications.jsonl");
   say(`notified  ${existsSync(sink) ? readFileSync(sink, "utf8").split("\n").filter((l) => l !== "").length : 0} notifications in ${sink}`);
@@ -256,7 +272,7 @@ function advance() {
   const by = durationMs(rest[0] ?? fail("advance takes a duration, such as 25h or 2d"));
   if (by <= 0) fail("a duration above zero");
   const offset = advanceClock(dir, by);
-  say(`the session's clock is now ${new Date(Date.now() + offset).toISOString()} (the wall clock + ${(offset / 3_600_000).toFixed(2)} h)`);
+  say(`the session's clock is now ${new Date(wallNow() + offset).toISOString()} (the wall clock + ${(offset / 3_600_000).toFixed(2)} h)`);
   say("the persons' commands see it from their next call; `mandate tick` makes what is overdue happen");
 }
 
@@ -265,7 +281,11 @@ async function down() {
   if (!(await running(dir))) return say("the session's world is not running");
   await control(dir, "/stop", { method: "POST" });
   for (let i = 0; i < 50; i++) {
-    if (!(await running(dir))) return say("the world is down");
+    if (!(await running(dir))) {
+      say("the world is down");
+      say("In terminal B, end the session's clock before anything else: PowerShell: Remove-Item Env:NODE_OPTIONS    POSIX: unset NODE_OPTIONS");
+      return;
+    }
     await new Promise((r) => setTimeout(r, 200));
   }
   fail("the world did not stop; press Ctrl+C in the terminal where `up` runs");
@@ -274,9 +294,17 @@ async function down() {
 async function clean() {
   const dir = sessionDir();
   if (await running(dir)) fail("the world is still running: `down` first");
-  if (!/mandate-live-/.test(dir) && flags["--force"] !== true) fail(`${dir} is not named mandate-live-…; to remove it all the same, add --force`);
-  rmSync(dir, { recursive: true, force: true });
-  say(`removed ${dir}`);
+  let done;
+  try {
+    done = cleanSession(dir);
+  } catch (e) {
+    fail(e instanceof Error ? e.message : String(e));
+  }
+  if (done.dirRemoved) say(`removed ${dir}`);
+  else {
+    say(`removed what the kit made in ${dir}: ${done.removed.join(", ")}`);
+    say(`left, because the kit did not make it: ${done.left.join(", ")}`);
+  }
 }
 
 try {

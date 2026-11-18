@@ -13,9 +13,3 @@ export function patched(url, source) {
   if (!text.includes(ANCHOR)) throw new Error("the live kit's simulated model no longer fits runtime/dist/control.js: the stand-in line for agents is not there (scripts/lib/live-loader.mjs)");
   return text.replace(ANCHOR, REPLACEMENT);
 }
-
-/** The asynchronous form of the hook, for a Node that has `module.register` and not `module.registerHooks`. */
-export async function load(url, context, nextLoad) {
-  const loaded = await nextLoad(url, context);
-  return { ...loaded, source: patched(url, loaded.source) };
-}

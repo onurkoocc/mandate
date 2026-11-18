@@ -45,12 +45,14 @@ export interface FakeResponse {
   body: string;
 }
 export function mcpServer(o: { tools: unknown[]; header: string; secret: string; log?: (line: string) => void }): (req: FakeRequest) => FakeResponse;
-export function erpState(book: Book): { orders: Array<{ order_no: string; vendor_id: string; total_cents: number }>; drafts: Map<string, { draft_id: string; invoice_no: string; order_no: string; key: string }>; tools: unknown[] };
+export function erpState(book: Book): { orders: Array<{ order_no: string; vendor_id: string; total_cents: number }>; posts: Map<string, { draft_id: string; invoice_no: string; order_no: string; key: string; calls: number }>; tools: unknown[] };
+export function postsSummary(posts: Iterable<{ invoice_no: string; calls: number }>): { posts: number; invoices: number; duplicated: Array<{ invoice_no: string; posts: number }>; retried: number };
 export function mailboxState(book: Book): { invoices: Array<{ invoice_no: string; vendor_id: string; total_cents: number }>; tools: unknown[] };
 export function listen(handler: (req: FakeRequest) => FakeResponse | Promise<FakeResponse>, host?: string): Promise<{ server: import("node:http").Server; port: number }>;
 
 export interface World {
   dir: string;
+  id: string;
   config: string;
   erp: ReturnType<typeof erpState>;
   mailbox: ReturnType<typeof mailboxState>;
@@ -63,3 +65,13 @@ export function startWorld(
   deps: { serveEgress: (o: any) => Promise<{ stop(): Promise<void> }>; defaultDialer?: (ca?: string) => any; isPublicAddress?: (a: string) => boolean },
 ): Promise<World>;
 export function newSessionDir(): string;
+
+export const MARKER: string;
+export const KNOWN: string[];
+export function realPathOf(p: string): string;
+export function insideGitWorkTree(p: string): string | undefined;
+export function readMarker(dir: string): { format: string; id: string; created: string } | undefined;
+export function checkSessionDir(dir: string): { resume: boolean };
+export function markSessionDir(dir: string): string;
+export function assertSessionDir(dir: string): { format: string; id: string; created: string };
+export function cleanSession(dir: string): { removed: string[]; left: string[]; dirRemoved: boolean };
