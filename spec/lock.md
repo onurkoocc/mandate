@@ -148,10 +148,9 @@ them is `MDT-E0140`, reported at the lock's root.
 ## Role classes and promotion (0.7)
 
 *Added 2026-11-17. Specified in [`attention.md`](attention.md#lock-07).
-The Rust compiler reads both fields (their schema, `MDT-E0140`, `MDT-E1910`
-and `MDT-E1911`); `MDT-E1909` and what the runtime does with them (it
-refuses both at load until it masks and promotes) are not implemented yet.
-Everything above holds as it is.*
+The Rust compiler reads both fields (their schema, `MDT-E0140`, `MDT-E1909`,
+`MDT-E1910` and `MDT-E1911`), and the runtime runs both (it masks by
+`role_classes` and climbs the ladder). Everything above holds as it is.*
 
 Format `mandate/lock/0.7` has every field of `0.6` and two more, closed by
 its own schema, `lock-0.7.schema.json`. In a lock older than `0.7` each of

@@ -12,7 +12,7 @@
 import { isProgram07OrLater, type Lock } from "@mandate/bridge";
 import type { Audience } from "./classes.js";
 import { TERMINAL, type RunRow } from "./journal.js";
-import { capOf, plainValues, type MaskedValue, type NamedShown, type UnlabelledValue } from "./mask.js";
+import { capOf, DEFAULT_CAP, holdsNoRole, plainValues, type MaskedValue, type NamedShown, type UnlabelledValue } from "./mask.js";
 import { askedOf, attentionContext, given, maskDigest, maskedWait, projectEvent, type AttentionContext, type Ev, type ProjectedEvent } from "./projection.js";
 import { shownBy, type Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
@@ -97,8 +97,12 @@ export interface WaitItem {
   kind: "input" | "decision" | "review" | "amendment";
   /** The role it asks, or null for a wait that asks none, which is listed to every role the package's lock binds. */
   asked_of: string | null;
-  /** The role it is listed to, whose cap masks what it shows: `asked_of`, or for a wait that asks none each role listed. */
-  role: string;
+  /**
+   * The role it is listed to, whose cap masks what it shows: `asked_of`, or for a wait that asks none each role listed;
+   * null for a wait that asks none listed to a member the lock lists and binds to no role, who is shown it at
+   * `internal`, the cap of a role the lock does not name.
+   */
+  role: string | null;
   since: number;
   deadline: number | null;
   escalates_to: string | null;
@@ -175,13 +179,16 @@ export async function listWaits(rt: Runtime, who: { role: string } | { member: s
     const roles = "role" in who ? [who.role] : Object.entries(bound).filter(([, ms]) => Array.isArray(ms) && ms.includes(who.member)).map(([r]) => r);
     const req = isObj(row.result) ? row.result : {};
     const asked = typeof req["role"] === "string" && req["role"] !== "" ? req["role"] : null;
-    const listed = asked !== null ? roles.filter((r) => r === asked) : roles.filter((r) => Object.hasOwn(bound, r));
+    // A member the lock lists and binds to no role may answer a wait that asks none (`roleRefusal`): it is listed to
+    // them in no role, at the cap of a role the lock does not name. A wait asked of a role is not.
+    const listed: Array<string | null> =
+      asked !== null ? roles.filter((r) => r === asked) : "member" in who && holdsNoRole(lock, who.member) ? [null] : roles.filter((r) => Object.hasOwn(bound, r));
     if (!listed.length) continue;
     const opened = events.find((e) => e.type === "wait_opened" && isObj(e.data) && e.data["command"] === row.command_id);
     const facts = ctx?.waits.get(row.command_id);
     const escalated = req["escalated"] !== undefined;
     for (const role of listed) {
-      const cap = capOf(lock, role);
+      const cap = role === null ? DEFAULT_CAP : capOf(lock, role);
       const subject = shownBy(run, row.command_id, { kind: row.kind, result: row.result, request_digest: row.request_digest }).subject;
       out.push({
         run: run.run_id,
@@ -204,5 +211,5 @@ export async function listWaits(rt: Runtime, who: { role: string } | { member: s
       });
     }
   }
-  return out.sort((a, b) => a.since - b.since || (a.run < b.run ? -1 : a.run > b.run ? 1 : 0) || (a.command < b.command ? -1 : a.command > b.command ? 1 : 0) || (a.role < b.role ? -1 : a.role > b.role ? 1 : 0));
+  return out.sort((a, b) => a.since - b.since || (a.run < b.run ? -1 : a.run > b.run ? 1 : 0) || (a.command < b.command ? -1 : a.command > b.command ? 1 : 0) || ((a.role ?? "") < (b.role ?? "") ? -1 : (a.role ?? "") > (b.role ?? "") ? 1 : 0));
 }

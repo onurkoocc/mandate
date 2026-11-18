@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1909f",
+  "kind": "compile",
+  "title": "With a lock, a question that names no role may be answered by a member the lock lists and binds to no role, who may be shown internal data: human.ask without its role shows a confidential item's key, and every role the lock binds may be shown it, but zed, listed and bound to none, may not (a mutation: the question's role removed; the lock lists zed and gives the observer confidential).",
+  "spec": [
+    "spec/attention.md#lock-07",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../A05/program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/Settle/body/3/value/args/1"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1909",
+        "path": "/defs/Settle/body/3/value",
+        "facts": {
+          "workflow": "Settle",
+          "member": "zed",
+          "class": "internal",
+          "shown": "confidential",
+          "site": "ask",
+          "asked": "any_member"
+        }
+      }
+    ]
+  }
+}

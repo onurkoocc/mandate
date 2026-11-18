@@ -1,0 +1,41 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1909d",
+  "kind": "compile",
+  "title": "With a lock, the role a review escalates to is shown the same items, above its class: refused at the review, its escalation row (a mutation: the review escalates to the observer).",
+  "spec": [
+    "spec/attention.md#lock-07",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../A05/program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "../A05/mandate.lock.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Settle/body/1/value/args/3/value/name",
+      "value": "observer"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1909",
+        "path": "/defs/Settle/body/1/value",
+        "facts": {
+          "workflow": "Settle",
+          "role": "observer",
+          "class": "internal",
+          "shown": "confidential",
+          "site": "review",
+          "only": "on_escalation"
+        }
+      }
+    ]
+  }
+}

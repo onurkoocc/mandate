@@ -752,6 +752,13 @@ pub const FAMILIES: &[Family] = &[
         ported: true,
         reference: Reference::Rust,
     },
+    Family {
+        glob: "*MDT-E1909*",
+        codes: "E1909",
+        stage: "Rust only: with a lock, a 0.7 workflow that shows a role data above its role_classes (role_class_checks, crates/mandate-check/src/role_shown.rs), after the promotion check, from what the typing gave the attention facts; for a lead's sub-program, at admission, with its parent's role_classes",
+        ported: true,
+        reference: Reference::Rust,
+    },
 ];
 
 /// The family of `code` (`MDT-E0120`), when the table has one.

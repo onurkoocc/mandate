@@ -234,6 +234,8 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
                     lead,
                     room: &room,
                     std_patterns: None,
+                    role_classes: None,
+                    member_without_role: None,
                 }) {
                     Ok(r) => Actual::Result(render_check_subprogram(
                         r.ok,

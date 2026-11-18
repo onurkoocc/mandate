@@ -1,0 +1,70 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1909e",
+  "kind": "compile",
+  "title": "A lock that lowers a role's class below what the program shows it refuses every site that shows it more: the accountant, lowered to internal, is shown confidential data by a review, an approval, a question and two report fields (a mutation of the lock: role_classes.accountant internal).",
+  "spec": [
+    "spec/attention.md#lock-07",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../A05/program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1909",
+        "path": "/defs/Settle/body/1/value",
+        "facts": {
+          "role": "accountant",
+          "class": "internal",
+          "shown": "confidential",
+          "site": "review"
+        }
+      },
+      {
+        "code": "MDT-E1909",
+        "path": "/defs/Settle/body/2/value",
+        "facts": {
+          "role": "accountant",
+          "class": "internal",
+          "shown": "confidential",
+          "site": "verify"
+        }
+      },
+      {
+        "code": "MDT-E1909",
+        "path": "/defs/Settle/body/3/value",
+        "facts": {
+          "role": "accountant",
+          "class": "internal",
+          "shown": "confidential",
+          "site": "ask"
+        }
+      },
+      {
+        "code": "MDT-E1909",
+        "path": "/defs/Settle/body/4/fields/0/value",
+        "facts": {
+          "role": "accountant",
+          "site": "report",
+          "field": "accepted"
+        }
+      },
+      {
+        "code": "MDT-E1909",
+        "path": "/defs/Settle/body/4/fields/1/value",
+        "facts": {
+          "role": "accountant",
+          "site": "report",
+          "field": "key"
+        }
+      }
+    ]
+  }
+}

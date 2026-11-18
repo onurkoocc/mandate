@@ -340,7 +340,7 @@ describe("a package of 0.6 at load", () => {
 
   it("loads the acceptance program: neither it nor its running program holds a line of the table (B10 runs its review)", () => {
     const connectors = fixtureLibrary("acme.connectors");
-    const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
+    const lock = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string });
     const program = check(relabel(read("fixtures/library/invoices.mdt")), "mdt", { libraries: [connectors], lock });
     expect(program.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const { lock: _format, ...packaged } = lock;

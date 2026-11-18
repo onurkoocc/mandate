@@ -223,6 +223,21 @@ pub struct SubprogramInput<'a> {
     /// the check of the sub-program reads (it is given no lock); `None`: the
     /// version of the parent's language, as before.
     pub std_patterns: Option<mandate_lib::Version>,
+    /// 0.7: the classes of the roles the parent's lock binds (an object from
+    /// a role to its class; a role it does not name may be shown
+    /// `internal`), to which the check of the sub-program, given no lock,
+    /// holds what each role is shown (E1909). A question that names no role
+    /// is held to the lowest class of the roles it names, so a caller names
+    /// every role the parent's lock binds (the runtime does, `internal` for
+    /// one the lock gives no class). `None`: no E1909, as before. Read only
+    /// for a sub-program of 0.7 or later.
+    pub role_classes: Option<&'a Value>,
+    /// 0.7: a member the parent's lock lists who holds no role in it (the
+    /// first by name), who may answer a question that names no role and may
+    /// be shown `internal`, to which the check holds such a question too
+    /// (E1909). `None`: every member holds a role. Read only with
+    /// `role_classes`.
+    pub member_without_role: Option<&'a str>,
 }
 
 /// What [`check_subprogram`] gives: `SubprogramCheck`, `{ ok, diagnostics,
@@ -411,7 +426,19 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
     // 0.7: the one pass gives the sub-program's attention bound too, which
     // its admission reserves of the run's `asks`.
     let mut typing = crate::statics::Typing::default();
-    let checked = crate::check::check_shown(
+    // 0.7: the classes of the parent's lock, as a lock that holds them
+    // alone, and the member who holds no role as its one member (E1909).
+    let caps = i.role_classes.map(|rc| {
+        let mut m = Map::new();
+        m.insert("role_classes", rc.clone());
+        if let Some(member) = i.member_without_role {
+            let mut members = Map::new();
+            members.insert(member, Value::Object(Map::new()));
+            m.insert("members", Value::Object(members));
+        }
+        Value::Object(m)
+    });
+    let checked = crate::check::check_capped(
         &json_text(&view),
         SourceKind::Json,
         &CheckOptions {
@@ -425,6 +452,7 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             ..CheckOptions::default()
         },
         Some(&mut typing),
+        caps.as_ref().map(crate::lock::Lock::of),
     );
     // A name the sub-program defines and its parent already has is
     // reported once, at the definition the lead wrote.

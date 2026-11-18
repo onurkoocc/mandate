@@ -4,8 +4,8 @@
 //! its facts are what the spec's attention view of the invoice flow says
 //! (four stages, two reports to the accountant, an attention bound of 2);
 //! and the single patches of the plan's table of mutations that the compiler
-//! can refuse today each give their code. E1909 (the accountant's class)
-//! waits for its own slice. No TypeScript reads 0.7, so every expectation is
+//! can refuse today each give their code, E1909 (the accountant's class)
+//! among them (RL5b). No TypeScript reads 0.7, so every expectation is
 //! written by hand.
 
 #![allow(
@@ -181,4 +181,48 @@ fn a_lock_that_requires_promotion_refuses_a_flow_nobody_owns() {
         "{:?}",
         found(&r)
     );
+}
+
+#[test]
+fn a_lock_that_lowers_the_accountant_refuses_what_the_flow_shows_it() {
+    // The plan's mutation of E1909: the accountant's class lowered to
+    // internal. Every site of the flow that shows it confidential invoices
+    // is refused, the finance lead keeping its class; a site the expansion
+    // brings is reported at the application.
+    let mut lock = read_json(LOCK).unwrap();
+    if let Value::Object(m) = &mut lock
+        && let Some(Value::Object(c)) = m.get_mut("role_classes")
+    {
+        c.insert("accountant", "internal");
+    }
+    let r = checked_with(&read_text(INVOICES).unwrap(), &lock);
+    let got = found(&r);
+    assert!(!r.ok);
+    assert!(!got.is_empty());
+    assert!(
+        got.iter()
+            .all(|d| d.starts_with("MDT-E1909 at /defs/MatchInvoices")),
+        "{got:?}"
+    );
+    let e1909 = r.diagnostics.iter().filter(|d| d.code == "MDT-E1909");
+    for d in e1909 {
+        let facts = stringify(&mandate_ir::JsValue::Object(
+            d.facts.clone().unwrap_or_default(),
+        ))
+        .unwrap();
+        assert!(
+            facts.contains(r#""role":"accountant""#)
+                && facts.contains(r#""class":"internal""#)
+                && facts.contains(r#""shown":"confidential""#),
+            "{facts}"
+        );
+        assert!(
+            d.message
+                .contains("Role accountant may be shown data up to internal"),
+            "{}",
+            d.message
+        );
+    }
+    // With the lock as it is, the flow checks (it_checks_with_its_lock_…).
+    assert!(checked_with(&read_text(INVOICES).unwrap(), &read_json(LOCK).unwrap()).ok);
 }
