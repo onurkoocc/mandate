@@ -11,7 +11,7 @@ import { Runtime, type Driver } from "../src/runtime.js";
 import { deferred, SimAgents, SimTool, type Deferred } from "../src/sim.js";
 import type { Value } from "../src/values.js";
 import { runView } from "../src/views.js";
-import { closeAll, planChecker, UNSIGNED, until, world, type World } from "./helpers.js";
+import { closeAll, planChecker, rawRun, UNSIGNED, until, world, type World } from "./helpers.js";
 import { finish, fixed, fixes, planned, programAt, run, submit } from "./planning.js";
 import { ISSUE } from "./programs.js";
 
@@ -297,7 +297,7 @@ describe("a halt of a tenant (G22, INV-26)", () => {
       {
         // As a runtime of an earlier version would: it creates a run and its worker takes the lease, checking no halt.
         between: async (tx) => {
-          await w.rt.journal.createRun(tx, { runId: "slipped", tenant: "acme", packageHash: w.pkg.hash, workflow: "Ask", input: ISSUE, policy: { tenant: "acme" }, limits: {}, manifest: null, manifestHash: "sha256:00" });
+          await rawRun(w.rt.journal, tx, { runId: "slipped", tenant: "acme", packageHash: w.pkg.hash, workflow: "Ask", input: ISSUE, policy: { tenant: "acme" }, limits: {}, manifest: null, manifestHash: "sha256:00" });
           await tx.query("update runs set fence = 1 where run_id = 'slipped'");
           await w.rt.journal.setState(tx, "slipped", "running");
         },

@@ -1181,6 +1181,30 @@ of the workflow's `owner` role, or of its envelope's `owner` role:
   role: <owner>, member, key, payload: digest("request", { to }) }
 ```
 
+What the subject does not bind, a stated limit (the owner decides whether it
+stays). A promotion, like a card approval, is evidence about a package: it
+holds wherever that package hash and the keys that signed it are trusted, and
+it does not bind a store. Nothing in it names the database it was made in. So
+an operator of a second store that trusts the same decision keys can take it
+there. The operator replays the package's card approval (an approval has been
+replayable this way since 0.4). Then they start a `design` run with the
+from-run's id and input. Its manifest names no store, so the manifest hash is
+the same. Then they submit the owner's `promote` record, and start
+`read_only` runs with other inputs. In one store this cannot happen: a run id
+is the key of its run, and no run is deleted. Nor does the subject bind:
+
+- anything of a `design` run's outcome beyond its success and its manifest
+  (its result, its steps and its simulated effects);
+- the runtime's configuration that a later run is held to (`authorize`,
+  connectors, egress).
+
+A promotion cannot be withdrawn as such. It stops holding only:
+
+- with a new package hash (any change of the program, the lock or a module),
+  which is also how a member leaves the lock;
+- when its signer's key is removed from the runtime's trusted decision keys;
+- when the evidence it was made on changes (see below).
+
 `to` is `read_only` or `live`; `shadow` is `null` for a promotion to
 `read_only`. `Runtime.promote(pkg, signed)` checks the record as every
 decision is checked, in that order: who signed, what it is for, the role. A

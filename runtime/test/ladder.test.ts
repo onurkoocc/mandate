@@ -13,17 +13,20 @@
 //
 // Every key is made at run time (GitGuardian scans each commit). Counts are read with Number (PostgreSQL's are text).
 
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { check } from "@mandate/bridge";
+import ts from "typescript";
 import { describe, afterAll, expect, it } from "vitest";
 import { shadowCounts } from "../src/cli.js";
-import { DECISION_FORMAT, payloadOf, shownPackage, signDecision, type DecisionRecord, type SignedDecision } from "../src/decisions.js";
+import { DECISION_FORMAT, payloadOf, promotionSubject, shownPackage, signDecision, type DecisionRecord, type SignedDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import { verifyPackage } from "../src/package.js";
 import { buildPackage, Runtime, type Lock, type Package } from "../src/runtime.js";
 import { SimAgents, SimTool } from "../src/sim.js";
+import { runTests } from "../src/testing.js";
 import { digest, isObj, type Obj, type Value } from "../src/values.js";
 import { runView, shadowDiff } from "../src/views.js";
 import { closeAll, world, type World } from "./helpers.js";
@@ -345,6 +348,23 @@ describe("the promotion ladder (spec/attention.md \"Promotion\")", () => {
     await expect(start(w, "Note", "r1", "read_only")).rejects.toMatchObject({ code: "unpromoted" });
   });
 
+  it("takes no promotion written into the store directly by a member of another role, or of none", async () => {
+    const w = await ladder();
+    await approveCards(w);
+    expect((await start(w, "Note", "d1", "design")).state).toBe("succeeded");
+    // As a writer that is not Runtime.promote would write them: each row is signed and names the run, but not by an accountant.
+    const write = (s: SignedDecision): Promise<string> => w.db.tx((tx) => w.rt.journal.recordDecision(tx, s));
+    await write(await promotion(w, ben, "d1", "read_only"));
+    await write(await promotion(w, ben, "d1", "read_only", { role: "finance_lead" }));
+    await write(await promotion(w, cem, "d1", "read_only"));
+    expect(await count(w, "decisions where kind = 'promote'")).toBe(3);
+    await expect(start(w, "Note", "r1", "read_only")).rejects.toMatchObject({ code: "unpromoted" });
+    // The accountant's, written the same way, is taken: the rows above were refused for their role, not for how they came.
+    const hers = await write(await promotion(w, ana, "d1", "read_only"));
+    expect((await start(w, "Note", "r2", "read_only")).state).toBe("succeeded");
+    expect((await manifestOf(w, "r2"))["promotion"]).toMatchObject({ decision: hers });
+  });
+
   it("takes the envelope owner's promotion of a workflow with an envelope, and nobody else's", async () => {
     const w = await ladder();
     await approveCards(w);
@@ -443,6 +463,25 @@ describe("the compiler's fixture of owners (fixtures/attention/owner.mdt)", () =
     return { ...rest, members: { ana: { keys: [ana.key.keyId] }, ben: { keys: [ben.key.keyId] } } } as unknown as Lock;
   }
 
+  it("takes no promotion from a run that did not succeed, or has not ended", async () => {
+    let calls = 0;
+    const agents = new SimAgents().on("Writer.write", () => (calls++ === 0 ? { error: { tag: "SkillFailed", args: [{ kind: "made-up" }] }, cost: { steps: 1 } } : { ok: "a line", cost: { steps: 1 } }));
+    const w = await world(readFileSync(new URL("../../fixtures/attention/owner.mdt", import.meta.url), "utf8"), { agents, lock: ownerLock(), decisions: { keys: KEYS } });
+    await approveCards(w);
+    expect((await w.rt.startRun({ pkg: w.pkg, workflow: "Describe", input: { name: "a" }, runId: "f1", mode: "design" })).state).toBe("failed");
+    expect((await w.rt.startRun({ pkg: w.pkg, workflow: "Check", input: {}, runId: "w1", mode: "design" })).state).toBe("waiting");
+    for (const [runId, who, role, state] of [["f1", ana, "accountant", "failed"], ["w1", ben, "finance_lead", "waiting"]] as const) {
+      await expect(w.rt.promotionShown(runId, "read_only")).rejects.toMatchObject({ code: "bad_promotion", message: expect.stringContaining(`is ${state}, and has not succeeded`) });
+      // A record signed on the subject the run would have, were its state not asked, is refused the same, and not stored.
+      const run = await w.rt.getRun(runId);
+      const subject = promotionSubject({ package: w.pkg.hash, workflow: run.workflow, from: { run: runId, mode: "design", manifest: run.manifest_hash! }, to: "read_only", shadow: null });
+      const signed = signDecision(who.key, { package: w.pkg.hash, run: runId, revision: run.revision, subject, role }, { kind: "promote", member: who.member, payload: payloadOf.promotion("read_only"), at: at(w) });
+      await expect(w.rt.promote(w.pkg, signed)).rejects.toMatchObject({ code: "bad_promotion", message: expect.stringContaining(`is ${state}`) });
+    }
+    expect(await count(w, "decisions where kind = 'promote'")).toBe(0);
+    await expect(w.rt.startRun({ pkg: w.pkg, workflow: "Describe", input: { name: "a" }, runId: "r1", mode: "read_only" })).rejects.toMatchObject({ code: "unpromoted" });
+  });
+
   it("asks the owner of a workflow that applies a pattern, as its expansion keeps it, for its card and its promotion", async () => {
     const agents = new SimAgents().on("Writer.write", () => ({ ok: "a line", cost: { steps: 1 } }));
     const w = await world(readFileSync(new URL("../../fixtures/attention/owner.mdt", import.meta.url), "utf8"), { agents, lock: ownerLock(), decisions: { keys: KEYS } });
@@ -461,33 +500,125 @@ describe("the compiler's fixture of owners (fixtures/attention/owner.mdt)", () =
   });
 });
 
+// ── mandate test ────────────────────────────────────────────────────────
+
+/** A 0.7 program with an owner and a test of it. */
+const TESTED = `mandate @ 0.7
+
+module test.ladder_tests @ 0.1
+
+use std.{fs}
+
+role accountant "Accountant"
+
+capability Note = fs.read("/tmp/notes")
+
+workflow Close(title: Text) -> Bool
+  owner  accountant
+  caps   Note
+  budget { steps: 2 }
+{
+  true
+}
+
+test "it closes" {
+  run Close("Q3") expect ok
+}
+`;
+
+describe("mandate test of a 0.7 program whose lock asks for promotion", () => {
+  it("runs each test live, its card approved by the test's own people: a test climbs no ladder", async () => {
+    const r = check(TESTED, "mdt");
+    expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => d.message)).toEqual([]);
+    const w = await ladder({ promotion: false });
+    const dir = mkdtempSync(join(tmpdir(), "mandate-ladder-tests-"));
+    try {
+      const results = await runTests(r.program!, { db: w.db, dir, lock: { modules: {}, promotion: "required" } as unknown as Lock });
+      expect(results.map((x) => [x.test, x.ok, x.state])).toEqual([["it closes", true, "succeeded"]]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── the entries ─────────────────────────────────────────────────────────
 
 describe("where a run starts", () => {
-  it("is startRun alone: no resume, replay, tick, sub-program or command line creates a run, so none starts above its rung", () => {
-    const src = join(fileURLToPath(new URL("../src/", import.meta.url)));
-    const calls: string[] = [];
-    // Every source, its folders (egress/, temporal/) too.
-    const files = (readdirSync(src, { recursive: true }) as string[]).map((f) => f.replaceAll("\\", "/")).filter((f) => f.endsWith(".ts"));
-    expect(files).toContain("temporal/workflows.ts");
+  const src = fileURLToPath(new URL("../src/", import.meta.url));
+  /** Every source, its folders (egress/, temporal/) too. */
+  const files = (readdirSync(src, { recursive: true }) as string[]).map((f) => f.replaceAll("\\", "/")).filter((f) => f.endsWith(".ts"));
+  const text = (f: string): string => readFileSync(join(src, f), "utf8");
+
+  it("is startRun alone, by construction: createRun takes only the start startRun made, for its run and manifest, once", async () => {
+    const w = await ladder({ promotion: false });
+    await approveCards(w);
+    const { claimRunStarts } = await import("../src/journal.js");
+    // The maker of starts is runtime.ts's: nobody claims it again.
+    expect(() => claimRunStarts()).toThrow("claimed already");
+    const bare = { runId: "z1", tenant: "default", packageHash: w.pkg.hash, workflow: "Note", input: ISSUE as unknown as Value, policy: { tenant: "default" }, limits: {}, manifest: {}, manifestHash: "sha256:m" };
+    // A start written out is none.
+    await expect(w.db.tx((tx) => w.rt.journal.createRun(tx, { runId: "z1", manifestHash: "sha256:m" } as never, bare))).rejects.toThrow("createRun takes only the start");
+    // The start startRun makes is for its run and its manifest, and is taken once.
+    const j = w.rt.journal;
+    const real = j.createRun.bind(j);
+    const tried: string[] = [];
+    const attempt = (what: string, p: Promise<void>): Promise<void> => p.then(() => void tried.push(`${what}: created`), (e: Error) => void tried.push(`${what}: ${e.message.split(" for run")[0]}`));
+    j.createRun = async (tx, start, r) => {
+      await attempt("another run", real(tx, start, { ...r, runId: `${r.runId}-other` }));
+      await attempt("another manifest", real(tx, start, { ...r, manifestHash: "sha256:other" }));
+      await real(tx, start, r);
+      // The same run again: the start was taken, so it is refused before anything is written.
+      await attempt("again", real(tx, start, r));
+    };
+    expect((await start(w, "Note", "z2", "design")).state).toBe("succeeded");
+    expect(tried).toEqual(["another run: createRun takes only the start Runtime.startRun made", "another manifest: createRun takes only the start Runtime.startRun made", "again: createRun takes only the start Runtime.startRun made"]);
+    expect((await w.db.query<Obj>("select run_id from runs order by run_id")).map((r) => r["run_id"])).toEqual(["z2"]);
+  });
+
+  /**
+   * Each place a source names `name` that is not one of `allowed` (`<file>:<what>`): an identifier, or a string or a
+   * template that holds the name. `what` is `declared`, `called` (the callee of a call, as `x.name(…)` or `name(…)`),
+   * `imported`, or `named` for any other mention (`x.name` handed on, `.bind`, `.call`, `x["name"]`, a string).
+   */
+  function mentions(name: string): string[] {
+    const out: string[] = [];
     for (const f of files) {
-      const lines = readFileSync(join(src, f), "utf8").split("\n");
-      lines.forEach((l, i) => {
-        if (/\bcreateRun\(/.test(l) && !/^\s*(\/\/|\*|async createRun\()/.test(l)) calls.push(`${f}:${i + 1}`);
-      });
+      const body = text(f);
+      if (!body.includes(name)) continue;
+      const source = ts.createSourceFile(f, body, ts.ScriptTarget.Latest, true);
+      const visit = (n: ts.Node): void => {
+        if (ts.isIdentifier(n) && n.text === name) {
+          const p = n.parent;
+          const declared = (ts.isMethodDeclaration(p) || ts.isFunctionDeclaration(p)) && p.name === n;
+          const imported = ts.isImportSpecifier(p);
+          const callee = ts.isPropertyAccessExpression(p) && p.name === n ? p : n;
+          const called = !declared && !imported && ts.isCallExpression(callee.parent) && callee.parent.expression === callee;
+          out.push(`${f}:${declared ? "declared" : imported ? "imported" : called ? "called" : "named"}`);
+        } else if ((ts.isStringLiteralLike(n) || ts.isTemplateExpression(n)) && n.getText().includes(name)) {
+          out.push(`${f}:named in ${n.getText().slice(0, 40)}`);
+        }
+        ts.forEachChild(n, visit);
+      };
+      visit(source);
     }
-    expect(calls).toHaveLength(1);
-    // And the one insert of a run is createRun's.
-    const inserts = files.filter((f) => /insert into runs\b/i.test(readFileSync(join(src, f), "utf8")));
-    expect(inserts).toEqual(["journal.ts"]);
-    expect(readFileSync(join(src, "journal.ts"), "utf8").match(/insert into runs\b/gi)).toHaveLength(1);
-    const runtime = readFileSync(join(src, "runtime.ts"), "utf8");
-    const at = runtime.indexOf("createRun(");
+    return out.sort();
+  }
+
+  it("and by its sources: createRun is declared once and called once, in startRun after the ladder; one insert writes a run", () => {
+    expect(files).toContain("temporal/workflows.ts");
+    // The message of its refusal names it; nothing else does, but the one call and the one declaration.
+    expect(mentions("createRun")).toEqual(["journal.ts:declared", "journal.ts:named in `createRun takes only the start Runtime.", "runtime.ts:called"]);
+    expect(mentions("claimRunStarts")).toEqual(["journal.ts:declared", "runtime.ts:called", "runtime.ts:imported"]);
+    const runtime = text("runtime.ts");
     const startRun = runtime.indexOf("async startRun(");
     const next = runtime.indexOf("\n  async ", startRun + 1);
-    expect(calls[0]).toMatch(/^runtime\.ts:/);
-    expect(at > startRun && at < next, "the one call is in startRun").toBe(true);
-    expect(runtime.indexOf("promotionAtStart(", startRun)).toBeLessThan(at);
+    const call = runtime.indexOf(".createRun(", startRun);
+    expect(call > startRun && call < next, "the one call is in startRun").toBe(true);
+    expect(runtime.indexOf("promotionAtStart(", startRun)).toBeLessThan(call);
+    expect(runtime.indexOf("runStart(runId", startRun)).toBeLessThan(call);
+    // An insert into runs, with a schema or without, quoted or not, in any case and spacing: the one is createRun's.
+    const insert = /insert\s+into\s+(?:["`]?\w+["`]?\s*\.\s*)?["`]?runs["`]?(?!\w)/gi;
+    expect(files.flatMap((f) => (text(f).match(insert) ?? []).map(() => f))).toEqual(["journal.ts"]);
   });
 });
 

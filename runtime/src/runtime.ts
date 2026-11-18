@@ -21,7 +21,7 @@ import { Faults } from "./faults.js";
 import { checkFitness, systemProbe, type HostProbe } from "./fitness.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
-import { costDims, haltedRefusal, Journal, limitDims, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
+import { claimRunStarts, costDims, haltedRefusal, Journal, limitDims, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { ASKS, asksLimit, boundUnder } from "./asks.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
 import { buildPackage, isPackage06OrLater, isPackage07OrLater, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
@@ -43,6 +43,13 @@ function envelopeOwners(program: Program, running?: Program): Set<string> {
   const defs = [...Object.values(program.defs), ...Object.keys(program.defs).flatMap((n) => (running && Object.hasOwn(running.defs, n) ? [running.defs[n]!] : []))];
   return new Set(defs.flatMap((d) => (d.kind === "workflow" && workflowOwner(d) !== undefined ? [workflowOwner(d)!] : [])));
 }
+
+/**
+ * The one maker of the starts `Journal.createRun` takes, claimed when this module loads and kept here: only
+ * `Runtime.startRun` makes one, after the card and the ladder, so no other code can create a run (spec/attention.md
+ * "Promotion"). Not exported.
+ */
+const runStart = claimRunStarts();
 
 /**
  * The role that approves a workflow's card and signs its promotions (spec/attention.md "`owner`", "Card approval",
@@ -418,6 +425,8 @@ export class Runtime {
       ...(facts ? { attention: facts.digest } : {}),
     } as unknown as Value;
     const manifestHash = digest("run", manifest);
+    // Made here, after the card and the ladder, and nowhere else: what createRun takes.
+    const start = runStart(runId, manifestHash);
     try {
       await this.db.tx(async (tx) => {
         // Under the lock a halt of this tenant takes: a halt either committed before and is seen here, or waits for
@@ -425,7 +434,7 @@ export class Runtime {
         const halt = await this.journal.holdOffHalts(tx, policy.tenant);
         if (halt) throw haltedRefusal(halt, `Run ${runId} does not start`);
         await this.keep(tx, o.pkg);
-        await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash, ...(asks ? { asksReserved: asks.reserved } : {}) });
+        await this.journal.createRun(tx, start, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash, ...(asks ? { asksReserved: asks.reserved } : {}) });
         // The running program the run runs from here on, its resumes and its replays: never one made again (spec/library.md).
         if (expanded) await this.artifacts.put({ tenant: policy.tenant, runId }, canonical(expanded.program as unknown as Value), EXPANDED_MEDIA_TYPE, tx);
         // 0.7: the attention facts the run shows from here on, in its resumes and its replays: never asked again.
