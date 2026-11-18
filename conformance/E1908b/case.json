@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1908b",
+  "kind": "compile",
+  "title": "asks in a map's budget is refused (a mutation: Planning's map gets a budget with asks).",
+  "spec": [
+    "spec/attention.md#asks",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Planning/body/1/value/budget",
+      "value": {
+        "steps": 1,
+        "asks": 1
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1908",
+        "path": "/defs/Planning/body/1/value/budget/asks",
+        "facts": {
+          "def": "Planning",
+          "place": "map"
+        }
+      }
+    ]
+  }
+}

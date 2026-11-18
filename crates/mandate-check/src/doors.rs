@@ -28,7 +28,8 @@ use crate::patch::{GovernanceChange, PatchOp, apply_ops, apply_patch};
 use crate::shapes::{Shape, shapes_of, subprogram_shape_of};
 use crate::stdlib::DataClass;
 use crate::subprogram::{
-    Room, containment, language_of, opened, skeleton, subprogram_shape, subprogram_workflow,
+    Room, containment, language_of, opened, skeleton, subprogram_attention, subprogram_shape,
+    subprogram_workflow,
 };
 
 /// `JSON.stringify(value)`: the text a door checks.
@@ -87,27 +88,96 @@ impl PatchCheck {
     }
 }
 
+/// What [`check_patch`] checks the patched program with beside its modules
+/// (0.7, the Rust's alone: the TypeScript's `checkPatch` has no fifth
+/// parameter): the lock, the libraries the lock pins and the configuration's
+/// revoked digests, as `check` is given them. The default is none of them,
+/// and the door is then what it was.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PatchOptions<'a> {
+    /// The lock, as read (any value: the check validates it).
+    pub lock: Option<&'a Value>,
+    /// The libraries handed to the check (`CheckOptions::libraries`).
+    pub libraries: Option<&'a [crate::library::LibrarySource]>,
+    /// The digests the configuration revokes (`CheckOptions::revoked`).
+    pub revoked: Option<&'a std::collections::BTreeSet<mandate_lib::Digest>>,
+}
+
+/// The modules of the libraries the patched program reads, put among
+/// `modules`, for the names of the patch to be resolved against: what
+/// [`crate::check()`] links, so that a `use` of a library's module (a pattern
+/// of a pinned library, the embedded `std.patterns`) resolves in the
+/// patched program as it does in a check. `None` when the patch does not
+/// apply, the program is of 0.1 to 0.5, it is of 0.6 and there is no lock and
+/// no library, or no library module is read. A program of 0.7 or later reads
+/// the embedded `std.patterns` also with no lock and no library.
+fn with_library_modules(
+    program: &Value,
+    base: &str,
+    ops: &[PatchOp],
+    modules: &Modules,
+    opts: &PatchOptions<'_>,
+) -> Option<Modules> {
+    let patched = apply_ops(program, base, ops).program?;
+    let patched_program = Program::of(&patched)?;
+    // With neither a lock nor a library only a program of 0.7 or later reads
+    // what the compiler holds (the embedded std.patterns), as a check does;
+    // a program of 0.6 is resolved against `modules` alone, as it always was.
+    if opts.lock.is_none()
+        && opts.libraries.is_none()
+        && !patched_program
+            .language()
+            .is_some_and(|l| l.at_least(mandate_ir::Language::V0_7))
+    {
+        return None;
+    }
+    let read = crate::library::for_check(
+        patched_program,
+        &CheckOptions {
+            modules: Some(modules),
+            lock: opts.lock,
+            libraries: opts.libraries,
+            revoked: opts.revoked,
+            ..CheckOptions::default()
+        },
+    )?;
+    if read.modules.is_empty() {
+        return None;
+    }
+    let mut all = modules.clone();
+    for (name, library_module) in read.modules.iter() {
+        all.insert(name, library_module.clone());
+    }
+    Some(all)
+}
+
 /// Applies `ops` to `program` against the hash they were written for
-/// (`applyPatch`), then checks the patched program with `modules`, so the
-/// caller sees what it would be asked to fix next: `checkPatch(program,
-/// base, ops, modules)`. Nothing is saved.
+/// (`applyPatch`), then checks the patched program with `modules` and `opts`,
+/// so the caller sees what it would be asked to fix next: `checkPatch(program,
+/// base, ops, modules)`. Nothing is saved. With a lock or libraries, the
+/// names of the patch are resolved against the modules of the libraries too.
 #[must_use]
 pub fn check_patch(
     program: &Value,
     base: &str,
     ops: &[PatchOp],
     modules: Option<&Modules>,
+    opts: &PatchOptions<'_>,
 ) -> PatchCheck {
     // `modules = {}`.
     let none = Modules::new();
     let modules = modules.unwrap_or(&none);
-    let r = apply_patch(program, base, ops, Some(modules));
+    let named = with_library_modules(program, base, ops, modules, opts);
+    let r = apply_patch(program, base, ops, Some(named.as_ref().unwrap_or(modules)));
     let checked = r.program.as_ref().map(|p| {
         check(
             &json_text(p),
             SourceKind::Json,
             &CheckOptions {
                 modules: Some(modules),
+                lock: opts.lock,
+                libraries: opts.libraries,
+                revoked: opts.revoked,
                 ..CheckOptions::default()
             },
         )
@@ -149,6 +219,25 @@ pub struct SubprogramInput<'a> {
     pub lead: DataClass,
     /// What is left of the envelope now.
     pub room: &'a Room,
+    /// 0.7: the version of `std.patterns` the parent's lock pins, which
+    /// the check of the sub-program reads (it is given no lock); `None`: the
+    /// version of the parent's language, as before.
+    pub std_patterns: Option<mandate_lib::Version>,
+    /// 0.7: the classes of the roles the parent's lock binds (an object from
+    /// a role to its class; a role it does not name may be shown
+    /// `internal`), to which the check of the sub-program, given no lock,
+    /// holds what each role is shown (E1909). A question that names no role
+    /// is held to the lowest class of the roles it names, so a caller names
+    /// every role the parent's lock binds (the runtime does, `internal` for
+    /// one the lock gives no class). `None`: no E1909, as before. Read only
+    /// for a sub-program of 0.7 or later.
+    pub role_classes: Option<&'a Value>,
+    /// 0.7: a member the parent's lock lists who holds no role in it (the
+    /// first by name), who may answer a question that names no role and may
+    /// be shown `internal`, to which the check holds such a question too
+    /// (E1909). `None`: every member holds a role. Read only with
+    /// `role_classes`.
+    pub member_without_role: Option<&'a str>,
 }
 
 /// What [`check_subprogram`] gives: `SubprogramCheck`, `{ ok, diagnostics,
@@ -289,6 +378,9 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         i.number,
         parent_language,
     ));
+    // 0.7: no stage and no report in what the lead wrote (E1705); those of
+    // a listed shape come through its expansion, which this does not read.
+    diagnostics.extend(subprogram_attention(&sub));
     if has_errors(&diagnostics) {
         return Ok(SubprogramCheck::refused(diagnostics));
     }
@@ -316,7 +408,8 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
     // 0.6: the built-in std.patterns, when the parent imports it, so that a
     // sub-program may apply its patterns (`shapes`).
     if let Some(p) = Program::of(i.parent)
-        && let Some(with_std) = crate::library::with_builtin(p, Some(&modules))
+        && let Some(with_std) =
+            crate::library::with_builtin(p, Some(&modules), i.std_patterns.as_ref())
     {
         modules = with_std;
     }
@@ -330,7 +423,22 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         c.insert("lead", i.lead.as_str());
         Value::Object(c)
     };
-    let checked = check(
+    // 0.7: the one pass gives the sub-program's attention bound too, which
+    // its admission reserves of the run's `asks`.
+    let mut typing = crate::statics::Typing::default();
+    // 0.7: the classes of the parent's lock, as a lock that holds them
+    // alone, and the member who holds no role as its one member (E1909).
+    let caps = i.role_classes.map(|rc| {
+        let mut m = Map::new();
+        m.insert("role_classes", rc.clone());
+        if let Some(member) = i.member_without_role {
+            let mut members = Map::new();
+            members.insert(member, Value::Object(Map::new()));
+            m.insert("members", Value::Object(members));
+        }
+        Value::Object(m)
+    });
+    let checked = crate::check::check_capped(
         &json_text(&view),
         SourceKind::Json,
         &CheckOptions {
@@ -343,6 +451,8 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             linked: reach.is_some() && applies_a_pattern(&sub),
             ..CheckOptions::default()
         },
+        Some(&mut typing),
+        caps.as_ref().map(crate::lock::Lock::of),
     );
     // A name the sub-program defines and its parent already has is
     // reported once, at the definition the lead wrote.
@@ -428,6 +538,18 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             .unwrap_or_default();
         if let Some(view_program) = Program::of(&view) {
             let defs = link_reaching(view_program, Some(&modules), reach.as_ref()).defs;
+            // 0.7: what its admission reserves of the run's `asks`.
+            let v0_7 = view_program
+                .language()
+                .is_some_and(|l| l.at_least(mandate_ir::Language::V0_7));
+            let asks = typing
+                .bounds
+                .iter()
+                .find(|b| v0_7 && b.workflow == workflow)
+                .map(|b| crate::subprogram::AsksClaim {
+                    declared: b.declared,
+                    total: b.asks.total,
+                });
             diagnostics.extend(containment(
                 &defs,
                 &workflow,
@@ -436,6 +558,7 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
                 CapOptions {
                     language: view_program.language(),
                 },
+                asks,
             ));
         }
     }
@@ -481,6 +604,10 @@ pub struct AmendmentInput<'a> {
     pub workflow: &'a str,
     /// The new envelope, as IR: a lead's writing, any JSON value, or none.
     pub envelope: Option<&'a Value>,
+    /// 0.7: the version of `std.patterns` the program's lock pins, which
+    /// the check of the amended program reads (it is given no lock); `None`:
+    /// the version of its language, as before.
+    pub std_patterns: Option<mandate_lib::Version>,
 }
 
 /// What [`check_amendment`] gives: `AmendmentCheck`, `{ ok, diagnostics,
@@ -584,7 +711,8 @@ pub fn check_amendment(i: &AmendmentInput<'_>) -> Result<AmendmentCheck, String>
     // 0.6: the program's library modules, handed as modules, linked through
     // what they reach, as its own check links them.
     // The built-in std.patterns too, when the program imports it.
-    let with_std = Program::of(i.parent).and_then(|p| crate::library::with_builtin(p, i.modules));
+    let with_std = Program::of(i.parent)
+        .and_then(|p| crate::library::with_builtin(p, i.modules, i.std_patterns.as_ref()));
     let modules = with_std.as_ref().or(i.modules);
     let reach = modules
         .filter(|_| reads_0_6(i.parent))
@@ -646,6 +774,19 @@ fn reads_0_6(program: &Value) -> bool {
 /// parent }).defs }`.
 #[must_use]
 pub fn subprogram_linked(sub: &Value, parent: &Value, modules: Option<&Modules>) -> Value {
+    subprogram_linked_pinned(sub, parent, modules, None)
+}
+
+/// [`subprogram_linked`] whose parent reads `std.patterns` at the version
+/// `std_patterns` (0.7: the version the parent's lock pins); `None` is
+/// [`subprogram_linked`]'s answer.
+#[must_use]
+pub fn subprogram_linked_pinned(
+    sub: &Value,
+    parent: &Value,
+    modules: Option<&Modules>,
+    std_patterns: Option<&mandate_lib::Version>,
+) -> Value {
     let view = opened(sub, parent);
     let mut all = modules.cloned().unwrap_or_default();
     all.insert(
@@ -656,7 +797,7 @@ pub fn subprogram_linked(sub: &Value, parent: &Value, modules: Option<&Modules>)
         parent.clone(),
     );
     if let Some(p) = Program::of(parent)
-        && let Some(with_std) = crate::library::with_builtin(p, Some(&all))
+        && let Some(with_std) = crate::library::with_builtin(p, Some(&all), std_patterns)
     {
         all = with_std;
     }

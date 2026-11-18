@@ -168,9 +168,7 @@ pub fn print_program(program: &Value) -> Printed {
             }
             lines.push("  }".to_owned());
         }
-        for s in items(t, "body") {
-            lines.push(stmt(s, "  ")?);
-        }
+        stmt_lines(items(t, "body"), "  ", &mut lines)?;
         lines.push("}".to_owned());
         out.push(lines.join("\n"));
     }
@@ -456,6 +454,16 @@ fn print_slot(slot: &Value) -> Printed {
     Ok(s)
 }
 
+/// 0.7: a workflow's `owner r` on a line of its own, before its envelope or
+/// its caps (spec/attention.md "`owner`"); nothing for a workflow without
+/// one, which every workflow before 0.7 is (its schema closes a workflow).
+fn owner_line(d: &Value) -> String {
+    match d.get("owner") {
+        Some(_) => format!("\n  owner   {}", show(d, "owner")),
+        None => String::new(),
+    }
+}
+
 /// A workflow that applies a pattern (0.6, spec/library.md "Application"):
 /// `workflow W = P<A, …>(` and one argument a line, then its caps and
 /// budget, as a workflow writes them, and an envelope when it has one (the
@@ -487,6 +495,7 @@ fn print_application(name: &str, d: &Value) -> Printed {
         s.push_str(&lines.join(",\n"));
         s.push(')');
     }
+    s.push_str(&owner_line(d));
     let has_envelope = truthy(member(d, "envelope"));
     if has_envelope {
         s.push('\n');
@@ -738,6 +747,7 @@ fn print_workflow(name: &str, d: &Value) -> Printed {
         params(items(d, "params"))?,
         type_(member(d, "returns"))?
     );
+    s.push_str(&owner_line(d));
     let has_envelope = truthy(member(d, "envelope"));
     if has_envelope {
         s.push('\n');
@@ -913,6 +923,10 @@ fn budget(b: &Value) -> Printed {
     if b.get("agents").is_some() {
         parts.push(format!("agents: {}", show(b, "agents")));
     }
+    // 0.7: no program before 0.7 has it (its schema closes a budget).
+    if b.get("asks").is_some() {
+        parts.push(format!("asks: {}", show(b, "asks")));
+    }
     Ok(format!("budget {{ {} }}", parts.join(", ")))
 }
 
@@ -1068,11 +1082,23 @@ fn verifier(v: &Value) -> Printed {
 fn block(body: &[Value], ind: &str) -> Printed {
     let mut lines = vec![format!("{ind}{{")];
     let inner = format!("{ind}  ");
-    for s in body {
-        lines.push(stmt(s, &inner)?);
-    }
+    stmt_lines(body, &inner, &mut lines)?;
     lines.push(format!("{ind}}}"));
     Ok(lines.join("\n"))
+}
+
+/// The statements of a block, each on its line at `ind`, onto `lines`. A
+/// `stage` of 0.7 (spec/attention.md "`stage`") has a blank line before it,
+/// unless it starts the block; no IR before 0.7 has one, so an older
+/// program prints as before.
+fn stmt_lines(body: &[Value], ind: &str, lines: &mut Vec<String>) -> Result<(), String> {
+    for (i, s) in body.iter().enumerate() {
+        if i > 0 && StmtOp::from_value(member(s, "op")) == Some(StmtOp::Stage) {
+            lines.push(String::new());
+        }
+        lines.push(stmt(s, ind)?);
+    }
+    Ok(())
 }
 
 /// `block(body, ind).trimStart()`.
@@ -1150,7 +1176,53 @@ fn stmt(s: &Value, ind: &str) -> Printed {
                 Ok(format!("{ind}{text}"))
             }
         }
+        // 0.7: a marker line, its name and its title.
+        StmtOp::Stage => Ok(format!(
+            "{ind}stage {} {}",
+            show(s, "name"),
+            quoted(member(s, "title"))?
+        )),
+        StmtOp::Report => stmt_report(s, ind),
     }
+}
+
+/// The widest line a `report` is printed on whole; a longer one, or one
+/// whose fields span lines, has one field per line.
+const REPORT_LINE: usize = 100;
+
+/// 0.7 (spec/attention.md "`report`"): `report to r "t" { a: x, b: y }` on
+/// one line when it fits in [`REPORT_LINE`] characters (counted as Unicode
+/// scalar values) and no field's text spans lines; otherwise its head and
+/// `{` on the first line, one field a line after it, each but the last with
+/// a comma, and `}` on a line of its own. The fields in the order of the IR,
+/// the order a person reads them.
+fn stmt_report(s: &Value, ind: &str) -> Printed {
+    let head = format!(
+        "{ind}report to {} {}",
+        show(s, "role"),
+        quoted(member(s, "title"))?
+    );
+    let inner = format!("{ind}  ");
+    let mut fields: Vec<String> = Vec::new();
+    for f in items(s, "fields") {
+        fields.push(format!(
+            "{}: {}",
+            show(f, "name"),
+            expr(member(f, "value"), 0, &inner)?
+        ));
+    }
+    let line = format!("{head} {{ {} }}", fields.join(", "));
+    if line.chars().count() <= REPORT_LINE && !line.contains('\n') {
+        return Ok(line);
+    }
+    let mut lines = vec![format!("{head} {{")];
+    let last = fields.len().saturating_sub(1);
+    for (i, f) in fields.iter().enumerate() {
+        let comma = if i < last { "," } else { "" };
+        lines.push(format!("{inner}{f}{comma}"));
+    }
+    lines.push(format!("{ind}}}"));
+    Ok(lines.join("\n"))
 }
 
 /// `case "par"` of `stmt`.

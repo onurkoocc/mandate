@@ -1,0 +1,62 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906h",
+  "kind": "compile",
+  "title": "An action that may carry a governance-class file counts 1 for its owner's gate, which takes the place of an authorization by policy (a mutation: a pull request comment in Releasing, which no rule of the program hands to a person).",
+  "spec": [
+    "spec/attention.md#what-counts-as-a-question",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Releasing/body/3",
+      "value": {
+        "op": "let",
+        "name": "noted",
+        "value": {
+          "op": "effect",
+          "name": "git.comment",
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "ok"
+              }
+            },
+            {
+              "value": {
+                "op": "text",
+                "value": "released"
+              }
+            }
+          ],
+          "idempotent_by": {
+            "op": "text",
+            "value": "note"
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Releasing/budget/asks",
+        "facts": {
+          "workflow": "Releasing",
+          "asks": 5,
+          "total": 6
+        }
+      }
+    ]
+  }
+}

@@ -2,9 +2,9 @@
 // compiler only through ./index.js, so that when the entry point calls another compiler they follow. Every import is
 // read from the parsed source (a comment or a string that mentions a package is not an import).
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -26,6 +26,14 @@ interface Found {
   specifier: string;
   how: string;
   line: number;
+}
+
+/** The .ts files under `dir`, recursively. */
+function* walk(dir: string): Generator<string> {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) yield* walk(join(dir, e.name));
+    else if (e.name.endsWith(".ts")) yield join(dir, e.name);
+  }
 }
 
 /** Every module a file names: static imports and re-exports, `import("…")`, `require("…")`, `import x = require("…")`. */
@@ -75,6 +83,18 @@ describe("the seam between the command line, the MCP server and the compiler", (
 
   it("lets them name the class of the compiler's failures, from a file that imports nothing", () => {
     expect(importsOf("wasm/errors.ts", readFileSync(join(src, "wasm", "errors.ts"), "utf8"))).toEqual([]);
+  });
+
+  it("keeps the reference entry to itself: no file of src/ but reference.ts imports it, and none names it as a package", () => {
+    const entry = ["@mandate", "bridge", "reference"].join("/");
+    const found: string[] = [];
+    for (const file of walk(src)) {
+      const name = relative(src, file).replaceAll("\\", "/");
+      if (name === "reference.ts") continue;
+      for (const i of importsOf(name, readFileSync(file, "utf8"))) if (i.specifier === entry || /(^|\/)reference(\.js)?$/.test(i.specifier)) found.push(`${name}:${i.line}: ${i.how} ${i.specifier}`);
+    }
+    expect(found, "the reference entry is for writing test data (src/reference.ts)").toEqual([]);
+    expect(existsSync(join(src, "reference.ts"))).toBe(true);
   });
 
   it("takes the compiler only from ./index.js: cli.ts and mcp.ts do import it", () => {

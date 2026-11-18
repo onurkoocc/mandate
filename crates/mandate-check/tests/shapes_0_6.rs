@@ -115,6 +115,9 @@ fn sub_check(parent: &Value, workflow: &str, number: f64, text: &str) -> Subprog
         ops: &ops_of(text),
         lead: DataClass::Public,
         room: &room(),
+        std_patterns: None,
+        role_classes: None,
+        member_without_role: None,
     })
     .unwrap()
 }
@@ -135,7 +138,7 @@ const EACH: &str = "workflow Look = Each(work: Worker.look, width: 2)\n  caps   
 #[test]
 fn the_lock_of_the_shaped_migration_pins_std_patterns() {
     let mut lock = read_json(MIGRATE_LOCK).unwrap();
-    let l = mandate_check::library::std_patterns().unwrap();
+    let l = mandate_check::library::std_patterns_for(None, None).unwrap();
     let pin = mandate_ir::stringify(&JsValue::Object(l.pin().to_js())).unwrap();
     let pin = mandate_ir::parse(&pin).unwrap().value;
     if let Value::Object(m) = &mut lock
@@ -348,6 +351,7 @@ fn amendment(parent: &Value, envelope: &Value) -> Vec<String> {
         modules: None,
         workflow: "Run",
         envelope: Some(envelope),
+        std_patterns: None,
     })
     .unwrap();
     assert_eq!(r.ok, r.diagnostics.is_empty());
@@ -495,7 +499,7 @@ fn a_change_of_shapes_is_a_governance_change() {
     // A patch that changes them reports the same governance change.
     let base = hash_program(&before).program;
     let std_patterns =
-        mandate_check::library::with_builtin(mandate_ir::Program::of(&before).unwrap(), None);
+        mandate_check::library::with_builtin(mandate_ir::Program::of(&before).unwrap(), None, None);
     let patched = mandate_check::apply_patch(
         &before,
         &base,

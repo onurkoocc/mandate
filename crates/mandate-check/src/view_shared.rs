@@ -744,7 +744,10 @@ impl<'a> Graph<'a> {
                 unique_in_order(then.into_iter().chain(otherwise))
             }
             Some(StmtOp::Loop) => self.block(s.body(), prev),
-            _ => prev,
+            // No step: an `on error` and a test's `run` are not drawn, and
+            // a stage and a report of 0.7 are no steps of the graph (a
+            // report's fields are pure: they hold nothing that is drawn).
+            Some(StmtOp::OnError | StmtOp::Run | StmtOp::Stage | StmtOp::Report) | None => prev,
         }
     }
 

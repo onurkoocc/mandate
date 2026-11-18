@@ -1,0 +1,44 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1706d",
+  "kind": "compile",
+  "title": "A sub-program's declared asks is what its admission reserves, and one above what is left of the run's asks is not admitted.",
+  "spec": [
+    "spec/attention.md#sub-programs-and-amendments",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "subprogram": {
+    "workflow": "Planning",
+    "defs": {
+      "file": "sub.mdt",
+      "kind": "mdt"
+    },
+    "room": {
+      "left": {
+        "steps": 40,
+        "agents": 4,
+        "asks": 2
+      }
+    }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1706",
+        "path": "/defs/Finish/budget/asks",
+        "facts": {
+          "dimension": "asks",
+          "asked": 3,
+          "left": 2
+        }
+      }
+    ]
+  }
+}

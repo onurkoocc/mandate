@@ -1,0 +1,57 @@
+{
+ "format": "mandate/vectors/mcp/0.1",
+ "name": "not-tools",
+ "about": "tools/call of a tool that is not there, without a name, with arguments that are not an object, and with an empty list of modules",
+ "args": [
+  "mcp"
+ ],
+ "input": [
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":90,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.nothing\",\"arguments\":{},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":91,\"method\":\"tools/call\",\"params\":{\"arguments\":{},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":92,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":\"text\",\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":93,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":94,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.explain\",\"arguments\":[\"E0320\"],\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":95,\"method\":\"tools/call\",\"params\":{\"name\":7,\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":96,\"method\":\"tools/call\",\"params\":{\"name\":[\"mandate\",\"check\"],\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":97,\"method\":\"tools/call\",\"params\":{\"name\":{\"a\":1},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":98,\"method\":\"tools/call\",\"params\":{\"name\":null,\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":99,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.spec\",\"arguments\":{\"section\":\"4\",\"modules\":[]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":100,\"method\":\"tools/call\",\"params\":{\"name\":\"MANDATE.SPEC\",\"arguments\":{},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  }
+ ],
+ "output": [
+  "{\"jsonrpc\":\"2.0\",\"id\":90,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: mandate.nothing\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":91,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: undefined\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":92,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"code must be a string\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":93,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"code must be a string\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":94,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"code must be a string\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":95,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: 7\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":96,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: mandate,check\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":97,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: [object Object]\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":98,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: null\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"text\\\": \\\"## 4. Capabilities\\\\n\\\\nA capability is the authority to use an effect over a scope. A program\\\\ncannot create authority. Capabilities are granted at the entry point,\\\\npassed explicitly, and can only shrink.\\\\n\\\\n| Constructor | Authorizes | Scope |\\\\n|---|---|---|\\\\n| `fs.read(P\u2026)`, `fs.write(P\u2026)` | `Fs.Read`, `Fs.Write` | Paths, compared by segment after resolving `.` and `..` |\\\\n| `net.https(hosts: [\u2026], methods: [\u2026])` | `Net` | Hosts, and from 0.5 the methods each allows ([`boundary.md`](boundary.md#language-05)) |\\\\n| `model.infer(tier: t, max_class: c)` | `Model` | A model tier and the highest data class |\\\\n| `exec(commands: [\u2026], args_prefix: [\u2026])` | `Exec` | Commands and their argument prefixes |\\\\n| `git.pr(repo)` | `git.*` | Repositories |\\\\n| `money.spend(\u2026)` | `Spend` | \u2014 |\\\\n| `component.read(c\u2026)`, `component.write(c, p\u2026)` | `Fs.Read`, `Fs.Write` | The components' roots, or paths inside them |\\\\n| `component.exec(c, build \\\\\\\\| test)` | `Exec` | The commands the component declares |\\\\n| `component.repo(c\u2026)` | `git.*` | The components' repositories |\\\\n| `data.read(env, r\u2026)` | `Data.Read` | Declared reads of an environment |\\\\n| `env.deploy(e\u2026)`, `env.migrate(e\u2026)` | `deploy`, `migrate` | Environments |\\\\n\\\\n`Human`, `Time`, `Random` and `Delegate` need no capability. The rules:\\\\n\\\\n| Rule | Says |\\\\n|---|---|\\\\n| C1 | Every effect a workflow body or skill uses is covered by a capability in scope |\\\\n| C2 | A delegate gets the agent's capabilities that lie inside the context's (`A.caps \u2229 avail(ctx)`). `with caps K` replaces the kinds it names, and K must lie inside both |\\\\n| C3 | `c.narrow(\u2026)` is always inside `c`; nothing widens a capability |\\\\n| C4 | A workflow's `caps` are the upper bound of what its entry point may be granted |\\\\n| C5 | The write capabilities (`fs.write`, `git.*`) of different `par` branches do not overlap |\\\\n\\\\nAn unused capability is reported: the sandbox it produces bounds real\\\\nuse from above.\\\\n\\\"\\n}\"}],\"structuredContent\":{\"text\":\"## 4. Capabilities\\n\\nA capability is the authority to use an effect over a scope. A program\\ncannot create authority. Capabilities are granted at the entry point,\\npassed explicitly, and can only shrink.\\n\\n| Constructor | Authorizes | Scope |\\n|---|---|---|\\n| `fs.read(P\u2026)`, `fs.write(P\u2026)` | `Fs.Read`, `Fs.Write` | Paths, compared by segment after resolving `.` and `..` |\\n| `net.https(hosts: [\u2026], methods: [\u2026])` | `Net` | Hosts, and from 0.5 the methods each allows ([`boundary.md`](boundary.md#language-05)) |\\n| `model.infer(tier: t, max_class: c)` | `Model` | A model tier and the highest data class |\\n| `exec(commands: [\u2026], args_prefix: [\u2026])` | `Exec` | Commands and their argument prefixes |\\n| `git.pr(repo)` | `git.*` | Repositories |\\n| `money.spend(\u2026)` | `Spend` | \u2014 |\\n| `component.read(c\u2026)`, `component.write(c, p\u2026)` | `Fs.Read`, `Fs.Write` | The components' roots, or paths inside them |\\n| `component.exec(c, build \\\\| test)` | `Exec` | The commands the component declares |\\n| `component.repo(c\u2026)` | `git.*` | The components' repositories |\\n| `data.read(env, r\u2026)` | `Data.Read` | Declared reads of an environment |\\n| `env.deploy(e\u2026)`, `env.migrate(e\u2026)` | `deploy`, `migrate` | Environments |\\n\\n`Human`, `Time`, `Random` and `Delegate` need no capability. The rules:\\n\\n| Rule | Says |\\n|---|---|\\n| C1 | Every effect a workflow body or skill uses is covered by a capability in scope |\\n| C2 | A delegate gets the agent's capabilities that lie inside the context's (`A.caps \u2229 avail(ctx)`). `with caps K` replaces the kinds it names, and K must lie inside both |\\n| C3 | `c.narrow(\u2026)` is always inside `c`; nothing widens a capability |\\n| C4 | A workflow's `caps` are the upper bound of what its entry point may be granted |\\n| C5 | The write capabilities (`fs.write`, `git.*`) of different `par` branches do not overlap |\\n\\nAn unused capability is reported: the sandbox it produces bounds real\\nuse from above.\\n\"},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":100,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: MANDATE.SPEC\"}}"
+ ],
+ "tools_list": []
+}

@@ -13,12 +13,9 @@
 // The runs about the review's deadline, a lost answer and a crash have the matcher answer as an agent of its own,
 // with the match the model would give, so that their time goes to what they are about.
 // No network beyond the in-process fakes, no live model; the secrets are made-up words.
-//
-// The Rust compiler alone reads a program of 0.6: with MANDATE_COMPILER=ts these tests are skipped by name.
 
 import { readFileSync } from "node:fs";
 import { card, cardDoc, check, load, toMarkdown, type LibrarySource, type Lock, type Modules } from "@mandate/bridge";
-import { compilerMode } from "@mandate/bridge/mode";
 import { afterAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { WAIT_KINDS } from "../src/classes.js";
@@ -35,11 +32,9 @@ import { isObj, type Obj, type Value } from "../src/values.js";
 import { world as egressWorld, type World as EgressWorld } from "./egress-world.js";
 import { declaredErp, declaredMailbox, INJECTION, type FakeMcp } from "./fake-mcp.js";
 import { closeAll, world, type World } from "./helpers.js";
+import { lockUnder, relabel, relabelled } from "./relabel.js";
 
 afterAll(closeAll);
-
-const rust = compilerMode() !== "ts";
-const needs06 = rust ? describe : describe.skip;
 
 const read = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
@@ -50,7 +45,8 @@ function fixtureLibrary(dir: string): LibrarySource {
   return { manifest, files };
 }
 
-const SOURCE = read("fixtures/library/invoices.mdt");
+/** The acceptance program, as the language under test writes it (relabel.ts): of 0.6, or relabelled by test/superset-0.7/. */
+const SOURCE = relabel(read("fixtures/library/invoices.mdt"));
 const LIB = fixtureLibrary("acme.connectors");
 const ERP = "acme.connectors.erp";
 const MAIL = "acme.connectors.mailbox";
@@ -223,7 +219,7 @@ async function acceptance(o: { s?: Servers; transport?: false; matcher?: "loop" 
   const s = o.s ?? servers();
   const ana = EvidenceSigner.generate();
   const ben = EvidenceSigner.generate();
-  const { lock: _format, ...fixture } = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
+  const { lock: _format, ...fixture } = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string });
   // The lock as the fixture writes it, with the digests the servers list and the members' real keys.
   const lock = {
     ...fixture,
@@ -296,7 +292,7 @@ const declinedOf = (decline: number[], by: string | null): Array<[number, string
 
 // ── 1. the modes ────────────────────────────────────────────────────────
 
-needs06("the acceptance program in the runtime's three modes (design, read_only, live)", () => {
+describe("the acceptance program in the runtime's three modes (design, read_only, live)", () => {
   it("design answers from samples, and no request leaves for any server", HEAVY, async () => {
     const w = await acceptance();
     w.adapters.samples = { tool: (name: string) => (name === `${MAIL}.list_invoices` ? { result: INVOICES } : name === `${ERP}.list_open_orders` ? { result: ORDERS } : undefined) } as never;
@@ -332,7 +328,7 @@ needs06("the acceptance program in the runtime's three modes (design, read_only,
 
 // ── 2. the live run ─────────────────────────────────────────────────────
 
-needs06("the live run of the acceptance program, through the egress proxy", () => {
+describe("the live run of the acceptance program, through the egress proxy", () => {
   it("asks once, posts a draft for each accepted invoice, keeps the secrets and the servers' words from every model, replays, and stays within its card", HEAVY, async () => {
     const eg: EgressWorld = await egressWorld({
       credentials: {
@@ -468,7 +464,10 @@ needs06("the live run of the acceptance program, through the egress proxy", () =
       expect(verified.filter((e) => !e.valid)).toEqual([]);
 
       // ── what the card states, and what the run did within it ──
-      const c = card(w.pkg.program, "MatchInvoices", { lock: w.lock, modules: libraryModules() })!;
+      // The card of a program of 0.7 is made from a check that has the libraries the lock pins, and a lock that keeps its schema: the
+      // fixture's, as the card test below reads it (the live lock has this run's keys and digests, which the card does not show).
+      const cardLock = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock);
+      const c = card(w.pkg.program, "MatchInvoices", { lock: cardLock, modules: libraryModules(), libraries: [LIB] })!;
       const spend = c.spends.find((x) => x.dimension === "spend")!;
       expect([c.does.maps[0]!.max, spend.static, spend.envelope]).toEqual([60, 18_000_000, 20_000_000]);
       expect(libraryOf(c).reviews).toHaveLength(1);
@@ -505,7 +504,7 @@ needs06("the live run of the acceptance program, through the egress proxy", () =
 
 // ── 3. the deadline ─────────────────────────────────────────────────────
 
-needs06("the acceptance program's review past its deadline", () => {
+describe("the acceptance program's review past its deadline", () => {
   it("goes to the finance lead once the accountant's deadline passes, and the finance lead decides", HEAVY, async () => {
     const w = await acceptance({ matcher: "agent" });
     const r = await start(w, "esc");
@@ -547,7 +546,7 @@ needs06("the acceptance program's review past its deadline", () => {
 
 // ── 4. a lost answer ────────────────────────────────────────────────────
 
-needs06("a draft whose answer was lost (lose_response)", () => {
+describe("a draft whose answer was lost (lose_response)", () => {
   it("is an unknown outcome; its reconciliation finds the draft, and each such invoice has exactly one draft after the run", HEAVY, async () => {
     const w = await acceptance({ matcher: "agent" });
     // The 5th and the 20th post are applied by the ERP, and their answers lost.
@@ -583,7 +582,7 @@ needs06("a draft whose answer was lost (lose_response)", () => {
 
 // ── 5. crash and resume ─────────────────────────────────────────────────
 
-needs06("the acceptance program across stopped workers", () => {
+describe("the acceptance program across stopped workers", () => {
   it("resumes in a fresh runtime while it waits for the review and in the middle of the commit map: the ERP ends as an uninterrupted run leaves it", HEAVY, async () => {
     const w = await acceptance({ matcher: "agent" });
     // The first worker stops once the last verdict of the map is recorded, before the review is asked.
@@ -641,22 +640,31 @@ function libraryModules(): Modules {
 /** What a card of 0.6 adds (`library`), which the card's type of the reference compiler, frozen at 0.5, does not name. */
 const libraryOf = (c: ReturnType<typeof card>): { reviews: Obj[]; commits: Obj[] } => (c as unknown as { library: { reviews: Obj[]; commits: Obj[] } }).library;
 
-needs06("the acceptance program's card", () => {
+describe("the acceptance program's card", () => {
   it("states the most items, the spend bound against the budget, one batch decision, and an action per accepted invoice", () => {
-    const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock;
+    const lock = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock);
     const r = check(SOURCE, "mdt", { libraries: [LIB], lock });
     expect(r.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(SOURCE.trimEnd().split("\n").length).toBeLessThan(50);
-    const md = toMarkdown(cardDoc(r.program!, "MatchInvoices", { lock, modules: libraryModules() })!);
+    const md = toMarkdown(cardDoc(r.program!, "MatchInvoices", { lock, modules: libraryModules(), libraries: [LIB] })!);
     for (const line of [
       "| map it | items | 60 | 6 | Matcher.match | — |",
       "Spend bound of map it: 60 × 0.30 USD = 18 USD ≤ 20 USD.",
-      "At most one batch decision to accountant (ana) about at most 60 items (those that failed only a criterion it may waive); if the deadline (1d) passes, to finance\\_lead (ben); if that passes too, every open item is declined. Nobody is asked about a single item, and nothing passes on its own.",
+      // A card of 0.7 tells the batch decision under "When it asks whom", in the rows of its table, not in the review's paragraph;
+      // the relabelled lock gives every role `restricted` (lockUnder, relabel.ts: a run of 0.6 masks nothing).
+      ...(relabelled()
+        ? [
+            "| accountant | ana | up to restricted | outside any stage | Waive or decline the open items of the batch (Matched.totals may be waived); one decision about up to 60 items | 1 decision | 1 day from when it is asked | It goes to finance\\_lead, who has 1 day of their own |",
+            "| Every open item is declined, by nobody, and the run goes on with the items that were accepted |",
+          ]
+        : [
+            "At most one batch decision to accountant (ana) about at most 60 items (those that failed only a criterion it may waive); if the deadline (1d) passes, to finance\\_lead (ben); if that passes too, every open item is declined. Nobody is asked about a single item, and nothing passes on its own.",
+          ]),
       "Each accepted item is posted as its own action by erp.post\\_draft\\_invoice (a critical write tool, retry class reconcilable), authorized by policy, idempotent by invoice\\_no. Nobody is asked about one item.",
       "| Matched | totals | The total is within 2% of the order's | accountant (ana), finance\\_lead (ben) |",
     ])
       expect(md, line).toContain(line);
-    const c = card(r.program!, "MatchInvoices", { lock, modules: libraryModules() })!;
+    const c = card(r.program!, "MatchInvoices", { lock, modules: libraryModules(), libraries: [LIB] })!;
     expect(libraryOf(c).commits).toEqual([expect.objectContaining({ effect: POST, at_most: 60, key: "invoice_no", retry_class: "reconcilable" })]);
     expect(libraryOf(c).reviews).toEqual([expect.objectContaining({ role: { role: "accountant", members: ["ana"] }, escalate_to: { role: "finance_lead", members: ["ben"] }, at_most: 60, deadline_ms: DAY })]);
   });
@@ -664,9 +672,9 @@ needs06("the acceptance program's card", () => {
 
 // ── 7. the budget ───────────────────────────────────────────────────────
 
-needs06("the acceptance program's budget", () => {
+describe("the acceptance program's budget", () => {
   it("a budget too small for 60 items is refused: by the check (E0501), and by the runtime at load for a package changed past it; nothing is sent", async () => {
-    const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock;
+    const lock = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock);
     const small = check(SOURCE.replace("spend: 20 USD", "spend: 17 USD"), "mdt", { libraries: [LIB], lock });
     expect(small.diagnostics.filter((d) => d.severity === "error").map((d) => d.code)).toEqual(["MDT-E0501"]);
     expect(check(SOURCE.replace("spend: 20 USD", "spend: 18 USD"), "mdt", { libraries: [LIB], lock }).diagnostics.filter((d) => d.severity === "error")).toEqual([]);

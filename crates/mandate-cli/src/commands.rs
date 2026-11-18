@@ -13,8 +13,9 @@ use mandate_ir::{
 };
 use mandate_syntax::{kind_of, load, print_program};
 use mandate_views::{
-    acs_target, architecture_with_lock, authority_with, card, card_doc, cost_with, diff_doc_with,
-    envelope_workflows, program_doc, to_html, to_markdown,
+    acs_target, architecture_pinned, attention_doc, attention_program_doc, attention_view,
+    attention_views_js, authority_pinned, card_doc_given, card_given, cost_with, diff_doc_with,
+    envelope_workflows, has_attention, program_doc_given, to_html, to_markdown, workflow_names,
 };
 
 use crate::args::Args;
@@ -22,9 +23,8 @@ use crate::libraries::Given;
 use crate::{Io, IoErrorKind};
 
 /// The commands of the Node command line that this executable does not
-/// have: `mcp`, and `CONTROL` of `bridge/src/cli.ts` (the runtime's).
-const NOT_HERE: [&str; 28] = [
-    "mcp",
+/// have: `CONTROL` of `bridge/src/cli.ts` (the runtime's).
+const NOT_HERE: [&str; 27] = [
     "run",
     "status",
     "approve",
@@ -66,10 +66,12 @@ const USAGE: &str = "usage: mandate <command> [options]
   explain <code> [--json]
   view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]
   view <file> --card [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]
-  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
-  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]
+  view <file> --attention [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]
+  add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]
+  upgrade <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]
   publish <source dir> [--libraries <dir>] [--config <file>] [--json]
-  (mcp and the commands that control a run are the Node command line's, not this executable's)
+  mcp [--module <file>]…   (an MCP server on stdio)
+  (the commands that control a run are the Node command line's, not this executable's)
 ";
 
 /// A command that ended before its end, with its exit status; what it had
@@ -160,6 +162,8 @@ impl<'a> Cli<'a> {
             "add" => self.add(&a, false),
             "upgrade" => self.add(&a, true),
             "publish" => self.publish(&a),
+            // The server reads no file: its modules are read here, before it starts.
+            "mcp" => Ok(crate::mcp::serve(&mut *self.io, JsObject::from(&modules))),
             _ => Err(self.usage()),
         }
     }
@@ -605,7 +609,8 @@ impl<'a> Cli<'a> {
     }
 
     /// `mandate view <file> …`: the program's views, the diff with an older
-    /// version, or the card of a workflow.
+    /// version, the card of a workflow, or the attention view of its
+    /// workflows.
     fn view(&mut self, a: &Args, modules: &Modules) -> Done {
         let Some(file) = a.arg(0) else {
             return Err(self.usage());
@@ -618,7 +623,78 @@ impl<'a> Cli<'a> {
         let given = self.given(a, lock.as_ref())?;
         let (program, _) = self.checked_program(file, modules, lock.as_ref(), &given, false)?;
         let mut all = given.with_modules(modules);
-        if a.flag("--card") {
+        // What the check of the attention view is given besides the lock:
+        // the program's own modules and the libraries its lock pins.
+        let attention_opts = CheckOptions {
+            lock: lock.as_ref(),
+            modules: Some(modules),
+            libraries: (!given.libraries.is_empty()).then_some(given.libraries.as_slice()),
+            revoked: given.revoked.as_ref(),
+            ..CheckOptions::default()
+        };
+        if a.flag("--attention") {
+            if a.against.is_some() || a.flag("--card") {
+                return Err(self.usage());
+            }
+            // The attention view is of a program of 0.7: of each of its
+            // workflows, in the order of its definitions, or of the one
+            // --workflow names.
+            if !has_attention(&program) {
+                return Err(self.fail(
+                    1,
+                    &format!(
+                        "{file} is not a program of language 0.7, so it has no attention view"
+                    ),
+                ));
+            }
+            let names = workflow_names(&program);
+            let chosen: Vec<&str> = match a.workflow.as_deref() {
+                Some(w) if names.iter().any(|n| n == w) => vec![w],
+                Some(w) => {
+                    return Err(self.fail(
+                        2,
+                        &format!(
+                            "no workflow {w} in {file}; name one of: {}",
+                            names.join(", ")
+                        ),
+                    ));
+                }
+                None => names.iter().map(String::as_str).collect(),
+            };
+            if chosen.is_empty() {
+                return Err(self.fail(
+                    1,
+                    &format!("{file} has no workflow, so it has no attention view"),
+                ));
+            }
+            let source = self.read(file)?;
+            let mut views = Vec::with_capacity(chosen.len());
+            for name in chosen {
+                match attention_view(&source, kind_of(file), &attention_opts, name) {
+                    Some(v) => views.push(v),
+                    None => {
+                        return Err(self.fail(
+                            1,
+                            &format!("the attention view of {name} of {file} could not be made"),
+                        ));
+                    }
+                }
+            }
+            // JSON: the view of the one workflow --workflow names, as the
+            // door `attention` gives it, else `{ format, kind, program,
+            // workflows }` whatever their number. Markdown and HTML: the
+            // document of the one workflow, or of all of them.
+            let text = match (views.as_slice(), format) {
+                ([only], "json") if a.workflow.is_some() => pretty(&only.to_js()),
+                ([only], "md" | "html") => rendered(&attention_doc(only), format),
+                (all, "json") => all.first().map_or_else(String::new, |first| {
+                    pretty(&attention_views_js(&first.program, all))
+                }),
+                (all, _) => attention_program_doc(all)
+                    .map_or_else(String::new, |doc| rendered(&doc, format)),
+            };
+            self.out(&text);
+        } else if a.flag("--card") {
             if a.against.is_some() {
                 return Err(self.usage());
             }
@@ -646,14 +722,18 @@ impl<'a> Cli<'a> {
                 }
             };
             let text = if format == "json" {
-                card(&program, name, lock.as_ref(), Some(&all)).map(|view| pretty(&view.to_js()))
+                card_given(&program, name, lock.as_ref(), Some(&all), &attention_opts)
+                    .map(|card| card.map(|view| pretty(&view.to_js())))
             } else {
-                card_doc(&program, name, lock.as_ref(), Some(&all))
-                    .map(|doc| rendered(&doc, format))
+                card_doc_given(&program, name, lock.as_ref(), Some(&all), &attention_opts)
+                    .map(|doc| doc.map(|doc| rendered(&doc, format)))
             };
             match text {
-                Some(text) => self.out(&text),
-                None => return Err(self.fail(1, &format!("{name} of {file} has no card"))),
+                Ok(Some(text)) => self.out(&text),
+                Ok(None) => return Err(self.fail(1, &format!("{name} of {file} has no card"))),
+                Err(refused) => {
+                    return Err(self.fail(1, &format!("{file}: {}", refused.message)));
+                }
             }
         } else if let Some(against) = a.against.as_deref() {
             // The old version is checked without its lock, as cli.ts checks
@@ -681,18 +761,31 @@ impl<'a> Cli<'a> {
             self.out(&text);
         } else {
             let m = view_modules(&all, &[&program]);
+            // 0.7: every view reads std.patterns at the version the lock pins.
+            let pin = mandate_check::library::std_patterns_pin(lock.as_ref());
             let text = if format == "json" {
                 let views = JsObject::new()
                     .with(
                         "architecture",
-                        architecture_with_lock(&program, lock.as_ref().filter(|_| m.is_some()), m)
-                            .to_js(),
+                        architecture_pinned(
+                            &program,
+                            lock.as_ref().filter(|_| m.is_some()),
+                            m,
+                            pin.as_ref(),
+                        )
+                        .to_js(),
                     )
-                    .with("authority", authority_with(&program, m).to_js())
+                    .with(
+                        "authority",
+                        authority_pinned(&program, m, pin.as_ref()).to_js(),
+                    )
                     .with("cost", cost_with(&program, lock.as_ref(), m).to_js());
                 pretty(&JsValue::Object(views))
             } else {
-                rendered(&program_doc(&program, lock.as_ref(), m), format)
+                rendered(
+                    &program_doc_given(&program, lock.as_ref(), m, None, &attention_opts),
+                    format,
+                )
             };
             self.out(&text);
         }

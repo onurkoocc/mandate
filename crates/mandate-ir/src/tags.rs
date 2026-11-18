@@ -1,6 +1,6 @@
 //! The closed sets of tags `spec/ir.schema.json` defines, as enums; the
 //! language versions are those of `spec/ir.schema.json` and then of
-//! `spec/ir-0.6.schema.json`.
+//! `spec/ir-0.6.schema.json` and `spec/ir-0.7.schema.json`.
 //!
 //! Each enum lists its values in the schema's order, with the tag's text
 //! ([`Language::as_str`]) and the conversion from it ([`Language::from_tag`]);
@@ -62,9 +62,10 @@ tags! {
     /// 0.1 to 0.5 are `LANGUAGE_VERSIONS` in `compiler/src/ir/types.ts`, the
     /// `language` enum of `spec/ir.schema.json`. 0.6 (spec/library.md) is
     /// read by the Rust compiler alone, under its own schema,
-    /// `spec/ir-0.6.schema.json`; the TypeScript compiler stays at 0.5. Every
-    /// rule of an earlier version holds for 0.6 (`at_least`), and what 0.6
-    /// adds holds for 0.6 alone.
+    /// `spec/ir-0.6.schema.json`; the TypeScript compiler stays at 0.5. 0.7
+    /// (spec/attention.md) is the Rust compiler's too, under
+    /// `spec/ir-0.7.schema.json`. Every rule of an earlier version holds for
+    /// a later one (`at_least`), and what a version adds holds from it on.
     Language {
         V0_1 = "mandate/0.1",
         V0_2 = "mandate/0.2",
@@ -72,14 +73,15 @@ tags! {
         V0_4 = "mandate/0.4",
         V0_5 = "mandate/0.5",
         V0_6 = "mandate/0.6",
+        V0_7 = "mandate/0.7",
     }
 }
 
 impl Language {
-    /// The newest version this compiler reads: 0.6, where the TypeScript's
+    /// The newest version this compiler reads: 0.7, where the TypeScript's
     /// `LANGUAGE_VERSION` is 0.5 (`vectors/README.md`, "The versions only the
     /// Rust compiler reads").
-    pub const NEWEST: Language = Language::V0_6;
+    pub const NEWEST: Language = Language::V0_7;
 
     /// Whether this is `since` or a later version: `atLeast(v, since)`.
     #[must_use]
@@ -187,6 +189,30 @@ tags! {
         OnError = "on_error",
         Run = "run",
         Expr = "expr",
+        Stage = "stage",
+        Report = "report",
+    }
+}
+
+impl StmtOp {
+    /// The language version that added the statement. Every statement of
+    /// the schema of 0.1 to 0.5 is of 0.1 (`SINCE.ops` in `validate.ts`
+    /// lists none), and 0.6 adds none; a statement 0.7 adds
+    /// (spec/attention.md: `stage`, `report`) is of 0.7, and the schemas of
+    /// 0.1 to 0.6 do not have it.
+    #[must_use]
+    pub const fn since(self) -> Language {
+        match self {
+            StmtOp::Let
+            | StmtOp::Par
+            | StmtOp::If
+            | StmtOp::Loop
+            | StmtOp::Return
+            | StmtOp::OnError
+            | StmtOp::Run
+            | StmtOp::Expr => Language::V0_1,
+            StmtOp::Stage | StmtOp::Report => Language::V0_7,
+        }
     }
 }
 

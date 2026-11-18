@@ -14,7 +14,7 @@
 
 use std::rc::Rc;
 
-use mandate_ir::{JsObject, Map, Value, canonicalize, limits, ptr_token};
+use mandate_ir::{JsObject, Map, StmtOp, Value, canonicalize, limits, ptr_token};
 
 use super::apply::{Binding, Bound};
 use super::pattern::Problem;
@@ -315,13 +315,13 @@ impl<'a> Subst<'a> {
                 depth.saturating_add(1),
             ));
             let mut bound: Vec<String> = Vec::new();
-            match s.get("op").and_then(Value::as_str) {
-                Some("let") => {
+            match s.get("op").and_then(StmtOp::from_value) {
+                Some(StmtOp::Let) => {
                     if let Some(n) = s.get("name").and_then(Value::as_str) {
                         bound.push(n.to_owned());
                     }
                 }
-                Some("par") => {
+                Some(StmtOp::Par) => {
                     for (n, _) in s
                         .get("branches")
                         .and_then(Value::as_object)
@@ -331,7 +331,20 @@ impl<'a> Subst<'a> {
                         bound.push(n.to_owned());
                     }
                 }
-                _ => {}
+                // Bind nothing for what follows; a stage and a report of
+                // 0.7 open no scope either (spec/attention.md "`stage`",
+                // "`report`").
+                Some(
+                    StmtOp::If
+                    | StmtOp::Loop
+                    | StmtOp::Return
+                    | StmtOp::OnError
+                    | StmtOp::Run
+                    | StmtOp::Expr
+                    | StmtOp::Stage
+                    | StmtOp::Report,
+                )
+                | None => {}
             }
             if !bound.is_empty() {
                 scope = Scope::child(&scope, bound);
@@ -815,6 +828,39 @@ impl<'a> Subst<'a> {
                         self.node(x, &sub(path, k), &sub(pp, k), &inner, d1)
                     } else {
                         x.clone()
+                    };
+                    out.insert(k, value);
+                }
+                return Value::Object(out);
+            }
+            // 0.7: a stage is copied as the pattern writes it: its name and
+            // its title are the pattern's, and no slot stands in either.
+            "stage" => return v.clone(),
+            // 0.7: a report's role is one of the pattern's role slots
+            // (E1903), and the role the application binds to it takes its
+            // place; its fields' expressions are substituted as any are,
+            // and its title is the pattern's (spec/attention.md "`report`").
+            "report" => {
+                let bound = v
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .and_then(|r| self.binding(r))
+                    .and_then(|b| match &b.bound {
+                        Bound::Role(r) => Some((b, r.clone())),
+                        _ => None,
+                    });
+                if let Some((b, _)) = bound {
+                    self.arg(&sub(path, "role"), b, false);
+                }
+                let mut out = Map::new();
+                for (k, x) in m.iter() {
+                    let value = match k {
+                        "role" => match &bound {
+                            Some((_, r)) => Value::from(r.as_str()),
+                            None => x.clone(),
+                        },
+                        "op" | "title" => x.clone(),
+                        _ => self.node(x, &sub(path, k), &sub(pp, k), scope, d1),
                     };
                     out.insert(k, value);
                 }

@@ -2,8 +2,7 @@
 // why. Every function bridge/src/index.ts exports is in exactly one of the three lists (test/facade.test.ts): the
 // door-backed functions, the Rust-only ones of language 0.6, and those kept in TypeScript.
 //
-// A door-backed function is answered by the door of its name in `rust` mode, and by both compilers, compared, in
-// `both` (index.ts). Its door takes the function's parameters as the members of its input, by these names, which
+// A door-backed function is answered by the door of its name (rust.ts, index.ts). Its door takes the function's parameters as the members of its input, by these names, which
 // the module's own table (the door `doors`) must give when the module is loaded (wasm/call.ts).
 
 /**
@@ -35,7 +34,7 @@ export const DOOR_BACKED = {
   showCap: { door: "show_cap", params: ["c"] },
   governanceFiles: { door: "governance_files", params: ["files", "extra"] },
   skeleton: { door: "skeleton", params: ["parent", "n", "language"] },
-  subprogramLinked: { door: "subprogram_linked", params: ["sub", "parent", "modules"] },
+  subprogramLinked: { door: "subprogram_linked", params: ["sub", "parent", "modules", "std_patterns"] },
   // The lock, the Managed Agents binding, the sandbox.
   validateLock: { door: "validate_lock", params: ["value"] },
   roleLockChecks: { door: "role_lock_checks", params: ["program", "linked", "lock", "spans"] },
@@ -49,10 +48,10 @@ export const DOOR_BACKED = {
   denialDiagnostics: { door: "denial_diagnostics", params: ["program", "report"] },
   // Patches, sub-programs, amendments and diffs.
   applyPatch: { door: "apply_patch", params: ["program", "base", "ops", "modules"] },
-  checkPatch: { door: "check_patch", params: ["program", "base", "ops", "modules"] },
+  checkPatch: { door: "check_patch", params: ["program", "base", "ops", "modules", "opts"] },
   checkSubprogram: { door: "check_subprogram", params: ["i"] },
   checkAmendment: { door: "check_amendment", params: ["i"] },
-  semanticDiff: { door: "semantic_diff", params: ["before", "after", "locks", "modules"] },
+  semanticDiff: { door: "semantic_diff", params: ["before", "after", "locks", "modules", "std_patterns"] },
   governanceChanges: { door: "governance_changes", params: ["before", "after", "modules"] },
   envelopeChanges: { door: "envelope_changes", params: ["before", "after", "workflow", "modules"] },
   // The run-time authority decisions (authority.ts).
@@ -61,13 +60,13 @@ export const DOOR_BACKED = {
   mapScopes: { door: "map_scopes", params: ["input"] },
   inFlightOverlap: { door: "in_flight_overlap", params: ["input"] },
   // The views, the documents, the card and the ACS target.
-  architecture: { door: "architecture", params: ["program", "modules", "lock"] },
+  architecture: { door: "architecture", params: ["program", "modules", "lock", "std_patterns"] },
   architectureBlocks: { door: "architecture_blocks", params: ["v"] },
-  authority: { door: "authority", params: ["program", "modules"] },
+  authority: { door: "authority", params: ["program", "modules", "std_patterns"] },
   authorityBlocks: { door: "authority_blocks", params: ["v"] },
-  cost: { door: "cost", params: ["program", "lock", "modules"] },
-  programDoc: { door: "program_doc", params: ["program", "lock", "modules"] },
-  diffDoc: { door: "diff_doc", params: ["before", "after", "locks", "modules"] },
+  cost: { door: "cost", params: ["program", "lock", "modules", "std_patterns"] },
+  programDoc: { door: "program_doc", params: ["program", "lock", "modules", "std_patterns"] },
+  diffDoc: { door: "diff_doc", params: ["before", "after", "locks", "modules", "std_patterns"] },
   envelopeWorkflows: { door: "envelope_workflows", params: ["program"] },
   card: { door: "card", params: ["program", "workflow", "opts"] },
   cardDoc: { door: "card_doc", params: ["program", "workflow", "opts"] },
@@ -81,24 +80,35 @@ export type DoorBacked = keyof typeof DOOR_BACKED;
 /**
  * The functions of language 0.6 that only the Rust compiler answers (library.ts): the door each calls, and the
  * members of its input, the function's parameters in order. No TypeScript function stands for one: the reference
- * compiler is frozen at 0.5, so in `ts` mode each throws NoReference, by name, and in `both` it is the Rust's alone
- * (counted under `language-0.6`). Their doors stand for no TypeScript function in the module's table either.
+ * compiler is frozen at 0.5 and has no answer for them. Their doors stand for no TypeScript function in the module's
+ * table either.
  */
 export const RUST_ONLY = {
   libraryVerify: { door: "library_verify", params: ["library", "libraries"] },
   // `mandate add`, `upgrade` and `publish`: each takes its door's input as one request, whose members are these.
-  libraryAdd: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now"] },
-  libraryUpgrade: { door: "library_upgrade", params: ["library", "range", "lock", "versions", "pinned", "libraries", "config", "now", "accept_governance"] },
+  libraryAdd: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now", "language"] },
+  libraryUpgrade: { door: "library_upgrade", params: ["library", "range", "lock", "versions", "pinned", "libraries", "config", "now", "accept_governance", "language"] },
   libraryPublish: { door: "library_publish", params: ["source", "published", "libraries", "now"] },
   authoritySignature: { door: "authority_signature", params: ["library", "libraries"] },
+  // Language 0.7's two doors for the runtime's use of connectors (library.ts): which connectors a program can call,
+  // and a tool's schema digest (the runtime's own `schemaDigest`, byte for byte).
+  callableConnectors: { door: "callable_connectors", params: ["program", "modules"] },
+  toolSchemaDigest: { door: "tool_schema_digest", params: ["tool"] },
+  // Language 0.7's attention facts of a workflow (spec/attention.md "The facts"): what a run of 0.7 stores at its start.
+  attentionFacts: { door: "attention_facts", params: ["text", "kind", "opts", "workflow"] },
+  // Language 0.7's attention view of a workflow, or of every workflow of a program (spec/attention.md "The attention view"):
+  // `mandate view --attention` and the MCP server's `project` ask it.
+  attentionView: { door: "attention", params: ["text", "kind", "opts", "workflow", "format"] },
+  // The tools of the MCP servers of a language (spec/attention.md "The MCP server"): both servers take their list from it.
+  mcpTools: { door: "mcp_tools", params: ["language"] },
   // Whether a value is the `libraries` member of a configuration: asked of the door that reads one before it resolves
   // anything, in a request that resolves nothing.
-  librariesConfigProblems: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now"] },
+  librariesConfigProblems: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now", "language"] },
 } as const satisfies Record<string, { door: string; params: readonly string[] }>;
 
 /**
- * The doors the bridge calls that stand for no function of its own: `codes`, whose table is CODES in `rust` and
- * `both` (index.ts), with its parameters.
+ * The doors the bridge calls that stand for no function of its own: `codes`, whose table is CODES (index.ts), with
+ * its parameters.
  */
 export const OWN_DOORS = { codes: [] } as const satisfies Record<string, readonly string[]>;
 
@@ -109,13 +119,13 @@ export type Kept =
   /** Nothing in runtime/src, bridge/src/cli.ts or bridge/src/mcp.ts calls it (test/facade.test.ts holds that), so no door stands for it. */
   | { uncalled: string };
 
-/** The functions that stay in TypeScript in every mode, with the reason for each. */
+/** The functions that stay in TypeScript, with the reason for each. */
 export const KEPT: Record<string, Kept> = {
   // Helpers: what they give depends on their arguments alone, read as syntax or shown as text, and no language
   // version changes it, so there is nothing for another compiler to decide.
   kindOf: { helper: "a file's kind from its name: .json is IR, anything else .mdt text" },
   calleePath: { helper: "the dotted name of a call's callee, read off the expression" },
-  atLeast: { helper: "whether a language version is at least another, by their order in LANGUAGE_VERSIONS and then mandate/0.6 (library.ts): the reference compiler's answer for 0.1 to 0.5, and the bridge's own for 0.6, which the reference does not know" },
+  atLeast: { helper: "whether a language version is at least another, by their order in LANGUAGE_VERSIONS and then mandate/0.6 and mandate/0.7 (library.ts, BRIDGE_LANGUAGE_VERSIONS): the reference compiler's answer for 0.1 to 0.5, and the bridge's own for 0.6 and 0.7, which the reference does not know" },
   classRank: { helper: "a data class's place in public < internal < confidential < restricted" },
   budgetAmount: { helper: "the number a budget gives one dimension" },
   formatDiagnostic: { helper: "a diagnostic as one line of text for a person" },
@@ -123,7 +133,8 @@ export const KEPT: Record<string, Kept> = {
   diag: { helper: "builds a diagnostic object from its parts" },
   htmlEscape: { helper: "a text escaped for HTML" },
   mdEscape: { helper: "a text escaped for Markdown" },
-  isProgram06: { helper: "whether a value is a program whose language is mandate/0.6 (library.ts), read off its `language` member alone" },
+  isProgram06OrLater: { helper: "whether a value is a program whose language is mandate/0.6 or a later one the bridge reads (library.ts), read off its `language` member alone, by atLeast" },
+  isProgram07OrLater: { helper: "whether a value is a program whose language is mandate/0.7 or a later one the bridge reads (library.ts), read off its `language` member alone, by atLeast" },
   isLanguageVersion: { helper: "whether a value is one of LANGUAGE_VERSIONS, the TypeScript's list (the constants stay the TypeScript's, see index.ts)" },
   isPath: { helper: "whether a text is a relative, normalized, portable path (PATH_PATTERN)" },
   pathProblem: { helper: "what makes a text not a path, for a message" },
@@ -135,7 +146,7 @@ export const KEPT: Record<string, Kept> = {
     helper:
       "a governance glob as a RegExp, which JSON cannot carry; the runtime tests it against each path of a workspace, and a door per path would cost a call each. The door glob_match, which answers globRegExp(glob).test(text), is held to it by crates/mandate-check/tests/json_doors",
   },
-  // Called by nothing the bridge serves: no door, and the TypeScript reference's own in every mode. A caller that
+  // Called by nothing the bridge serves: no door, and the TypeScript reference's own. A caller that
   // starts to use one fails test/facade.test.ts until it has a door.
   system: { uncalled: "the system view; no door (crates/mandate-views has none)" },
   hasSystem: { uncalled: "whether a program has a system view" },

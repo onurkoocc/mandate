@@ -22,8 +22,8 @@ use mandate_check::{
     micros_text, own,
 };
 use mandate_ir::{
-    Application, ConnectorDef, Criterion, Definition, Expr, ExprOp, JsObject, JsValue, Map,
-    Program, Value, number_to_string, sort_utf16, unique_in_order, workflow_bounds,
+    Application, ConnectorDef, Criterion, Definition, Expr, ExprOp, JsObject, JsValue, Language,
+    Map, Program, Value, number_to_string, sort_utf16, unique_in_order, workflow_bounds,
 };
 
 use crate::card::{expr_text, limit_of, members_of};
@@ -172,6 +172,9 @@ pub struct CardReview {
     /// The most items it asks about, when the map has a `max`.
     pub at_most: Option<f64>,
     /// The longest the wait lasts: the deadline, twice with an escalation.
+    /// In a program of 0.7 an escalation is told exactly: the first deadline
+    /// counts from when the question is asked, the second from the escalation,
+    /// which comes at the first tick after the first has passed.
     pub longest: String,
     /// The sentence the card shows.
     pub text: String,
@@ -635,7 +638,12 @@ fn named_arg<'a>(e: Expr<'a>, name: &str) -> Option<Expr<'a>> {
 }
 
 /// A review, as the card tells it.
-fn review_of(e: Expr<'_>, lets: &[(&str, Expr<'_>)], lock: Option<&Value>) -> Option<CardReview> {
+fn review_of(
+    e: Expr<'_>,
+    lets: &[(&str, Expr<'_>)],
+    lock: Option<&Value>,
+    exact: bool,
+) -> Option<CardReview> {
     let over = e
         .args()
         .find(|a| a.name().is_none())
@@ -652,7 +660,18 @@ fn review_of(e: Expr<'_>, lets: &[(&str, Expr<'_>)], lock: Option<&Value>) -> Op
         .iter()
         .find(|(n, _)| *n == over)
         .and_then(|(_, m)| limit_of(m.get("max")));
-    let longest = deadline_text(deadline_ms * if escalate_to.is_some() { 2.0 } else { 1.0 });
+    // 0.7 states the two deadlines of an escalation exactly: the second
+    // counts from the escalation, which comes at the first tick after the
+    // first has passed, so the sum is not the longest the wait lasts.
+    let longest = if exact && escalate_to.is_some() {
+        format!(
+            "{} from when it is asked, then {} from the escalation, which comes at the first tick after the first deadline has passed",
+            deadline_text(deadline_ms),
+            deadline_text(deadline_ms)
+        )
+    } else {
+        deadline_text(deadline_ms * if escalate_to.is_some() { 2.0 } else { 1.0 })
+    };
     // The stand-in of a pattern the card cannot expand asks a role, and no
     // more: its deadline and its escalation are the pattern's.
     if !deadline_ms.is_finite() {
@@ -806,8 +825,14 @@ fn contract_of(name: &str, d: &Value, lock: Option<&Value>) -> CardContract {
 }
 
 /// The library a module belongs to: the one the lock pins with it, else
-/// the built-in `std.patterns`.
-fn library_of(module: &str, lock: Option<&Value>) -> Pin {
+/// the built-in `std.patterns`, of the version a program of `language`
+/// reads without a pin.
+fn library_of(
+    module: &str,
+    lock: Option<&Value>,
+    language: Option<Language>,
+    pin: Option<&mandate_check::library::Version>,
+) -> Pin {
     if let Some(Value::Object(libs)) = lock.and_then(|l| l.get("libraries")) {
         for (lib, pin) in libs.iter() {
             if own(pin.get("modules"), module).is_some() {
@@ -822,7 +847,7 @@ fn library_of(module: &str, lock: Option<&Value>) -> Pin {
         }
     }
     if module == mandate_check::library::STD_PATTERNS
-        && let Some(built_in) = mandate_check::library::std_patterns()
+        && let Some(built_in) = mandate_check::library::std_patterns_for(language, pin)
     {
         return Pin {
             library: Some(built_in.name().to_owned()),
@@ -852,7 +877,18 @@ pub(crate) fn pattern_of(
     orig_wf: &Value,
     lock: Option<&Value>,
     modules: Option<&Modules>,
+    named: Option<&mandate_check::library::Version>,
 ) -> Option<CardPattern> {
+    // 0.7: the version of std.patterns read: the lock's pin, else the one a
+    // caller names, else the one whose module is given, else the version of
+    // the program's language.
+    let pin = mandate_check::library::std_patterns_pin(lock)
+        .or(named.copied())
+        .or_else(|| {
+            mandate_check::library::embedded_version_of(
+                modules.and_then(|m| m.get(mandate_check::library::STD_PATTERNS)),
+            )
+        });
     let a = Application::of_workflow(orig_wf)?;
     let name = a.pattern()?;
     let module = if orig.defs().is_some_and(|d| d.contains_key(name)) {
@@ -863,7 +899,7 @@ pub(crate) fn pattern_of(
             .and_then(|u| u.module())
             .map(str::to_owned)
     };
-    let with_builtin = mandate_check::library::with_builtin(orig, modules);
+    let with_builtin = mandate_check::library::with_builtin(orig, modules, pin.as_ref());
     let all = with_builtin.as_ref().or(modules);
     let home_defs: Option<&Map> = match &module {
         None => orig.defs(),
@@ -879,7 +915,7 @@ pub(crate) fn pattern_of(
         digest,
         pinned,
     } = match &module {
-        Some(m) => library_of(m, lock),
+        Some(m) => library_of(m, lock, orig.language(), pin.as_ref()),
         None => Pin {
             library: None,
             version: None,
@@ -1047,6 +1083,10 @@ pub(crate) struct Gather<'a> {
 
 /// The 0.6 part of the card of a workflow.
 pub(crate) fn gather(g: &Gather<'_>) -> CardLibrary {
+    let exact = g
+        .program
+        .language()
+        .is_some_and(|l| l.at_least(Language::V0_7));
     let mut found = Found::default();
     let mut around: Vec<Expr<'_>> = Vec::new();
     for s in Definition::of(g.wf).body() {
@@ -1054,7 +1094,7 @@ pub(crate) fn gather(g: &Gather<'_>) -> CardLibrary {
     }
     let defs = defs_of(g.lp);
     let unexpanded = g.wf.get("unexpanded").filter(|u| u.is_truthy());
-    let pattern = pattern_of(g.program, g.orig_wf, g.lock, g.modules);
+    let pattern = pattern_of(g.program, g.orig_wf, g.lock, g.modules, None);
 
     // The contracts it verifies against: those its body verifies, and those
     // an application names (the stand-in has no body to verify in).
@@ -1082,7 +1122,7 @@ pub(crate) fn gather(g: &Gather<'_>) -> CardLibrary {
     let reviews: Vec<CardReview> = found
         .reviews
         .iter()
-        .filter_map(|r| review_of(*r, &found.lets, g.lock))
+        .filter_map(|r| review_of(*r, &found.lets, g.lock, exact))
         .collect();
     let commits: Vec<CardCommit> = found
         .effects
@@ -1269,8 +1309,28 @@ impl CardLibrary {
         ]
     }
 
-    /// How long a review waits, apart from the time budget.
-    pub(crate) fn spend_blocks(&self) -> Vec<Block> {
+    /// How long a review waits, apart from the time budget. With `exact`
+    /// (0.7) it says no total: the deadlines are in the table of questions.
+    pub(crate) fn spend_blocks(&self, exact: bool) -> Vec<Block> {
+        if exact {
+            // 0.7: the names of the program are shown as code, in a list.
+            let over: Vec<Cell> = self
+                .reviews
+                .iter()
+                .filter(|r| r.deadline_ms.is_finite())
+                .map(|r| Cell::mono(r.over.as_str()))
+                .collect();
+            if over.is_empty() {
+                return Vec::new();
+            }
+            return vec![
+                Block::Note(
+                    "The review of each of these waits apart from the time budget; its deadlines are given under \"When it asks whom\"."
+                        .to_owned(),
+                ),
+                Block::List(over),
+            ];
+        }
         self.reviews
             .iter()
             .filter(|r| r.deadline_ms.is_finite())
@@ -1290,13 +1350,17 @@ impl CardLibrary {
             .collect()
     }
 
-    /// Each review as one decision, and the criteria a person may waive.
-    pub(crate) fn ask_blocks(&self) -> Vec<Block> {
-        let mut out: Vec<Block> = self
-            .reviews
-            .iter()
-            .map(|r| Block::P(r.text.clone()))
-            .collect();
+    /// Each review as one decision (unless the table of questions says it),
+    /// and the criteria a person may waive.
+    pub(crate) fn ask_blocks(&self, reviews: bool) -> Vec<Block> {
+        let mut out: Vec<Block> = if reviews {
+            self.reviews
+                .iter()
+                .map(|r| Block::P(r.text.clone()))
+                .collect()
+        } else {
+            Vec::new()
+        };
         for c in &self.contracts {
             if let Some(doc) = &c.doc {
                 out.push(Block::P(format!("Contract {}: {doc}", c.name)));

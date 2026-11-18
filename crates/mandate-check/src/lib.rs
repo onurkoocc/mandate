@@ -17,6 +17,17 @@
 //! it reads in the program's place ([`CheckResult::expanded`]), and from
 //! whose diagnostics it reports in the program that was checked.
 //!
+//! A program of language 0.7 (spec/attention.md) is checked as the same
+//! program of 0.6 is: every rule of 0.6 holds for it (`at_least`), and what
+//! 0.7 adds is checked by the slices that add it: so far its stages
+//! ([`stages`], E1901 and E1902) and its reports ([`reports`], E1903 to
+//! E1905, and E1705 for both in a lead's sub-program). A stage and a report
+//! are statements every walker of the compiler names: a stage adds no cost,
+//! node, value, scope, role or authority; a report adds no cost, node, value,
+//! scope or authority, and its role is a role site. What a report shows is
+//! typed by the static checks, and [`attention`] gives the facts of a
+//! workflow from that typing ([`attention_facts`]).
+//!
 //! It holds the front door, the stages before the static checks, the static
 //! checks, and the lock and the sandbox requirements that stand on them:
 //!
@@ -48,12 +59,34 @@
 //! - [`expand`]: patterns and their expansion from 0.6 on
 //!   ([`expand::expand`], [`expand::Expansion`], [`expand::for_views`]):
 //!   E1301 to E1307. Rust only.
+//! - [`stages`]: the stages of a program of 0.7 ([`stage_checks`]): E1901
+//!   and E1902. Rust only.
+//! - [`reports`]: the reports of a program of 0.7 ([`report_checks`]):
+//!   E1903, E1904 (what a field may hold; its type is held by the static
+//!   checks) and E1905. Rust only.
+//! - [`attention`]: the attention facts of a workflow of 0.7
+//!   ([`attention_facts`], [`AttentionFacts`], [`Count`]). Rust only.
+//! - [`report_sig`]: what each workflow and pattern of 0.7 shows people, as
+//!   a library's authority signature and the semantic diff record it, and
+//!   the comparison that makes a report added or raised a governance
+//!   change. Rust only.
+//! - [`asks`]: the attention bound of a workflow of 0.7, the questions a run
+//!   can put to people ([`WorkflowBound`], [`SiteKind`]), E1906 to E1908.
+//!   Rust only.
+//! - [`owner`]: a workflow's `owner` of 0.7 ([`owner::owner_checks`]) and,
+//!   with a lock that asks for the promotion ladder, a workflow nobody could
+//!   promote ([`owner::promotion_checks`]): E1910. Rust only.
+//! - [`role_shown`]: with a lock, what each role of a program of 0.7 is
+//!   shown, held to its class in the lock's `role_classes`
+//!   ([`role_shown::role_class_checks`]): E1909. Rust only.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
 //!   `compiler/src/check/roles.ts`.
 //! - [`lock`]: the lock, `compiler/src/lock.ts`: [`Lock`], [`validate_lock`],
 //!   [`own`], [`packaged_lock`], [`per_call_bound`], [`model_tiers`] and the
 //!   checks that need it ([`lock_checks`], [`sandbox_lock_checks`],
-//!   [`role_lock_checks`], [`module_lock_checks`]), run by [`check()`] given a lock.
+//!   [`role_lock_checks`], [`module_lock_checks`], and in 0.7
+//!   [`attention_lock_checks`], E1911), run by [`check()`] given a lock;
+//!   [`Lock::role_class`] is the class a lock of any format gives a role.
 //! - [`managed_agents`]: the Managed Agents binding,
 //!   `compiler/src/target/managed-agents.ts` ([`agent_models`],
 //!   [`binding_checks`]).
@@ -150,6 +183,8 @@
 #![forbid(unsafe_code)]
 
 pub mod amendment;
+pub mod asks;
+pub mod attention;
 pub mod caps;
 pub mod check;
 pub mod cost;
@@ -166,13 +201,18 @@ pub mod lock;
 pub mod lock_diff;
 pub mod managed_agents;
 pub mod modules;
+pub mod owner;
 pub mod patch;
 pub mod path;
 pub mod posix;
+pub mod report_sig;
+pub mod reports;
 pub mod resolve;
+pub mod role_shown;
 pub mod roles;
 pub mod sandbox;
 pub mod shapes;
+pub mod stages;
 pub mod statics;
 pub mod stdlib;
 pub mod subprogram;
@@ -181,8 +221,14 @@ pub mod view_shared;
 pub mod walk;
 
 pub use amendment::narrowings;
+pub use asks::{SUPERVISE_ESCALATIONS, SiteKind, WorkflowBound, asks_checks};
+pub use attention::{AttentionFacts, Count, attention_facts};
 pub use cost::{CostPart, StaticCost, micros_text, static_cost};
-pub use statics::{lead_classes, static_check};
+pub use reports::report_checks;
+pub use stages::stage_checks;
+pub use statics::{
+    Shown, ShownField, Typing, lead_classes, static_check, static_check_shown, workflow_nodes,
+};
 pub use walk::reads_var;
 
 pub use check::{
@@ -191,11 +237,12 @@ pub use check::{
 pub use diff::{
     BudgetChanges, Change, Classified, DiffView, GovernanceChangeKind, KindedChange, Locks,
     ScopeDiff, budget_changes, classify, envelope_changes, governance_changes, scope_diff,
-    scope_diffs, semantic_diff, semantic_diff_with, shown_caps, steps, system_changes,
+    scope_diffs, semantic_diff, semantic_diff_pinned, semantic_diff_with, shown_caps, steps,
+    system_changes,
 };
 pub use doors::{
-    AmendmentCheck, AmendmentInput, PatchCheck, SubprogramCheck, SubprogramInput, check_amendment,
-    check_patch, check_subprogram, subprogram_linked,
+    AmendmentCheck, AmendmentInput, PatchCheck, PatchOptions, SubprogramCheck, SubprogramInput,
+    check_amendment, check_patch, check_subprogram, subprogram_linked, subprogram_linked_pinned,
 };
 pub use grant::{
     AuthorityContext, Capability, GrantDelegation, GrantInput, GrantOutput, InFlightOverlapInput,
@@ -206,8 +253,8 @@ pub use imports::{KnownModules, STD_MODULES, import_checks, import_checks_known}
 pub use js_number::js_to_number;
 pub use lock::{
     LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, Lock, ModelLock, PerCallBound, Tariff,
-    lock_at_least, lock_checks, model_tiers, module_lock_checks, own, packaged_lock,
-    per_call_bound, role_lock_checks, sandbox_lock_checks, validate_lock,
+    attention_lock_checks, lock_at_least, lock_checks, model_tiers, module_lock_checks, own,
+    packaged_lock, per_call_bound, role_lock_checks, sandbox_lock_checks, validate_lock,
 };
 pub use lock_diff::{LockLimitsDiff, lock_diff, lock_limits_diff};
 pub use managed_agents::{
@@ -223,7 +270,8 @@ pub use resolve::{
     resolve_names,
 };
 pub use roles::{
-    RoleSite, RoleValue, role_checks, role_sites, role_sites_of, roles_named, waiver_role_sites,
+    RoleSite, RoleValue, role_checks, role_sites, role_sites_of, roles_named, roles_named_in,
+    waiver_role_sites,
 };
 pub use sandbox::{
     CoTenancy, Egress, ExecGrant, Filesystem, ISOLATION_LEVELS, Isolation, IsolationLevel,
@@ -257,5 +305,6 @@ pub use stdlib::{
     is_ungated_effect, std_effect, std_fn,
 };
 pub use subprogram::{
-    Room, containment, language_of, opened, skeleton, subprogram_shape, subprogram_workflow,
+    Room, containment, language_of, opened, skeleton, subprogram_attention, subprogram_shape,
+    subprogram_workflow,
 };

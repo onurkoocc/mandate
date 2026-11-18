@@ -1,0 +1,2370 @@
+{
+  "fixtures/attention/asks.mdt": {
+    "Asking": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Asking",
+      "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+      "stages": [
+        {
+          "path": "/defs/Asking/body/0",
+          "name": "ask",
+          "title": "Ask the accountant",
+          "index": 0
+        },
+        {
+          "path": "/defs/Asking/body/3",
+          "name": "wait",
+          "title": "Wait for a person",
+          "index": 1
+        }
+      ],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/Asking/body/1/value",
+          "wait": "/defs/Asking/body/1/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "ask",
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Asking/body/2/value",
+          "wait": "/defs/Asking/body/2/value",
+          "kind": "escalate",
+          "role": "finance_lead",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "ask",
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Asking/body/4/value",
+          "wait": "/defs/Asking/body/4/value",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "wait",
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Asking/body/5/value",
+          "wait": "/defs/Asking/body/5/value/escalate",
+          "kind": "supervise_escalate",
+          "role": "code_owner",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "wait",
+          "multiplicity": 5,
+          "only": null
+        },
+        {
+          "path": "/defs/Asking/body/6/then/0/value",
+          "wait": "/defs/Asking/body/6/then/0/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "wait",
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Asking/body/6/else/0/value",
+          "wait": "/defs/Asking/body/6/else/0/value",
+          "kind": "ask",
+          "role": "finance_lead",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "wait",
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 9,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 2
+          },
+          {
+            "role": "code_owner",
+            "questions": 5
+          },
+          {
+            "role": "finance_lead",
+            "questions": 2
+          },
+          {
+            "role": null,
+            "questions": 1
+          }
+        ],
+        "reports": []
+      },
+      "asks": 9,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Asking",
+          "wait": "/defs/Asking/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Approving": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Approving",
+      "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+      "stages": [],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/confirm/body/0/value",
+          "wait": "/defs/confirm/body/0/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 2,
+          "only": null
+        },
+        {
+          "path": "/defs/Approving/body/3/body/0/value",
+          "wait": "/defs/Approving/body/3/body/0/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 2,
+          "only": null
+        },
+        {
+          "path": "/defs/Approving/body/4/value",
+          "wait": "/defs/Approving/body/4/value/contract/accept/both/all/0/call",
+          "kind": "verify",
+          "role": "finance_lead",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null,
+          "contract": "Approved",
+          "criterion": "both"
+        },
+        {
+          "path": "/defs/Approving/body/4/value",
+          "wait": "/defs/Approving/body/4/value/contract/accept/both/all/1/call",
+          "kind": "verify",
+          "role": "code_owner",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null,
+          "contract": "Approved",
+          "criterion": "both"
+        },
+        {
+          "path": "/defs/Approving/body/4/value",
+          "wait": "/defs/Approving/body/4/value/contract/accept/checked/call",
+          "kind": "verify",
+          "role": "accountant",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": 86400000,
+          "on_no_answer": "unmet",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null,
+          "contract": "Approved",
+          "criterion": "checked"
+        },
+        {
+          "path": "/defs/Approving/body/4/value",
+          "wait": "/defs/Approving/body/4/value/contract/invariant/kept/call",
+          "kind": "verify",
+          "role": "release_manager",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null,
+          "contract": "Approved",
+          "criterion": "kept"
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 8,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 5
+          },
+          {
+            "role": "code_owner",
+            "questions": 1
+          },
+          {
+            "role": "finance_lead",
+            "questions": 1
+          },
+          {
+            "role": "release_manager",
+            "questions": 1
+          }
+        ],
+        "reports": []
+      },
+      "asks": 8,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Approving",
+          "wait": "/defs/Approving/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Releasing": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Releasing",
+      "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+      "stages": [],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/Releasing/body/0/value",
+          "wait": "/defs/Releasing/body/0/value/contract/accept/owned/call",
+          "kind": "verify",
+          "role": "code_owner",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null,
+          "contract": "Ready",
+          "criterion": "owned"
+        },
+        {
+          "path": "/defs/Releasing/body/1/value",
+          "wait": "/defs/Releasing/body/1/value/authorize",
+          "kind": "effect",
+          "role": "owner",
+          "shown": "public",
+          "known": "verified",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Releasing/body/1/value",
+          "wait": "/defs/Releasing/body/1/value/governance",
+          "kind": "governance",
+          "role": "owner",
+          "shown": "public",
+          "known": "verified",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "governance_file"
+        },
+        {
+          "path": "/defs/Releasing/body/2/value",
+          "wait": "/defs/Releasing/body/2/value/authorize",
+          "kind": "effect",
+          "role": "release_manager",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Releasing/body/2/value",
+          "wait": "/defs/Releasing/body/2/value/governance",
+          "kind": "governance",
+          "role": "owner",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "governance_file"
+        }
+      ],
+      "effects": [
+        {
+          "path": "/defs/Releasing/body/1/value",
+          "effect": "git.merge",
+          "multiplicity": 1,
+          "counted": true,
+          "role": "owner",
+          "batch": false,
+          "stage": null
+        },
+        {
+          "path": "/defs/Releasing/body/2/value",
+          "effect": "deploy",
+          "multiplicity": 1,
+          "counted": true,
+          "role": "release_manager",
+          "batch": false,
+          "stage": null
+        }
+      ],
+      "totals": {
+        "questions": 5,
+        "by_role": [
+          {
+            "role": "code_owner",
+            "questions": 1
+          },
+          {
+            "role": "owner",
+            "questions": 3
+          },
+          {
+            "role": "release_manager",
+            "questions": 1
+          }
+        ],
+        "reports": []
+      },
+      "asks": 5,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Releasing",
+          "wait": "/defs/Releasing/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Landing": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Landing",
+      "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+      "stages": [],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/Landing/body/3/value/members/api",
+          "wait": "/defs/Landing/body/3/value/members/api/authorize",
+          "kind": "changeset",
+          "role": "api_owner",
+          "shown": "public",
+          "known": "verified",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Landing/body/3/value/members/api",
+          "wait": "/defs/Landing/body/3/value/members/api/governance",
+          "kind": "governance",
+          "role": "api_owner",
+          "shown": "public",
+          "known": "verified",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "governance_file"
+        },
+        {
+          "path": "/defs/Landing/body/3/value/members/web",
+          "wait": "/defs/Landing/body/3/value/members/web/authorize",
+          "kind": "changeset",
+          "role": "web_owner",
+          "shown": "public",
+          "known": "verified",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Landing/body/3/value/members/web",
+          "wait": "/defs/Landing/body/3/value/members/web/governance",
+          "kind": "governance",
+          "role": "web_owner",
+          "shown": "public",
+          "known": "verified",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "governance_file"
+        },
+        {
+          "path": "/defs/Landing/body/3/value",
+          "wait": "/defs/Landing/body/3/value/authorize",
+          "kind": "changeset",
+          "role": "architect",
+          "shown": "public",
+          "known": "verified",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [
+        {
+          "path": "/defs/Landing/body/3/value/members/api",
+          "effect": "git.merge",
+          "multiplicity": 1,
+          "counted": true,
+          "role": "api_owner",
+          "batch": false,
+          "stage": null
+        },
+        {
+          "path": "/defs/Landing/body/3/value/members/web",
+          "effect": "git.merge",
+          "multiplicity": 1,
+          "counted": true,
+          "role": "web_owner",
+          "batch": false,
+          "stage": null
+        }
+      ],
+      "totals": {
+        "questions": 5,
+        "by_role": [
+          {
+            "role": "api_owner",
+            "questions": 2
+          },
+          {
+            "role": "architect",
+            "questions": 1
+          },
+          {
+            "role": "web_owner",
+            "questions": 2
+          }
+        ],
+        "reports": []
+      },
+      "asks": 5,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Landing",
+          "wait": "/defs/Landing/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Handling": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Handling",
+      "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+      "stages": [],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/Handling/body/1/value",
+          "wait": "/defs/Handling/body/1/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "model",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 1,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          }
+        ],
+        "reports": []
+      },
+      "asks": 1,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Handling/on/0/then/then",
+          "wait": "/defs/Handling/on/0/then/then",
+          "kind": "ask",
+          "role": "finance_lead",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Planning": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Planning",
+      "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+      "stages": [
+        {
+          "path": "/defs/Planning/body/0",
+          "name": "review",
+          "title": "Decide on the notes",
+          "index": 0
+        },
+        {
+          "path": "/defs/Planning/body/3",
+          "name": "merge",
+          "title": "Merge the change",
+          "index": 1
+        },
+        {
+          "path": "/defs/Planning/body/6",
+          "name": "finish",
+          "title": "Plan the rest",
+          "index": 2
+        }
+      ],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/Planning/body/2/value",
+          "wait": "/defs/Planning/body/2/value",
+          "kind": "review",
+          "role": "accountant",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": 86400000,
+          "on_no_answer": "escalates",
+          "escalates": {
+            "to": "finance_lead",
+            "deadline_ms": 86400000
+          },
+          "stage": "review",
+          "multiplicity": 1,
+          "only": null,
+          "items": 4,
+          "waivable": [
+            "Short.short"
+          ]
+        },
+        {
+          "path": "/defs/Planning/body/2/value",
+          "wait": "/defs/Planning/body/2/value",
+          "kind": "review",
+          "role": "finance_lead",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": 86400000,
+          "on_no_answer": "declined",
+          "stage": "review",
+          "multiplicity": 1,
+          "only": "on_escalation",
+          "items": 4,
+          "waivable": [
+            "Short.short"
+          ]
+        },
+        {
+          "path": "/defs/Planning/body/4/value",
+          "wait": "/defs/Planning/body/4/value/contract/accept/owned/call",
+          "kind": "verify",
+          "role": "code_owner",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "merge",
+          "multiplicity": 1,
+          "only": null,
+          "contract": "Ready",
+          "criterion": "owned"
+        },
+        {
+          "path": "/defs/Planning/body/5/value",
+          "wait": "/defs/Planning/body/5/value/authorize",
+          "kind": "effect",
+          "role": "release_manager",
+          "shown": "public",
+          "known": "verified",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "merge",
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Planning/body/5/value",
+          "wait": "/defs/Planning/body/5/value/governance",
+          "kind": "governance",
+          "role": "owner",
+          "shown": "public",
+          "known": "verified",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "merge",
+          "multiplicity": 1,
+          "only": "governance_file"
+        }
+      ],
+      "effects": [
+        {
+          "path": "/defs/Planning/body/5/value",
+          "effect": "git.merge",
+          "multiplicity": 1,
+          "counted": true,
+          "role": "release_manager",
+          "batch": false,
+          "stage": "merge"
+        }
+      ],
+      "totals": {
+        "questions": 5,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          },
+          {
+            "role": "code_owner",
+            "questions": 1
+          },
+          {
+            "role": "finance_lead",
+            "questions": 1
+          },
+          {
+            "role": "owner",
+            "questions": 1
+          },
+          {
+            "role": "release_manager",
+            "questions": 1
+          }
+        ],
+        "reports": []
+      },
+      "asks": 5,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Planning",
+          "wait": "/defs/Planning/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": [
+        {
+          "path": "/defs/Planning/body/7/value",
+          "wait": "/defs/Planning/body/7/value/amendment",
+          "kind": "plan",
+          "role": "platform_lead",
+          "shown": "public",
+          "known": "model",
+          "on_no_answer": "refused_to_lead",
+          "stage": "finish",
+          "multiplicity": 1,
+          "from": "asks_left"
+        }
+      ]
+    },
+    "Endless": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Endless",
+      "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+      "stages": [],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/Endless/body/1/body/0/value",
+          "wait": "/defs/Endless/body/1/body/0/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": "unbounded",
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": "unbounded",
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": "unbounded"
+          }
+        ],
+        "reports": []
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Endless",
+          "wait": "/defs/Endless/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Open": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Open",
+      "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+      "stages": [],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/Open/body/0/value",
+          "wait": "/defs/Open/body/0/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 1,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          }
+        ],
+        "reports": []
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Open",
+          "wait": "/defs/Open/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Spare": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Spare",
+      "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+      "stages": [],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/Spare/body/0/value",
+          "wait": "/defs/Spare/body/0/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 1,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          }
+        ],
+        "reports": []
+      },
+      "asks": 2,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Spare",
+          "wait": "/defs/Spare/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/batch.mdt": {
+    "MatchAll": {
+      "format": "mandate/attention/0.1",
+      "workflow": "MatchAll",
+      "program": "sha256:0f43c8467ddd359d743706f90c07e8c787df6f19ab91e2636469e43e84384288",
+      "stages": [
+        {
+          "path": "/defs/MatchAll/body/0",
+          "name": "collect",
+          "title": "Collect the items",
+          "index": 0
+        },
+        {
+          "path": "/defs/MatchAll/body/3",
+          "name": "work",
+          "title": "Work on each item",
+          "index": 1
+        },
+        {
+          "path": "/defs/MatchAll/body/5",
+          "name": "exceptions",
+          "title": "Decide on the exceptions",
+          "index": 2
+        },
+        {
+          "path": "/defs/MatchAll/body/7",
+          "name": "commit",
+          "title": "Commit what was accepted",
+          "index": 3
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/MatchAll/body/2",
+          "role": "accountant",
+          "title": "Items collected",
+          "stage": "collect",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "items",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            }
+          ]
+        },
+        {
+          "path": "/defs/MatchAll/body/9",
+          "role": "accountant",
+          "title": "Batch done",
+          "stage": "commit",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "posted",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            },
+            {
+              "name": "declined",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            },
+            {
+              "name": "failed",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/MatchAll/body/6/value",
+          "wait": "/defs/MatchAll/body/6/value",
+          "kind": "review",
+          "role": "accountant",
+          "shown": "confidential",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "escalates",
+          "escalates": {
+            "to": "finance_lead",
+            "deadline_ms": 86400000
+          },
+          "stage": "exceptions",
+          "multiplicity": 1,
+          "only": null,
+          "items": 60,
+          "waivable": [
+            "Matched.vendor"
+          ]
+        },
+        {
+          "path": "/defs/MatchAll/body/6/value",
+          "wait": "/defs/MatchAll/body/6/value",
+          "kind": "review",
+          "role": "finance_lead",
+          "shown": "confidential",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "declined",
+          "stage": "exceptions",
+          "multiplicity": 1,
+          "only": "on_escalation",
+          "items": 60,
+          "waivable": [
+            "Matched.vendor"
+          ]
+        }
+      ],
+      "effects": [
+        {
+          "path": "/defs/MatchAll/body/8/value/body/0/value",
+          "effect": "erp.post_draft",
+          "multiplicity": 60,
+          "counted": false,
+          "role": null,
+          "batch": true,
+          "stage": "commit"
+        }
+      ],
+      "totals": {
+        "questions": 2,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          },
+          {
+            "role": "finance_lead",
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 2
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/MatchAll",
+          "wait": "/defs/MatchAll/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/fan-out.mdt": {
+    "MigrateTwo": {
+      "format": "mandate/attention/0.1",
+      "workflow": "MigrateTwo",
+      "program": "sha256:d329cff8568fc4ad04cbed0421d0aed2a53202bbc87bec1852fdc895c2401826",
+      "stages": [
+        {
+          "path": "/defs/MigrateTwo/body/0",
+          "name": "work",
+          "title": "Work on each part",
+          "index": 0
+        },
+        {
+          "path": "/defs/MigrateTwo/body/2",
+          "name": "merge",
+          "title": "Merge the results",
+          "index": 1
+        }
+      ],
+      "reports": [],
+      "questions": [],
+      "effects": [],
+      "totals": {
+        "questions": 0,
+        "by_role": [],
+        "reports": []
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/MigrateTwo",
+          "wait": "/defs/MigrateTwo/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/invoices.mdt": {
+    "MatchInvoices": {
+      "format": "mandate/attention/0.1",
+      "workflow": "MatchInvoices",
+      "program": "sha256:ca800dff12f11f79bcf93c7f1c457ecbae477435cf5e3092b6bcdff896a03ef8",
+      "stages": [
+        {
+          "path": "/defs/MatchInvoices/body/0",
+          "name": "collect",
+          "title": "Collect the items",
+          "index": 0
+        },
+        {
+          "path": "/defs/MatchInvoices/body/3",
+          "name": "work",
+          "title": "Work on each item",
+          "index": 1
+        },
+        {
+          "path": "/defs/MatchInvoices/body/5",
+          "name": "exceptions",
+          "title": "Decide on the exceptions",
+          "index": 2
+        },
+        {
+          "path": "/defs/MatchInvoices/body/7",
+          "name": "commit",
+          "title": "Commit what was accepted",
+          "index": 3
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/MatchInvoices/body/2",
+          "role": "accountant",
+          "title": "Items collected",
+          "stage": "collect",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "items",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            }
+          ]
+        },
+        {
+          "path": "/defs/MatchInvoices/body/9",
+          "role": "accountant",
+          "title": "Batch done",
+          "stage": "commit",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "posted",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            },
+            {
+              "name": "declined",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            },
+            {
+              "name": "failed",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/MatchInvoices/body/6/value",
+          "wait": "/defs/MatchInvoices/body/6/value",
+          "kind": "review",
+          "role": "accountant",
+          "shown": "confidential",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "escalates",
+          "escalates": {
+            "to": "finance_lead",
+            "deadline_ms": 86400000
+          },
+          "stage": "exceptions",
+          "multiplicity": 1,
+          "only": null,
+          "items": 60,
+          "waivable": [
+            "Matched.totals"
+          ]
+        },
+        {
+          "path": "/defs/MatchInvoices/body/6/value",
+          "wait": "/defs/MatchInvoices/body/6/value",
+          "kind": "review",
+          "role": "finance_lead",
+          "shown": "confidential",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "declined",
+          "stage": "exceptions",
+          "multiplicity": 1,
+          "only": "on_escalation",
+          "items": 60,
+          "waivable": [
+            "Matched.totals"
+          ]
+        }
+      ],
+      "effects": [
+        {
+          "path": "/defs/MatchInvoices/body/8/value/body/0/value",
+          "effect": "erp.post_draft_invoice",
+          "multiplicity": 60,
+          "counted": false,
+          "role": null,
+          "batch": true,
+          "stage": "commit"
+        }
+      ],
+      "totals": {
+        "questions": 2,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          },
+          {
+            "role": "finance_lead",
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 2
+          }
+        ]
+      },
+      "asks": 2,
+      "budget_exceeded": [
+        {
+          "path": "/defs/MatchInvoices",
+          "wait": "/defs/MatchInvoices/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/maker-checker.mdt": {
+    "Billing": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Billing",
+      "program": "sha256:dbff9c1a466da9eb76b041a22994b5889f731fe589bb24641c4a236874e257cb",
+      "stages": [
+        {
+          "path": "/defs/Billing/body/0",
+          "name": "make",
+          "title": "Make the result",
+          "index": 0
+        },
+        {
+          "path": "/defs/Billing/body/2",
+          "name": "check",
+          "title": "Check the result",
+          "index": 1
+        }
+      ],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/Billing/body/4/value/on_unmet/then",
+          "wait": "/defs/Billing/body/4/value/on_unmet/then",
+          "kind": "escalate",
+          "role": "platform_lead",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "check",
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 1,
+        "by_role": [
+          {
+            "role": "platform_lead",
+            "questions": 1
+          }
+        ],
+        "reports": []
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Billing",
+          "wait": "/defs/Billing/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/minimal.mdt": {
+    "Greet": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Greet",
+      "program": "sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e",
+      "stages": [],
+      "reports": [],
+      "questions": [],
+      "effects": [],
+      "totals": {
+        "questions": 0,
+        "by_role": [],
+        "reports": []
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Greet",
+          "wait": "/defs/Greet/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/owner.mdt": {
+    "Describe": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Describe",
+      "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+      "stages": [
+        {
+          "path": "/defs/Describe/body/0",
+          "name": "write",
+          "title": "Write the line",
+          "index": 0
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Describe/body/2",
+          "role": "accountant",
+          "title": "Line written",
+          "stage": "write",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "effects": [],
+      "totals": {
+        "questions": 0,
+        "by_role": [],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Describe",
+          "wait": "/defs/Describe/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Check": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Check",
+      "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+      "stages": [
+        {
+          "path": "/defs/Check/body/0",
+          "name": "write",
+          "title": "Write the line",
+          "index": 0
+        },
+        {
+          "path": "/defs/Check/body/3",
+          "name": "check",
+          "title": "Check the line",
+          "index": 1
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Check/body/2",
+          "role": "accountant",
+          "title": "Line written",
+          "stage": "write",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/Check/body/4/value",
+          "wait": "/defs/Check/body/4/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "model",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "check",
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 1,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Check",
+          "wait": "/defs/Check/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/reports.mdt": {
+    "MatchAll": {
+      "format": "mandate/attention/0.1",
+      "workflow": "MatchAll",
+      "program": "sha256:e79e046095bb80e89b057fbff333b74f8097e41efe534b153b5e4d01bff84ad4",
+      "stages": [
+        {
+          "path": "/defs/MatchAll/body/0",
+          "name": "collect",
+          "title": "Collect the items",
+          "index": 0
+        },
+        {
+          "path": "/defs/MatchAll/body/3",
+          "name": "work",
+          "title": "Work on each item",
+          "index": 1
+        },
+        {
+          "path": "/defs/MatchAll/body/5",
+          "name": "exceptions",
+          "title": "Decide on the exceptions",
+          "index": 2
+        },
+        {
+          "path": "/defs/MatchAll/body/7",
+          "name": "commit",
+          "title": "Commit what was accepted",
+          "index": 3
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/MatchAll/body/2",
+          "role": "accountant",
+          "title": "Items collected",
+          "stage": "collect",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "items",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            }
+          ]
+        },
+        {
+          "path": "/defs/MatchAll/body/9",
+          "role": "accountant",
+          "title": "Batch done",
+          "stage": "commit",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "posted",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            },
+            {
+              "name": "declined",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            },
+            {
+              "name": "failed",
+              "type": "Int",
+              "class": "confidential",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/MatchAll/body/6/value",
+          "wait": "/defs/MatchAll/body/6/value",
+          "kind": "review",
+          "role": "accountant",
+          "shown": "confidential",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "escalates",
+          "escalates": {
+            "to": "finance_lead",
+            "deadline_ms": 86400000
+          },
+          "stage": "exceptions",
+          "multiplicity": 1,
+          "only": null,
+          "items": 60,
+          "waivable": [
+            "Matched.totals"
+          ]
+        },
+        {
+          "path": "/defs/MatchAll/body/6/value",
+          "wait": "/defs/MatchAll/body/6/value",
+          "kind": "review",
+          "role": "finance_lead",
+          "shown": "confidential",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "declined",
+          "stage": "exceptions",
+          "multiplicity": 1,
+          "only": "on_escalation",
+          "items": 60,
+          "waivable": [
+            "Matched.totals"
+          ]
+        }
+      ],
+      "effects": [
+        {
+          "path": "/defs/MatchAll/body/8/value/body/0/value",
+          "effect": "erp.post_draft",
+          "multiplicity": 60,
+          "counted": false,
+          "role": null,
+          "batch": true,
+          "stage": "commit"
+        }
+      ],
+      "totals": {
+        "questions": 2,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          },
+          {
+            "role": "finance_lead",
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 2
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/MatchAll",
+          "wait": "/defs/MatchAll/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Greet": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Greet",
+      "program": "sha256:e79e046095bb80e89b057fbff333b74f8097e41efe534b153b5e4d01bff84ad4",
+      "stages": [
+        {
+          "path": "/defs/Greet/body/0",
+          "name": "draft",
+          "title": "Write the greeting",
+          "index": 0
+        },
+        {
+          "path": "/defs/Greet/body/5",
+          "name": "check",
+          "title": "Check the greeting",
+          "index": 1
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Greet/body/3",
+          "role": "accountant",
+          "title": "Greeting drafted",
+          "stage": "draft",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "draft",
+              "type": "Inferred<Text>",
+              "class": "public",
+              "known": "model"
+            },
+            {
+              "name": "vendor",
+              "type": "Untrusted<Text>",
+              "class": "confidential",
+              "known": "external"
+            },
+            {
+              "name": "both",
+              "type": "Text",
+              "class": "confidential",
+              "known": "external"
+            },
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            },
+            {
+              "name": "note",
+              "type": "Inferred<Draft>",
+              "class": "public",
+              "known": "model"
+            }
+          ]
+        },
+        {
+          "path": "/defs/Greet/body/4/then/0",
+          "role": "finance_lead",
+          "title": "A long greeting",
+          "stage": "draft",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        },
+        {
+          "path": "/defs/Greet/body/7/body/0",
+          "role": "accountant",
+          "title": "One round",
+          "stage": "check",
+          "multiplicity": 3,
+          "fields": [
+            {
+              "name": "greeting",
+              "type": "Verified<Text, Greeted>",
+              "class": "public",
+              "known": "verified"
+            },
+            {
+              "name": "checked",
+              "type": "Bool",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        },
+        {
+          "path": "/defs/Greet/body/8",
+          "role": "accountant",
+          "title": "Greeting checked",
+          "stage": "check",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "greeting",
+              "type": "Verified<Text, Greeted>",
+              "class": "public",
+              "known": "verified"
+            },
+            {
+              "name": "mixed",
+              "type": "Text",
+              "class": "public",
+              "known": "model"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "effects": [],
+      "totals": {
+        "questions": 0,
+        "by_role": [],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 5
+          },
+          {
+            "role": "finance_lead",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Greet",
+          "wait": "/defs/Greet/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/shapes.mdt": {
+    "Planning": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Planning",
+      "program": "sha256:386031b9d85fa8f2006f5928dfacc3f4bff56cb49577a8b04c886e469de7835d",
+      "stages": [],
+      "reports": [],
+      "questions": [],
+      "effects": [],
+      "totals": {
+        "questions": 0,
+        "by_role": [],
+        "reports": []
+      },
+      "asks": 3,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Planning",
+          "wait": "/defs/Planning/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": [
+        {
+          "path": "/defs/Planning/body/0/value",
+          "wait": "/defs/Planning/body/0/value/amendment",
+          "kind": "plan",
+          "role": "platform_lead",
+          "shown": "public",
+          "known": "model",
+          "on_no_answer": "refused_to_lead",
+          "stage": null,
+          "multiplicity": 1,
+          "from": "asks_left"
+        }
+      ]
+    }
+  },
+  "fixtures/attention/stages.mdt": {
+    "MatchAll": {
+      "format": "mandate/attention/0.1",
+      "workflow": "MatchAll",
+      "program": "sha256:e128e710b149a13805d73a0d31b798ef78d86d9871868ceff1a88c8583d43e9f",
+      "stages": [
+        {
+          "path": "/defs/MatchAll/body/0",
+          "name": "collect",
+          "title": "Collect the items",
+          "index": 0
+        },
+        {
+          "path": "/defs/MatchAll/body/2",
+          "name": "work",
+          "title": "Work on each item and check it",
+          "index": 1
+        },
+        {
+          "path": "/defs/MatchAll/body/4",
+          "name": "review",
+          "title": "Ask once about what failed",
+          "index": 2
+        },
+        {
+          "path": "/defs/MatchAll/body/6",
+          "name": "post",
+          "title": "Post what was accepted",
+          "index": 3
+        }
+      ],
+      "reports": [],
+      "questions": [
+        {
+          "path": "/defs/MatchAll/body/5/value",
+          "wait": "/defs/MatchAll/body/5/value",
+          "kind": "review",
+          "role": "accountant",
+          "shown": "confidential",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "escalates",
+          "escalates": {
+            "to": "finance_lead",
+            "deadline_ms": 86400000
+          },
+          "stage": "review",
+          "multiplicity": 1,
+          "only": null,
+          "items": 60,
+          "waivable": [
+            "Matched.totals"
+          ]
+        },
+        {
+          "path": "/defs/MatchAll/body/5/value",
+          "wait": "/defs/MatchAll/body/5/value",
+          "kind": "review",
+          "role": "finance_lead",
+          "shown": "confidential",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "declined",
+          "stage": "review",
+          "multiplicity": 1,
+          "only": "on_escalation",
+          "items": 60,
+          "waivable": [
+            "Matched.totals"
+          ]
+        }
+      ],
+      "effects": [
+        {
+          "path": "/defs/MatchAll/body/7/value/body/0/value",
+          "effect": "erp.post_draft",
+          "multiplicity": 60,
+          "counted": false,
+          "role": null,
+          "batch": true,
+          "stage": "post"
+        }
+      ],
+      "totals": {
+        "questions": 2,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          },
+          {
+            "role": "finance_lead",
+            "questions": 1
+          }
+        ],
+        "reports": []
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/MatchAll",
+          "wait": "/defs/MatchAll/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Greet": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Greet",
+      "program": "sha256:e128e710b149a13805d73a0d31b798ef78d86d9871868ceff1a88c8583d43e9f",
+      "stages": [
+        {
+          "path": "/defs/Greet/body/0",
+          "name": "draft",
+          "title": "Write the greeting",
+          "index": 0
+        },
+        {
+          "path": "/defs/Greet/body/2",
+          "name": "give",
+          "title": "Give it back",
+          "index": 1
+        }
+      ],
+      "reports": [],
+      "questions": [],
+      "effects": [],
+      "totals": {
+        "questions": 0,
+        "by_role": [],
+        "reports": []
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Greet",
+          "wait": "/defs/Greet/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/view.mdt": {
+    "Settle": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Settle",
+      "program": "sha256:45b63b874e1a92fa0a184755f477c1f985abacab9c21a4ee2620428984f498e9",
+      "stages": [
+        {
+          "path": "/defs/Settle/body/0",
+          "name": "work",
+          "title": "Work on each item",
+          "index": 0
+        },
+        {
+          "path": "/defs/Settle/body/2",
+          "name": "exceptions",
+          "title": "Decide on the exceptions",
+          "index": 1
+        },
+        {
+          "path": "/defs/Settle/body/4",
+          "name": "done",
+          "title": "Settled",
+          "index": 2
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Settle/body/5",
+          "role": "accountant",
+          "title": "Settled",
+          "stage": "done",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "accepted",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            },
+            {
+              "name": "declined",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            },
+            {
+              "name": "failed",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/Settle/body/3/value",
+          "wait": "/defs/Settle/body/3/value",
+          "kind": "review",
+          "role": "accountant",
+          "shown": "public",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "escalates",
+          "escalates": {
+            "to": "finance_lead",
+            "deadline_ms": 86400000
+          },
+          "stage": "exceptions",
+          "multiplicity": 1,
+          "only": null,
+          "items": 20,
+          "waivable": [
+            "Fits.same"
+          ]
+        },
+        {
+          "path": "/defs/Settle/body/3/value",
+          "wait": "/defs/Settle/body/3/value",
+          "kind": "review",
+          "role": "finance_lead",
+          "shown": "public",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "declined",
+          "stage": "exceptions",
+          "multiplicity": 1,
+          "only": "on_escalation",
+          "items": 20,
+          "waivable": [
+            "Fits.same"
+          ]
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 2,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          },
+          {
+            "role": "finance_lead",
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": 2,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Settle",
+          "wait": "/defs/Settle/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Notify": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Notify",
+      "program": "sha256:45b63b874e1a92fa0a184755f477c1f985abacab9c21a4ee2620428984f498e9",
+      "stages": [
+        {
+          "path": "/defs/Notify/body/0",
+          "name": "ask",
+          "title": "Ask <b>first</b> | \"quote\" & more",
+          "index": 0
+        },
+        {
+          "path": "/defs/Notify/body/3",
+          "name": "tell",
+          "title": "Tell",
+          "index": 1
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Notify/body/4",
+          "role": "accountant",
+          "title": "Told",
+          "stage": "tell",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/Notify/body/1/value",
+          "wait": "/defs/Notify/body/1/value",
+          "kind": "ask",
+          "role": "observer",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "ask",
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Notify/body/2/value",
+          "wait": "/defs/Notify/body/2/value",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "ask",
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 2,
+        "by_role": [
+          {
+            "role": "observer",
+            "questions": 1
+          },
+          {
+            "role": null,
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Notify",
+          "wait": "/defs/Notify/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/shapes.plans/noted.mdt": {
+    "Rest": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Rest",
+      "program": "sha256:94b259dd2d762393b4ae0cf36b38d5b7a88e55d1f9af7d6cdb437d1b7dceb4b1",
+      "stages": [
+        {
+          "path": "/defs/Rest/body/0",
+          "name": "write",
+          "title": "Write the note",
+          "index": 0
+        },
+        {
+          "path": "/defs/Rest/body/3",
+          "name": "ask",
+          "title": "Ask about it",
+          "index": 1
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Rest/body/2",
+          "role": "accountant",
+          "title": "Note written",
+          "stage": "write",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/Rest/body/4/value",
+          "wait": "/defs/Rest/body/4/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "model",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "ask",
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 1,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Rest",
+          "wait": "/defs/Rest/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  }
+}

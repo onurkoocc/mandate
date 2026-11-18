@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906j",
+  "kind": "compile",
+  "title": "A review's escalation is a question, 1 more to its escalate_to, so a review that escalates counts 2 (a mutation: Planning's envelope allows one question fewer than its bound).",
+  "spec": [
+    "spec/attention.md#what-counts-as-a-question",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Planning/envelope/budget/asks",
+      "value": 4
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Planning/envelope/budget/asks",
+        "facts": {
+          "workflow": "Planning",
+          "asks": 4,
+          "total": 5
+        }
+      }
+    ]
+  }
+}

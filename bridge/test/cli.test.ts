@@ -183,12 +183,23 @@ const comparable = (s: string, dir: string): string => s.replaceAll(dir.replaceA
  * other line of the two usage texts is compared as it is (cli-library.test.ts holds the lines of 0.6).
  */
 const LINES_06 = [
-  "  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]\n",
-  "  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]\n",
+  "  add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]\n",
+  "  upgrade <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]\n",
   "  publish <source dir> [--libraries <dir>] [--config <file>] [--json]\n",
   // The control commands of 0.6, which the runtime answers: the compiler's own command line hands on none.
   "  connector pin <program> [--lock FILE] [--module FILE]… [--libraries DIR] [--config FILE]\n",
   "  review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]\n",
+  // The driver loop of 0.7, which the runtime answers too.
+  "  tick [--follow] [--interval 10s] [--no-notify]\n",
+  // The attention view of 0.7, which the compiler's own command line (frozen at 0.5) does not make.
+  "  view <file> --attention [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]\n",
+  // The promotion of 0.7, which the runtime answers too.
+  "  promote <run> --to read_only|live --key FILE [--member NAME] [--yes]\n",
+  // What a person is shown and decides in 0.7, which the runtime answers too.
+  "  waits (--role R | --member M) [--tenant T] [--json]\n",
+  "  watch --member M --out DIR [--follow] [--interval 10s] [--refresh SECONDS]\n",
+  "  watch <run> --role R --jsonl\n",
+  "  decide --key FILE [--member NAME]\n",
 ];
 function before06(s: string): string {
   if (!s.startsWith("usage: mandate <command> [options]\n")) return s;
@@ -240,16 +251,17 @@ describe("the mandate command line equals the compiler's own", () => {
   it("keeps the control list on one line, as runtime/test/cli.test.ts reads it", () => {
     const text = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
     expect(text).toMatch(/^const CONTROL = new Set\(\[[^\]]*\]\);$/m);
-    // The compiler's own, frozen at 0.5, and after it the control commands of 0.6: `connector` (pin) and `review`.
+    // The compiler's own, frozen at 0.5, and after it the control commands of 0.6, `connector` (pin) and `review`, and
+    // of 0.7, `tick`, `promote`, `waits`, `watch` and `decide`.
     expect(text.match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m)![1]).toBe(
-      readFileSync(new URL("../../compiler/src/cli.ts", import.meta.url), "utf8").match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m)![1]!.replace(/\]$/, ', "connector", "review"]'),
+      readFileSync(new URL("../../compiler/src/cli.ts", import.meta.url), "utf8").match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m)![1]!.replace(/\]$/, ', "connector", "review", "tick", "promote", "waits", "watch", "decide"]'),
     );
   });
 
   // Language 0.6, which the compiler's own command line does not read: `mandate view` gives the views the modules it
   // has, so that a workflow that applies a pattern of one of them is shown as its expansion (its commit, its review,
   // and its cost, 60 delegations of the map's bound at 0.30 USD).
-  it.skipIf(process.env["MANDATE_COMPILER"] === "ts")("gives the views of a program of 0.6 its modules", async () => {
+  it("gives the views of a program of 0.6 its modules", async () => {
     const modules = ["fixtures/library/acme.connectors/types.mdt", "fixtures/library/acme.connectors/connectors.mdt", "fixtures/library/batch.patterns.mdt"].flatMap((m) => ["--module", R(m)]);
     const dir = join(work, "view-0.6");
     mkdirSync(dir, { recursive: true });

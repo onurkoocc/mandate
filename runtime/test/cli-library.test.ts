@@ -5,15 +5,12 @@
 // configuration revokes is never loaded, at the start or at a resume (`library_revoked`). Every call here is a
 // separate CLI call over one PGlite database in a directory, as a person would make it: each is a runtime of its own,
 // so a run that waits was stopped, and the next call resumes it from what the package and the run stored.
-//
-// Only the Rust compiler reads 0.6: in `ts` mode every test that needs a program of 0.6 checked is skipped by name,
-// and what is left shows the refusal.
 
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { libraryVerify, pinnedLibraries, type LibraryPin, type LibrarySource, type Lock } from "@mandate/bridge";
-import { compilerMode, withCompiler } from "@mandate/bridge/mode";
+import { withCompiler } from "@mandate/bridge/mode";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { modulePath } from "../../bridge/src/wasm/module.js";
 import { main } from "../src/cli.js";
@@ -22,11 +19,7 @@ import { Runtime } from "../src/runtime.js";
 import { Crash } from "../src/signals.js";
 import { SimAgents } from "../src/sim.js";
 import { closeAll, world } from "./helpers.js";
-
-const rust = compilerMode() !== "ts";
-/** The tests that need a program of 0.6 checked: the Rust compiler's alone (skipped by name in `ts` mode). */
-const needs06 = rust ? describe : describe.skip;
-const hasModule = existsSync(modulePath());
+import { relabel } from "./relabel.js";
 
 const dir = mkdtempSync(join(tmpdir(), "mandate-cli-library-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -94,7 +87,7 @@ pub pattern Once(
 };
 
 /** A program that applies the pattern of acme.desk, and has a workflow of its own over the library's plain definitions. */
-const ASK = `mandate @ 0.6
+const ASK = relabel(`mandate @ 0.6
 
 module example.desk @ 0.1
 
@@ -118,10 +111,10 @@ workflow Title(input: Request) -> Text
 {
   title_of(input)
 }
-`;
+`);
 
 /** A program that applies the pattern of acme.flows to an agent of its own. */
-const GREET = `mandate @ 0.6
+const GREET = relabel(`mandate @ 0.6
 
 module example.greet @ 0.1
 
@@ -141,7 +134,7 @@ agent Greeter {
 workflow Greet = Once(work: Greeter.greet)
   caps   ModelStd
   budget { time: 5m, steps: 4 }
-`;
+`);
 
 const LIBS = join(dir, "libs");
 const PROGRAM = join(dir, "ask.mdt");
@@ -161,7 +154,7 @@ function publish(l: LibrarySource, libs = LIBS): string {
 }
 
 /** The lock's pin of a library: the Rust compiler's, whatever compiler the test runs with. */
-const pinOf = (l: LibrarySource): LibraryPin => withCompiler("rust", () => libraryVerify(l).pin!);
+const pinOf = (l: LibrarySource): LibraryPin => libraryVerify(l).pin!;
 
 /** A configuration over the one database, with this `libraries` member (none when undefined). */
 function config(name: string, libraries?: Record<string, unknown>): string {
@@ -189,7 +182,6 @@ const revisionOf = (out: string): string => out.match(/revision (\d+)/)![1]!;
 let key = "";
 
 beforeAll(async () => {
-  if (!hasModule) return;
   writeFileSync(PROGRAM, ASK);
   config("mandate.runtime.json", { dir: "libs" });
   // The keeper's key, made as a person makes it; its public half is the runtime's to hold.
@@ -207,7 +199,7 @@ beforeAll(async () => {
 
 const run = (conf: string, id: string, ...more: string[]) => mandateWith(conf, "run", PROGRAM, "--lock", LOCK, "--workflow", "Ask", "--input", INPUT, "--run-id", id, ...more);
 
-needs06("mandate run of a program whose lock pins a library", () => {
+describe("mandate run of a program whose lock pins a library", () => {
   it("starts with the library read from the directory, stops, resumes from what the package carries, and replays", async () => {
     const started = await run(CONFIG, "d1");
     expect(started.code, started.err).toBe(0);
@@ -343,7 +335,7 @@ needs06("mandate run of a program whose lock pins a library", () => {
   });
 });
 
-needs06("a run over simulated agents of a package made from the directory of libraries", () => {
+describe("a run over simulated agents of a package made from the directory of libraries", () => {
   it("starts, stops, resumes in a runtime of its own and replays: the pattern and the function are the library's", async () => {
     const libs = join(dir, "libs-agents");
     publish(FLOWS, libs);
@@ -377,15 +369,5 @@ needs06("a run over simulated agents of a package made from the directory of lib
     expect(stopped.state).toBe("attention_required");
     expect(stopped.attention).toMatchObject({ violation: "library_revoked" });
     expect(stopped.result).toBeNull();
-  });
-});
-
-describe.runIf(hasModule)("mandate run with the TypeScript reference compiler", () => {
-  it("starts no run of a program of 0.6, whose libraries it does not read: the reference, frozen at 0.5, does not check it", async () => {
-    const refused = await withCompiler("ts", () => run(CONFIG, "ts1"));
-    expect(refused.code).toBe(1);
-    expect(refused.err).toContain("load_verification_failed");
-    expect(refused.err).not.toContain("MDT-E1605");
-    expect((await mandate("status", "ts1")).err).toContain("unknown_run");
   });
 });

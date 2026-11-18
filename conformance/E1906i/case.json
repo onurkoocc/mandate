@@ -1,0 +1,73 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906i",
+  "kind": "compile",
+  "title": "human.review counts 1 to its role (a mutation: a second review of the same outcomes in Planning, by the finance lead, without escalate_to).",
+  "spec": [
+    "spec/attention.md#what-counts-as-a-question",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Planning/body/3",
+      "value": {
+        "op": "let",
+        "name": "again",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "human"
+            },
+            "name": "review"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "checked"
+              }
+            },
+            {
+              "name": "role",
+              "value": {
+                "op": "var",
+                "name": "finance_lead"
+              }
+            },
+            {
+              "name": "deadline",
+              "value": {
+                "op": "duration",
+                "ms": 86400000
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Planning/envelope/budget/asks",
+        "facts": {
+          "workflow": "Planning",
+          "asks": 5,
+          "total": 6
+        }
+      }
+    ]
+  }
+}

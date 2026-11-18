@@ -1,0 +1,28 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S02j",
+  "kind": "compile",
+  "title": "An unknown top-level field of a 0.7 program is refused, not ignored: the IR of 0.7 is closed by its own schema.",
+  "spec": [
+    "spec/attention.md#version-gating",
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "text": "{\"language\":\"mandate/0.7\",\"module\":\"example.minimal\",\"version\":\"0.1\",\"defs\":{\"Greeting\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}}},\"extensions\":{}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/extensions",
+        "facts": {
+          "keyword": "additionalProperties"
+        }
+      }
+    ]
+  }
+}

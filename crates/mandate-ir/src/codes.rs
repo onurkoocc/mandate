@@ -11,6 +11,8 @@
 //!
 //! A code is written with its prefix, as diagnostics carry it (`MDT-E0103`).
 
+use crate::tags::Language;
+
 /// Which compiler is the reference for a row of the table: the one whose
 /// text the row must equal, and which a test holds it to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -753,6 +755,85 @@ pub const CODES: &[CodeRow] = &[
         explain: "Every name an envelope's `shapes` lists (0.6) is a pattern the program defines, or one a `use` list brings from a module the check is given or from a library (`std.patterns` among them). A name that names no definition, or a definition of another kind, is refused at the name; the facts name the workflow, the shape and, when it is one, the kind and the module. A list that is empty or names a pattern twice is refused when it is read (E0104 in IR, E0101 or E0121 in the text) (spec/library.md \"shapes\").",
         reference: Reference::Rust,
     },
+    // The codes of 0.7 (`CODES_0_7`), after those of 0.6, in the order they were added.
+    CodeRow {
+        code: "MDT-E1509",
+        title: "Criterion method name reserved",
+        explain: "A criterion of a contract of 0.7 whose verifier's callee path is `verify` or `waiver`, alone or as one of the parts joined by `and`: those two method names are the runtime's own, under which it writes its own evidence records, and the runtime refuses such a package at load (`reserved_method`). A program of 0.6 keeps the refusal at load only (spec/attention.md \"Static rules\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1901",
+        title: "Stage out of place",
+        explain: "A `stage` (0.7) marks the top level of a workflow's body or of a pattern's body, and nothing else: one in a block, a branch, a loop, a map's body, a `par`, a function, an agent's skill, a handler, a test or any other place is refused at the stage. The fact `place` says where it stands (`nested` inside a workflow's or a pattern's body, or the kind of what holds it) (spec/attention.md \"`stage`\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1902",
+        title: "Malformed stage list",
+        explain: "The stages of one body (0.7) have names of their own, the body starts with one when it has any, each is followed by at least one statement, and the statement directly after one is not `on error`. Its title is constant text of 1 to 80 characters (Unicode scalar values, which the schema holds too) with no C0 or C1 control, format character (Cf), bidirectional control, line separator (U+2028) or paragraph separator (U+2029), since a person reads it on one line of an approval card. The fact `problem` says which rule (`duplicate`, `before_first`, `empty`, `on_error`, `title`, with `rule` `length`, `control`, `format` or `separator` for a title); a workflow that applies a pattern is held to them on its expansion (spec/attention.md \"`stage`\", \"Titles\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1903",
+        title: "Malformed report",
+        explain: "A `report` (0.7) has a title that follows the title rules of a stage's (1 to 80 characters, no control, format, bidirectional, line or paragraph separator character), fields with names of their own (the text refuses two of one name as E0121, so this is the IR's), and in a pattern a role that is one of the pattern's role slots, which each application binds to a role of its own. The fact `problem` says which (`title`, with `rule` and `char`; `duplicate_field`, with `field`; `role`, with the pattern's role `slots`); a workflow that applies a pattern is held to them on its expansion (spec/attention.md \"`report`\", \"Titles\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1904",
+        title: "Report field not shown",
+        explain: "A field of a `report` (0.7) is shown to a person on the strength of what the compiler says of it, so it is pure and of a type a person can read. Pure: literals, names, fields, lists, sets, text, operators, ranges, records and `switch`, and of calls only the built-in `len`; a delegation, spawn, await, inference, verification, effect, change set, map, plan, escalation, pause, `try`, block, `human.*` call, tool call, function call or any other call is refused at the part that holds it (`problem: \"impure\"`, `what`, `callee`). Its type is `Int`, `Dec`, `Bool`, `Text`, `Money`, `Duration`, `Time`, an enum, an `Option` or a `List` of one of these, or a record of these one level deep, each optionally inside `Verified`, `Inferred` or `Untrusted`; any other type, or one the check does not know, is refused at the field (`problem: \"type\"`, `type`) (spec/attention.md \"What a field may be\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1905",
+        title: "Report out of place",
+        explain: "A `report` (0.7) stands in the body of a workflow or of a pattern, where what it shows is shown a known number of times: not in a map's body, a loop without `max_iter`, a function, an `on error`, `on unmet` or `on budget_exceeded` handler, a test or any other place, and not directly before an `on error`, which would handle the statement before the report. The fact `place` says where it stands. A `report` or a `stage` written in a lead's sub-program is E1705 instead, with the fact `construct`; a sub-program that applies a shape its envelope lists has the pattern's (spec/attention.md \"`report`\", \"Sub-programs and amendments\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1609",
+        title: "Module of a newer language",
+        explain: "A program of 0.6 or later reads no module written in a newer language than its own: a `use` of such a module (one given to the check, one of a library, or the built-in `std.patterns` 2.0.0, which is of 0.7) is refused at the `use`, and a lock that pins a library written in a newer language (a 0.6 program's lock that pins `std.patterns` 2.0.0) is refused at the pin. Pin a version of the program's language, or write the program in the newer one. A program of 0.1 to 0.5 that imports a module of 0.6 or later is E1603 (spec/attention.md \"A newer module (E1609)\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1906",
+        title: "Attention above asks",
+        explain: "A workflow of 0.7 whose budget, or whose envelope's, declares `asks: n` can put no more than n questions to people in one run, as the compiler counts them before any run (the attention bound): an approval a contract's criterion asks, `human.ask`, every `escalate`, a `pause` without `then`, the five escalations of `supervise escalate`, an effect the program hands to a person, each member and the approver of a change set, the owner's gate of an action that may carry a governance-class file, a review and its escalation. A sequence and the branches of a `par` add up, `if` and `switch` take the larger branch, a loop multiplies by its `max_iter`, a function's questions count at each call. The diagnostic is at the `asks`, with the workflow, the declared `asks`, the total and each role's count; a workflow that applies a pattern is counted on its expansion (spec/attention.md \"The attention bound\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1907",
+        title: "Attention without a bound",
+        explain: "A workflow of 0.7 that declares `asks` has every question where the bound can count it: not in a loop without `max_iter`, and not in what a cycle of calls reaches, through a function that calls itself or through a contract whose `require`, criteria or verifiers' arguments call a function that verifies against it again (also E0502). The diagnostic is at the question, with the workflow, its kind and why it cannot be counted (`why`: `loop`, `recursion`, `overflow`). A workflow that declares no `asks` may ask without a bound; its attention facts say the total is unbounded (spec/attention.md \"The algebra\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1908",
+        title: "asks out of place",
+        explain: "`asks` (0.7) bounds the questions a whole run may put to people, so it is a field of a workflow's budget or of an envelope's, and of no other: one in an agent's, a skill's, a function's, a delegation's, a map's or a plan's budget is refused at the field, with the definition and the place (`place`: `agent`, `skill`, `fn`, `delegate`, `map`, `plan`, …). A sub-program's questions come out of what is left of the run's `asks`, which its admission reserves (E1706) (spec/attention.md \"`asks`\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1910",
+        title: "Owner misplaced or missing",
+        explain: "`owner r` (0.7) names the role that approves the card of a workflow without an envelope and signs its promotions. A workflow written out with an envelope writes none, since its envelope's `owner` has that place: one written beside an envelope is refused at the `owner` (`problem: \"with_envelope\"`); a workflow that applies a pattern has no envelope at all (E1307). With a lock whose `promotion` is `\"required\"`, every workflow of the program has an `owner` or an envelope, since nobody could promote one with neither: such a workflow is refused at itself (`problem: \"no_owner\"`). Facts: `workflow`, `problem`, and beside an envelope the role the `owner` names (`owner`) (spec/attention.md \"`owner`\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1911",
+        title: "Lock field of a newer language",
+        explain: "`role_classes` and `promotion` in a lock of format 0.7 are read by a run of a program of mandate/0.7 or later: it masks each value above a role's class and climbs the promotion ladder. A run of an older program masks nothing and climbs no ladder, so in a lock packaged with one the field would not apply, and a field that silently does not apply misleads whoever reads the lock, so it is refused, at the field, as E1803 refuses `isolation` and `egress` for a program before 0.5. Write the program in mandate/0.7, or take the field out. Facts: `field`, `language` (spec/attention.md \"Lock 0.7\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1909",
+        title: "Role shown data above its class",
+        explain: "With a lock, a role of a program of 0.7 may be shown data up to its class in the lock's `role_classes` (`internal` for a role it does not name), since nobody can decide on, or be told, what they may not see. Each place a workflow shows a role data is held to that class, at the class the attention facts give it: a question asked of the role (an approval a `verify` asks, `human.ask`, `escalate`, the escalations of `supervise escalate`, a review, an effect or a change set the program hands to it, the owner's gate of a governance-class file, a question of the `on budget_exceeded` handler), the role a review escalates to, a `plan`'s amendment request to the envelope's owner, and each field of a report to the role. Data above the class is refused at the place (the `verify`, the question, the field's value; at the application for one a pattern's expansion brings). Raise the role's class in the lock, or show it less; the runtime masks such data as well. A pause, and the notification of a budget run out, show no data. A lead's sub-program is held to its parent's lock's classes at admission when its caller passes them. Facts: `workflow`, `role`, `class` (the role's), `shown`, `site` (the kind of question, `plan` or `report`), `only`, `field` (spec/attention.md \"Lock 0.7\").",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.
@@ -766,9 +847,45 @@ pub fn iter() -> impl Iterator<Item = &'static CodeRow> {
     CODES.iter()
 }
 
+/// The codes language 0.7 adds (spec/attention.md), in the order they were
+/// added: each is a row of [`CODES`] whose reference is [`Reference::Rust`].
+/// A slice of 0.7 that adds a code lists it here, and the gates of 0.7 hold
+/// it to a conformance case of 0.7 that expects it; a code of the Rust that
+/// is not listed is of 0.6, and is held to a case of 0.6.
+pub const CODES_0_7: &[&str] = &[
+    "MDT-E1509",
+    "MDT-E1901",
+    "MDT-E1902",
+    "MDT-E1903",
+    "MDT-E1904",
+    "MDT-E1905",
+    "MDT-E1609",
+    "MDT-E1906",
+    "MDT-E1907",
+    "MDT-E1908",
+    "MDT-E1910",
+    "MDT-E1911",
+    "MDT-E1909",
+];
+
+impl CodeRow {
+    /// The language version that added the code, for a row of the Rust
+    /// compiler: 0.7 when [`CODES_0_7`] lists it, else 0.6. `None` for a row
+    /// of the TypeScript's table, whose codes are of 0.1 to 0.5.
+    #[must_use]
+    pub fn since(&self) -> Option<Language> {
+        match self.reference {
+            Reference::TypeScript => None,
+            Reference::Rust if CODES_0_7.contains(&self.code) => Some(Language::V0_7),
+            Reference::Rust => Some(Language::V0_6),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CODES, Reference, iter, lookup};
+    use super::{CODES, CODES_0_7, CodeRow, Reference, iter, lookup};
+    use crate::tags::Language;
 
     #[test]
     fn rows_and_lookup() {
@@ -826,5 +943,35 @@ mod tests {
             lookup("MDT-E1602").is_some_and(|r| r.reference == Reference::Rust),
             "the first codes of 0.6"
         );
+    }
+
+    /// Every code [`CODES_0_7`] lists is a row of the Rust, once; a row of
+    /// the Rust is of 0.6 unless it is listed, and a row of the TypeScript
+    /// is of neither.
+    #[test]
+    fn the_codes_of_0_7_are_rows_of_the_rust() {
+        for code in CODES_0_7 {
+            assert!(
+                lookup(code).is_some_and(|r| r.reference == Reference::Rust),
+                "{code} is listed as a code of 0.7 and is not a row of the Rust"
+            );
+            assert_eq!(
+                CODES_0_7.iter().filter(|c| *c == code).count(),
+                1,
+                "{code} is listed twice"
+            );
+        }
+        assert_eq!(
+            lookup("MDT-E1602").and_then(CodeRow::since),
+            Some(Language::V0_6)
+        );
+        assert_eq!(lookup("MDT-E0101").and_then(CodeRow::since), None);
+        let made_up = CodeRow {
+            code: "MDT-E1602",
+            title: "",
+            explain: "",
+            reference: Reference::TypeScript,
+        };
+        assert_eq!(made_up.since(), None, "a row of the TypeScript");
     }
 }

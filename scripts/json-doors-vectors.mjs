@@ -58,10 +58,10 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const root = new URL("..", import.meta.url);
 const compiler = await import(new URL("compiler/dist/index.js", root).href);
-// The bridge's authority decisions stand for the TypeScript here, not for the Rust compiler's module that is the
-// bridge's default: the reference compiler, and no module, whatever the operator's environment says.
-process.env["MANDATE_COMPILER"] = "ts";
-const bridge = await import(new URL("bridge/dist/index.js", root).href);
+// The bridge's authority decisions stand for the TypeScript here, not for the Rust compiler's module that the
+// bridge's own entry answers with: the bridge's entry for the reference compiler (`@mandate/bridge/reference`,
+// bridge/src/reference.ts, for writing test data only).
+const bridge = await import(new URL("bridge/dist/reference.js", root).href);
 
 /** The TypeScript function named `ts`: the compiler's, or, when the compiler exports none, the bridge's. */
 const tsFunction = (ts) => (typeof compiler[ts] === "function" ? compiler[ts] : typeof bridge[ts] === "function" ? bridge[ts] : undefined);

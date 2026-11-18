@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1909",
+  "kind": "compile",
+  "title": "With a lock, a question asked of a role shows data above that role's class: human.ask shows the observer, who may be shown internal, a confidential item's key (a mutation: the question asked of the observer).",
+  "spec": [
+    "spec/attention.md#lock-07",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../A05/program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "../A05/mandate.lock.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Settle/body/3/value/args/1/value/name",
+      "value": "observer"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1909",
+        "path": "/defs/Settle/body/3/value",
+        "facts": {
+          "workflow": "Settle",
+          "role": "observer",
+          "class": "internal",
+          "shown": "confidential",
+          "site": "ask"
+        }
+      }
+    ]
+  }
+}

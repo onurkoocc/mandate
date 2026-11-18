@@ -1,0 +1,38 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1903e",
+  "kind": "compile",
+  "title": "A pattern's report to a slot of another kind than role is refused (a mutation: the pattern's first report to its deadline).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#titles",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/2/role",
+      "value": "deadline"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1903",
+        "path": "/defs/BatchWithExceptions/body/2/role",
+        "facts": {
+          "pattern": "BatchWithExceptions",
+          "role": "deadline",
+          "problem": "role"
+        }
+      }
+    ]
+  }
+}

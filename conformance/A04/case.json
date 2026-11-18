@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "A04",
+  "kind": "compile",
+  "title": "A program of 0.7 whose workflow written out and whose workflow that applies a pattern each have an owner checks with a lock of 0.7 that gives each role a class and asks for the promotion ladder.",
+  "spec": [
+    "spec/attention.md#owner",
+    "spec/attention.md#lock-07"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/owner.mdt",
+    "kind": "mdt"
+  },
+  "lock": "../../fixtures/attention/owner.lock.json",
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

@@ -1,0 +1,31 @@
+// A program of 0.7 with one workflow under an envelope, and nothing that
+// 0.7 adds, so that it reads as a program of 0.6 too: the base of the
+// cases of an owner beside an envelope (E1910) and of the lock fields of
+// 0.7 with an older program (E1911, E1911a).
+
+mandate @ 0.7
+
+module example.enveloped @ 0.1
+
+use std.{model}
+
+role accountant "Accountant"
+
+capability M = model.infer(tier: standard)
+
+agent Writer {
+  role   "Writes one line."
+  caps   M
+  budget { steps: 2 }
+  skill write(t: Text) -> Inferred<Text> ! {Model}
+}
+
+workflow Run() -> Inferred<Text>
+  envelope {
+    owner  accountant
+    caps   M
+    budget { tokens: 1000, time: 1h, spend: 1 USD, steps: 10, agents: 2 }
+  }
+{
+  plan Writer.write("a line") within envelope
+}

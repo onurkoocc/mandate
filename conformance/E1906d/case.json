@@ -1,0 +1,64 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906d",
+  "kind": "compile",
+  "title": "supervise escalate counts 5, the most escalations it makes (a mutation: a delegation under supervise escalate in Handling, whose asks is 1).",
+  "spec": [
+    "spec/attention.md#what-counts-as-a-question",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Handling/body/1",
+      "value": {
+        "op": "let",
+        "name": "e",
+        "value": {
+          "op": "delegate",
+          "agent": "Writer",
+          "skill": "write",
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "note"
+              }
+            }
+          ],
+          "supervise": {
+            "name": "escalate",
+            "args": [
+              {
+                "value": {
+                  "op": "var",
+                  "name": "human"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Handling/budget/asks",
+        "facts": {
+          "workflow": "Handling",
+          "asks": 1,
+          "total": 6
+        }
+      }
+    ]
+  }
+}

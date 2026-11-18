@@ -38,10 +38,31 @@ impl<'a> Stmt<'a> {
         self.map.get("op").and_then(StmtOp::from_value)
     }
 
-    /// `name`: of a `let`.
+    /// `name`: of a `let` and of a `stage`.
     #[must_use]
     pub fn name(self) -> Option<&'a str> {
         string(self.map, "name")
+    }
+
+    /// `title` of a `stage` and of a `report` (0.7, spec/attention.md
+    /// "`stage`", "`report`").
+    #[must_use]
+    pub fn title(self) -> Option<&'a str> {
+        string(self.map, "title")
+    }
+
+    /// `role` of a `report` (0.7, spec/attention.md "`report`").
+    #[must_use]
+    pub fn role(self) -> Option<&'a str> {
+        string(self.map, "role")
+    }
+
+    /// `fields` of a `report` (0.7): its elements, every one of them, so
+    /// that an element's index is its index in the IR; each is a
+    /// `ReportField`, `{ name, value }` ([`ReportField`]).
+    #[must_use]
+    pub fn fields(self) -> &'a [Value] {
+        list(self.map, "fields")
     }
 
     /// `type`: of a `let`.
@@ -125,6 +146,32 @@ impl<'a> Stmt<'a> {
     #[must_use]
     pub fn expect(self) -> Option<&'a str> {
         string(self.map, "expect")
+    }
+}
+
+/// One field of a `report` (0.7, `$defs/ReportField`): `{ name, value }`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReportField<'a> {
+    map: &'a Map,
+}
+
+impl<'a> ReportField<'a> {
+    /// The view of `v`, when it is an object.
+    #[must_use]
+    pub fn of(v: &'a Value) -> Option<ReportField<'a>> {
+        v.as_object().map(|map| ReportField { map })
+    }
+
+    /// `name`.
+    #[must_use]
+    pub fn name(self) -> Option<&'a str> {
+        string(self.map, "name")
+    }
+
+    /// `value`: the field's expression.
+    #[must_use]
+    pub fn value(self) -> Option<Expr<'a>> {
+        self.map.get("value").and_then(Expr::of)
     }
 }
 

@@ -2205,6 +2205,39 @@
       }
     },
     {
+      "name": "E0220i",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "confidential data is sent to a model whose capability allows at most public.",
+            "at": {
+              "path": "/defs/ViaText/body/1/value",
+              "span": [1, 2141, 1, 2247]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "public"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0301a",
       "kind": "compile",
       "door": "check",
@@ -8295,6 +8328,41 @@
               "requirement": "std.patterns",
               "range": "^2.0",
               "pinned": "1.0.0"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1706f",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1706",
+            "severity": "error",
+            "message": "Summarizer.summarize receives confidential data, and the run's envelope allows at most public in a delegation (spawn.max_class).",
+            "at": {
+              "path": "/defs/Look/body/0/value",
+              "span": [1, 1078, 1, 1253]
+            },
+            "docs": "mandate explain MDT-E1706",
+            "facts": {
+              "dimension": "data_class",
+              "data_class": "confidential",
+              "allowed": "public",
+              "by": "envelope"
             }
           }
         ]
@@ -15842,7 +15910,7 @@
           {
             "code": "MDT-E0103",
             "severity": "error",
-            "message": "Unsupported language version \"mandate/0.7\"; this compiler reads \"mandate/0.1\" or \"mandate/0.2\" or \"mandate/0.3\" or \"mandate/0.4\" or \"mandate/0.5\" or \"mandate/0.6\". Use an explicit migration instead of loading it as-is.",
+            "message": "Unsupported language version \"mandate/0.8\"; this compiler reads \"mandate/0.1\" or \"mandate/0.2\" or \"mandate/0.3\" or \"mandate/0.4\" or \"mandate/0.5\" or \"mandate/0.6\" or \"mandate/0.7\". Use an explicit migration instead of loading it as-is.",
             "at": {
               "path": "/language",
               "span": [1, 13, 1, 26]
@@ -15855,9 +15923,10 @@
                 "mandate/0.3",
                 "mandate/0.4",
                 "mandate/0.5",
-                "mandate/0.6"
+                "mandate/0.6",
+                "mandate/0.7"
               ],
-              "found": "mandate/0.7"
+              "found": "mandate/0.8"
             }
           }
         ]

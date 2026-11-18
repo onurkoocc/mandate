@@ -1,0 +1,6 @@
+{
+  "format": "mandate/doors/0.1",
+  "doors": [
+    {"name":"attention","ts":null,"params":["text","kind","opts","workflow","format"],"note":"Language 0.7, which only the Rust compiler reads: the attention view of a workflow, the fourth view of a program (spec/attention.md, The attention view), made from its attention facts and the lock only. Input: the input of the door attention_facts (text, kind, opts, workflow) and format, json (the default), md or html; workflow may be left out. Output: null when the program does not check, is older than 0.7 or has no such workflow; else the view as JSON, or as a string, the Markdown or the HTML of its document. With no workflow the answer is of every workflow of the program, as `mandate view --attention` prints it: for json one object { format, kind, program, workflows }, for md or html the document of the one workflow or one document of all of them (null when the program has no workflow). No TypeScript function stands for it, and crates/mandate-views/tests/attention_0_7.rs holds it to the view's function."}
+  ]
+}

@@ -11,8 +11,9 @@
 // worker that re-runs the workflow body finds earlier results instead of
 // calling the outside world again (R01, R13).
 
-import { BUDGET_DIMENSIONS, budgetAmount, type Budget } from "@mandate/bridge";
+import { BUDGET_DIMENSIONS, budgetAmount, isProgram07OrLater, type Budget } from "@mandate/bridge";
 import type { Cost, Outcome } from "./adapters.js";
+import { ASKS, ASKS_EXHAUSTED, parentReservation, type AskFrom, type AskSite } from "./asks.js";
 import { decisionId, type SignedDecision, type StoredDecision } from "./decisions.js";
 import type { EvidenceRecord } from "./evidence.js";
 import { num, type Db, type Row, type Tx } from "./db.js";
@@ -172,6 +173,14 @@ export function costDims(c: Cost | Budget | undefined): Record<string, number> {
 }
 
 /**
+ * A caller's limits by dimension, as a run's `budgets` rows hold them: the ledger's (`costDims`), and (0.7) `asks`,
+ * which is the runtime's own dimension and no part of a cost. Without `asks`, exactly `costDims`.
+ */
+export function limitDims(l: Limits | undefined): Record<string, number> {
+  return { ...costDims(l), ...(l?.asks !== undefined ? { [ASKS]: l.asks } : {}) };
+}
+
+/**
  * An admitted sub-program, as `program_admitted` records it (spec/envelope.md
  * "Admission"): the `plan` node and the sub-program's number there, the step
  * of the lead's loop that submitted it, the command its workflow runs under,
@@ -196,14 +205,113 @@ export interface Admission {
   workflow: string;
   running?: { hash: string; artifact: string };
   shape?: { pattern: string; module: string };
+  /** 0.7: the digest of its attention facts, stored with it, for a sub-program whose running program holds a stage or a report. */
+  attention?: string;
   reservation?: Record<string, number>;
+}
+
+/** The sub-program a stage is of (0.7): its `plan` node and its number. Absent for a stage of the run's own program. */
+export interface ProgramOf {
+  plan: string;
+  number: number;
+}
+
+/** `program_started` (spec/attention.md "Events", 0.7): the sub-program's `plan` node and number, its command, its workflow and the pattern it applies. */
+export interface ProgramStarted {
+  plan: string;
+  number: number;
+  command: string;
+  workflow: string;
+  shape?: { pattern: string; module: string };
+  /** The class of what its lead received (plan.ts `leadClass`): what the lead wrote into it is a value of that class a model wrote. */
+  class: string;
+}
+
+/** `stage_started` (spec/attention.md "Events"): the stage's node in the running program, its name, title and index. */
+export interface StageStarted {
+  node: string;
+  stage: string;
+  title: string;
+  index: number;
+  program?: ProgramOf;
+}
+
+/** One field of a `report` event: its value as the run evaluated it (or `$omitted`), and its class, level and type from the stored facts. */
+export interface ReportFieldEvent {
+  name: string;
+  value: Value;
+  class: string;
+  known: string;
+  type: string;
+}
+
+/** `report` (spec/attention.md "Events"): the report's node, its command id, the role it is addressed to, its title and fields. */
+export interface ReportEvent {
+  node: string;
+  command: string;
+  role: string;
+  title: string;
+  fields: ReportFieldEvent[];
+}
+
+const programKey = (p: ProgramOf | undefined): string => (p ? `${p.plan}#${p.number}` : "");
+const stageKey = (node: string, program: string): string => `${program}|${node}`;
+
+/** The stages of a run the journal holds: which began and which ended, by program and node, and those begun and not ended, in order. */
+async function stagesIn(tx: Tx, runId: string): Promise<{ started: Set<string>; ended: Set<string>; open: Array<{ node: string; stage: string; program?: ProgramOf }> }> {
+  const rows = await tx.query<Row>("select type, data from events where run_id = $1 and type in ('stage_started', 'stage_ended') order by seq", [runId]);
+  const started = new Set<string>();
+  const ended = new Set<string>();
+  const begun: Array<{ key: string; node: string; stage: string; program?: ProgramOf }> = [];
+  for (const r of rows) {
+    const d = (r["data"] ?? {}) as { node?: unknown; stage?: unknown; program?: ProgramOf };
+    const key = stageKey(String(d.node), programKey(d.program));
+    if (r["type"] === "stage_ended") ended.add(key);
+    else if (!started.has(key)) {
+      started.add(key);
+      begun.push({ key, node: String(d.node), stage: String(d.stage), ...(d.program ? { program: d.program } : {}) });
+    }
+  }
+  return { started, ended, open: begun.filter((s) => !ended.has(s.key)).map(({ key: _key, ...s }) => s) };
 }
 
 /**
  * A run's limits as a caller gives them: a cost by dimension, and under an
- * envelope the delegation attempts the run may start (`agents`).
+ * envelope the delegation attempts the run may start (`agents`). 0.7: the
+ * questions a run may put to people (`asks`), which only a run of 0.7 keeps.
  */
-export type Limits = Cost & { agents?: number };
+export type Limits = Cost & { agents?: number; asks?: number };
+
+declare const STARTED: unique symbol;
+
+/**
+ * What `createRun` takes: a start that passed `Runtime.startRun`'s checks, the card and the ladder among them, for one
+ * run id and one manifest hash. No object written out is one: the type has a member no code can name, and `createRun`
+ * takes only a start the one minter made, once.
+ */
+export interface RunStart {
+  readonly [STARTED]: true;
+  readonly runId: string;
+  readonly manifestHash: string;
+}
+
+/** The starts the minter made and `createRun` has not taken yet. */
+const STARTS = new WeakSet<RunStart>();
+let startsClaimed = false;
+
+/**
+ * Hands out the one function that makes a `RunStart`, once in a process: `runtime.ts` claims it when it loads, and
+ * keeps it to itself, so that only `startRun` can create a run. A second claim throws.
+ */
+export function claimRunStarts(): (runId: string, manifestHash: string) => RunStart {
+  if (startsClaimed) throw new Error("The starts of runs are claimed already: only Runtime.startRun creates a run.");
+  startsClaimed = true;
+  return (runId, manifestHash) => {
+    const start = Object.freeze({ runId, manifestHash }) as unknown as RunStart;
+    STARTS.add(start);
+    return start;
+  };
+}
 
 export class Journal {
   constructor(
@@ -281,6 +389,56 @@ export class Journal {
     });
   }
 
+  /**
+   * Records that the run came to a stage (spec/attention.md "Events", 0.7): `stage_started` once for a stage node of a
+   * program (the run's own, or a sub-program's, which `program` names), however often the run is resumed and comes to
+   * it again; and, in the same transaction, `stage_ended` of the stage before it (`ended`) once, when it has not been
+   * written. Only the lease holder may write (R06).
+   */
+  async stageStarted(runId: string, fence: number, data: StageStarted, ended?: { node: string; stage: string }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const seen = await stagesIn(tx, runId);
+      const of = programKey(data.program);
+      if (ended && !seen.ended.has(stageKey(ended.node, of))) await this.event(tx, runId, "stage_ended", { node: ended.node, stage: ended.stage, ...(data.program ? { program: data.program as unknown as Value } : {}) });
+      if (!seen.started.has(stageKey(data.node, of))) await this.event(tx, runId, "stage_started", data as unknown as Value);
+    });
+  }
+
+  /**
+   * Writes `stage_ended` of each stage begun and not ended (0.7), in the order they began: before the run's
+   * `run_succeeded`, in its transaction (`tx`, which holds the run's lock), or, with `program`, at the successful end of
+   * that sub-program, for its stages alone.
+   */
+  async endStages(tx: Tx, runId: string, program?: { plan: string; number: number }): Promise<void> {
+    const seen = await stagesIn(tx, runId);
+    const only = program ? programKey(program) : undefined;
+    for (const s of seen.open) {
+      if (only !== undefined && programKey(s.program) !== only) continue;
+      await this.event(tx, runId, "stage_ended", { node: s.node, stage: s.stage, ...(s.program ? { program: s.program as unknown as Value } : {}) });
+    }
+  }
+
+  /** `endStages` of a sub-program, in a transaction of its own under the lease (R06). */
+  async endProgramStages(runId: string, fence: number, program: { plan: string; number: number }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      await this.endStages(tx, runId, program);
+    });
+  }
+
+  /**
+   * Records a report (spec/attention.md "Events", 0.7): once for a report's command id, however often the run is
+   * resumed and comes to it again. Only the lease holder may write (R06).
+   */
+  async report(runId: string, fence: number, data: ReportEvent): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = 'report' and data->>'command' = $2 limit 1", [runId, data.command]);
+      if (!seen) await this.event(tx, runId, "report", data as unknown as Value);
+    });
+  }
+
   async run(runId: string): Promise<RunRow> {
     const [row] = await this.db.query<Row>("select * from runs where run_id = $1", [runId]);
     if (!row) throw new Violation("unknown_run", `No run '${runId}'.`);
@@ -322,10 +480,18 @@ export class Journal {
     return before;
   }
 
+  /**
+   * Creates a run. It takes a `RunStart` for that run id and manifest hash, which only `Runtime.startRun` makes, after
+   * the card and the ladder (spec/attention.md "Card approval", "Promotion"), and takes each once: no other code can
+   * create a run, so none starts above its rung.
+   */
   async createRun(
     tx: Tx,
-    r: { runId: string; tenant: string; packageHash: string; workflow: string; input: Value; policy: Value; limits: Record<string, number>; manifest: Value; manifestHash: string },
+    start: RunStart,
+    r: { runId: string; tenant: string; packageHash: string; workflow: string; input: Value; policy: Value; limits: Record<string, number>; manifest: Value; manifestHash: string; asksReserved?: number },
   ): Promise<void> {
+    if (!STARTS.has(start) || start.runId !== r.runId || start.manifestHash !== r.manifestHash) throw new Error(`createRun takes only the start Runtime.startRun made for run ${r.runId} and its manifest`);
+    STARTS.delete(start);
     const at = this.now();
     await tx.query(
       "insert into runs (run_id, tenant, package_hash, workflow, input, policy, state, created_at, updated_at, manifest, manifest_hash) values ($1, $2, $3, $4, $5, $6, 'accepted', $7, $7, $8, $9)",
@@ -333,6 +499,11 @@ export class Journal {
     );
     for (const [dim, limit] of Object.entries(r.limits)) {
       await tx.query("insert into budgets (run_id, dimension, limit_value) values ($1, $2, $3)", [r.runId, dim, limit]);
+    }
+    // 0.7: a run with an `asks` limit reserves, with it, its own program's bound under the configuration: its own
+    // questions are counted against that, and its sub-programs and amendment requests come out of what is left.
+    if (r.asksReserved !== undefined && r.asksReserved > 0 && Object.hasOwn(r.limits, ASKS)) {
+      await tx.query("insert into reservations (run_id, command_id, dimension, amount, state) values ($1, $2, $3, $4, 'active')", [r.runId, parentReservation(r.workflow), ASKS, r.asksReserved]);
     }
     // The run's first state is anchored like every later one, so a chained run has an anchor from its first event on.
     await this.anchor(tx, r.runId, await this.event(tx, r.runId, "run_accepted", { workflow: r.workflow, package: r.packageHash, limits: r.limits, manifest: r.manifestHash }));
@@ -608,32 +779,114 @@ export class Journal {
     });
   }
 
-  /** Opens a wait for a person (input or decision); returns the earlier row if it exists. */
-  async openWait(runId: string, fence: number, cmd: { id: string; kind: string; digest: string }, request: Value, before?: (tx: Tx, run: RunRow) => Promise<void>): Promise<CommandRow> {
+  /**
+   * Opens a wait for a person (input or decision); returns the earlier row if it exists.
+   *
+   * 0.7 (spec/attention.md "`asks` at run time"): `site` is the wait's static site, recorded in `wait_opened` as
+   * `site`, and what its question counts against. In the transaction that holds the run's lock and opens the wait,
+   * after the check for an existing row (a wait the journal holds is not counted again, and a replay opens none), a
+   * run with an `asks` limit counts the question (`countAsk`). One past what it may take is not asked: its command is
+   * recorded as failed, `Rejected(asks_exhausted)`, with one `asks_exhausted` event and nothing else (no `wait_opened`,
+   * nothing `before` writes), and that row is returned. A run of 0.1 to 0.6 is given no site, and its wait is
+   * written as it always was.
+   */
+  async openWait(runId: string, fence: number, cmd: { id: string; kind: string; digest: string }, request: Value, before?: (tx: Tx, run: RunRow) => Promise<void>, site?: AskSite, guard?: (run: RunRow) => void): Promise<CommandRow> {
     return this.db.tx(async (tx) => {
       const run = await this.lock(tx, runId, fence);
       const [row] = await tx.query<Row>("select * from commands where run_id = $1 and command_id = $2", [runId, cmd.id]);
       if (row) return toCommand(row);
-      // What belongs to the wait is written with it, or not at all.
-      await before?.(tx, run);
-      await tx.query(
-        "insert into commands (run_id, command_id, kind, state, fence, request_digest, result, package) values ($1, $2, $3, 'waiting', $4, $5, $6, $7)",
-        [runId, cmd.id, cmd.kind, fence, cmd.digest, json(request), run.package_hash],
-      );
-      await this.event(tx, runId, "wait_opened", { command: cmd.id, kind: cmd.kind, request });
+      guard?.(run);
+      const inside = site?.count?.from === "program" ? site.count.program : null;
+      const out = site?.count ? await this.countAsk(tx, run, site.count) : undefined;
+      if (out) {
+        await tx.query(
+          "insert into commands (run_id, command_id, kind, state, fence, request_digest, error, package, inside) values ($1, $2, $3, 'failed', $4, $5, $6, $7, $8)",
+          [runId, cmd.id, cmd.kind, fence, cmd.digest, json({ tag: "Rejected", args: [ASKS_EXHAUSTED] }), run.package_hash, inside],
+        );
+        await this.event(tx, runId, "asks_exhausted", { command: cmd.id, kind: site!.tag.kind, limit: out.limit, settled: out.settled, ...(inside !== null ? { inside } : {}) });
+      } else {
+        // What belongs to the wait is written with it, or not at all.
+        await before?.(tx, run);
+        await tx.query(
+          site
+            ? "insert into commands (run_id, command_id, kind, state, fence, request_digest, result, package, inside) values ($1, $2, $3, 'waiting', $4, $5, $6, $7, $8)"
+            : "insert into commands (run_id, command_id, kind, state, fence, request_digest, result, package) values ($1, $2, $3, 'waiting', $4, $5, $6, $7)",
+          [runId, cmd.id, cmd.kind, fence, cmd.digest, json(request), run.package_hash, ...(site ? [inside] : [])],
+        );
+        await this.event(tx, runId, "wait_opened", { command: cmd.id, kind: cmd.kind, request, ...(site ? { site: site.tag as unknown as Value } : {}) });
+      }
       const [created] = await tx.query<Row>("select * from commands where run_id = $1 and command_id = $2", [runId, cmd.id]);
       return toCommand(created!);
     });
   }
 
   /**
+   * Counts one question of a run with an `asks` limit (0.7), inside the caller's transaction, which holds the run's
+   * row lock: from the run's own reservation (`parent`, its program's questions), from a sub-program's (`program`), or
+   * from what is left of the run's `asks` (`left`: the limit less what was settled and what is still reserved, a
+   * lead's amendment request). Counted, the budget's `asks` row settles one more and the reservation holds one less;
+   * one that has none left is not counted, and the run's limit and what it has settled are returned. A run without
+   * an `asks` row counts nothing.
+   */
+  async countAsk(tx: Tx, run: Pick<RunRow, "run_id" | "workflow">, from: AskFrom): Promise<{ limit: number; settled: number } | undefined> {
+    const runId = run.run_id;
+    const [b] = await tx.query<Row>("select limit_value, settled from budgets where run_id = $1 and dimension = $2", [runId, ASKS]);
+    if (!b) return undefined;
+    const out = { limit: num(b["limit_value"]), settled: num(b["settled"]) };
+    if (from.from === "left") {
+      const [r] = await tx.query<Row>("select coalesce(sum(amount), 0) as active from reservations where run_id = $1 and dimension = $2 and state = 'active'", [runId, ASKS]);
+      if (out.limit - out.settled - num(r?.["active"]) < 1) return out;
+    } else {
+      const holder = from.from === "parent" ? parentReservation(run.workflow) : from.program;
+      const [hit] = await tx.query<Row>("update reservations set amount = amount - 1 where run_id = $1 and command_id = $2 and dimension = $3 and state = 'active' and amount >= 1 returning amount", [runId, holder, ASKS]);
+      if (!hit) return out;
+    }
+    await tx.query("update budgets set settled = settled + 1 where run_id = $1 and dimension = $2", [runId, ASKS]);
+    return undefined;
+  }
+
+  /**
+   * Moves the run's own reservation of `asks` by `delta` (0.7: an amendment that changes its program's bound, D6 of
+   * slice B3), in the caller's transaction: up by what is left of the run's `asks` at most, down to none at least.
+   * The caller checks under the same lock that a move up fits (`Runtime.decideAmendment`), so it is not cut short.
+   * Returns how far it moved. A run without an `asks` row has none.
+   */
+  async moveParentAsks(tx: Tx, run: Pick<RunRow, "run_id" | "workflow">, delta: number): Promise<number> {
+    const runId = run.run_id;
+    const [b] = await tx.query<Row>("select limit_value, settled from budgets where run_id = $1 and dimension = $2", [runId, ASKS]);
+    if (!b || delta === 0) return 0;
+    const holder = parentReservation(run.workflow);
+    const [own] = await tx.query<Row>("select amount from reservations where run_id = $1 and command_id = $2 and dimension = $3 and state = 'active'", [runId, holder, ASKS]);
+    const held = own ? num(own["amount"]) : 0;
+    let by = delta;
+    if (delta > 0) {
+      const [r] = await tx.query<Row>("select coalesce(sum(amount), 0) as active from reservations where run_id = $1 and dimension = $2 and state = 'active'", [runId, ASKS]);
+      by = Math.min(delta, Math.max(num(b["limit_value"]) - num(b["settled"]) - num(r?.["active"]), 0));
+    } else by = Math.max(delta, -held);
+    if (by === 0) return 0;
+    await tx.query(
+      `insert into reservations (run_id, command_id, dimension, amount, state) values ($1, $2, $3, $4, 'active')
+       on conflict (run_id, command_id, dimension) do update set amount = $4, state = 'active'`,
+      [runId, holder, ASKS, held + by],
+    );
+    return by;
+  }
+
+  /**
    * Opens a review's wait (0.6; spec/library.md "The wait and the decision"): `review_requested` is written with it,
    * in one transaction. Once for a wait: a resumed run that comes to it again gets the row as it is.
    */
-  async openReview(runId: string, fence: number, cmd: { id: string; digest: string }, request: Value, requested: Value): Promise<CommandRow> {
-    return this.openWait(runId, fence, { ...cmd, kind: "review" }, request, async (tx) => {
-      await this.event(tx, runId, "review_requested", requested);
-    });
+  async openReview(runId: string, fence: number, cmd: { id: string; digest: string }, request: Value, requested: Value, site?: AskSite): Promise<CommandRow> {
+    return this.openWait(
+      runId,
+      fence,
+      { ...cmd, kind: "review" },
+      request,
+      async (tx) => {
+        await this.event(tx, runId, "review_requested", requested);
+      },
+      site,
+    );
   }
 
   /**
@@ -658,12 +911,26 @@ export class Journal {
    * hash, `amendment_requested` is written, and the run waits for a member of its envelope's owner role, all in one
    * transaction. Once for a wait: a resumed run that comes to it again gets the row as it is.
    */
-  async openAmendment(runId: string, fence: number, cmd: { id: string; digest: string }, request: Value, pkg: { hash: string; program: Value; lock: Value; modules: Value }, requested: Value): Promise<CommandRow> {
-    return this.openWait(runId, fence, { ...cmd, kind: "amendment" }, request, async (tx, run) => {
-      if (run.cancel_requested) throw new Cancelled();
-      await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [pkg.hash, json(pkg.program), json(pkg.lock), json(pkg.modules)]);
-      await this.event(tx, runId, "amendment_requested", requested);
-    });
+  async openAmendment(runId: string, fence: number, cmd: { id: string; digest: string }, request: Value, pkg: { hash: string; program: Value; lock: Value; modules: Value }, requested: Value, site?: AskSite, store?: (tx: Tx) => Promise<void>): Promise<CommandRow> {
+    return this.openWait(
+      runId,
+      fence,
+      { ...cmd, kind: "amendment" },
+      request,
+      async (tx) => {
+        // With whether it holds anything of 0.7 (package.ts `isPackage07OrLater`, which notify.ts reads as `is_07`).
+        const modules = typeof pkg.modules === "object" && pkg.modules !== null && !Array.isArray(pkg.modules) ? Object.values(pkg.modules) : [];
+        const is07 = [pkg.program, ...modules].some(isProgram07OrLater);
+        await tx.query("insert into packages (package_hash, program, lock, modules, is_07) values ($1, $2, $3, $4, $5) on conflict (package_hash) do nothing", [pkg.hash, json(pkg.program), json(pkg.lock), json(pkg.modules), is07]);
+        // 0.7: the attention facts of the amended package's workflow, which the run reads once the owner approves it.
+        await store?.(tx);
+        await this.event(tx, runId, "amendment_requested", requested);
+      },
+      site,
+      (run) => {
+        if (run.cancel_requested) throw new Cancelled();
+      },
+    );
   }
 
   /** The packages a run moved between, oldest first, as `package_amended` records them. A run nobody amended has none. */
@@ -801,13 +1068,17 @@ export class Journal {
    * the check that came before saw a remainder that something else has taken since. A step whose sub-program was
    * admitted before is not admitted again: the earlier admission is returned.
    */
-  async admitProgram(runId: string, fence: number, a: Admission, budget: Budget | undefined, digest: string, store: (tx: Tx) => Promise<void>): Promise<Admission> {
+  async admitProgram(runId: string, fence: number, a: Admission, budget: Budget | undefined, digest: string, store: (tx: Tx) => Promise<void>, asks?: number): Promise<Admission> {
     return this.db.tx(async (tx) => {
       const run = await this.lock(tx, runId, fence);
       const [earlier] = await tx.query<Row>("select data from events where run_id = $1 and type = 'program_admitted' and data->>'step' = $2 limit 1", [runId, a.step]);
       if (earlier) return earlier["data"] as unknown as Admission;
       if (run.cancel_requested) throw new Cancelled();
-      const reservation = costDims(budget);
+      // 0.7: under a run with an `asks` limit, what the sub-program may ask (`asks`, plan.ts) is reserved with the
+      // rest, out of what is left of the run's: the limit less what was settled and what is still reserved, the run's
+      // own reservation among it. It is named in the admission, also when it is none.
+      const [limited] = asks === undefined ? [] : await tx.query<Row>("select 1 as limited from budgets where run_id = $1 and dimension = $2", [runId, ASKS]);
+      const reservation = { ...costDims(budget), ...(limited ? { [ASKS]: asks! } : {}) };
       await this.reserve(tx, runId, a.command, reservation);
       await tx.query("insert into commands (run_id, command_id, kind, state, fence, request_digest, label, package) values ($1, $2, 'program', 'dispatched', $3, $4, $5, $6)", [runId, a.command, fence, digest, `sub-program ${a.number}`, run.package_hash]);
       await store(tx);
@@ -821,7 +1092,7 @@ export class Journal {
    * A sub-program ended, with a value or a fault. What is left of its reservation is released: its commands have
    * settled what they spent, and the rest is the run's again. A program that has ended stays as it ended.
    */
-  async closeProgram(runId: string, fence: number, command: string, outcome: { ok: Value } | { error: { tag: string; args?: Value[] } }): Promise<void> {
+  async closeProgram(runId: string, fence: number, command: string, outcome: { ok: Value } | { error: { tag: string; args?: Value[] } }, program?: ProgramOf): Promise<void> {
     await this.db.tx(async (tx) => {
       await this.lock(tx, runId, fence);
       const [row] = await tx.query<Row>("select kind, state from commands where run_id = $1 and command_id = $2", [runId, command]);
@@ -831,11 +1102,26 @@ export class Journal {
       const ok = "ok" in outcome;
       await tx.query("update commands set state = $3, result = $4, error = $5 where run_id = $1 and command_id = $2", [runId, command, ok ? "succeeded" : "failed", json(ok ? outcome.ok : null), json(ok ? null : (outcome.error as unknown as Value))]);
       await this.event(tx, runId, "command_completed", { command, ok, cost: null });
+      // 0.7: the sub-program's end, with the end of its command (`program`, given in a run of 0.7 alone), once.
+      if (program) await this.event(tx, runId, "program_ended", { plan: program.plan, number: program.number, ok });
     });
   }
 
-  async budget(runId: string): Promise<Record<string, { limit: number; settled: number; reserved: number }>> {
-    const rows = await this.db.query<Row>(
+  /**
+   * Records that a sub-program starts to run (spec/attention.md "Events", 0.7): `program_started` once for its `plan`
+   * node and number, however often the run is resumed and runs it again. Only the lease holder may write (R06).
+   */
+  async programStarted(runId: string, fence: number, data: ProgramStarted): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = 'program_started' and data->>'plan' = $2 and data->>'number' = $3 limit 1", [runId, data.plan, String(data.number)]);
+      if (!seen) await this.event(tx, runId, "program_started", data as unknown as Value);
+    });
+  }
+
+  /** A run's budget rows, per dimension: the limit, what was settled and what is reserved; in `tx` when one is given. */
+  async budget(runId: string, tx?: Tx): Promise<Record<string, { limit: number; settled: number; reserved: number }>> {
+    const rows = await (tx ?? this.db).query<Row>(
       `select b.dimension, b.limit_value, b.settled,
          coalesce((select sum(amount) from reservations r where r.run_id = b.run_id and r.dimension = b.dimension and r.state = 'active'), 0) as reserved
        from budgets b where b.run_id = $1 order by b.dimension`,
@@ -1077,6 +1363,19 @@ export class Journal {
    */
   async envelopeApprovals(packageHash: string): Promise<StoredDecision[]> {
     const rows = await this.db.query<Row>("select decision_id, record, signature from decisions where package_hash = $1 and kind = 'envelope' and run_id is null order by accepted_at, decision_id", [packageHash]);
+    return rows.map((r) => ({ decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) }));
+  }
+
+  /**
+   * The stored promotions of a package's workflow, oldest first (spec/attention.md "Promotion"): decisions of kind
+   * `promote` for the package hash whose from-run is a run of that package and workflow. As with an approval, whoever
+   * reads them checks each one again.
+   */
+  async promotions(packageHash: string, workflow: string): Promise<StoredDecision[]> {
+    const rows = await this.db.query<Row>(
+      "select d.decision_id, d.record, d.signature from decisions d join runs r on r.run_id = d.run_id where d.package_hash = $1 and d.kind = 'promote' and r.package_hash = $1 and r.workflow = $2 order by d.accepted_at, d.decision_id",
+      [packageHash, workflow],
+    );
     return rows.map((r) => ({ decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) }));
   }
 

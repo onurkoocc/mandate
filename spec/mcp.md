@@ -13,7 +13,7 @@ structural patches, through tools, instead of through a shell.
 | `mandate.explain` | `code`, e.g. `E0320` | The code, its title and its explanation |
 | `mandate.apply_patch` | `source`, `kind?`, `base` (the program hash the patch was written for), `ops` (RFC 6902 `add`, `remove`, `replace`) | The new program and hash, its diagnostics, the governance changes, and `requires_approval` |
 | `mandate.caps_of` | `source`, `name` of an agent or workflow | Its authority, and each of its delegations' grants ([`views.md`](views.md)) |
-| `mandate.project` | `source`, `view` (`architecture`, `authority`, `cost`, `diff`), `before?` | A human view; `diff` compares `before` with `source` |
+| `mandate.project` | `source`, `view` (`architecture`, `authority`, `cost`, `diff`), `before?`, `lock?` | A human view; `diff` compares `before` with `source` |
 | `mandate.spec` | `section?`, e.g. `4` or `7.2` | The core specification, or one numbered section |
 
 A program that imports a module with `use` (a system model, [`system.md`](system.md))
@@ -100,3 +100,42 @@ holds as it was.*
   MCP over HTTP and is specified with connectors
   ([`library.md`](library.md#the-mcp-the-runtime-speaks)); it has nothing
   to do with this server.
+
+## 0.7
+
+*Added 2026-11-17. Specified in [`attention.md`](attention.md#the-mcp-server);
+0.7, implemented in both servers (slice B9). Everything above holds as it is.*
+
+- **Two servers, one tool list.** A native `mandate mcp`, in
+  `crates/mandate-cli`, serves the same tools as the Node server: a JSON-RPC
+  loop on stdio that reads bounded lines, with the limits and the two
+  protocol eras above, and the core specification embedded. The tool list of
+  0.7 is data from one door of the Rust compiler, `mcp_tools`; the same
+  recorded conversations run against both servers, and the Node server is
+  held to them by its own tests (`bridge/test/mcp-replay.test.ts`). The Node
+  command `mandate mcp`, like the native one, serves the list of 0.7: it takes
+  no option for another language. This is the one change of that command for
+  an existing client: `tools/list` shows new tool descriptions and the
+  parameters `libraries`, `lock` and `workflow`, and the message for a view
+  that is not one also names `card` and `attention`; the answers to every
+  recorded conversation of 0.1 to 0.6 are unchanged. The Node library's
+  `McpServer` and `serveStdio`, given no language, still serve the frozen
+  list, which is the door's list for each of `mandate/0.1` to `mandate/0.6`
+  (`bridge/test/mcp-0-7.test.ts`).
+- **One source for the list, not for the parameters.** Only the list of tools
+  and their schemas has one source, the door. Which parameter each tool reads
+  is written by hand in both servers (`callTool` and `project07` in
+  `bridge/src/mcp.ts`, `crates/mandate-cli/src/mcp/tools.rs`), so a parameter
+  the door gains is listed by both and passed by neither until it is coded;
+  the allow-list test (`bridge/test/mcp-0-7.test.ts`) fails on any parameter
+  not in its table, which is the guard.
+- **The tools.** `check` takes `libraries`, and finds the embedded
+  `std.patterns` by default; `project` offers the card and the attention
+  view, with the `lock`; `caps_of` and `apply_patch` take the `lock` and
+  `libraries` as `check` does, so that a patched program is checked as
+  `check` would check it; `spec` takes two more values of its `section`,
+  `patterns` and `attention`.
+- **Still only computing.** No tool signs, approves or promotes. A card
+  approval, a decision and a promotion are a person's, made with their own
+  key on the command line (`approve-envelope`, `decide`, `promote`), never by
+  an agent through this server.

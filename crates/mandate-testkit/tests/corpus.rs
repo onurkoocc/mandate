@@ -35,9 +35,9 @@
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
 use mandate_check::{
-    AmendmentInput, CheckOptions, DataClass, ModuleSource, Modules, PatchOp, Room, SubprogramInput,
-    apply_patch, check, check_amendment, check_patch, check_subprogram, denial_diagnostics,
-    load_modules, validate_lock,
+    AmendmentInput, CheckOptions, DataClass, ModuleSource, Modules, PatchOp, PatchOptions, Room,
+    SubprogramInput, apply_patch, check, check_amendment, check_patch, check_subprogram,
+    denial_diagnostics, load_modules, validate_lock,
 };
 use mandate_ir::{Diagnostic, JsValue, Span, Spans, Value, parse, stringify};
 use mandate_syntax::{SourceKind, load};
@@ -192,7 +192,13 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
         Input::CheckPatch(p) => {
             let ops: Vec<PatchOp> = p.ops.iter().map(PatchOp::from_value).collect();
             let modules = p.modules.as_ref().map(|m| modules_map(m));
-            let r = check_patch(p.program, p.base, &ops, modules.as_ref());
+            let r = check_patch(
+                p.program,
+                p.base,
+                &ops,
+                modules.as_ref(),
+                &PatchOptions::default(),
+            );
             Ok(Actual::Result(render_check_patch(
                 r.ok,
                 r.hash.as_deref(),
@@ -227,6 +233,9 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
                     ops: &ops,
                     lead,
                     room: &room,
+                    std_patterns: None,
+                    role_classes: None,
+                    member_without_role: None,
                 }) {
                     Ok(r) => Actual::Result(render_check_subprogram(
                         r.ok,
@@ -252,6 +261,7 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
                     modules: modules.as_ref(),
                     workflow,
                     envelope: *envelope,
+                    std_patterns: None,
                 }) {
                     Ok(r) => Actual::Result(render_check_amendment(
                         r.ok,

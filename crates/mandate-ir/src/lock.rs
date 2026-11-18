@@ -12,7 +12,9 @@
 //! reads, is read by `spec/lock-0.6.schema.json` and then by the same rules:
 //! it is at least every earlier format. Its two fields of its own
 //! ([`LOCK_FIELDS_0_6`]) are held to their shape alone in this release's
-//! first slice.
+//! first slice. A lock of format 0.7 ([`LOCK_FORMAT_0_7`]) is read by
+//! `spec/lock-0.7.schema.json` and then by the same rules: it is at least
+//! every earlier format, 0.6 included.
 
 use crate::diag::{Diagnostic, Location};
 use crate::js_value::{JsObject, JsValue};
@@ -49,18 +51,48 @@ pub const LOCK_FORMAT_0_6: &str = "mandate/lock/0.6";
 /// older schema, as any field it does not have is (E0140).
 pub const LOCK_FIELDS_0_6: [&str; 2] = ["libraries", "connectors"];
 
+/// The lock format of language 0.7 (spec/attention.md "Lock 0.7"), which
+/// only the Rust compiler reads: every field of format 0.6 and
+/// [`LOCK_FIELDS_0_7`], read by its own schema, `spec/lock-0.7.schema.json`.
+/// Like [`LOCK_FORMAT_0_6`] it is not in [`LOCK_FORMATS`], and it comes after
+/// 0.6. A program of 0.7 accepts a lock of an older format as well; nothing
+/// writes this one yet (`mandate add` keeps it, with every field it has).
+pub const LOCK_FORMAT_0_7: &str = "mandate/lock/0.7";
+
+/// The lock fields of format 0.7: `role_classes` (each role's highest data
+/// class) and `promotion` (`"required"`, the ladder). In an older lock each
+/// is refused by the older schema, as any field it does not have is (E0140,
+/// at the lock's root); with a program older than 0.7 each is refused by
+/// the check (E1911), since nothing of such a run would apply it.
+pub const LOCK_FIELDS_0_7: [&str; 2] = ["role_classes", "promotion"];
+
+/// The formats only the Rust compiler reads, oldest first, after every
+/// format of [`LOCK_FORMATS`].
+const RUST_LOCK_FORMATS: [&str; 2] = [LOCK_FORMAT_0_6, LOCK_FORMAT_0_7];
+
 /// `LOCK_FORMATS.indexOf(format)`: the place of a format, `-1` for any
-/// other value (a number, a format this compiler does not read); format 0.6
-/// is after the last of them.
+/// other value (a number, a format this compiler does not read); formats
+/// 0.6 and 0.7 are after the last of them, in that order.
 fn format_index(format: Option<&str>) -> i64 {
     let at = format.and_then(|f| {
-        if f == LOCK_FORMAT_0_6 {
-            Some(LOCK_FORMATS.len())
-        } else {
-            LOCK_FORMATS.iter().position(|x| *x == f)
-        }
+        LOCK_FORMATS.iter().position(|x| *x == f).or_else(|| {
+            RUST_LOCK_FORMATS
+                .iter()
+                .position(|x| *x == f)
+                .map(|i| LOCK_FORMATS.len().saturating_add(i))
+        })
     });
     at.and_then(|i| i64::try_from(i).ok()).unwrap_or(-1)
+}
+
+/// The schema file a lock is read by, as its messages name it: that of its
+/// own format ([`crate::lock_schema_of`]).
+fn schema_file_of(value: &Value) -> &'static str {
+    match value.get("lock").and_then(Value::as_str) {
+        Some(LOCK_FORMAT_0_7) => "spec/lock-0.7.schema.json",
+        Some(LOCK_FORMAT_0_6) => "spec/lock-0.6.schema.json",
+        _ => "spec/lock.schema.json",
+    }
 }
 
 /// A lock's format is `format` or later: `atLeast(lock, format)` in
@@ -95,11 +127,7 @@ pub fn lock_schema_diagnostics(value: &Value) -> Vec<Diagnostic> {
             )];
         }
     };
-    let file = if value.get("lock").and_then(Value::as_str) == Some(LOCK_FORMAT_0_6) {
-        "spec/lock-0.6.schema.json"
-    } else {
-        "spec/lock.schema.json"
-    };
+    let file = schema_file_of(value);
     errors
         .into_iter()
         .map(|e| {
@@ -132,14 +160,15 @@ fn format_text_and_fact(lock: &Value) -> (String, JsValue) {
 }
 
 /// Validates a parsed lock file against `spec/lock.schema.json` (or, for a
-/// lock of format 0.6, `spec/lock-0.6.schema.json`) and the rules the schema
+/// lock of format 0.6 or 0.7, the schema of that format) and the rules the schema
 /// cannot say; E0140 for each problem: `validateLock(value)`.
 ///
 /// For a lock the schema accepts, in this order: bindings need format 0.3;
 /// `members` and `roles` need 0.4 (in that order); `host`, `isolation` and
 /// `egress` need 0.5; a key listed under two members (at the second one, in
 /// the order of `members` and of each member's keys); a role that lists a
-/// member `members` does not have; a tier whose model has no tariff.
+/// member `members` does not have; 0.7, a role `role_classes` gives a class
+/// to that `roles` does not name; a tier whose model has no tariff.
 #[must_use]
 pub fn validate_lock(value: &Value) -> Vec<Diagnostic> {
     let refused = lock_schema_diagnostics(value);
@@ -224,6 +253,30 @@ pub fn validate_lock(value: &Value) -> Vec<Diagnostic> {
                     Some(JsObject::new().with("role", role).with("member", member)),
                 ));
             }
+        }
+    }
+    // 0.7: a class for a role nobody holds would be read by nothing: the
+    // role is one `roles` names. Only a lock of 0.7 has `role_classes` (an
+    // older schema refuses it).
+    let classes = lock.get("role_classes").and_then(Value::as_object);
+    for (role, _) in classes.into_iter().flat_map(|cs| cs.iter()) {
+        // `!own(lock.roles, role)`.
+        if !roles
+            .and_then(|rs| rs.get(role))
+            .is_some_and(Value::is_truthy)
+        {
+            out.push(Diagnostic::new(
+                "E0140",
+                format!(
+                    "Lock field role_classes gives a class to role {role}, which is not in roles."
+                ),
+                Location::path(format!("/role_classes/{role}")),
+                Some(
+                    JsObject::new()
+                        .with("field", "role_classes")
+                        .with("role", role),
+                ),
+            ));
         }
     }
     let models = lock.get("models").and_then(Value::as_object);

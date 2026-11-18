@@ -19,7 +19,9 @@
 //! number of stored results each gate needs it for; and [`rust_vectors`],
 //! the files the Rust writes about 0.6 itself (its golden file and its
 //! diagnostic vectors), compared on every run and written again only with
-//! `MANDATE_UPDATE_0_6=1`.
+//! `MANDATE_UPDATE_0_6=1`. Language 0.7 is the Rust's alone too: the same
+//! two modules hold it, its files written again only with
+//! `MANDATE_UPDATE_0_7=1`.
 //!
 //! It is a dev-dependency only, and it may read files and the environment;
 //! the library crates may not. Every function returns its failures as text

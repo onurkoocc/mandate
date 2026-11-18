@@ -1,0 +1,42 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "A02b",
+  "kind": "compile",
+  "title": "Before 0.7 a report line is ordinary names: in a program of 0.6, report to accountant is three expression statements, each a name no definition has.",
+  "spec": [
+    "spec/attention.md#version-gating",
+    "spec/attention.md#report"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "text": "mandate @ 0.6\n\nmodule example.attention.older @ 0.1\n\nfn next(n: Int) -> Int ! {} {\n  report to accountant\n  n + 1\n}\n",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/next/body/0/value",
+        "facts": {
+          "name": "report"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/next/body/1/value",
+        "facts": {
+          "name": "to"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/next/body/2/value",
+        "facts": {
+          "name": "accountant"
+        }
+      }
+    ]
+  }
+}

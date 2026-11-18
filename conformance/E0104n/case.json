@@ -1,0 +1,155 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104n",
+  "kind": "compile",
+  "title": "A report of seventeen fields is refused by the schema of 0.7, which holds a report to 1 to 16 (a mutation: the fields).",
+  "spec": [
+    "spec/attention.md#the-ir",
+    "spec/attention.md#report"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/3/fields",
+      "value": [
+        {
+          "name": "f0",
+          "value": {
+            "op": "int",
+            "value": 0
+          }
+        },
+        {
+          "name": "f1",
+          "value": {
+            "op": "int",
+            "value": 1
+          }
+        },
+        {
+          "name": "f2",
+          "value": {
+            "op": "int",
+            "value": 2
+          }
+        },
+        {
+          "name": "f3",
+          "value": {
+            "op": "int",
+            "value": 3
+          }
+        },
+        {
+          "name": "f4",
+          "value": {
+            "op": "int",
+            "value": 4
+          }
+        },
+        {
+          "name": "f5",
+          "value": {
+            "op": "int",
+            "value": 5
+          }
+        },
+        {
+          "name": "f6",
+          "value": {
+            "op": "int",
+            "value": 6
+          }
+        },
+        {
+          "name": "f7",
+          "value": {
+            "op": "int",
+            "value": 7
+          }
+        },
+        {
+          "name": "f8",
+          "value": {
+            "op": "int",
+            "value": 8
+          }
+        },
+        {
+          "name": "f9",
+          "value": {
+            "op": "int",
+            "value": 9
+          }
+        },
+        {
+          "name": "f10",
+          "value": {
+            "op": "int",
+            "value": 10
+          }
+        },
+        {
+          "name": "f11",
+          "value": {
+            "op": "int",
+            "value": 11
+          }
+        },
+        {
+          "name": "f12",
+          "value": {
+            "op": "int",
+            "value": 12
+          }
+        },
+        {
+          "name": "f13",
+          "value": {
+            "op": "int",
+            "value": 13
+          }
+        },
+        {
+          "name": "f14",
+          "value": {
+            "op": "int",
+            "value": 14
+          }
+        },
+        {
+          "name": "f15",
+          "value": {
+            "op": "int",
+            "value": 15
+          }
+        },
+        {
+          "name": "f16",
+          "value": {
+            "op": "int",
+            "value": 16
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/Greet/body/3/fields",
+        "facts": {
+          "keyword": "maxItems"
+        }
+      }
+    ]
+  }
+}

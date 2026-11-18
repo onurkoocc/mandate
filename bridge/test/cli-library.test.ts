@@ -5,8 +5,7 @@
 //
 // The library commands run in this process over a temporary directory, with a clock of their own (the waiting period
 // is a matter of days); the checking commands, and the library commands once more, run as the command line itself, a
-// child process built into a temporary directory (tree.ts). Only the Rust compiler reads 0.6: in `ts` mode every test
-// that needs it is skipped by name, and what is left shows the refusal by name.
+// child process built into a temporary directory (tree.ts).
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -15,18 +14,14 @@ import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { libraryCommand, Stop, type LibraryArgs } from "../src/cli-library.js";
-import { authoritySignature, canonicalize, librariesConfigProblems, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, NoReference, type Json, type LibrarySource } from "../src/index.js";
+import { authoritySignature, canonicalize, librariesConfigProblems, mcpTools, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, type Json, type LibrarySource } from "../src/index.js";
+import { TOOLS } from "../src/mcp.js";
 import { beside, Files, isLibraryName, isModulePath, joinPath, libraryIn, lockPins, parseVersion, pinnedIn, rangeHolds, readManifest, versionsIn } from "../src/libraries.js";
-import { compilerMode, withCompiler } from "../src/mode.js";
 import { modulePath } from "../src/wasm/module.js";
 import { buildTree, repoRoot, type Tree } from "./tree.js";
 
-const rust = compilerMode() !== "ts" && existsSync(modulePath());
-
 // The tests here start the executable many times each: the default five seconds is too little on a busy machine.
 vi.setConfig({ testTimeout: 60_000 });
-/** The tests that need the Rust compiler, which alone reads 0.6: skipped by name in `ts` mode. */
-const needs06 = rust ? describe : describe.skip;
 
 const OPS = "fixtures/library/upgrade/acme.ops";
 const VERSIONS = ["1.0.0", "1.0.1", "1.1.0", "1.2.0", "2.0.0"];
@@ -66,6 +61,7 @@ class World {
       if (x === "--lock") a.lock = rest[++i]!;
       else if (x === "--libraries") a.libraries = rest[++i]!;
       else if (x === "--config") a.config = rest[++i]!;
+      else if (x === "--program") a.program = rest[++i]!;
       else if (x === "--json") a.json = true;
       else if (x === "--accept-governance") a.acceptGovernance = true;
       else a.positional.push(x);
@@ -125,7 +121,7 @@ function opsSource(w: World, v: string): void {
 /** The lock that pins acme.ops 1.0.0 (the one of conformance/L02). */
 const opsLock = (w: World): void => w.put("mandate.lock.json", repo("conformance/L02/mandate.lock.json"));
 
-needs06("mandate add", () => {
+describe("mandate add", () => {
   it("pins the highest version within the range and writes the lock", () => {
     const w = opsWorld();
     expect(w.mandate("add", "acme.ops@^1.0", "--libraries", "libs"), w.err).toBe(0);
@@ -196,9 +192,36 @@ needs06("mandate add", () => {
     expect(w.mandate("add")).toBe(2);
     expect(w.err.startsWith("usage: mandate")).toBe(true);
   });
+
+  it("pins, for the program --program names, the newest built-in version of no newer language, in a lock of its format (0.7)", () => {
+    const pin = (file: string): Json => (JSON.parse(repo(file)) as { libraries: Record<string, Json> }).libraries["std.patterns"]!;
+    const head = (v: string): string => `mandate @ ${v}\n\nmodule example.p @ 0.1\n\nuse std.patterns.{Batch}\n`;
+    // A program of 0.7: 2.0.0, and the new lock is of format 0.7.
+    const w = new World();
+    w.put("p.mdt", head("0.7"));
+    expect(w.mandate("add", "std.patterns", "--program", "p.mdt"), w.err).toBe(0);
+    const two = pin("fixtures/attention/batch.lock.json") as unknown as { digest: string };
+    expect(w.out.startsWith(`std.patterns 2.0.0 ${two.digest}\n`), w.out).toBe(true);
+    expect(JSON.parse(w.text("mandate.lock.json")!)).toEqual({ lock: "mandate/lock/0.7", modules: {}, libraries: { "std.patterns": two } });
+    // A program of 0.6: what a command that names no program writes, byte for byte.
+    const six = new World();
+    six.put("p.mdt", head("0.6"));
+    expect(six.mandate("add", "std.patterns", "--program", "p.mdt"), six.err).toBe(0);
+    const none = new World();
+    expect(none.mandate("add", "std.patterns"), none.err).toBe(0);
+    expect(six.text("mandate.lock.json")).toBe(none.text("mandate.lock.json"));
+    expect(six.out).toBe(none.out);
+    expect(JSON.parse(six.text("mandate.lock.json")!)).toEqual({ lock: "mandate/lock/0.6", modules: {}, libraries: { "std.patterns": pin("fixtures/library/invoices.lock.json") } });
+    // A program of 0.6 is offered nothing of 0.7; one that does not load is reported against its file.
+    expect(six.mandate("add", "std.patterns@^2.0", "--program", "p.mdt")).toBe(1);
+    expect(six.err).toContain("MDT-E1606");
+    six.put("bad.mdt", "mandate @ 0.7\n\nmodule\n");
+    expect(six.mandate("add", "std.patterns", "--program", "bad.mdt")).toBe(1);
+    expect(six.err).toContain("bad.mdt");
+  });
 });
 
-needs06("the waiting period and the revocation list, from the configuration's libraries member", () => {
+describe("the waiting period and the revocation list, from the configuration's libraries member", () => {
   it("a version within its waiting period is not resolved", () => {
     const w = opsWorld();
     w.now = seconds("2026-11-13T12:00:00Z");
@@ -286,7 +309,7 @@ needs06("the waiting period and the revocation list, from the configuration's li
   });
 });
 
-needs06("mandate upgrade", () => {
+describe("mandate upgrade", () => {
   it("shows a change that widens the authority signature as a governance change, and writes the lock only with --accept-governance", () => {
     const w = opsWorld();
     opsLock(w);
@@ -357,7 +380,7 @@ needs06("mandate upgrade", () => {
   });
 });
 
-needs06("mandate publish", () => {
+describe("mandate publish", () => {
   it("copies the library and writes its index last", () => {
     const w = opsWorld(["1.0.0"]);
     opsSource(w, "1.0.1");
@@ -449,7 +472,7 @@ needs06("mandate publish", () => {
   });
 });
 
-needs06("a path taken from a lock or a manifest stays inside the directory it is read under", () => {
+describe("a path taken from a lock or a manifest stays inside the directory it is read under", () => {
   /** A library that reads, put where a path that leaves the directory would lead. */
   function outside(w: World, rel: string): void {
     for (const f of ["mandate.library.json", "ops.mdt"]) w.put(`${rel}/${f}`, repo(`${OPS}/1.0.0/${f}`));
@@ -571,43 +594,18 @@ needs06("a path taken from a lock or a manifest stays inside the directory it is
   });
 });
 
-describe("the doors of the library commands, by mode", () => {
+describe("the doors of the library commands", () => {
   const source: LibrarySource = { manifest: repo(`${OPS}/1.0.0/mandate.library.json`), files: { "ops.mdt": repo(`${OPS}/1.0.0/ops.mdt`) } };
   const request = { library: "acme.ops", lock: { modules: {} } as never, versions: [{ version: "1.0.0", library: source, index: repo(`${OPS}/1.0.0/index.json`) }], now: "2026-11-15T00:00:00Z" };
 
-  it("in `ts` mode each is a refusal by name, and the command ends with 2 and writes nothing", () => {
-    withCompiler("ts", () => {
-      for (const [name, call] of [
-        ["libraryAdd", () => libraryAdd(request)],
-        ["libraryUpgrade", () => libraryUpgrade({ ...request, pinned: source })],
-        ["libraryPublish", () => libraryPublish({ source, published: [], now: request.now })],
-        ["authoritySignature", () => authoritySignature(source)],
-        ["librariesConfigProblems", () => librariesConfigProblems({ dir: "libs" })],
-      ] as const) {
-        expect(call, name).toThrow(NoReference);
-        expect(call, name).toThrow(new RegExp(`${name} reads language 0\\.6.*MANDATE_COMPILER=ts`));
-      }
-      const w = opsWorld(["1.0.0", "1.0.1"]);
-      opsSource(w, "1.1.0");
-      const before = w.files();
-      for (const argv of [["add", "acme.ops", "--libraries", "libs"], ["upgrade", "acme.ops", "--libraries", "libs"], ["publish", "src", "--libraries", "libs"], ["add", "acme.ops", "--config", "c.json"]]) {
-        w.put("c.json", '{"libraries":{"dir":"libs"}}');
-        expect(w.mandate(...argv), argv.join(" ")).toBe(2);
-        expect(w.err, argv.join(" ")).toMatch(/^mandate: librar\w+ reads language 0\.6, which only the Rust compiler reads/);
-        expect(w.out).toBe("");
-        w.remove("c.json");
-        expect(w.files()).toEqual(before);
-      }
-    });
-  });
-
-  it.runIf(existsSync(modulePath()))("in `both` mode each is the Rust's alone, and gives what `rust` gives", () => {
-    const calls: Array<() => unknown> = [() => libraryAdd(request), () => libraryUpgrade({ ...request, pinned: source }), () => libraryPublish({ source, published: [], now: request.now }), () => authoritySignature(source), () => librariesConfigProblems({ dir: "" })];
-    for (const call of calls) expect(withCompiler("both", call)).toEqual(withCompiler("rust", call));
-    expect(withCompiler("rust", () => libraryAdd(request))).toMatchObject({ ok: true, version: "1.0.0" });
-    expect(withCompiler("rust", () => authoritySignature({ manifest: "{", files: {} }))).toBeNull();
+  it("each is the Rust's alone: it gives what its door gives, and a door's refusal of its input is an Error", () => {
+    expect(libraryAdd(request)).toMatchObject({ ok: true, version: "1.0.0" });
+    // The others answer, each by its own door, where the reference compiler (frozen at 0.5) has no answer.
+    const calls: Array<() => unknown> = [() => libraryUpgrade({ ...request, pinned: source }), () => libraryPublish({ source, published: [], now: request.now }), () => authoritySignature(source), () => librariesConfigProblems({ dir: "" })];
+    for (const call of calls) expect(call).not.toThrow();
+    expect(authoritySignature({ manifest: "{", files: {} })).toBeNull();
     // What a door refuses of its input is an Error with the door's message, as for every door.
-    expect(() => withCompiler("rust", () => libraryAdd({ ...request, now: "yesterday" }))).toThrow(/`now` is "yesterday"/);
+    expect(() => libraryAdd({ ...request, now: "yesterday" })).toThrow(/`now` is "yesterday"/);
   });
 });
 
@@ -619,7 +617,7 @@ interface Run {
   err: string;
 }
 
-needs06("the mandate executable with libraries", () => {
+describe("the mandate executable with libraries", () => {
   let tree: Tree;
   const work = mkdtempSync(join(tmpdir(), "mdt-cli-library-exe-"));
   dirs.push(work);
@@ -630,6 +628,8 @@ needs06("the mandate executable with libraries", () => {
     tree = buildTree();
     // The repository's fixtures under the same paths, and the acceptance library in the layout of the operator's directory.
     cpSync(join(repoRoot, "fixtures", "library"), join(work, "fixtures", "library"), { recursive: true });
+    // The program of 0.7 whose card is held to the golden file's below.
+    cpSync(join(repoRoot, "fixtures", "attention"), join(work, "fixtures", "attention"), { recursive: true });
     for (const v of VERSIONS) cpSync(join(repoRoot, OPS, v), join(work, "libs", "acme.ops", v), { recursive: true });
     for (const f of ["mandate.library.json", "connectors.mdt", "types.mdt"]) cpSync(join(repoRoot, "fixtures/library/acme.connectors", f), join(work, "libs", "acme.connectors", "2.3.0", f));
     writeFileSync(join(work, "libs", "acme.connectors", "2.3.0", "index.json"), '{ "published_at": "2026-11-01T09:00:00Z" }\n');
@@ -765,8 +765,8 @@ needs06("the mandate executable with libraries", () => {
     const usage = await mandate("add");
     expect(usage.code).toBe(2);
     for (const line of [
-      "  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]",
-      "  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]",
+      "  add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]",
+      "  upgrade <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]",
       "  publish <source dir> [--libraries <dir>] [--config <file>] [--json]",
       "  check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
     ]) expect(usage.err).toContain(`\n${line}\n`);
@@ -826,4 +826,127 @@ needs06("the mandate executable with libraries", () => {
     expect(problems.join("\n")).toBe("");
     expect(compared).toBeGreaterThanOrEqual(60);
   }, 240_000);
+
+  // The card of a program of 0.7 is made from a check that is given the libraries the lock pins: the command gives
+  // them to the card as it gives them to the check, so what it prints is what the native command prints, the card
+  // vectors/golden/0.7.json pins (stages, the table of questions, what it tells whom), and not a card without them.
+  it("prints for the acceptance program of 0.7 the card the golden file pins, with the libraries it was given", async () => {
+    const golden = (JSON.parse(repo("vectors/golden/0.7.json")) as Record<string, Record<string, string>>)["fixtures/attention/invoices.mdt"]!;
+    const sha = (text: string): string => `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+    const program = "fixtures/attention/invoices.mdt";
+    const lock = "fixtures/attention/invoices.lock.json";
+    const forms: Array<[name: string, args: string[]]> = [
+      ["view --card --format json", ["--format", "json"]],
+      ["view --card --format md", []],
+      ["view --card --format html", ["--format", "html"]],
+    ];
+    for (const [name, args] of forms) {
+      const r = await mandate("view", program, "--lock", lock, "--libraries", "libs", "--card", ...args);
+      expect(r.code, `${name}: ${r.err}`).toBe(0);
+      expect(r.err, name).toBe("");
+      expect(sha(r.out), name).toBe(golden[name]);
+    }
+    const md = (await mandate("view", program, "--lock", lock, "--libraries", "libs", "--card")).out;
+    expect(md).toContain("At most 2 questions in all (asks: 2).");
+    expect(md).toContain("## What it tells whom");
+    expect(md).not.toContain("incomplete");
+    expect(md).not.toContain("Not shown");
+    // Without the libraries the program does not check, and no card is made in any form.
+    for (const args of [[], ["--format", "json"], ["--format", "html"]]) {
+      const r = await mandate("view", program, "--lock", lock, "--card", ...args);
+      expect(r.code, args.join(" ")).toBe(1);
+      expect(r.out, args.join(" ")).toBe("");
+      expect(r.err, args.join(" ")).toContain(" error MDT-E1605: ");
+    }
+  }, 120_000);
+
+  // `view --attention` prints for every program of 0.7 what the native command prints: the digests of the golden file of
+  // 0.7 (the view of every workflow, in each format), and, with --workflow, what vectors/attention-0.7/view.json holds of
+  // that workflow (the door's answer: the view as an object, its Markdown, its page).
+  it("prints the attention view the golden files pin, for every program of 0.7 and every workflow", async () => {
+    const golden = JSON.parse(repo("vectors/golden/0.7.json")) as Record<string, Record<string, string>>;
+    const views = JSON.parse(repo("vectors/attention-0.7/view.json")) as Record<string, Record<string, { json: unknown; md: string; html: string }>>;
+    const sha = (text: string): string => `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+    const problems: string[] = [];
+    let compared = 0;
+    await Promise.all(
+      Object.entries(golden).map(async ([program, pinned]) => {
+        const lockFile = program.replace(/\.[^./]+$/, ".lock.json");
+        const argv: string[] = [];
+        if (existsSync(join(repoRoot, lockFile))) argv.push("--lock", lockFile);
+        // The acceptance program's modules are its libraries'; the others are given the system's.
+        if (program === "fixtures/attention/invoices.mdt") argv.push("--libraries", "libs");
+        else for (const m of ["fixtures/system/acme.system.mdt", "fixtures/system/repos.mdt"]) argv.push("--module", join(repoRoot, m));
+        for (const [format, extra] of [["json", ["--format", "json"]], ["md", []], ["html", ["--format", "html"]]] as const) {
+          const r = await mandate("view", program, "--attention", ...extra, ...argv);
+          compared++;
+          if (r.code !== 0 || r.err !== "") problems.push(`${program} ${format}: exit ${r.code}: ${r.err.slice(0, 300)}`);
+          else if (sha(r.out) !== pinned[`view --attention --format ${format}`]) problems.push(`${program} ${format}: not the pinned output; it begins\n${r.out.slice(0, 300)}`);
+        }
+        for (const [workflow, view] of Object.entries(views[program] ?? {})) {
+          const json = await mandate("view", program, "--attention", "--workflow", workflow, "--format", "json", ...argv);
+          const md = await mandate("view", program, "--attention", "--workflow", workflow, ...argv);
+          const html = await mandate("view", program, "--attention", "--workflow", workflow, "--format", "html", ...argv);
+          compared += 3;
+          if (json.code !== 0 || JSON.stringify(JSON.parse(json.out)) !== JSON.stringify(view.json) || json.out !== JSON.stringify(view.json, null, 2) + "\n") problems.push(`${program} ${workflow} json: not the view of the file`);
+          if (md.out !== view.md) problems.push(`${program} ${workflow} md: not the view of the file`);
+          if (html.out !== view.html) problems.push(`${program} ${workflow} html: not the view of the file`);
+        }
+      }),
+    );
+    expect(problems.join("\n")).toBe("");
+    expect(compared).toBeGreaterThanOrEqual(90);
+  }, 280_000);
+
+  // `mandate mcp` serves the tools of 0.7 as the native command does (the library API's default, with no language, is the
+  // frozen list: bridge/test/mcp-0-7.test.ts). The command takes no option for another language.
+  it("serves, as a command, the tool list of 0.7 the door gives, in both eras", async () => {
+    const V = { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": { name: "test", version: "1" }, "io.modelcontextprotocol/clientCapabilities": {} };
+    const messages = [
+      { jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: V } },
+      { jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "2025-06-18" } },
+      { jsonrpc: "2.0", id: 3, method: "tools/list" },
+    ];
+    const run = await new Promise<Run>((resolve, reject) => {
+      const child = spawn(process.execPath, [tree.bridgeCli, "mcp"], { cwd: work, stdio: ["pipe", "pipe", "pipe"] });
+      const out: Buffer[] = [];
+      const err: Buffer[] = [];
+      child.stdout.on("data", (c: Buffer) => out.push(c));
+      child.stderr.on("data", (c: Buffer) => err.push(c));
+      child.on("error", reject);
+      child.on("close", (code) => resolve({ code, out: Buffer.concat(out).toString("utf8"), err: Buffer.concat(err).toString("utf8") }));
+      child.stdin.end(messages.map((m) => JSON.stringify(m) + "\n").join(""));
+    });
+    expect(run.err).toBe("");
+    expect(run.code).toBe(0);
+    const answers = run.out.trimEnd().split("\n").map((l) => JSON.parse(l) as { id: number; result: { tools?: unknown[]; ttlMs?: number } });
+    const door = mcpTools("mandate/0.7");
+    expect(JSON.stringify(answers[0]!.result.tools)).toBe(JSON.stringify(door.tools));
+    expect(answers[0]!.result.ttlMs).toBe(door.modern.ttlMs);
+    expect(JSON.stringify(answers[2]!.result.tools)).toBe(JSON.stringify(door.tools));
+    expect(JSON.stringify(door.tools)).not.toBe(JSON.stringify(TOOLS));
+  });
+
+  it("refuses a view --attention it cannot make, with the native command's words and statuses", async () => {
+    const lib = ["--lock", "fixtures/attention/invoices.lock.json", "--libraries", "libs"];
+    // A program before 0.7 has no attention view.
+    const old = await mandate("view", INVOICES, "--lock", INVOICES_LOCK, "--libraries", "libs", "--attention");
+    expect(old.code).toBe(1);
+    expect(old.err).toBe(`mandate: ${INVOICES} is not a program of language 0.7, so it has no attention view\n`);
+    expect(old.out).toBe("");
+    // A workflow it has not: named, with those it has.
+    const absent = await mandate("view", "fixtures/attention/invoices.mdt", ...lib, "--attention", "--workflow", "Nope");
+    expect(absent.code).toBe(2);
+    expect(absent.err).toBe("mandate: no workflow Nope in fixtures/attention/invoices.mdt; name one of: MatchInvoices\n");
+    // The card and --against do not go with it: a usage error.
+    for (const other of [["--card"], ["--against", "fixtures/attention/invoices.mdt"]]) {
+      const r = await mandate("view", "fixtures/attention/invoices.mdt", ...lib, "--attention", ...other);
+      expect(r.code, other.join(" ")).toBe(2);
+      expect(r.err.startsWith("usage: mandate <command> [options]\n"), other.join(" ")).toBe(true);
+    }
+    // The program must check as it is given, the libraries its lock pins among them.
+    const without = await mandate("view", "fixtures/attention/invoices.mdt", "--lock", "fixtures/attention/invoices.lock.json", "--attention");
+    expect(without.code).toBe(1);
+    expect(without.err).toContain(" error MDT-E1605: ");
+  }, 120_000);
 });

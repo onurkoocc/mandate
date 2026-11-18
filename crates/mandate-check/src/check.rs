@@ -4,7 +4,9 @@
 //! ```text
 //! load → (stop if no program or an error) → link → (Rust: the import checks
 //!      of `crate::imports`) → resolveNames → roleChecks → (Rust, 0.6: the
-//!      shapes of an envelope, `crate::shapes`) → importedMethods → (Rust,
+//!      shapes of an envelope, `crate::shapes`) → (Rust, 0.7: the stages,
+//!      `crate::stages`, and the reports, `crate::reports`) →
+//!      importedMethods → (Rust,
 //!      0.6: the patterns and applications of `crate::expand`, and the
 //!      expanded program, which every stage after this one reads)
 //!      → staticCheck (only if no error so far)
@@ -17,7 +19,7 @@
 //! [`crate::doors`].
 
 use mandate_ir::{
-    Diagnostic, JsObject, JsValue, Location, Map, Program, ProgramHashes, Spans, Value, has_errors,
+    Diagnostic, JsObject, JsValue, Location, Program, ProgramHashes, Spans, Value, has_errors,
     hash_program,
 };
 use mandate_syntax::{SourceKind, load};
@@ -65,6 +67,12 @@ pub struct CheckOptions<'a> {
     /// program of 0.6 that checks. A program of 0.1 to 0.5 is given none,
     /// asked or not.
     pub linked: bool,
+    /// 0.7: the version of `std.patterns` the program reads when the lock
+    /// pins none: what a caller that holds no lock names (a sub-program's
+    /// parent's pin, a package's), an embedded version. The lock's pin wins
+    /// over it, and a door given both that differ refuses them. `None`: the
+    /// version of the program's language, as before.
+    pub std_patterns: Option<mandate_lib::Version>,
 }
 
 /// What [`check`] gives: `CheckResult`, `LoadResult` with `ok` and
@@ -247,6 +255,45 @@ fn with_exact_span(d: Diagnostic, spans: &Spans) -> Diagnostic {
 /// `roleLockChecks` and `moduleLockChecks`).
 #[must_use]
 pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResult {
+    check_shown(text, kind, opts, None)
+}
+
+/// [`check`], and, given `shown`, what the static checks' typing gave each
+/// field of a report of 0.7 and the attention bound of each workflow
+/// ([`crate::statics::Typing`]), written into it: the one pass of the
+/// static checks, which the attention facts and a sub-program's reservation
+/// read (`crate::attention`, `crate::asks`). The result is [`check`]'s,
+/// whether `shown` is given or not.
+#[must_use]
+pub(crate) fn check_shown(
+    text: &str,
+    kind: SourceKind,
+    opts: &CheckOptions<'_>,
+    shown: Option<&mut crate::statics::Typing>,
+) -> CheckResult {
+    check_capped(text, kind, opts, shown, None)
+}
+
+/// [`check_shown`], and, given `caps` and no lock, E1909 held to the
+/// classes `caps` gives each role ([`crate::lock::Lock::role_class`]): a
+/// lead's sub-program, whose check is given no lock, held to the
+/// `role_classes` of its parent's lock (`crate::doors::check_subprogram`).
+/// With a lock, the lock's classes are the ones, and `caps` is not read.
+#[must_use]
+pub(crate) fn check_capped(
+    text: &str,
+    kind: SourceKind,
+    opts: &CheckOptions<'_>,
+    shown: Option<&mut crate::statics::Typing>,
+    caps: Option<Lock<'_>>,
+) -> CheckResult {
+    // What the typing gives the facts, which E1909 reads too: the caller's,
+    // or one of the check's own (boxed, so that the frame stays small).
+    let mut own_typing: Option<Box<crate::statics::Typing>> = None;
+    let typing: &mut crate::statics::Typing = match shown {
+        Some(t) => t,
+        None => own_typing.insert(Box::default()),
+    };
     let loaded = load(text, kind);
     let mut diagnostics = loaded.diagnostics.clone();
     let program_value = match &loaded.program {
@@ -326,6 +373,23 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
         &linked.defs,
         Some(&loaded.spans),
     ));
+    // 0.7: where each stage stands and the stages of each body (E1901,
+    // E1902). Rust only; nothing for an older program.
+    diagnostics.extend(crate::stages::stage_checks(program, Some(&loaded.spans)));
+    // 0.7: each report's title and role, what its fields may hold, and
+    // where it stands (E1903 to E1905); its role is a role site, held to
+    // E1501 above. Rust only; nothing for an older program.
+    diagnostics.extend(crate::reports::report_checks(
+        program,
+        &linked.defs,
+        Some(&loaded.spans),
+    ));
+    // 0.7: `asks` only in a workflow's budget or an envelope's (E1908).
+    // Rust only; nothing for an older program.
+    diagnostics.extend(crate::asks::asks_checks(program, Some(&loaded.spans)));
+    // 0.7: no `owner` beside an envelope (E1910); what it names is a role
+    // site, held to E1501 above. Rust only; nothing for an older program.
+    diagnostics.extend(crate::owner::owner_checks(program, Some(&loaded.spans)));
     // Before 0.5, a method limit an imported 0.5 capability writes would be
     // read as none (E1804).
     let no_modules = Modules::new();
@@ -392,20 +456,61 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
     // Static checks assume every name resolves.
     if !has_errors(&diagnostics) {
         diagnostics.extend(
-            static_check(target, &loaded.spans, &target_linked.defs, opts.claim)
-                .into_iter()
-                .map(back),
+            static_check(
+                target,
+                &loaded.spans,
+                target_linked,
+                opts.claim,
+                Some(&mut *typing),
+            )
+            .into_iter()
+            .map(back),
         );
     }
     // `opts.lock && !hasErrors(diagnostics)`: a lock that is falsy is none.
-    if let Some(lock) = opts.lock.filter(|l| l.is_truthy())
+    let lock = opts.lock.filter(|l| l.is_truthy());
+    if let Some(lock) = lock
         && !has_errors(&diagnostics)
     {
         let pinned = libraries.as_ref().map(|l| &l.pinned);
         match lock_stage(lock, target, target_linked, &loaded.spans, modules, pinned) {
-            Ok(found) => diagnostics.extend(found.into_iter().map(back)),
+            Ok(found) => {
+                diagnostics.extend(found.into_iter().map(back));
+                // 0.7: with the ladder, every workflow has someone who can
+                // promote it (E1910), read on the program as written, so
+                // that one that applies a pattern is named at itself.
+                diagnostics.extend(crate::owner::promotion_checks(
+                    program,
+                    Lock::of(lock),
+                    Some(&loaded.spans),
+                ));
+                // 0.7: no role is shown data above its class in the lock
+                // (E1909), from what the typing gave the facts.
+                diagnostics.extend(
+                    crate::role_shown::role_class_checks(
+                        target,
+                        typing,
+                        Lock::of(lock),
+                        Some(&loaded.spans),
+                    )
+                    .into_iter()
+                    .map(back),
+                );
+            }
             Err(lock_diags) => diagnostics.extend(lock_diags),
         }
+    }
+    // 0.7: a lead's sub-program, given no lock, held to the classes of its
+    // parent's (E1909).
+    if lock.is_none()
+        && let Some(caps) = caps
+        && !has_errors(&diagnostics)
+    {
+        diagnostics.extend(
+            crate::role_shown::role_class_checks(target, typing, caps, Some(&loaded.spans))
+                .into_iter()
+                .map(back),
+        );
     }
     let ok = !has_errors(&diagnostics);
     // The program hash covers the application, not the expansion; and the
@@ -465,6 +570,14 @@ fn again_stage(
         Some(&target_linked.defs),
     ));
     again.extend(role_checks(target, Some(spans), Some(&target_linked.defs)));
+    // 0.7: a workflow that applies a pattern has the pattern's stages and
+    // reports, held to the rules of a body written out.
+    again.extend(crate::stages::stage_checks(target, Some(spans)));
+    again.extend(crate::reports::report_checks(
+        target,
+        &target_linked.defs,
+        Some(spans),
+    ));
     again
 }
 
@@ -503,6 +616,9 @@ fn lock_stage(
     );
     // 0.6: the connectors the package can call, bound (E1407, E1408).
     found.extend(connector_lock_checks(target, target_linked, view, modules));
+    // 0.7: a lock's `role_classes` and `promotion` with a program older
+    // than 0.7, whose runs would not apply them (E1911).
+    found.extend(crate::lock::attention_lock_checks(target, view));
     Ok(found)
 }
 
@@ -512,14 +628,26 @@ fn lock_stage(
 /// constants, functions, contracts, recursion, budgets, the node count), the
 /// authority (capabilities, agents, workflows, par, delegation, map,
 /// effects, envelopes) and the system model (providers, reads, change
-/// sets).
+/// sets). Given `shown`, what its typing gave each field of a report, and
+/// the attention bound of each workflow, are written into it (0.7).
 fn static_check(
     program: Program<'_>,
     spans: &Spans,
-    defs: &Map,
+    linked: &crate::modules::Linked,
     claim: Option<&Value>,
+    shown: Option<&mut crate::statics::Typing>,
 ) -> Vec<Diagnostic> {
-    crate::statics::static_check(program, Some(spans), Some(defs), claim)
+    let (found, typed) = crate::statics::static_check_from(
+        program,
+        Some(spans),
+        Some(&linked.defs),
+        claim,
+        &linked.origin,
+    );
+    if let Some(into) = shown {
+        *into = typed;
+    }
+    found
 }
 
 /// What a check reads of the libraries (`crate::library::for_check`), and

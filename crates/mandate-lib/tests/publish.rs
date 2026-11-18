@@ -38,21 +38,25 @@ const WIDENS: BaseComparison = BaseComparison {
     widens_authority: true,
     removes_criterion: false,
     adds_waiver: false,
+    changes_owner: false,
 };
 const REMOVES: BaseComparison = BaseComparison {
     widens_authority: false,
     removes_criterion: true,
     adds_waiver: false,
+    changes_owner: false,
 };
 const WAIVES: BaseComparison = BaseComparison {
     widens_authority: false,
     removes_criterion: false,
     adds_waiver: true,
+    changes_owner: false,
 };
 const NOTHING: BaseComparison = BaseComparison {
     widens_authority: false,
     removes_criterion: false,
     adds_waiver: false,
+    changes_owner: false,
 };
 
 fn verdict(list: &[&str], new: &str, comparison: BaseComparison) -> Result<String, String> {
@@ -204,6 +208,7 @@ fn a_widening_needs_a_major_one_above_the_base() {
                 widens_authority: true,
                 removes_criterion: true,
                 adds_waiver: true,
+                changes_owner: false,
             },
         ),
         needs("1.0.1", "1.0.0", true, true, true),
@@ -356,10 +361,35 @@ fn the_version_above_must_not_widen_against_the_new_one() {
         },
         BaseComparison {
             adds_waiver: true,
+            changes_owner: false,
             ..BaseComparison::default()
         },
     ] {
         assert!(judge_next(&v("1.1.0"), &v("1.2.0"), one).is_err());
     }
     assert_eq!(judge_next(&v("1.1.0"), &v("2.0.0"), WIDENS), Ok(()));
+}
+
+/// 0.7: a version that changes who approves a workflow's card and signs
+/// its promotions (its `owner`) needs a major one above its base, as a
+/// widening does, and its refusal says so; a refusal that does not change
+/// an owner says what it said in 0.6, without the fact.
+#[test]
+fn a_change_of_owner_needs_a_major_one_above_the_base() {
+    let owner = BaseComparison {
+        changes_owner: true,
+        ..BaseComparison::default()
+    };
+    assert!(owner.requires_major());
+    assert!(!BaseComparison::default().requires_major());
+    assert_eq!(
+        verdict(&["1.0.0"], "1.1.0", owner),
+        Err(r#"{"problem":"needs_major","version":"1.1.0","base":"1.0.0","widens_authority":false,"removes_criterion":false,"adds_waiver":false,"changes_owner":true}"#.to_owned())
+    );
+    assert_eq!(verdict(&["1.0.0"], "2.0.0", owner), Ok("2.0.0".to_owned()));
+    let refused = judge_next(&v("1.1.0"), &v("1.2.0"), owner).unwrap_err();
+    assert_eq!(
+        json(refused.to_js()),
+        r#"{"problem":"next_needs_major","version":"1.1.0","next":"1.2.0","widens_authority":false,"removes_criterion":false,"adds_waiver":false,"changes_owner":true}"#
+    );
 }

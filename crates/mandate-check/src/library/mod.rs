@@ -15,8 +15,15 @@
 //!   manifest lists that was not handed in or one handed in that it does
 //!   not list, a module that does not load, is not written in 0.6, is
 //!   named outside the library, is named twice, or defines an `extern`.
-//! - [`STD_PATTERNS`]: the built-in `std.patterns`, whose source is
-//!   `lib/std.patterns/` and is part of the compiler.
+//! - [`STD_PATTERNS`]: the built-in `std.patterns`, in two versions
+//!   ([`STD_PATTERNS_EMBEDDED`]): 1.0.0, of 0.6, whose source is
+//!   `lib/std.patterns/`, and 2.0.0, of 0.7, whose source is
+//!   `lib/std.patterns@2/`; both are part of the compiler, and which one a
+//!   program reads is [`std_patterns_for`]'s alone to say, from the
+//!   program's language and the version its lock pins.
+//! - E1609 (0.7): a lock that pins a library written in a language newer
+//!   than the program's ([`for_check`]); a `use` of such a module is
+//!   `crate::imports`'.
 //! - [`for_check`]: what [`crate::check()`] reads of the libraries of a
 //!   program of 0.6, before it links: their modules, the modules each one
 //!   reaches (its own library's and those of the libraries it requires,
@@ -33,7 +40,7 @@
 
 pub mod ops;
 
-pub use mandate_lib::{Digest, LibrariesConfig, Timestamp, read_libraries_config};
+pub use mandate_lib::{Digest, LibrariesConfig, Timestamp, Version, read_libraries_config};
 pub mod signature;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -54,12 +61,184 @@ use crate::modules::{Modules, Reach};
 /// The name of the library built into the compiler.
 pub const STD_PATTERNS: &str = "std.patterns";
 
-/// The manifest of `std.patterns`, `lib/std.patterns/mandate.library.json`.
+/// The manifest of `std.patterns` 1.0.0, `lib/std.patterns/mandate.library.json`.
 pub const STD_PATTERNS_MANIFEST: &str =
     include_str!("../../../../lib/std.patterns/mandate.library.json");
 
-/// The one module of `std.patterns`, `lib/std.patterns/patterns.mdt`.
+/// The one module of `std.patterns` 1.0.0, `lib/std.patterns/patterns.mdt`.
 pub const STD_PATTERNS_MODULE: &str = include_str!("../../../../lib/std.patterns/patterns.mdt");
+
+/// The manifest of `std.patterns` 2.0.0 (0.7, spec/attention.md
+/// "`std.patterns` 2.0.0"), `lib/std.patterns@2/mandate.library.json`.
+pub const STD_PATTERNS_2_MANIFEST: &str =
+    include_str!("../../../../lib/std.patterns@2/mandate.library.json");
+
+/// The one module of `std.patterns` 2.0.0, `lib/std.patterns@2/patterns.mdt`.
+pub const STD_PATTERNS_2_MODULE: &str = include_str!("../../../../lib/std.patterns@2/patterns.mdt");
+
+/// One version of `std.patterns` built into the compiler: its version, the
+/// language its module is written in, and its source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Embedded {
+    /// Its version, `MAJOR.MINOR.PATCH`.
+    pub version: &'static str,
+    /// The language of its module.
+    pub language: Language,
+    /// The text of its manifest.
+    pub manifest: &'static str,
+    /// The text of its one module, `patterns.mdt`.
+    pub module: &'static str,
+}
+
+impl Embedded {
+    /// Its source, as a library is handed to the compiler.
+    #[must_use]
+    pub fn source(&self) -> LibrarySource {
+        LibrarySource {
+            manifest: self.manifest.to_owned(),
+            files: vec![("patterns.mdt".to_owned(), self.module.to_owned())],
+        }
+    }
+
+    /// It, read (a test holds that every embedded version reads).
+    #[must_use]
+    pub fn load(&self) -> Option<LoadedLibrary> {
+        load_library(&self.source(), true, STD_PATTERNS).ok()
+    }
+}
+
+/// The versions of `std.patterns` built into the compiler, oldest first:
+/// 1.0.0 (`lib/std.patterns/`, of 0.6, whose bytes and digest never change)
+/// and 2.0.0 (`lib/std.patterns@2/`, of 0.7: the same patterns with the same
+/// slots, with stages and reports). Which one a program reads is
+/// [`std_patterns_for`]'s alone to say.
+pub const STD_PATTERNS_EMBEDDED: [Embedded; 2] = [
+    Embedded {
+        version: "1.0.0",
+        language: Language::V0_6,
+        manifest: STD_PATTERNS_MANIFEST,
+        module: STD_PATTERNS_MODULE,
+    },
+    Embedded {
+        version: "2.0.0",
+        language: Language::V0_7,
+        manifest: STD_PATTERNS_2_MANIFEST,
+        module: STD_PATTERNS_2_MODULE,
+    },
+];
+
+/// The version of `std.patterns` a program of `language` reads, given the
+/// version its lock pins (`pinned`, `None` without a pin): the one place
+/// that chooses (spec/attention.md "`std.patterns` 2.0.0", "Which version").
+///
+/// - With a pin, the embedded version the lock pins. A pin of a version
+///   that is not embedded gets the version a program of its language gets
+///   without a pin, and the lock's comparison with what was found refuses it
+///   (E1605, `version_differs`), as a pin of another digest is refused
+///   (`digest_differs`): the pin is never matched by another version.
+/// - Without a pin, the newest embedded version whose language is not newer
+///   than the program's: 2.0.0 for a program of 0.7 or later, 1.0.0 for one
+///   of 0.6 (or of an unknown language, which reads none of 0.7).
+///
+/// A program of 0.7 whose lock pins 1.0.0 gets 1.0.0: a module of 0.6 is
+/// read by a program of 0.7. A program of 0.6 whose lock pins 2.0.0 gets
+/// 2.0.0, and is refused for it (E1609, [`for_check`]).
+///
+/// # Panics
+///
+/// Never: the sources are part of the compiler and a test holds that each
+/// reads (a failure would be a broken build, and is answered with no
+/// library rather than a panic).
+#[must_use]
+pub fn std_patterns_for(
+    language: Option<Language>,
+    pinned: Option<&Version>,
+) -> Option<LoadedLibrary> {
+    let pinned_one = pinned.and_then(|v| {
+        STD_PATTERNS_EMBEDDED
+            .iter()
+            .find(|e| Version::parse(e.version).is_ok_and(|x| x == *v))
+    });
+    let chosen = pinned_one.or_else(|| {
+        let reads = language.unwrap_or(Language::V0_6);
+        STD_PATTERNS_EMBEDDED
+            .iter()
+            .rev()
+            .find(|e| reads.at_least(e.language))
+            .or(STD_PATTERNS_EMBEDDED.first())
+    })?;
+    chosen.load()
+}
+
+/// The embedded version of `std.patterns` whose module `module` is (by its
+/// program hash), when it is one: a module given to a check as
+/// `std.patterns` stands, without a pin in the lock, for a pin of its
+/// version. `None` for any other module, which the check compares with the
+/// built-in it reads (E1605, `given_differs`), as before 0.7.
+#[must_use]
+pub fn embedded_version_of(module: Option<&Value>) -> Option<Version> {
+    let hash = hash_program(module?).program;
+    STD_PATTERNS_EMBEDDED.iter().find_map(|e| {
+        let l = e.load()?;
+        let same = l
+            .hashes
+            .get(STD_PATTERNS)
+            .is_some_and(|h| h.as_str() == hash);
+        same.then_some(*l.manifest.version())
+    })
+}
+
+/// The version of `std.patterns` a caller that holds no lock names for a
+/// door (`std_patterns`, 0.7: the version the lock of a parent or of a
+/// package pins), read: one of the embedded versions, `MAJOR.MINOR.PATCH`.
+///
+/// # Errors
+///
+/// The door's fixed message when `text` is not a version, or is one the
+/// compiler does not embed: a pin is never read as another version.
+pub fn embedded_pin(text: &str) -> Result<Version, String> {
+    let known: Vec<&str> = STD_PATTERNS_EMBEDDED.iter().map(|e| e.version).collect();
+    Version::parse(text)
+        .ok()
+        .filter(|v| {
+            STD_PATTERNS_EMBEDDED
+                .iter()
+                .any(|e| Version::parse(e.version).is_ok_and(|x| x == *v))
+        })
+        .ok_or_else(|| {
+            format!(
+                "{text:?} is not a version of std.patterns this compiler embeds ({}): a pin of std.patterns is one of them",
+                known.join(", ")
+            )
+        })
+}
+
+/// The version of `std.patterns` the views and the doors read when they are
+/// given `lock` and, besides, the version a caller names (`named`, 0.7): the
+/// lock's pin, else the one named, else none (the version of the program's
+/// language, [`std_patterns_for`]).
+///
+/// # Errors
+///
+/// A fixed message when both are given and they are not the same version:
+/// which one the program reads is not guessed.
+pub fn pin_of(lock: Option<&Value>, named: Option<&Version>) -> Result<Option<Version>, String> {
+    let locked = std_patterns_pin(lock);
+    match (locked, named) {
+        (Some(l), Some(n)) if l != *n => Err(format!(
+            "the lock pins std.patterns {l}, and std_patterns names {n}: give the one the lock pins, or none"
+        )),
+        (Some(l), _) => Ok(Some(l)),
+        (None, n) => Ok(n.copied()),
+    }
+}
+
+/// The version of `std.patterns` a lock pins, when it pins one that reads.
+#[must_use]
+pub fn std_patterns_pin(lock: Option<&Value>) -> Option<Version> {
+    let pins = read_lock_libraries(lock?.get("libraries")).ok()?;
+    pins.get(STD_PATTERNS).map(|p| *p.version())
+}
 
 /// A library as it is handed to the compiler: the text of its
 /// `mandate.library.json`, and each module file the manifest lists, by the
@@ -71,17 +250,6 @@ pub struct LibrarySource {
     pub manifest: String,
     /// Each module file: its path as the manifest lists it, and its text.
     pub files: Vec<(String, String)>,
-}
-
-impl LibrarySource {
-    /// The built-in `std.patterns`.
-    #[must_use]
-    pub fn std_patterns() -> LibrarySource {
-        LibrarySource {
-            manifest: STD_PATTERNS_MANIFEST.to_owned(),
-            files: vec![("patterns.mdt".to_owned(), STD_PATTERNS_MODULE.to_owned())],
-        }
-    }
 }
 
 /// A library read: its manifest, its modules by name (in the manifest's
@@ -313,29 +481,28 @@ pub fn load_library(
     }
 }
 
-/// The built-in `std.patterns`, read.
-///
-/// # Panics
-///
-/// Never: its source is part of the compiler and a test holds that it
-/// reads (a failure would be a broken build, and is answered with an empty
-/// library rather than a panic).
+/// The digest of the built-in `std.patterns` a program of `language` reads
+/// without a pin, which its lock pins.
 #[must_use]
-pub fn std_patterns() -> Option<LoadedLibrary> {
-    load_library(&LibrarySource::std_patterns(), true, STD_PATTERNS).ok()
-}
-
-/// The digest of the built-in `std.patterns`, which a lock pins.
-#[must_use]
-pub fn std_patterns_digest() -> Option<Digest> {
-    std_patterns().map(|l| l.digest)
+pub fn std_patterns_digest(language: Option<Language>) -> Option<Digest> {
+    std_patterns_for(language, None).map(|l| l.digest)
 }
 
 /// `modules` with the built-in `std.patterns` added, when `program` is of
-/// 0.6, imports it, and `modules` do not hold it: for a view of a program,
-/// which reads the expansion of a pattern of it. `None` otherwise.
+/// 0.6 or later, imports it, and `modules` do not hold it: for a view of a
+/// program, which reads the expansion of a pattern of it, and for the
+/// checks of a sub-program and an amendment, which are given no lock. The
+/// version is [`std_patterns_for`]'s, with `pinned` the version the
+/// program's lock pins when the caller has the lock (`None` otherwise: the
+/// version a program of its language reads without a pin). A caller that
+/// holds the modules of the version the program's check read hands them in
+/// `modules`, and they are used as they are. `None` otherwise.
 #[must_use]
-pub fn with_builtin(program: Program<'_>, modules: Option<&Modules>) -> Option<Modules> {
+pub fn with_builtin(
+    program: Program<'_>,
+    modules: Option<&Modules>,
+    pinned: Option<&Version>,
+) -> Option<Modules> {
     let reads = program
         .language()
         .is_some_and(|l| l.at_least(Language::V0_6))
@@ -345,10 +512,49 @@ pub fn with_builtin(program: Program<'_>, modules: Option<&Modules>) -> Option<M
         return None;
     }
     let mut all = modules.cloned().unwrap_or_default();
-    for (m, p) in std_patterns()?.modules.iter() {
+    for (m, p) in std_patterns_for(program.language(), pinned)?.modules.iter() {
         all.insert(m, p.clone());
     }
     Some(all)
+}
+
+/// The language a library is written in: the newest of its modules'.
+#[must_use]
+pub fn library_language(library: &LoadedLibrary) -> Option<Language> {
+    library
+        .modules
+        .iter()
+        .filter_map(|(_, p)| Program::of(p).and_then(|v| v.language()))
+        .max()
+}
+
+/// The E1609 of a library of `library_language` that the lock of a program
+/// of `language` pins (spec/attention.md "A newer module (E1609)").
+fn newer_library(
+    library: &LoadedLibrary,
+    library_language: Language,
+    program: Program<'_>,
+) -> Diagnostic {
+    let language = program
+        .members()
+        .get("language")
+        .and_then(Value::as_str)
+        .unwrap_or("mandate/0.1");
+    let ll = library_language.as_str();
+    diagnostic(
+        "E1609",
+        format!(
+            "The lock pins library {} {}, which is written in {ll}, and this program is {language}, which cannot read it. Pin a version written in {language} or earlier, or write the program in {ll} or later.",
+            library.name(),
+            library.manifest.version()
+        ),
+        &lock_path(library.name()),
+        JsObject::new()
+            .with("library", library.name())
+            .with("version", library.manifest.version().to_string())
+            .with("library_language", ll)
+            .with("language", language),
+    )
 }
 
 /// What [`crate::check()`] reads of the libraries of a program of 0.6.
@@ -435,7 +641,19 @@ pub fn for_check(program: Program<'_>, opts: &CheckOptions<'_>) -> Option<ForChe
             .any(|l| l.manifest.requires().contains_key(STD_PATTERNS));
     let mut builtin: Option<LoadedLibrary> = None;
     if wants_std {
-        builtin = std_patterns();
+        // The version the lock pins; without a pin, the one the caller
+        // names (`std_patterns`, a caller that holds no lock), else the version whose
+        // module the check was given as `std.patterns`, when it is one the
+        // compiler embeds (a caller that holds the version a parent's check
+        // read hands it so); else the one of the program's language (0.7:
+        // spec/attention.md "Which version").
+        let pinned = pins
+            .as_ref()
+            .and_then(|p| p.get(STD_PATTERNS))
+            .map(|p| *p.version())
+            .or(opts.std_patterns)
+            .or_else(|| embedded_version_of(opts.modules.and_then(|m| m.get(STD_PATTERNS))));
+        builtin = std_patterns_for(program.language(), pinned.as_ref());
     }
     let all: Vec<&LoadedLibrary> = builtin.iter().chain(loaded.iter()).collect();
     // Against the lock.
@@ -448,6 +666,13 @@ pub fn for_check(program: Program<'_>, opts: &CheckOptions<'_>) -> Option<ForChe
                     }
                 }
                 Some(pin) => {
+                    // 0.7: a library of a language newer than the
+                    // program's, pinned (E1609).
+                    if let (Some(ll), Some(pl)) = (library_language(l), program.language())
+                        && !pl.at_least(ll)
+                    {
+                        out.diagnostics.push(newer_library(l, ll, program));
+                    }
                     for p in compare_pin(l.name(), pin, &l.found()) {
                         out.diagnostics.push(diagnostic(
                             "E1605",

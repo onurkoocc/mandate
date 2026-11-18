@@ -24,7 +24,7 @@ use mandate_check::library::{LibrarySource, load_library};
 use mandate_cli::{Io, MemoryIo, run};
 use mandate_ir::{Value, canonicalize, parse};
 use mandate_lib::Timestamp;
-use mandate_testkit::rust_vectors::GOLDEN_0_6;
+use mandate_testkit::rust_vectors::{GOLDEN_0_6, GOLDEN_0_7};
 use mandate_testkit::{Golden, files, library_files, path, read_text, sha256};
 
 const OPS: &str = "fixtures/library/upgrade/acme.ops";
@@ -121,7 +121,9 @@ fn module_files_of(program: &str) -> Vec<&'static str> {
         ],
         // Their modules are their libraries': the acceptance program's from
         // its lock, the shaped migration's the built-in std.patterns alone.
-        "fixtures/library/invoices.mdt" | "fixtures/library/migrate-all.mdt" => Vec::new(),
+        "fixtures/library/invoices.mdt"
+        | "fixtures/attention/invoices.mdt"
+        | "fixtures/library/migrate-all.mdt" => Vec::new(),
         "fixtures/library/batch.mdt" => vec![
             "fixtures/library/acme.connectors/types.mdt",
             "fixtures/library/acme.connectors/connectors.mdt",
@@ -182,7 +184,9 @@ fn output(program: &str, locked: bool, with_modules: bool, command: &[&str]) -> 
         if !lock.ends_with("/mandate.lock.json") {
             args.extend(["--lock".to_owned(), lock]);
         }
-        if program == "fixtures/library/invoices.mdt" {
+        if program == "fixtures/library/invoices.mdt"
+            || program == "fixtures/attention/invoices.mdt"
+        {
             acme_connectors(&mut io);
             args.extend(["--libraries".to_owned(), "libs".to_owned()]);
         }
@@ -204,6 +208,7 @@ fn every_command_prints_what_the_golden_files_pin() {
     let goldens = [
         (Golden::load().unwrap(), false),
         (Golden::read(GOLDEN_0_6).unwrap(), true),
+        (Golden::read(GOLDEN_0_7).unwrap(), true),
     ];
     for (golden, of_0_6) in &goldens {
         for program in golden.programs() {
@@ -212,7 +217,8 @@ fn every_command_prints_what_the_golden_files_pin() {
             // A program whose modules are its libraries' has them from its
             // lock alone: the command line has no check of it with its
             // libraries and without its lock.
-            let from_libraries = program == "fixtures/library/invoices.mdt";
+            let from_libraries = program == "fixtures/library/invoices.mdt"
+                || program == "fixtures/attention/invoices.mdt";
             let commands: Vec<Pinned> = vec![
                 ("check", false, false, vec!["check", "FILE", "--json"]),
                 (
@@ -722,7 +728,7 @@ fn what_is_not_a_command_of_this_executable_is_refused() {
         assert_eq!(io.out, "");
     }
     for cmd in [
-        "mcp", "run", "resume", "status", "approve", "journal", "test", "egress",
+        "run", "resume", "status", "approve", "journal", "test", "egress",
     ] {
         let code = mandate(&mut io, &[cmd, "x"]);
         assert_eq!(code, 2, "{cmd}");
@@ -911,12 +917,65 @@ fn add_prints_what_the_door_gives_as_json() {
     assert_eq!(answer.get("lock"), Some(&Value::Null));
 }
 
+/// 0.7: `--program` names the program the lock is for. A program of 0.7 is
+/// given std.patterns 2.0.0 in a lock of format 0.7; one of 0.6 what a
+/// command that names none writes, byte for byte.
+#[test]
+fn add_pins_the_builtin_version_of_the_programs_language() {
+    let head = |v: &str| {
+        format!("mandate @ {v}\n\nmodule example.p @ 0.1\n\nuse std.patterns.{{Batch}}\n")
+    };
+    let mut io = MemoryIo::new();
+    io.now = seconds("2026-11-15T00:00:00Z");
+    io.put("p.mdt", &head("0.7"));
+    assert_eq!(
+        mandate(&mut io, &["add", "std.patterns", "--program", "p.mdt"]),
+        0,
+        "{}",
+        io.err
+    );
+    let two =
+        mandate_check::library::std_patterns_digest(Some(mandate_ir::Language::V0_7)).unwrap();
+    assert!(
+        io.out.starts_with(&format!("std.patterns 2.0.0 {two}\n")),
+        "{}",
+        io.out
+    );
+    let lock = json(io.text("mandate.lock.json").unwrap());
+    assert_eq!(
+        lock.get("lock").and_then(Value::as_str),
+        Some("mandate/lock/0.7")
+    );
+    let mut six = MemoryIo::new();
+    six.now = seconds("2026-11-15T00:00:00Z");
+    six.put("p.mdt", &head("0.6"));
+    assert_eq!(
+        mandate(&mut six, &["add", "std.patterns", "--program", "p.mdt"]),
+        0
+    );
+    let mut none = MemoryIo::new();
+    none.now = seconds("2026-11-15T00:00:00Z");
+    assert_eq!(mandate(&mut none, &["add", "std.patterns"]), 0);
+    assert_eq!(
+        six.text("mandate.lock.json"),
+        none.text("mandate.lock.json")
+    );
+    assert_eq!(six.out, none.out);
+    // One that does not load is reported against its file.
+    six.put("bad.mdt", "mandate @ 0.7\n\nmodule\n");
+    assert_eq!(
+        mandate(&mut six, &["add", "std.patterns", "--program", "bad.mdt"]),
+        1
+    );
+    assert!(six.err.contains("bad.mdt"), "{}", six.err);
+}
+
 #[test]
 fn add_pins_the_builtin_library_with_no_directory() {
     let mut io = MemoryIo::new();
     io.now = seconds("2026-11-15T00:00:00Z");
     assert_eq!(mandate(&mut io, &["add", "std.patterns"]), 0, "{}", io.err);
-    let digest = mandate_check::library::std_patterns_digest().unwrap();
+    let digest = mandate_check::library::std_patterns_digest(None).unwrap();
     assert!(
         io.out
             .starts_with(&format!("std.patterns 1.0.0 {digest}\n")),

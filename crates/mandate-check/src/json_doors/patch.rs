@@ -9,7 +9,9 @@ use super::DoorError;
 use super::front::{diagnostics_js, ir};
 use super::input::args;
 use crate::diff::{Change, KindedChange, Locks};
-use crate::doors::{AmendmentCheck, AmendmentInput, SubprogramCheck, SubprogramInput};
+use crate::doors::{
+    AmendmentCheck, AmendmentInput, PatchOptions, SubprogramCheck, SubprogramInput,
+};
 use crate::patch::GovernanceChange;
 use crate::subprogram::Room;
 
@@ -50,13 +52,23 @@ pub(super) fn apply_patch(input: &Value) -> Result<JsValue, DoorError> {
 }
 
 /// The parameters of [`check_patch`].
-pub(super) const CHECK_PATCH: &[&str] = &["program", "base", "ops", "modules"];
+pub(super) const CHECK_PATCH: &[&str] = &["program", "base", "ops", "modules", "opts"];
 
 /// `checkPatch(program, base, ops, modules)`, `compiler/src/check.ts`: a
 /// patch applied to a program, with the patched program's own checks.
 ///
 /// Input: `{ program, base: string, ops: [{ op, path, value? }], modules?:
-/// { <name>: program } }`.
+/// { <name>: program }, opts?: { lock?, libraries?, config? } }`. Language
+/// 0.7 adds `opts`, the Rust's alone (the TypeScript function has no fifth
+/// parameter), read as the door `check` reads the same members: `lock`, the
+/// lock as read (any value: the check validates it), `libraries`, the
+/// libraries the lock pins as `[{ manifest, files }]`, and `config`, the
+/// `libraries` member of the runtime's configuration (its revoked digests).
+/// The patched program is checked with them beside `modules`, as `check`
+/// checks it, and the names of the patch are resolved against the modules of
+/// the libraries too (a `use` of a pinned library's module, or of the
+/// embedded `std.patterns`, resolves). Without `opts` the door answers as it
+/// did.
 /// Output: `PatchCheck`, `{ ok, hash?, diagnostics, governance,
 /// requires_approval, program? }`.
 pub(super) fn check_patch(input: &Value) -> Result<JsValue, DoorError> {
@@ -65,7 +77,19 @@ pub(super) fn check_patch(input: &Value) -> Result<JsValue, DoorError> {
     let base = a.str("base")?;
     let ops = a.ops("ops")?;
     let modules = a.opt_modules("modules")?;
-    Ok(crate::doors::check_patch(program, base, &ops, modules).to_js())
+    let mut options = PatchOptions::default();
+    let mut libraries = Vec::new();
+    let mut config = None;
+    if let Some(o) = a.opt_members("opts", "opts.")? {
+        options.lock = o.opt_lock("lock");
+        libraries = super::library::sources_of(o, "libraries")?;
+        config = super::library::config_of(o)?;
+    }
+    if !libraries.is_empty() {
+        options.libraries = Some(&libraries);
+    }
+    options.revoked = config.as_ref().map(mandate_lib::LibrariesConfig::revoked);
+    Ok(crate::doors::check_patch(program, base, &ops, modules, &options).to_js())
 }
 
 /// The parameters of [`check_subprogram`].
@@ -77,7 +101,15 @@ pub(super) const CHECK_SUBPROGRAM: &[&str] = &["i"];
 /// Input: `{ i: { parent: program, modules?: { <name>: program }, workflow:
 /// string, number: number, base: string, ops: [{ op, path, value? }], lead:
 /// data class, room: { left: { <dimension>: number }, time_left_ms?: number,
-/// writes: [CapVal] } } }`.
+/// writes: [CapVal] }, std_patterns?: version, role_classes?: { <role>:
+/// data class } } }`; `std_patterns` (0.7) the version of `std.patterns`
+/// the parent's lock pins, one the compiler embeds (anything else is
+/// `bad_input`), which the check reads; `role_classes` (0.7) those of the
+/// parent's lock (`{}` for a lock without them), to which the check holds
+/// what each role is shown (E1909), each a data class (anything else is
+/// `bad_input`); without it, no E1909, as before; `member_without_role?:
+/// string` (0.7) a member of the parent's lock who holds no role in it,
+/// read with `role_classes`.
 /// Output: `SubprogramCheck`, `{ ok, diagnostics, program?, hash?,
 /// workflow? }`, and, for a sub-program of 0.6 that applies a pattern and
 /// is admitted (the Rust's alone), `running`, the sub-program as a run runs
@@ -106,6 +138,9 @@ pub(super) fn check_subprogram(input: &Value) -> Result<JsValue, DoorError> {
         ops: &ops,
         lead,
         room: &room,
+        std_patterns: i.opt_std_patterns("std_patterns")?,
+        role_classes: i.opt_role_classes("role_classes")?,
+        member_without_role: i.opt_str("member_without_role")?,
     });
     r.as_ref()
         .map(SubprogramCheck::to_js)
@@ -119,7 +154,8 @@ pub(super) const CHECK_AMENDMENT: &[&str] = &["i"];
 /// envelope, checked, and held to widening the old one only.
 ///
 /// Input: `{ i: { parent: program, modules?: { <name>: program }, workflow:
-/// string, envelope?: the new envelope as IR (any JSON value) } }`.
+/// string, envelope?: the new envelope as IR (any JSON value),
+/// std_patterns?: version } }`, `std_patterns` as [`check_subprogram`] takes it.
 /// Output: `AmendmentCheck`, `{ ok, diagnostics, program?, hash? }`;
 /// `bad_input` with the TypeScript's message when `workflow` is not a
 /// workflow with an envelope.
@@ -136,6 +172,7 @@ pub(super) fn check_amendment(input: &Value) -> Result<JsValue, DoorError> {
         modules,
         workflow,
         envelope,
+        std_patterns: i.opt_std_patterns("std_patterns")?,
     });
     r.as_ref()
         .map(AmendmentCheck::to_js)
@@ -143,7 +180,7 @@ pub(super) fn check_amendment(input: &Value) -> Result<JsValue, DoorError> {
 }
 
 /// The parameters of [`semantic_diff`].
-pub(super) const SEMANTIC_DIFF: &[&str] = &["before", "after", "locks", "modules"];
+pub(super) const SEMANTIC_DIFF: &[&str] = &["before", "after", "locks", "modules", "std_patterns"];
 
 /// `semanticDiff(before, after, locks)`, `compiler/src/views/views.ts`: the
 /// semantic diff of two programs.
@@ -165,7 +202,14 @@ pub(super) fn semantic_diff(input: &Value) -> Result<JsValue, DoorError> {
         after: l.opt_value("after"),
     });
     let modules = a.opt_modules("modules")?;
-    Ok(crate::diff::semantic_diff_with(before, after, locks, modules).to_js())
+    // 0.7: the version of std.patterns a caller that holds no lock names;
+    // each lock given must pin that one.
+    let named = a.opt_std_patterns("std_patterns")?;
+    for lock in [locks.and_then(|l| l.before), locks.and_then(|l| l.after)] {
+        crate::library::pin_of(lock, named.as_ref())
+            .map_err(|e| DoorError::bad_input(format!("`std_patterns`: {e}")))?;
+    }
+    Ok(crate::diff::semantic_diff_pinned(before, after, locks, modules, named.as_ref()).to_js())
 }
 
 /// The parameters of [`governance_changes`].

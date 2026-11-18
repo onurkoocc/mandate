@@ -9,9 +9,8 @@ implementation does: where the first draft of a rule and the rule as built
 differed, the page was brought to the built one. Each part landed with the
 slice named in the table. Language 0.6 is read by the Rust compiler alone:
 the TypeScript compiler stays frozen at 0.5 and does not read `mandate @
-0.6` (E0103), and a 0.6 package is refused by name when the runtime is set
-to that compiler (`MANDATE_COMPILER=ts`, `unsupported_language`; [The
-bridge](#the-bridge)).
+0.6` (E0103); the runtime's compiler is the Rust compiler's module and no
+other ([The bridge](#the-bridge)).
 
 | Part | Slice | State |
 |---|---|---|
@@ -404,10 +403,11 @@ agent, tool, effect, role and capability the expansion reaches (INV-21).
   imports by name (the form stored before the running program was linked)
   is not run. A resume stops the run as `attention_required` with
   `expansion_mismatch`; a replay reports it and runs nothing.
-- **A 0.6 run needs the Rust compiler.** Under `MANDATE_COMPILER=ts` a 0.6
-  package is refused at load, and a resume or a replay of a 0.6 run is
-  refused by name (`unsupported_language`): a run that was started on the
-  Rust compiler is never driven on the reference.
+- **A 0.6 run needs the Rust compiler.** It is the runtime's only
+  compiler: a run is driven, resumed and replayed on it. (Through 0.6 the
+  bridge could be set to the TypeScript compiler, which refused a 0.6
+  package and a resume or a replay of a 0.6 run by name; the setting is
+  gone.)
 - **A sub-program** that applies a pattern is run as its check gave it:
   `check_subprogram` returns `running`, the running program of the
   sub-program (its expansion, with all its parent sees linked in), with
@@ -608,8 +608,8 @@ naming the reason of the candidates in the range.
 ### `mandate add`, `upgrade` and `publish`
 
 ```sh
-mandate add     <library>[@<range>] [--lock FILE] [--libraries DIR] [--config FILE] [--json]
-mandate upgrade <library>[@<range>] [--lock FILE] [--libraries DIR] [--config FILE] [--accept-governance] [--json]
+mandate add     <library>[@<range>] [--lock FILE] [--program FILE] [--libraries DIR] [--config FILE] [--json]
+mandate upgrade <library>[@<range>] [--lock FILE] [--program FILE] [--libraries DIR] [--config FILE] [--accept-governance] [--json]
 mandate publish <source dir> [--libraries DIR] [--config FILE] [--json]
 ```
 
@@ -808,7 +808,9 @@ pub pattern BatchWithExceptions<Item, Out, R>(
   items that did not pass and may be waived; after the deadline, the same
   decision for `escalate_to`; then the result.
 
-`stage` and `report` are 0.7; the body has neither.
+`stage` and `report` are 0.7; the body has neither. Version 2.0.0 of
+`std.patterns` (0.7, `lib/std.patterns@2/`) adds them, beside this version,
+which does not change ([below](#07-stdpatterns-200-e1609-and-reports)).
 
 ### `FanOutMerge`
 
@@ -1694,8 +1696,12 @@ The compiler runs in the runtime's process as a WebAssembly module
   the interpreter's authority decisions so that the new coverage rule of
   `tool.call` has one implementation; and, from 0.6, the library doors
   (`library_verify`, `library_add`, `library_upgrade`, `library_publish`,
-  `authority_signature`). A tool's schema digest is no door: the runtime
-  computes it ([The lock binding](#the-lock-binding-and-schema-digests)). A
+  `authority_signature`). In 0.6 a tool's schema digest is no door: the
+  runtime computes it ([The lock binding](#the-lock-binding-and-schema-digests)).
+  From 0.7 the compiler has two doors more, `tool_schema_digest` (the same
+  digest) and `callable_connectors` (the connectors that can be called), which
+  the runtime uses once its own tests show them equal
+  ([attention.md](attention.md#carry-over-from-06)). A
   value such as the current time is an input of the door that needs it.
   The `check` door takes the option `linked` and then also returns
   `linked`, the running program ([Hashes](#hashes-and-what-the-runtime-stores));
@@ -1730,8 +1736,12 @@ The compiler runs in the runtime's process as a WebAssembly module
   an absolute path only. The bridge can say which module answers: its
   SHA-256, its length and where it came from.
 
-The modes are `MANDATE_COMPILER=ts|rust|both`; the default is `rust`, and
-`both` runs the TypeScript compiler as well and compares every call.
+There is one compiler behind the bridge, the Rust compiler's module; a
+process without it fails by name (`module_missing`) and never falls back to
+another compiler. The TypeScript compiler is held to the Rust's by the
+vectors the Rust crates are tested against, by the parity job and by the
+bridge's own tests, which compare the two outside the product; it is not
+asked at run time.
 
 Whether a module instance serves one call or many is not part of this
 contract: every rule above holds either way.
@@ -1770,7 +1780,7 @@ the wait left open.
 
 | Name | When |
 |---|---|
-| `unsupported_language` | At load, a 0.6 package under the TypeScript compiler (`MANDATE_COMPILER=ts`), which only the Rust compiler reads; at a resume or a replay of a 0.6 run under it; a lead's amendment of a package that applies a pattern or pins a library ([`shapes`](#shapes)). Nothing of 0.6 is refused for not being run yet: the runtime runs every construct of this page |
+| `unsupported_language` | At load, a package whose language is not one this runtime runs; a lead's amendment of a package that applies a pattern or pins a library ([`shapes`](#shapes)). Nothing of 0.6 is refused for not being run yet: the runtime runs every construct of this page |
 | `library_digest_mismatch` | At load: a library the package carries does not hash to the lock's digest, or the lock does not pin it |
 | `library_revoked` | At load: the package carries a revoked library digest. At a resume: the run stops as `attention_required` |
 | `expansion_mismatch` | At a resume or a replay: the stored running program is missing or does not hash to the manifest's `expanded`; at the admission of a sub-program: its running program does not hash to the one its admission names |
@@ -1833,7 +1843,8 @@ the wait left open.
 | INV-22 | A connector's tool is called only with the schema the lock pins, and only through the egress proxy. A tool that is not declared cannot be called | Closed declarations (E1404); schema digests at start and resume (`tool_schema_mismatch`); `no_egress_for_connector`; E1406 |
 | INV-02 (kept) | A running run's package does not change | The lock pins every library's digest; the stored expansion keeps a run's command ids |
 
-INV-19 and INV-20 are kept for a later release.
+INV-19 and INV-20 are kept for a later release: 0.7 binds them
+([`attention.md`](attention.md#invariants)).
 
 ## Diagnostics and conformance cases
 
@@ -2019,10 +2030,62 @@ The three acceptance criteria of 0.6:
    `person_in_map`, a waiver that is forged or from the wrong role,
    `expansion_mismatch`) each have a test.
 
+## The class of a function's result, changed in release 0.7
+
+*Note, 2026-11-18.* This is the one place where release 0.7 changed what a
+0.6 program gets. Since release 0.7 a call of a function in a 0.6 program is
+of the data class of what the function reads and returns, not of its
+arguments' class alone, so a 0.6 function that reads classified data and
+returns it as an unclassified type no longer hands it to a public model, a
+delegation or a sub-program unrefused: the check refuses it (E0220, and
+E1706 in a sub-program), and the door `lead_classes` gives a `plan` handed
+such a result that class. A run journaled before the change replays as it
+did, and a resumed run does not check again a sub-program it admitted; a
+sub-program a lead submits after the resume is checked with the new class
+(by reading `runtime.ts` `loaded()` and `interp.ts` `plan`, not by a test:
+`crates/mandate-check/tests/class_0_6.rs` holds the `lead_classes` value,
+and no test replays a journal written before the change). The rule and the security note are in
+[`attention.md`](attention.md#static-rules), "The class of a function's
+result".
+
+## 0.7: `std.patterns` 2.0.0, E1609 and reports
+
+*Added 2026-11-17. Specified in
+[`attention.md`](attention.md#stdpatterns-200); 0.7, implemented (RL6).
+Everything above holds as it is for 0.6.*
+
+- **Two embedded versions.** `std.patterns` 1.0.0 stays in
+  `lib/std.patterns/`, with the same bytes and the same digest, so that every
+  0.6 lock that pins it keeps checking. Version 2.0.0, in
+  `lib/std.patterns@2/`, is written in `mandate @ 0.7`: the same three
+  patterns with the same slots, with stages, and with two reports to
+  `reviewer` in `BatchWithExceptions`. A lock pins one of them as it pins any
+  library; without a pin, a 0.7 program resolves 2.0.0 and a 0.6 one 1.0.0.
+- **E1609.** A program of 0.6 or later that imports a module, or whose lock
+  pins a library, of a newer language than its own is E1609: a 0.6 program's
+  lock that pins `std.patterns` 2.0.0 is refused. A program of 0.1 to 0.5
+  that imports a 0.6 or a 0.7 module stays E1603. `mandate add std.patterns`
+  pins the newest embedded version whose language is not newer than the
+  program's: the program `--program FILE` names (`add`, `upgrade`); without
+  it, a program of 0.6, and the lock written is what it was before 0.7. For
+  a program of 0.7 the lock written is of format `mandate/lock/0.7`.
+- **Reports in the authority signature.** In 0.7 the [authority
+  signature](#the-authority-signature) of a workflow and a pattern of a
+  module of 0.7, and the semantic diff, record the reports it makes: each
+  one's role or role slot, its title, and the highest data class of its
+  fields (`reports`; in a pattern, `applied` for a field whose class is what
+  the application binds). A report added, or one whose highest class rises,
+  widens the signature (`what: "report"`): it is a governance change, which
+  `mandate upgrade` writes only with `--accept-governance`, and which
+  `mandate publish` refuses in a version that is not a major one (E1607). The
+  signature of a module of 0.6 is as it was. The rules in full are
+  [`attention.md`](attention.md#stdpatterns-200)'s.
+
 ## Not in 0.6
 
 - `stage`, `report`, the attention view, `asks`, `WatchRun`, `ListWaits`
-  and masking by data class: 0.7.
+  and masking by data class: 0.7, specified in [`attention.md`](attention.md)
+  and implemented there.
 - Fetching a library from git or OCI, a registry service, signed
   publication, an organization's policy module, and `extern` in a
   library.

@@ -1,0 +1,1219 @@
+{
+  "format": "mandate/vectors/diagnostics/golden/0.1",
+  "part": 1,
+  "parts": 1,
+  "programs": [
+    {
+      "program": "fixtures/attention/asks.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+            "defs": {
+              "Approved": "sha256:e68f69ce4469eb15191ea7fa9ad09c71927fd295cd6692aa7a2c9ccf2c588db7",
+              "Approving": "sha256:c5ea50e1bdcf71d72766457b381bc8194ebdd1095ddd46306b7633a4c47b7918",
+              "Asking": "sha256:422a1073e74e1015eb44066e5aeee2d9a2d121e712fe842571bc89efec873a39",
+              "Change": "sha256:2b6ee8c7524584586f6da6a10d6a78c63df641b9ae555ec6778119b69bfb6615",
+              "Endless": "sha256:7426f7296191e8d9744d8ab5c867d454d148955af785785f111dfa060a894398",
+              "Handling": "sha256:e5c60ab9e7798f067ee0289119fbdbb0cc8e09d947db8f6be41d963242f2da22",
+              "Landing": "sha256:d3270e71899fa0fae78098f301de28865cbae695c933858d6f37531c243bf1c7",
+              "Lead": "sha256:cb22b96cd54733fed70a873c8d479ee5a8d0597fe4ed4a30cdbde3b17df86e8b",
+              "Listed": "sha256:ef7a8fd26c3c5762f8a1c71bc755c9cd1c281df5e0b788d0242c718cffb56506",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329",
+              "Note": "sha256:56fe94c6239f378e1c9fe4280626893ffebbb160ab9c3234580aaeb5cf9d2eff",
+              "Open": "sha256:556cea3af3839f12a3ab183b370e50468f1017210f34a688752e5d689821883c",
+              "Plan": "sha256:2d42388eb2406eafde8df4fa36be870b9a3e51f6ecf098ec4b8b2e2c73a564c2",
+              "Planned": "sha256:225b5db3ab435995761345699aa2fa94d003e764382cd96bbdafc68e2f5d9875",
+              "Planning": "sha256:c092e99870e6978672c399c9af879ab9d3c428da70b3aa113d5a8cd46c6b7763",
+              "Pr": "sha256:8a1e6405479ce48d2909d2a29f0a072c89a2edbdcf031445670bde295d421903",
+              "Ready": "sha256:52d8d9d367e6f3787736a0f0ce68c5d1ec80a80765f6ab10a8461c38ee032dc6",
+              "Releasing": "sha256:698130292d63401fa3e1e7da8772887613d87cf5b91b86d6e04114da6453c39e",
+              "Repos": "sha256:9184712afb168a4cd19c5a9be2c411cd716319f03f11d885a2848656f5cf12d2",
+              "Ship": "sha256:8c2fea0b3b55f2e470b8e8ab9b0d572ebf7182a5345abc652e8713913fe87cd8",
+              "Short": "sha256:b170aa3099188f0a11d3765621e37e18542e475a5808a7e57970a45a0ce218b2",
+              "Spare": "sha256:62ed3ea6d2de92fe01a94ac7bed9a2954c0f1b433f530252f0e47ca937a97e72",
+              "Writer": "sha256:77852bc892b8e3f2dd9849ce9b014885cf9481d337c242c4ea0bdfdedd586895",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "api": "sha256:aa9e4fff5d3a19497e14c188f146316282a5d877195f9ec1508faa8f770eb8e0",
+              "api_owner": "sha256:7c5ce79e76097ba593487889a68a6e9c80b8857ef21bbd151a5c6c031b9216e7",
+              "architect": "sha256:4afa119a761d7acf20a17c5aec161abc5d9f29051c82b181ccd7eecb3a2fd785",
+              "code_owner": "sha256:03f95197de2a620c9b60f2e3aee291feb28e4c42c6a411fe771a447ecf09963e",
+              "confirm": "sha256:0f3debf2da99e88634c5de0944117350cf3bfb9974ef297b9c71c486c0c37442",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7",
+              "prod": "sha256:b1c46007c9a83ab2bb4612d4717adf38e1d63bad0e096abd08de14e9ffebad28",
+              "release_manager": "sha256:f3ae7ba9b6b8237b27f377bb9a3fe0e7f5205f289bcbf5ef7cdae8eb257f7fb3",
+              "web": "sha256:6b306d10a02ddd55c4cfc6cc5ae86ad30396e0d1281493fe0d7d79b9d50e696f",
+              "web_owner": "sha256:29e130100848d0b7784cffed4ba99add7cbd64bdb2579cf1479038bf1942beea"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:f1e9ace7d0e08ec6e97360eec27039594fa83327553077ba960a75743620d2eb",
+            "defs": {
+              "Approved": "sha256:e68f69ce4469eb15191ea7fa9ad09c71927fd295cd6692aa7a2c9ccf2c588db7",
+              "Approving": "sha256:c5ea50e1bdcf71d72766457b381bc8194ebdd1095ddd46306b7633a4c47b7918",
+              "Asking": "sha256:422a1073e74e1015eb44066e5aeee2d9a2d121e712fe842571bc89efec873a39",
+              "Change": "sha256:2b6ee8c7524584586f6da6a10d6a78c63df641b9ae555ec6778119b69bfb6615",
+              "Endless": "sha256:7426f7296191e8d9744d8ab5c867d454d148955af785785f111dfa060a894398",
+              "Handling": "sha256:e5c60ab9e7798f067ee0289119fbdbb0cc8e09d947db8f6be41d963242f2da22",
+              "Landing": "sha256:d3270e71899fa0fae78098f301de28865cbae695c933858d6f37531c243bf1c7",
+              "Lead": "sha256:cb22b96cd54733fed70a873c8d479ee5a8d0597fe4ed4a30cdbde3b17df86e8b",
+              "Listed": "sha256:ef7a8fd26c3c5762f8a1c71bc755c9cd1c281df5e0b788d0242c718cffb56506",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329",
+              "Note": "sha256:56fe94c6239f378e1c9fe4280626893ffebbb160ab9c3234580aaeb5cf9d2eff",
+              "Open": "sha256:556cea3af3839f12a3ab183b370e50468f1017210f34a688752e5d689821883c",
+              "Plan": "sha256:2d42388eb2406eafde8df4fa36be870b9a3e51f6ecf098ec4b8b2e2c73a564c2",
+              "Planned": "sha256:225b5db3ab435995761345699aa2fa94d003e764382cd96bbdafc68e2f5d9875",
+              "Planning": "sha256:c092e99870e6978672c399c9af879ab9d3c428da70b3aa113d5a8cd46c6b7763",
+              "Pr": "sha256:8a1e6405479ce48d2909d2a29f0a072c89a2edbdcf031445670bde295d421903",
+              "Ready": "sha256:52d8d9d367e6f3787736a0f0ce68c5d1ec80a80765f6ab10a8461c38ee032dc6",
+              "Releasing": "sha256:698130292d63401fa3e1e7da8772887613d87cf5b91b86d6e04114da6453c39e",
+              "Repos": "sha256:9184712afb168a4cd19c5a9be2c411cd716319f03f11d885a2848656f5cf12d2",
+              "Ship": "sha256:8c2fea0b3b55f2e470b8e8ab9b0d572ebf7182a5345abc652e8713913fe87cd8",
+              "Short": "sha256:b170aa3099188f0a11d3765621e37e18542e475a5808a7e57970a45a0ce218b2",
+              "Spare": "sha256:62ed3ea6d2de92fe01a94ac7bed9a2954c0f1b433f530252f0e47ca937a97e72",
+              "Writer": "sha256:77852bc892b8e3f2dd9849ce9b014885cf9481d337c242c4ea0bdfdedd586895",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "api": "sha256:aa9e4fff5d3a19497e14c188f146316282a5d877195f9ec1508faa8f770eb8e0",
+              "api_owner": "sha256:7c5ce79e76097ba593487889a68a6e9c80b8857ef21bbd151a5c6c031b9216e7",
+              "architect": "sha256:4afa119a761d7acf20a17c5aec161abc5d9f29051c82b181ccd7eecb3a2fd785",
+              "code_owner": "sha256:03f95197de2a620c9b60f2e3aee291feb28e4c42c6a411fe771a447ecf09963e",
+              "confirm": "sha256:0f3debf2da99e88634c5de0944117350cf3bfb9974ef297b9c71c486c0c37442",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7",
+              "prod": "sha256:b1c46007c9a83ab2bb4612d4717adf38e1d63bad0e096abd08de14e9ffebad28",
+              "release_manager": "sha256:f3ae7ba9b6b8237b27f377bb9a3fe0e7f5205f289bcbf5ef7cdae8eb257f7fb3",
+              "web": "sha256:6b306d10a02ddd55c4cfc6cc5ae86ad30396e0d1281493fe0d7d79b9d50e696f",
+              "web_owner": "sha256:29e130100848d0b7784cffed4ba99add7cbd64bdb2579cf1479038bf1942beea"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/attention/batch.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": "fixtures/attention/batch.lock.json",
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:0f43c8467ddd359d743706f90c07e8c787df6f19ab91e2636469e43e84384288",
+            "defs": {
+              "DraftId": "sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c",
+              "ErpDraft": "sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79",
+              "ErpRead": "sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d",
+              "Inbox": "sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6",
+              "Invoice": "sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75",
+              "Match": "sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56",
+              "MatchAll": "sha256:6b3dbda23a8ea4943274f655c577a49805360988bc5c5881cb1c98334eca3e33",
+              "Matched": "sha256:d6b84eac3124e487afdafb0129acfba3006b396f0d9f3ffb213a6bb25f02ddff",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Order": "sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "erp": "sha256:ccb2a6a1b83d2ea55454144a444c5976c4be2541d7526dcbe1453b95a74130fd",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [54, 15, 54, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:0f43c8467ddd359d743706f90c07e8c787df6f19ab91e2636469e43e84384288",
+            "defs": {
+              "DraftId": "sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c",
+              "ErpDraft": "sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79",
+              "ErpRead": "sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d",
+              "Inbox": "sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6",
+              "Invoice": "sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75",
+              "Match": "sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56",
+              "MatchAll": "sha256:6b3dbda23a8ea4943274f655c577a49805360988bc5c5881cb1c98334eca3e33",
+              "Matched": "sha256:d6b84eac3124e487afdafb0129acfba3006b396f0d9f3ffb213a6bb25f02ddff",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Order": "sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "erp": "sha256:ccb2a6a1b83d2ea55454144a444c5976c4be2541d7526dcbe1453b95a74130fd",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [54, 15, 54, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:0f43c8467ddd359d743706f90c07e8c787df6f19ab91e2636469e43e84384288",
+            "defs": {
+              "DraftId": "sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c",
+              "ErpDraft": "sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79",
+              "ErpRead": "sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d",
+              "Inbox": "sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6",
+              "Invoice": "sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75",
+              "Match": "sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56",
+              "MatchAll": "sha256:6b3dbda23a8ea4943274f655c577a49805360988bc5c5881cb1c98334eca3e33",
+              "Matched": "sha256:d6b84eac3124e487afdafb0129acfba3006b396f0d9f3ffb213a6bb25f02ddff",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Order": "sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "erp": "sha256:ccb2a6a1b83d2ea55454144a444c5976c4be2541d7526dcbe1453b95a74130fd",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [54, 15, 54, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/attention/fan-out.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": "fixtures/attention/fan-out.lock.json",
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:d329cff8568fc4ad04cbed0421d0aed2a53202bbc87bec1852fdc895c2401826",
+            "defs": {
+              "Merger": "sha256:c2640e984e9928ab06e28267f0f3c47f574018fc733faad4bc731b4a9acbbf7b",
+              "MigrateTwo": "sha256:0997c93870a6870d92ec4339e495f09a5ca33f4689b824c5e691175824edee00",
+              "Migrator": "sha256:76fb905c09f1e757317b71e123e38412b5c5ad75a6152a08cef4661d5517c303",
+              "ModelStd": "sha256:5be63a147d3daa5fe08d2ac8995f1d8058723a65f6907d4ad2abefb59e579b3b",
+              "Repo": "sha256:2064c8b6bd441021d49bf2d4eeb9b0c699bcf6ec5d168b4817321c74b0a4c156",
+              "RepoRead": "sha256:b516d159669bc76c34f68b84fab2c5d391ad37cb505a94dc3b96667a2de0ed95",
+              "SrcWrite": "sha256:1d844f2873e7fdd84bac61af548cc3af6b3d853fa1c818ff5e55874e9353d63c",
+              "Summary": "sha256:7bedd8c08eae7bdf79290d1187278e813da1da1b73311a237800e65b7f19ee7d"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:d329cff8568fc4ad04cbed0421d0aed2a53202bbc87bec1852fdc895c2401826",
+            "defs": {
+              "Merger": "sha256:c2640e984e9928ab06e28267f0f3c47f574018fc733faad4bc731b4a9acbbf7b",
+              "MigrateTwo": "sha256:0997c93870a6870d92ec4339e495f09a5ca33f4689b824c5e691175824edee00",
+              "Migrator": "sha256:76fb905c09f1e757317b71e123e38412b5c5ad75a6152a08cef4661d5517c303",
+              "ModelStd": "sha256:5be63a147d3daa5fe08d2ac8995f1d8058723a65f6907d4ad2abefb59e579b3b",
+              "Repo": "sha256:2064c8b6bd441021d49bf2d4eeb9b0c699bcf6ec5d168b4817321c74b0a4c156",
+              "RepoRead": "sha256:b516d159669bc76c34f68b84fab2c5d391ad37cb505a94dc3b96667a2de0ed95",
+              "SrcWrite": "sha256:1d844f2873e7fdd84bac61af548cc3af6b3d853fa1c818ff5e55874e9353d63c",
+              "Summary": "sha256:7bedd8c08eae7bdf79290d1187278e813da1da1b73311a237800e65b7f19ee7d"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:d329cff8568fc4ad04cbed0421d0aed2a53202bbc87bec1852fdc895c2401826",
+            "defs": {
+              "Merger": "sha256:c2640e984e9928ab06e28267f0f3c47f574018fc733faad4bc731b4a9acbbf7b",
+              "MigrateTwo": "sha256:0997c93870a6870d92ec4339e495f09a5ca33f4689b824c5e691175824edee00",
+              "Migrator": "sha256:76fb905c09f1e757317b71e123e38412b5c5ad75a6152a08cef4661d5517c303",
+              "ModelStd": "sha256:5be63a147d3daa5fe08d2ac8995f1d8058723a65f6907d4ad2abefb59e579b3b",
+              "Repo": "sha256:2064c8b6bd441021d49bf2d4eeb9b0c699bcf6ec5d168b4817321c74b0a4c156",
+              "RepoRead": "sha256:b516d159669bc76c34f68b84fab2c5d391ad37cb505a94dc3b96667a2de0ed95",
+              "SrcWrite": "sha256:1d844f2873e7fdd84bac61af548cc3af6b3d853fa1c818ff5e55874e9353d63c",
+              "Summary": "sha256:7bedd8c08eae7bdf79290d1187278e813da1da1b73311a237800e65b7f19ee7d"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0504",
+              "severity": "warning",
+              "message": "Merger.merge declares less than its loop can use: tokens 100000 < 560000, spend:USD 500000 < 3520000 (4 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.",
+              "at": {
+                "path": "/defs/Merger/budget",
+                "span": [31, 3, 31, 52]
+              },
+              "docs": "mandate explain MDT-W0504",
+              "facts": {
+                "agent": "Merger",
+                "skill": "merge",
+                "steps": 4,
+                "per_call": {
+                  "tokens": 140000,
+                  "spend_micros": 880000,
+                  "currency": "USD"
+                },
+                "short": {
+                  "tokens": {
+                    "declared": 100000,
+                    "bound": 560000
+                  },
+                  "spend:USD": {
+                    "declared": 500000,
+                    "bound": 3520000
+                  }
+                }
+              }
+            },
+            {
+              "code": "MDT-W0504",
+              "severity": "warning",
+              "message": "Migrator.migrate declares less than its loop can use: tokens 400000 < 1680000, spend:USD 500000 < 10560000 (12 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.",
+              "at": {
+                "path": "/defs/Migrator/budget",
+                "span": [24, 3, 24, 64]
+              },
+              "docs": "mandate explain MDT-W0504",
+              "facts": {
+                "agent": "Migrator",
+                "skill": "migrate",
+                "steps": 12,
+                "per_call": {
+                  "tokens": 140000,
+                  "spend_micros": 880000,
+                  "currency": "USD"
+                },
+                "short": {
+                  "tokens": {
+                    "declared": 400000,
+                    "bound": 1680000
+                  },
+                  "spend:USD": {
+                    "declared": 500000,
+                    "bound": 10560000
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/attention/invoices.mdt",
+      "modules": [],
+      "lock": "fixtures/attention/invoices.lock.json",
+      "results": {
+        "check": {
+          "ok": false,
+          "diagnostics": [
+            {
+              "code": "MDT-E1604",
+              "severity": "error",
+              "message": "Module acme.connectors is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.",
+              "at": {
+                "path": "/uses/0",
+                "span": [7, 1, 7, 35]
+              },
+              "docs": "mandate explain MDT-E1604",
+              "facts": {
+                "module": "acme.connectors"
+              }
+            },
+            {
+              "code": "MDT-E1604",
+              "severity": "error",
+              "message": "Module acme.connectors.types is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.",
+              "at": {
+                "path": "/uses/1",
+                "span": [8, 1, 8, 58]
+              },
+              "docs": "mandate explain MDT-E1604",
+              "facts": {
+                "module": "acme.connectors.types"
+              }
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:ca800dff12f11f79bcf93c7f1c457ecbae477435cf5e3092b6bcdff896a03ef8",
+            "defs": {
+              "ErpDraft": "sha256:0de2899b877390d44d26dd70d8e745087455d27902fdafab6c936b4b584966d5",
+              "ErpRead": "sha256:0b878f8c74be569cab94cb764c89f161be33ea0dc23904af8f115144e2e23f0a",
+              "Inbox": "sha256:201dc872ff04f3cc6b72b745bb9f603dc58e3a25c03150693008c4d26fa2d872",
+              "MatchInvoices": "sha256:f96e198a2b448157cf2d7a1200f6e50ce53e1d52a6fee9e0c7697a6ee2737d17",
+              "Matched": "sha256:83d4f3a9fc3d12ba8a7e6aedb7f014186f483355bfde3bafe8a9e98d09c60148",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/same_invoice/by/static",
+                "span": [22, 15, 22, 45]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/totals/by/static",
+                "span": [26, 15, 26, 60]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [24, 15, 24, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:ca800dff12f11f79bcf93c7f1c457ecbae477435cf5e3092b6bcdff896a03ef8",
+            "defs": {
+              "ErpDraft": "sha256:0de2899b877390d44d26dd70d8e745087455d27902fdafab6c936b4b584966d5",
+              "ErpRead": "sha256:0b878f8c74be569cab94cb764c89f161be33ea0dc23904af8f115144e2e23f0a",
+              "Inbox": "sha256:201dc872ff04f3cc6b72b745bb9f603dc58e3a25c03150693008c4d26fa2d872",
+              "MatchInvoices": "sha256:f96e198a2b448157cf2d7a1200f6e50ce53e1d52a6fee9e0c7697a6ee2737d17",
+              "Matched": "sha256:83d4f3a9fc3d12ba8a7e6aedb7f014186f483355bfde3bafe8a9e98d09c60148",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/same_invoice/by/static",
+                "span": [22, 15, 22, 45]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/totals/by/static",
+                "span": [26, 15, 26, 60]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [24, 15, 24, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/attention/maker-checker.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": "fixtures/attention/maker-checker.lock.json",
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:dbff9c1a466da9eb76b041a22994b5889f731fe589bb24641c4a236874e257cb",
+            "defs": {
+              "Auditor": "sha256:8c77e195ef0639c7be464de5181a6cc7a0e0a3d18f158aa3ebd9c29b82d40a34",
+              "Billing": "sha256:930f44c1c8751cee811bbad4246ac3400bca7ffb6cfba602264580c5ed18d3b6",
+              "Migrator": "sha256:76fb905c09f1e757317b71e123e38412b5c5ad75a6152a08cef4661d5517c303",
+              "ModelStd": "sha256:5be63a147d3daa5fe08d2ac8995f1d8058723a65f6907d4ad2abefb59e579b3b",
+              "Moved": "sha256:33b3797210ab179b52818b2a698060dbf7ffe8eeaed2eb785b57381b00db86a1",
+              "Repo": "sha256:2064c8b6bd441021d49bf2d4eeb9b0c699bcf6ec5d168b4817321c74b0a4c156",
+              "RepoRead": "sha256:b516d159669bc76c34f68b84fab2c5d391ad37cb505a94dc3b96667a2de0ed95",
+              "SrcWrite": "sha256:1d844f2873e7fdd84bac61af548cc3af6b3d853fa1c818ff5e55874e9353d63c",
+              "Summary": "sha256:82058d5d8c47f96a3b40c952e51ae91fecc84d0f518a78df98473d534c5275a9",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/moved/by/static",
+                "span": [26, 15, 26, 35]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/nothing_left/by/static",
+                "span": [28, 15, 28, 31]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:dbff9c1a466da9eb76b041a22994b5889f731fe589bb24641c4a236874e257cb",
+            "defs": {
+              "Auditor": "sha256:8c77e195ef0639c7be464de5181a6cc7a0e0a3d18f158aa3ebd9c29b82d40a34",
+              "Billing": "sha256:930f44c1c8751cee811bbad4246ac3400bca7ffb6cfba602264580c5ed18d3b6",
+              "Migrator": "sha256:76fb905c09f1e757317b71e123e38412b5c5ad75a6152a08cef4661d5517c303",
+              "ModelStd": "sha256:5be63a147d3daa5fe08d2ac8995f1d8058723a65f6907d4ad2abefb59e579b3b",
+              "Moved": "sha256:33b3797210ab179b52818b2a698060dbf7ffe8eeaed2eb785b57381b00db86a1",
+              "Repo": "sha256:2064c8b6bd441021d49bf2d4eeb9b0c699bcf6ec5d168b4817321c74b0a4c156",
+              "RepoRead": "sha256:b516d159669bc76c34f68b84fab2c5d391ad37cb505a94dc3b96667a2de0ed95",
+              "SrcWrite": "sha256:1d844f2873e7fdd84bac61af548cc3af6b3d853fa1c818ff5e55874e9353d63c",
+              "Summary": "sha256:82058d5d8c47f96a3b40c952e51ae91fecc84d0f518a78df98473d534c5275a9",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/moved/by/static",
+                "span": [26, 15, 26, 35]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/nothing_left/by/static",
+                "span": [28, 15, 28, 31]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:dbff9c1a466da9eb76b041a22994b5889f731fe589bb24641c4a236874e257cb",
+            "defs": {
+              "Auditor": "sha256:8c77e195ef0639c7be464de5181a6cc7a0e0a3d18f158aa3ebd9c29b82d40a34",
+              "Billing": "sha256:930f44c1c8751cee811bbad4246ac3400bca7ffb6cfba602264580c5ed18d3b6",
+              "Migrator": "sha256:76fb905c09f1e757317b71e123e38412b5c5ad75a6152a08cef4661d5517c303",
+              "ModelStd": "sha256:5be63a147d3daa5fe08d2ac8995f1d8058723a65f6907d4ad2abefb59e579b3b",
+              "Moved": "sha256:33b3797210ab179b52818b2a698060dbf7ffe8eeaed2eb785b57381b00db86a1",
+              "Repo": "sha256:2064c8b6bd441021d49bf2d4eeb9b0c699bcf6ec5d168b4817321c74b0a4c156",
+              "RepoRead": "sha256:b516d159669bc76c34f68b84fab2c5d391ad37cb505a94dc3b96667a2de0ed95",
+              "SrcWrite": "sha256:1d844f2873e7fdd84bac61af548cc3af6b3d853fa1c818ff5e55874e9353d63c",
+              "Summary": "sha256:82058d5d8c47f96a3b40c952e51ae91fecc84d0f518a78df98473d534c5275a9",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/moved/by/static",
+                "span": [26, 15, 26, 35]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/nothing_left/by/static",
+                "span": [28, 15, 28, 31]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0504",
+              "severity": "warning",
+              "message": "Auditor.audit declares less than its loop can use: tokens 100000 < 840000, spend:USD 500000 < 5280000 (6 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.",
+              "at": {
+                "path": "/defs/Auditor/budget",
+                "span": [41, 3, 41, 52]
+              },
+              "docs": "mandate explain MDT-W0504",
+              "facts": {
+                "agent": "Auditor",
+                "skill": "audit",
+                "steps": 6,
+                "per_call": {
+                  "tokens": 140000,
+                  "spend_micros": 880000,
+                  "currency": "USD"
+                },
+                "short": {
+                  "tokens": {
+                    "declared": 100000,
+                    "bound": 840000
+                  },
+                  "spend:USD": {
+                    "declared": 500000,
+                    "bound": 5280000
+                  }
+                }
+              }
+            },
+            {
+              "code": "MDT-W0504",
+              "severity": "warning",
+              "message": "Migrator.migrate declares less than its loop can use: tokens 400000 < 1680000, spend:USD 500000 < 10560000 (12 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.",
+              "at": {
+                "path": "/defs/Migrator/budget",
+                "span": [34, 3, 34, 64]
+              },
+              "docs": "mandate explain MDT-W0504",
+              "facts": {
+                "agent": "Migrator",
+                "skill": "migrate",
+                "steps": 12,
+                "per_call": {
+                  "tokens": 140000,
+                  "spend_micros": 880000,
+                  "currency": "USD"
+                },
+                "short": {
+                  "tokens": {
+                    "declared": 400000,
+                    "bound": 1680000
+                  },
+                  "spend:USD": {
+                    "declared": 500000,
+                    "bound": 10560000
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/attention/minimal.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e",
+            "defs": {
+              "Greet": "sha256:596801da78e127a180ea98dea4826019f3f908e38a6276721660d634fd24f7d2",
+              "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e",
+            "defs": {
+              "Greet": "sha256:596801da78e127a180ea98dea4826019f3f908e38a6276721660d634fd24f7d2",
+              "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/attention/owner.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": "fixtures/attention/owner.lock.json",
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+            "defs": {
+              "Check": "sha256:e6385ec9ccb743e85e72d081eb74a8b8d2de24c79b0ee8e953f5bbf6f424b6b0",
+              "Describe": "sha256:ead4767b06ccecc4ef5a3edb0425faec2e56813e2b5a96e03d20b7ab614c5abb",
+              "Item": "sha256:c40f9a199c6a1f3bde2038667b1450904557f5caaab4bf7ee42cd671fe4491b1",
+              "Line": "sha256:26603df80ac5fd03147f7db1857e72cd366174dadde82a3678230db9e2847655",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Writer": "sha256:d0240c6b359cf3687ad9c944f799781c17d78fbcb7f1e210e8763cfecdc0a879",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+            "defs": {
+              "Check": "sha256:e6385ec9ccb743e85e72d081eb74a8b8d2de24c79b0ee8e953f5bbf6f424b6b0",
+              "Describe": "sha256:ead4767b06ccecc4ef5a3edb0425faec2e56813e2b5a96e03d20b7ab614c5abb",
+              "Item": "sha256:c40f9a199c6a1f3bde2038667b1450904557f5caaab4bf7ee42cd671fe4491b1",
+              "Line": "sha256:26603df80ac5fd03147f7db1857e72cd366174dadde82a3678230db9e2847655",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Writer": "sha256:d0240c6b359cf3687ad9c944f799781c17d78fbcb7f1e210e8763cfecdc0a879",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+            "defs": {
+              "Check": "sha256:e6385ec9ccb743e85e72d081eb74a8b8d2de24c79b0ee8e953f5bbf6f424b6b0",
+              "Describe": "sha256:ead4767b06ccecc4ef5a3edb0425faec2e56813e2b5a96e03d20b7ab614c5abb",
+              "Item": "sha256:c40f9a199c6a1f3bde2038667b1450904557f5caaab4bf7ee42cd671fe4491b1",
+              "Line": "sha256:26603df80ac5fd03147f7db1857e72cd366174dadde82a3678230db9e2847655",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Writer": "sha256:d0240c6b359cf3687ad9c944f799781c17d78fbcb7f1e210e8763cfecdc0a879",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/attention/reports.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:e79e046095bb80e89b057fbff333b74f8097e41efe534b153b5e4d01bff84ad4",
+            "defs": {
+              "Batch": "sha256:efe9cf7981843738936cff8f323c6f910bdab62aa81f88fdbd0cf640a25a9173",
+              "BatchWithExceptions": "sha256:334d664bebe6c94da642354d8385f3b3f96f3d84a1b7b842ead62e612bc9d35b",
+              "Draft": "sha256:865f3086643ca75df8201227650c24e9abacc7c50ec71ef29f2ec5491ba564ca",
+              "DraftId": "sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c",
+              "ErpDraft": "sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79",
+              "ErpRead": "sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d",
+              "ErpVendor": "sha256:cc91ee54360c4d2aca4bdb2ccdca7cc0723f4df0748b421a67655b2c21bc53b3",
+              "Greet": "sha256:e13b3bb2b06e6006cafc5ff023230f252358345824e3db9852a2e741a2d02723",
+              "Greeted": "sha256:01fd5bae846be1f68ca39e02b86e48ac6a2347559e7603a66ff4ca0eca136649",
+              "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+              "Inbox": "sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6",
+              "Invoice": "sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75",
+              "Match": "sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56",
+              "MatchAll": "sha256:91d9e769dc5afdeb09fac6f46418b0acbdd51306f1a1b742aa2cd698a2a4c20f",
+              "Matched": "sha256:06c260687ff67cade4bb6131eceae313721f8d637c69737bccd220b8cd07d0db",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Order": "sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "erp": "sha256:af89464405275692c6af956725ae726ba8e96a5aa4c4d1ae5d05d41730dceacb",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "near": "sha256:86f822ac6b931c08609cd06ac1c5ea71f98095b7184b563c2b257bfc18195026"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Greeted.said: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Greeted/accept/said/by/static",
+                "span": [85, 15, 85, 25]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/totals/by/static",
+                "span": [78, 15, 78, 60]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [76, 15, 76, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:e79e046095bb80e89b057fbff333b74f8097e41efe534b153b5e4d01bff84ad4",
+            "defs": {
+              "Batch": "sha256:efe9cf7981843738936cff8f323c6f910bdab62aa81f88fdbd0cf640a25a9173",
+              "BatchWithExceptions": "sha256:334d664bebe6c94da642354d8385f3b3f96f3d84a1b7b842ead62e612bc9d35b",
+              "Draft": "sha256:865f3086643ca75df8201227650c24e9abacc7c50ec71ef29f2ec5491ba564ca",
+              "DraftId": "sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c",
+              "ErpDraft": "sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79",
+              "ErpRead": "sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d",
+              "ErpVendor": "sha256:cc91ee54360c4d2aca4bdb2ccdca7cc0723f4df0748b421a67655b2c21bc53b3",
+              "Greet": "sha256:e13b3bb2b06e6006cafc5ff023230f252358345824e3db9852a2e741a2d02723",
+              "Greeted": "sha256:01fd5bae846be1f68ca39e02b86e48ac6a2347559e7603a66ff4ca0eca136649",
+              "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+              "Inbox": "sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6",
+              "Invoice": "sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75",
+              "Match": "sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56",
+              "MatchAll": "sha256:91d9e769dc5afdeb09fac6f46418b0acbdd51306f1a1b742aa2cd698a2a4c20f",
+              "Matched": "sha256:06c260687ff67cade4bb6131eceae313721f8d637c69737bccd220b8cd07d0db",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Order": "sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "erp": "sha256:af89464405275692c6af956725ae726ba8e96a5aa4c4d1ae5d05d41730dceacb",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "near": "sha256:86f822ac6b931c08609cd06ac1c5ea71f98095b7184b563c2b257bfc18195026"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Greeted.said: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Greeted/accept/said/by/static",
+                "span": [85, 15, 85, 25]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/totals/by/static",
+                "span": [78, 15, 78, 60]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [76, 15, 76, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/attention/shapes.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:386031b9d85fa8f2006f5928dfacc3f4bff56cb49577a8b04c886e469de7835d",
+            "defs": {
+              "Lead": "sha256:cb22b96cd54733fed70a873c8d479ee5a8d0597fe4ed4a30cdbde3b17df86e8b",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329",
+              "Noted": "sha256:ad241ada056f66adab1e47319472c1b7182700343a7134a1637478658d153175",
+              "Planning": "sha256:9d9d211a77dd43d6f0e6125b02a966f84c314e0b28539a6b6c3af6cd0b9ea1de",
+              "Writer": "sha256:77852bc892b8e3f2dd9849ce9b014885cf9481d337c242c4ea0bdfdedd586895",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:386031b9d85fa8f2006f5928dfacc3f4bff56cb49577a8b04c886e469de7835d",
+            "defs": {
+              "Lead": "sha256:cb22b96cd54733fed70a873c8d479ee5a8d0597fe4ed4a30cdbde3b17df86e8b",
+              "ModelStd": "sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329",
+              "Noted": "sha256:ad241ada056f66adab1e47319472c1b7182700343a7134a1637478658d153175",
+              "Planning": "sha256:9d9d211a77dd43d6f0e6125b02a966f84c314e0b28539a6b6c3af6cd0b9ea1de",
+              "Writer": "sha256:77852bc892b8e3f2dd9849ce9b014885cf9481d337c242c4ea0bdfdedd586895",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "platform_lead": "sha256:3a99ff3dd2445f0cfab3e86e3c2ace497e6a58313a5e823f5508e65ece008fc7"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/attention/stages.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:e128e710b149a13805d73a0d31b798ef78d86d9871868ceff1a88c8583d43e9f",
+            "defs": {
+              "Batch": "sha256:efe9cf7981843738936cff8f323c6f910bdab62aa81f88fdbd0cf640a25a9173",
+              "BatchWithExceptions": "sha256:af9139346703b557a2ea2450a461dbadba0a9eae688f8d2193856d20642f6eee",
+              "DraftId": "sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c",
+              "ErpDraft": "sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79",
+              "ErpRead": "sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d",
+              "Greet": "sha256:1442d0ed0f3a3c5c697828ed7c4c46ec8a1fabfc872a7e055245b91504ab8ee5",
+              "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+              "Inbox": "sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6",
+              "Invoice": "sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75",
+              "Match": "sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56",
+              "MatchAll": "sha256:12f40742b3982125bfaaf1740c89c3c0acee536932b66f160e58a03f1fe05824",
+              "Matched": "sha256:06c260687ff67cade4bb6131eceae313721f8d637c69737bccd220b8cd07d0db",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Order": "sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "erp": "sha256:ccb2a6a1b83d2ea55454144a444c5976c4be2541d7526dcbe1453b95a74130fd",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "near": "sha256:86f822ac6b931c08609cd06ac1c5ea71f98095b7184b563c2b257bfc18195026"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/totals/by/static",
+                "span": [68, 15, 68, 60]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [66, 15, 66, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:e128e710b149a13805d73a0d31b798ef78d86d9871868ceff1a88c8583d43e9f",
+            "defs": {
+              "Batch": "sha256:efe9cf7981843738936cff8f323c6f910bdab62aa81f88fdbd0cf640a25a9173",
+              "BatchWithExceptions": "sha256:af9139346703b557a2ea2450a461dbadba0a9eae688f8d2193856d20642f6eee",
+              "DraftId": "sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c",
+              "ErpDraft": "sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79",
+              "ErpRead": "sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d",
+              "Greet": "sha256:1442d0ed0f3a3c5c697828ed7c4c46ec8a1fabfc872a7e055245b91504ab8ee5",
+              "Greeter": "sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21",
+              "Inbox": "sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6",
+              "Invoice": "sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75",
+              "Match": "sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56",
+              "MatchAll": "sha256:12f40742b3982125bfaaf1740c89c3c0acee536932b66f160e58a03f1fe05824",
+              "Matched": "sha256:06c260687ff67cade4bb6131eceae313721f8d637c69737bccd220b8cd07d0db",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Order": "sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "erp": "sha256:ccb2a6a1b83d2ea55454144a444c5976c4be2541d7526dcbe1453b95a74130fd",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "near": "sha256:86f822ac6b931c08609cd06ac1c5ea71f98095b7184b563c2b257bfc18195026"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/totals/by/static",
+                "span": [68, 15, 68, 60]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [66, 15, 66, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/attention/view.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": "fixtures/attention/view.lock.json",
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:45b63b874e1a92fa0a184755f477c1f985abacab9c21a4ee2620428984f498e9",
+            "defs": {
+              "Fits": "sha256:e7347784fa166f1ac865d4eccb2204113fa6b2b8bdf24f909e6068264111124f",
+              "Item": "sha256:d1843fbee62dd20bdf980857956498e2b15137431ac5d0489bc0e8318dd9cd89",
+              "Matcher": "sha256:63734f77a735cdb0c0994251affa527f62db46fa2d641c2bf8d14ad53a8fb035",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Notify": "sha256:583050e9abfa47a5b87094228f02f1bfe5595a6710664f3da3597dc5b8955937",
+              "Settle": "sha256:d3c5319983d16b54c1ced5f63a4d83b14fb120af607b79e4a6f4b68562a352f5",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "observer": "sha256:bcc6f447dad0ace4a2316d6ef04605b56aa30b1464b4128f5854e7dfc1b1904b"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Fits.same: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Fits/accept/same/by/static",
+                "span": [38, 15, 38, 32]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0310",
+              "severity": "warning",
+              "message": "Notify holds ModelStd = model.infer but neither its body nor its delegates use it.",
+              "at": {
+                "path": "/defs/Notify/caps/0",
+                "span": [71, 11, 71, 19]
+              },
+              "docs": "mandate explain MDT-W0310"
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:45b63b874e1a92fa0a184755f477c1f985abacab9c21a4ee2620428984f498e9",
+            "defs": {
+              "Fits": "sha256:e7347784fa166f1ac865d4eccb2204113fa6b2b8bdf24f909e6068264111124f",
+              "Item": "sha256:d1843fbee62dd20bdf980857956498e2b15137431ac5d0489bc0e8318dd9cd89",
+              "Matcher": "sha256:63734f77a735cdb0c0994251affa527f62db46fa2d641c2bf8d14ad53a8fb035",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Notify": "sha256:583050e9abfa47a5b87094228f02f1bfe5595a6710664f3da3597dc5b8955937",
+              "Settle": "sha256:d3c5319983d16b54c1ced5f63a4d83b14fb120af607b79e4a6f4b68562a352f5",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "observer": "sha256:bcc6f447dad0ace4a2316d6ef04605b56aa30b1464b4128f5854e7dfc1b1904b"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Fits.same: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Fits/accept/same/by/static",
+                "span": [38, 15, 38, 32]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0310",
+              "severity": "warning",
+              "message": "Notify holds ModelStd = model.infer but neither its body nor its delegates use it.",
+              "at": {
+                "path": "/defs/Notify/caps/0",
+                "span": [71, 11, 71, 19]
+              },
+              "docs": "mandate explain MDT-W0310"
+            }
+          ]
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:45b63b874e1a92fa0a184755f477c1f985abacab9c21a4ee2620428984f498e9",
+            "defs": {
+              "Fits": "sha256:e7347784fa166f1ac865d4eccb2204113fa6b2b8bdf24f909e6068264111124f",
+              "Item": "sha256:d1843fbee62dd20bdf980857956498e2b15137431ac5d0489bc0e8318dd9cd89",
+              "Matcher": "sha256:63734f77a735cdb0c0994251affa527f62db46fa2d641c2bf8d14ad53a8fb035",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Notify": "sha256:583050e9abfa47a5b87094228f02f1bfe5595a6710664f3da3597dc5b8955937",
+              "Settle": "sha256:d3c5319983d16b54c1ced5f63a4d83b14fb120af607b79e4a6f4b68562a352f5",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "observer": "sha256:bcc6f447dad0ace4a2316d6ef04605b56aa30b1464b4128f5854e7dfc1b1904b"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Fits.same: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Fits/accept/same/by/static",
+                "span": [38, 15, 38, 32]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0310",
+              "severity": "warning",
+              "message": "Notify holds ModelStd = model.infer but neither its body nor its delegates use it.",
+              "at": {
+                "path": "/defs/Notify/caps/0",
+                "span": [71, 11, 71, 19]
+              },
+              "docs": "mandate explain MDT-W0310"
+            },
+            {
+              "code": "MDT-W0504",
+              "severity": "warning",
+              "message": "Matcher.match declares less than its loop can use: tokens 20000 < 38000 (4 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.",
+              "at": {
+                "path": "/defs/Matcher/budget",
+                "span": [30, 3, 30, 35]
+              },
+              "docs": "mandate explain MDT-W0504",
+              "facts": {
+                "agent": "Matcher",
+                "skill": "match",
+                "steps": 4,
+                "per_call": {
+                  "tokens": 9500,
+                  "spend_micros": 70000,
+                  "currency": "USD"
+                },
+                "short": {
+                  "tokens": {
+                    "declared": 20000,
+                    "bound": 38000
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    }
+  ]
+}

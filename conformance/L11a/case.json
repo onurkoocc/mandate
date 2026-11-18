@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "L11a",
+  "kind": "compile",
+  "title": "mandate publish of acme.owners 1.1.0, whose workflow has another owner and makes one report more than in 1.0.0, as a minor version, is refused with both reasons: the report widens the authority signature, and who approves the workflow changed.",
+  "spec": [
+    "spec/attention.md#owner",
+    "spec/library.md#the-authority-signature",
+    "spec/library.md#mandate-add-upgrade-and-publish"
+  ],
+  "language": "mandate/0.7",
+  "library": {
+    "op": "publish",
+    "source": "versions/1.1.0",
+    "versions": "versions",
+    "only": ["1.0.0"],
+    "now": "2026-11-17T09:00:00Z"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1607",
+        "path": "",
+        "facts": {
+          "library": "acme.owners",
+          "problem": "needs_major",
+          "version": "1.1.0",
+          "base": "1.0.0",
+          "widens_authority": true,
+          "removes_criterion": false,
+          "adds_waiver": false,
+          "changes_owner": true
+        }
+      }
+    ]
+  }
+}

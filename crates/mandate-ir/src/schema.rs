@@ -4,7 +4,8 @@
 //! `compiler/src/lock.ts`).
 //!
 //! Language 0.6 has schemas of its own, `spec/ir-0.6.schema.json` and
-//! `spec/lock-0.6.schema.json`, which use the same subset. Each document is
+//! `spec/lock-0.6.schema.json`, and so has 0.7 (`spec/ir-0.7.schema.json`,
+//! `spec/lock-0.7.schema.json`); they use the same subset. Each document is
 //! read by the schema of its own version ([`ir_schema_of`],
 //! [`lock_schema_of`]): a program or lock of an earlier version by the
 //! schema it always had, so that nothing it accepts or refuses changes.
@@ -19,7 +20,8 @@
 //!   first ("at once") unless it has a group of keywords and the schema uses
 //!   one of them; then, in this order, `$ref`, `const`, `enum`, `oneOf`; for a
 //!   number `maximum`, `minimum`; for a string `maxLength`, `minLength`,
-//!   `pattern`; for an array `minItems`, `items` (by index), `uniqueItems`; for
+//!   `pattern`; for an array `maxItems` (which only the schema of 0.7 uses, for
+//!   the fields of a `report`), `minItems`, `items` (by index), `uniqueItems`; for
 //!   an object `minProperties`, `required` (in the list's order),
 //!   `propertyNames`, `additionalProperties` (in the document's order),
 //!   `properties` (in the schema's order), `discriminator`. A group's keywords
@@ -60,7 +62,7 @@ use std::sync::OnceLock;
 use crate::diag::ptr_token;
 use crate::jcs::canonicalize;
 use crate::js_value::{JsObject, JsValue};
-use crate::lock::LOCK_FORMAT_0_6;
+use crate::lock::{LOCK_FORMAT_0_6, LOCK_FORMAT_0_7};
 use crate::pattern::Pattern;
 use crate::reader::parse;
 use crate::tags::Language;
@@ -81,6 +83,14 @@ pub const IR_0_6_SCHEMA_TEXT: &str = include_str!("../../../spec/ir-0.6.schema.j
 /// `spec/lock-0.6.schema.json`, as it was when this crate was built: a lock
 /// of format 0.6. Only the Rust compiler reads it.
 pub const LOCK_0_6_SCHEMA_TEXT: &str = include_str!("../../../spec/lock-0.6.schema.json");
+
+/// `spec/ir-0.7.schema.json`, as it was when this crate was built: the IR
+/// of a program of 0.7 (spec/attention.md). Only the Rust compiler reads it.
+pub const IR_0_7_SCHEMA_TEXT: &str = include_str!("../../../spec/ir-0.7.schema.json");
+
+/// `spec/lock-0.7.schema.json`, as it was when this crate was built: a lock
+/// of format 0.7. Only the Rust compiler reads it.
+pub const LOCK_0_7_SCHEMA_TEXT: &str = include_str!("../../../spec/lock-0.7.schema.json");
 
 /// The only `$schema` a schema may name.
 const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
@@ -257,6 +267,7 @@ struct Node {
     max_length: Option<usize>,
     min_length: Option<usize>,
     pattern: Option<(Pattern, String)>,
+    max_items: Option<usize>,
     min_items: Option<usize>,
     items: Option<usize>,
     unique_items: Option<bool>,
@@ -278,7 +289,10 @@ impl Node {
                 self.max_length.is_some() || self.min_length.is_some() || self.pattern.is_some()
             }
             Group::Array => {
-                self.min_items.is_some() || self.items.is_some() || self.unique_items.is_some()
+                self.max_items.is_some()
+                    || self.min_items.is_some()
+                    || self.items.is_some()
+                    || self.unique_items.is_some()
             }
             Group::Object => {
                 self.min_properties.is_some()
@@ -467,6 +481,7 @@ impl<'a> Builder<'a> {
                     })?;
                     node.pattern = Some((pattern, source.to_owned()));
                 }
+                "maxItems" => node.max_items = Some(count(v, &here)?),
                 "minItems" => node.min_items = Some(count(v, &here)?),
                 "items" => {
                     let p = format!("{}/items", node.path);
@@ -715,23 +730,60 @@ pub fn lock_schema_0_6() -> Result<&'static Schema, &'static str> {
         .map_err(String::as_str)
 }
 
-/// Whether `value` is read by the schemas of 0.6: a program whose
-/// `language` is `mandate/0.6`, or a lock whose `lock` is
-/// `mandate/lock/0.6`. Anything else, a version no compiler reads
-/// included, is read by the schema of 0.1 to 0.5, as before.
-fn of_0_6(value: &Value, member: &str, tag: &str) -> bool {
+/// The IR schema of language 0.7, prepared once with the options of
+/// [`ir_schema`].
+///
+/// # Errors
+///
+/// As [`ir_schema`].
+pub fn ir_schema_0_7() -> Result<&'static Schema, &'static str> {
+    static IR: OnceLock<Result<Schema, String>> = OnceLock::new();
+    IR.get_or_init(|| {
+        Schema::from_text(
+            IR_0_7_SCHEMA_TEXT,
+            SchemaOptions {
+                discriminator: true,
+            },
+        )
+    })
+    .as_ref()
+    .map_err(String::as_str)
+}
+
+/// The lock schema of format 0.7, prepared once with the options of
+/// [`lock_schema`].
+///
+/// # Errors
+///
+/// As [`ir_schema`].
+pub fn lock_schema_0_7() -> Result<&'static Schema, &'static str> {
+    static LOCK: OnceLock<Result<Schema, String>> = OnceLock::new();
+    LOCK.get_or_init(|| Schema::from_text(LOCK_0_7_SCHEMA_TEXT, SchemaOptions::default()))
+        .as_ref()
+        .map_err(String::as_str)
+}
+
+/// Whether `value`'s `member` is exactly `tag`: a program whose `language`
+/// is `mandate/0.6` or `mandate/0.7`, or a lock whose `lock` is
+/// `mandate/lock/0.6` or `mandate/lock/0.7`, is read by the schema of that
+/// version. Anything else, a version no compiler reads included, is read
+/// by the schema of 0.1 to 0.5, as before.
+fn tagged(value: &Value, member: &str, tag: &str) -> bool {
     value.get(member).and_then(Value::as_str) == Some(tag)
 }
 
 /// The IR schema a program is read by, chosen by its own `language`: the
-/// schema of 0.6 ([`ir_schema_0_6`]) for a program of `mandate/0.6`, else
-/// that of 0.1 to 0.5 ([`ir_schema`]).
+/// schema of 0.7 ([`ir_schema_0_7`]) for a program of `mandate/0.7`, that
+/// of 0.6 ([`ir_schema_0_6`]) for one of `mandate/0.6`, else that of 0.1 to
+/// 0.5 ([`ir_schema`]).
 ///
 /// # Errors
 ///
 /// As [`ir_schema`].
 pub fn ir_schema_of(value: &Value) -> Result<&'static Schema, &'static str> {
-    if of_0_6(value, "language", Language::V0_6.as_str()) {
+    if tagged(value, "language", Language::V0_7.as_str()) {
+        ir_schema_0_7()
+    } else if tagged(value, "language", Language::V0_6.as_str()) {
         ir_schema_0_6()
     } else {
         ir_schema()
@@ -739,14 +791,18 @@ pub fn ir_schema_of(value: &Value) -> Result<&'static Schema, &'static str> {
 }
 
 /// The lock schema a lock is read by, chosen by its own `lock` format: the
-/// schema of 0.6 ([`lock_schema_0_6`]) for a lock of `mandate/lock/0.6`,
-/// else that of 0.2 to 0.5 ([`lock_schema`]).
+/// schema of 0.7 ([`lock_schema_0_7`]) for a lock of `mandate/lock/0.7`,
+/// that of 0.6 ([`lock_schema_0_6`]) for one of `mandate/lock/0.6`, else
+/// that of 0.2 to 0.5 ([`lock_schema`]). The program's language does not
+/// choose it (spec/attention.md "Lock 0.7").
 ///
 /// # Errors
 ///
 /// As [`ir_schema`].
 pub fn lock_schema_of(value: &Value) -> Result<&'static Schema, &'static str> {
-    if of_0_6(value, "lock", LOCK_FORMAT_0_6) {
+    if tagged(value, "lock", LOCK_FORMAT_0_7) {
+        lock_schema_0_7()
+    } else if tagged(value, "lock", LOCK_FORMAT_0_6) {
         lock_schema_0_6()
     } else {
         lock_schema()
@@ -986,6 +1042,14 @@ impl Run<'_> {
     }
 
     fn array(&mut self, node: &Node, items: &[Value], name: Option<&str>) {
+        // `limitItems` is one keyword definition, `maxItems` before `minItems`.
+        if let Some(limit) = node.max_items
+            && items.len() > limit
+        {
+            let params = JsObject::new().with("limit", limit);
+            let message = format!("must NOT have more than {limit} items");
+            self.error(node, "maxItems", params, message, name);
+        }
         if let Some(limit) = node.min_items
             && items.len() < limit
         {

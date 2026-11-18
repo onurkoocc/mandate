@@ -114,7 +114,7 @@ pub fn expanded_program_reaching(
     }
     // 0.6: the built-in `std.patterns`, when the program imports it and the
     // modules do not hold it.
-    let with_builtin = crate::library::with_builtin(view, modules);
+    let with_builtin = crate::library::with_builtin(view, modules, None);
     let modules = with_builtin.as_ref().or(modules);
     let linked = crate::modules::link_reaching(view, modules, reach);
     let e = expand(
@@ -151,6 +151,28 @@ pub fn expanded_program_reaching(
 /// program applies no pattern, which a view reads as it is.
 #[must_use]
 pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
+    for_views_pinned(program, modules, None)
+}
+
+/// [`for_views`] of a program whose `std.patterns` is the version `pinned`
+/// (0.7: the version its lock pins, which a view is given): the built-in of
+/// that version is read, through [`crate::library::with_builtin`], unless
+/// `modules` hold `std.patterns`. `None` is [`for_views`]'s answer, byte
+/// for byte.
+#[must_use]
+pub fn for_views_pinned(
+    program: &Value,
+    modules: Option<&Modules>,
+    pinned: Option<&mandate_lib::Version>,
+) -> Option<Value> {
+    let with_pin = pinned.and_then(|v| {
+        Program::of(program).and_then(|p| crate::library::with_builtin(p, modules, Some(v)))
+    });
+    for_views_of(program, with_pin.as_ref().or(modules))
+}
+
+/// [`for_views`], once the modules hold the built-in that is read.
+fn for_views_of(program: &Value, modules: Option<&Modules>) -> Option<Value> {
     if !applies_pattern(program) {
         return None;
     }
@@ -158,7 +180,7 @@ pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
         return Some(e);
     }
     let view = Program::of(program)?;
-    let with_builtin = crate::library::with_builtin(view, modules);
+    let with_builtin = crate::library::with_builtin(view, modules, None);
     let modules = with_builtin.as_ref().or(modules);
     let linked = link(view, modules).defs;
     let mut members = view.members().clone();
@@ -306,9 +328,10 @@ struct Home {
 }
 
 /// The members a workflow that applies a pattern may have besides
-/// `apply`: what the application writes, `caps` and `budget`, and what any
+/// `apply`: what the application writes, `caps` and `budget` (and in 0.7
+/// its `owner`, which only a 0.7 schema lets a workflow hold), and what any
 /// definition of 0.6 has.
-const APPLICATION_MEMBERS: [&str; 6] = ["kind", "apply", "caps", "budget", "pub", "doc"];
+const APPLICATION_MEMBERS: [&str; 7] = ["kind", "apply", "caps", "owner", "budget", "pub", "doc"];
 
 /// What [`expand`] is given besides the program.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -940,7 +963,9 @@ fn application<'a>(
         return Err(diags);
     }
     // The workflow, in the order a written one's members are read: kind,
-    // params, returns, caps, body, budget, then pub and doc.
+    // params, returns, caps, body, owner (0.7), budget, then pub and doc.
+    // The owner is the application's: it names the role that approves the
+    // running program's card and signs its promotions.
     let mut wf = Map::new();
     wf.insert("kind", "workflow");
     wf.insert("params", exp_params);
@@ -950,7 +975,7 @@ fn application<'a>(
         w.get("caps").cloned().unwrap_or(Value::Array(Vec::new())),
     );
     wf.insert("body", exp_body);
-    for k in ["budget", "pub", "doc"] {
+    for k in ["owner", "budget", "pub", "doc"] {
         if let Some(x) = w.get(k) {
             wf.insert(k, x.clone());
         }
@@ -969,7 +994,7 @@ fn application<'a>(
         (format!("{base}/returns"), body_origin("returns")),
         (format!("{base}/body"), body_origin("body")),
     ];
-    for k in ["kind", "caps", "budget", "pub", "doc"] {
+    for k in ["kind", "caps", "owner", "budget", "pub", "doc"] {
         records.push((format!("{base}/{k}"), Origin::Same));
     }
     records.extend(subst.origins);

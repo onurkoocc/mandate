@@ -1,0 +1,44 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1501d",
+  "kind": "compile",
+  "title": "In 0.7 the rule of E1501 holds for a question of another module's definition the program reaches: a verify against a contract of a module of 0.6 whose approval names its role by a parameter's name is refused at the verify, with the contract, its module and the place in it (a mutation: the verify's contract D becomes C).",
+  "spec": [
+    "spec/attention.md#what-each-question-records",
+    "spec/diagnostics.md"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "lib.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/W/body/1/value/contract",
+      "value": "C"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1501",
+        "path": "/defs/W/body/1/value",
+        "facts": {
+          "role": "accountant",
+          "where": "human.approve",
+          "argument": "role",
+          "shadowed_by": "parameter",
+          "definition": "C",
+          "module": "example.lib",
+          "at": "/defs/C/accept/ok/by/call/args/0/value"
+        }
+      }
+    ]
+  }
+}

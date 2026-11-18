@@ -156,7 +156,7 @@ fn library(dir: &str) -> LibrarySource {
 fn the_lock_of_the_acceptance_program_pins_what_the_libraries_are() {
     let mut lock = read_json("fixtures/library/invoices.lock.json").unwrap();
     for l in [
-        mandate_check::library::std_patterns().unwrap(),
+        mandate_check::library::std_patterns_for(None, None).unwrap(),
         load_library(&library("fixtures/library/acme.connectors"), false, "x").unwrap(),
     ] {
         let pin = mandate_ir::stringify(&mandate_ir::JsValue::Object(l.pin().to_js())).unwrap();
@@ -405,6 +405,7 @@ fn request<'a>(
         libraries: &[],
         config,
         now: at,
+        language: None,
     }
 }
 
@@ -626,6 +627,73 @@ fn a_version_published_in_between_is_held_to_the_version_above() {
     assert!(fine.ok, "{:#?}", fine.diagnostics);
 }
 
+/// `add` writes its pin into a lock of format 0.6 when the lock is older
+/// (the first format with `libraries`), and keeps the format of a lock of
+/// 0.6 or later: a lock of 0.7 (spec/attention.md "Lock 0.7") stays one.
+#[test]
+fn add_keeps_a_lock_of_0_6_or_later_in_its_format() {
+    let versions = every_version();
+    let at = now("2026-11-13T12:00:00Z");
+    let config = mandate_lib::read_libraries_config(
+        &mandate_ir::parse(r#"{"dir":"libs","wait_days":0,"revoked":[]}"#)
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    for (given, written) in [
+        ("mandate/lock/0.5", "mandate/lock/0.6"),
+        ("mandate/lock/0.6", "mandate/lock/0.6"),
+        ("mandate/lock/0.7", "mandate/lock/0.7"),
+    ] {
+        let lock: Value = mandate_ir::parse(&format!(r#"{{"lock":"{given}","modules":{{}}}}"#))
+            .unwrap()
+            .value;
+        let r = add(&request(Some("^1.0"), &lock, &versions, Some(&config), at));
+        assert!(r.ok, "{given}: {:#?}", r.diagnostics);
+        let out = r.lock.as_ref().expect("a lock");
+        assert_eq!(
+            out.get("lock").and_then(Value::as_str),
+            Some(written),
+            "{given}"
+        );
+        assert!(
+            mandate_ir::validate_lock(out).is_empty(),
+            "{given}: the lock written is one its schema takes"
+        );
+    }
+}
+
+/// `add` keeps every field of a lock of 0.7 it writes its pin into, the two
+/// of 0.7 among them (spec/attention.md "Lock 0.7"): `role_classes` and
+/// `promotion` come back as they were, and the lock written is one its
+/// schema takes.
+#[test]
+fn add_keeps_the_fields_of_a_lock_of_0_7() {
+    let versions = every_version();
+    let at = now("2026-11-13T12:00:00Z");
+    let config = mandate_lib::read_libraries_config(
+        &mandate_ir::parse(r#"{"dir":"libs","wait_days":0,"revoked":[]}"#)
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let key = format!("sha256:{}", "6".repeat(64));
+    let lock: Value = mandate_ir::parse(&format!(
+        r#"{{"lock":"mandate/lock/0.7","modules":{{}},"members":{{"ana":{{"keys":["{key}"]}}}},"roles":{{"accountant":["ana"]}},"role_classes":{{"accountant":"confidential"}},"promotion":"required"}}"#
+    ))
+    .unwrap()
+    .value;
+    assert!(mandate_ir::validate_lock(&lock).is_empty());
+    let r = add(&request(Some("^1.0"), &lock, &versions, Some(&config), at));
+    assert!(r.ok, "{:#?}", r.diagnostics);
+    let out = r.lock.as_ref().expect("a lock");
+    for field in ["lock", "members", "roles", "role_classes", "promotion"] {
+        assert_eq!(out.get(field), lock.get(field), "{field}");
+    }
+    assert!(out.get("libraries").is_some());
+    assert!(mandate_ir::validate_lock(out).is_empty());
+}
+
 /// `add`: the highest version within the range whose waiting period is
 /// over and whose digest is not revoked; a range nothing meets is E1606,
 /// and one whose versions all wait or are revoked is E1608.
@@ -707,7 +775,7 @@ fn add_resolves_the_highest_eligible_version() {
         ..request(None, &empty, &[], Some(&two), at)
     });
     assert!(r.ok, "{:#?}", r.diagnostics);
-    let digest = mandate_check::library::std_patterns_digest().unwrap();
+    let digest = mandate_check::library::std_patterns_digest(None).unwrap();
     assert_eq!(r.chosen.as_ref().unwrap().1, digest.as_str());
 }
 
@@ -871,7 +939,7 @@ fn the_diff_and_a_patch_classify_alike() {
         .unwrap();
     let lib = load_library(&library(ACME), false, "x").unwrap();
     let mut modules = lib.modules.clone();
-    for (m, p) in mandate_check::library::std_patterns()
+    for (m, p) in mandate_check::library::std_patterns_for(None, None)
         .unwrap()
         .modules
         .iter()

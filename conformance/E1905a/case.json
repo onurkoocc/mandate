@@ -1,0 +1,49 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1905a",
+  "kind": "compile",
+  "title": "A report in a loop without max_iter is refused: it would be shown a number of times nobody bounds (a mutation: Greet's loop runs until a condition).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/Greet/body/7/max_iter"
+    },
+    {
+      "op": "add",
+      "path": "/defs/Greet/body/7/until",
+      "value": {
+        "op": "bool",
+        "value": true
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/7/body/0/title",
+      "value": "Moved"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1905",
+        "path": "/defs/Greet/body/7/body/0",
+        "facts": {
+          "role": "accountant",
+          "title": "Moved",
+          "place": "loop"
+        }
+      }
+    ]
+  }
+}

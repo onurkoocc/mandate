@@ -3,14 +3,15 @@
 //! of them (`vectors/README.md`, "The versions only the Rust compiler
 //! reads").
 //!
-//! The Rust compiler reads language 0.6 (spec/library.md); the TypeScript
-//! compiler stays at 0.5 for ever. A program of 0.1 to 0.5 reads, checks,
-//! hashes and prints in the Rust exactly as in the TypeScript, with one
-//! difference: what lists the language versions a compiler reads has one
-//! entry more. That is E0103, whose message and `facts.expected` name them,
-//! and the `tables` door's `LANGUAGE_VERSIONS`; and the door's
-//! `LANGUAGE_VERSION`, the newest version, is 0.6 where the TypeScript's is
-//! 0.5. Every comparison of the Rust with a stored result of the TypeScript
+//! The Rust compiler reads languages 0.6 (spec/library.md) and 0.7
+//! (spec/attention.md); the TypeScript compiler stays at 0.5 for ever. A
+//! program of 0.1 to 0.5 reads, checks, hashes and prints in the Rust
+//! exactly as in the TypeScript, with one difference: what lists the
+//! language versions a compiler reads has the entries of
+//! [`RUST_ONLY_LANGUAGES`] more. That is E0103, whose message and
+//! `facts.expected` name them, and the `tables` door's `LANGUAGE_VERSIONS`;
+//! and the door's `LANGUAGE_VERSION`, the newest version, is 0.7 where the
+//! TypeScript's is 0.5. Every comparison of the Rust with a stored result of the TypeScript
 //! goes through this module first, and nowhere else is a result changed
 //! before it is compared:
 //!
@@ -34,29 +35,29 @@
 //! Each gate that applies a rule counts the stored results the rule changed
 //! something in, and holds the count to [`PINNED`] ([`check_count`]), so
 //! that the rule cannot come to cover more results without a commit that
-//! says so. The cases and vectors of 0.6 itself are written by hand or by
-//! the Rust, and are compared whole, with no rule.
+//! says so. The cases and vectors of 0.6 and 0.7 themselves are written by
+//! hand or by the Rust, and are compared whole, with no rule.
 
 use mandate_ir::codes::{self, Reference};
 use mandate_ir::{Diagnostic, JsObject, JsValue};
 
 /// The language versions the Rust compiler reads and the TypeScript one
-/// does not.
-pub const RUST_ONLY_LANGUAGES: [&str; 1] = ["mandate/0.6"];
+/// does not, oldest first.
+pub const RUST_ONLY_LANGUAGES: [&str; 2] = ["mandate/0.6", "mandate/0.7"];
 
 /// The newest language version the Rust compiler reads
 /// (`mandate_ir::Language::NEWEST`).
-pub const RUST_NEWEST: &str = "mandate/0.6";
+pub const RUST_NEWEST: &str = "mandate/0.7";
 
 /// The newest language version the TypeScript compiler reads
 /// (`LANGUAGE_VERSION` in `compiler/src/ir/types.ts`).
 pub const TYPESCRIPT_NEWEST: &str = "mandate/0.5";
 
 /// The first rule, as the gates print it.
-pub const KNOWN_VERSIONS: &str = "the list of the language versions a compiler reads, with mandate/0.6 taken out (E0103's message and facts.expected, the tables door's LANGUAGE_VERSIONS)";
+pub const KNOWN_VERSIONS: &str = "the list of the language versions a compiler reads, with mandate/0.6 and mandate/0.7 taken out (E0103's message and facts.expected, the tables door's LANGUAGE_VERSIONS)";
 
 /// The second rule, as the gates print it.
-pub const NEWEST_VERSION: &str = "the newest language version, mandate/0.6 in the Rust and mandate/0.5 in the TypeScript (the tables door's LANGUAGE_VERSION)";
+pub const NEWEST_VERSION: &str = "the newest language version, mandate/0.7 in the Rust and mandate/0.5 in the TypeScript (the tables door's LANGUAGE_VERSION)";
 
 /// The third rule, as the gates print it.
 pub const RUST_CODES: &str = "the table of diagnostic codes without the rows the Rust compiler is the reference for (the codes door)";
@@ -253,11 +254,14 @@ mod tests {
     fn an_e0103_loses_the_rust_only_versions_and_nothing_else() {
         let rust = Diagnostic::new(
             "E0103",
-            "Unsupported language version '9.9'; this compiler reads 'mandate/0.5' or 'mandate/0.6'.",
+            "Unsupported language version '9.9'; this compiler reads 'mandate/0.5' or 'mandate/0.6' or 'mandate/0.7'.",
             Location::path("/language"),
             Some(
                 JsObject::new()
-                    .with("expected", listed(&["mandate/0.5", "mandate/0.6"]))
+                    .with(
+                        "expected",
+                        listed(&["mandate/0.5", "mandate/0.6", "mandate/0.7"]),
+                    )
                     .with("found", "mandate/9.9"),
             ),
         );
@@ -310,8 +314,11 @@ mod tests {
     fn the_tables_lose_the_rust_only_versions_and_the_newest_is_the_typescripts() {
         let mut tables = JsValue::Object(
             JsObject::new()
-                .with("LANGUAGE_VERSION", "mandate/0.6")
-                .with("LANGUAGE_VERSIONS", listed(&["mandate/0.5", "mandate/0.6"]))
+                .with("LANGUAGE_VERSION", "mandate/0.7")
+                .with(
+                    "LANGUAGE_VERSIONS",
+                    listed(&["mandate/0.5", "mandate/0.6", "mandate/0.7"]),
+                )
                 .with("LOCK_FORMATS", listed(&["mandate/0.6"])),
         );
         assert!(tables_as_typescript(&mut tables));

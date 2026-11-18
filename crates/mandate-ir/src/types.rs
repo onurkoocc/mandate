@@ -27,6 +27,16 @@ pub fn budget_amount(b: Option<&Value>, dim: &str) -> Option<i64> {
     }
 }
 
+/// 0.7: what a budget gives `asks`, the most questions a run may put to
+/// people (spec/attention.md "`asks`"). Not one of [`BUDGET_DIMENSIONS`]:
+/// nothing that adds budgets up, compares two of them or reserves one of a
+/// ledger reads it, and [`budget_amount`] gives nothing for it. A member that
+/// is missing or not an integer of at least 0 reads as nothing.
+#[must_use]
+pub fn budget_asks(b: Option<&Value>) -> Option<i64> {
+    b?.get("asks")?.as_i64().filter(|n| *n >= 0)
+}
+
 /// What a workflow may hold and spend: the result of [`workflow_bounds`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WorkflowBounds<'a> {

@@ -55,7 +55,7 @@ import type { Adapters, Outcome } from "./adapters.js";
 import type { Db } from "./db.js";
 import { payloadOf, shownPackage, signDecision, type SignedDecision } from "./decisions.js";
 import { EvidenceSigner, TrustedKeys } from "./evidence.js";
-import { buildPackage, isSigned04, Runtime } from "./runtime.js";
+import { buildPackage, isSigned04, Runtime, workflowOwner } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { SimAgents, SimClock, SimModel, SimReads, SimTool, SimVerifier, SimWorkspace, simulate } from "./sim.js";
 import { isObj, type Obj, type Value } from "./values.js";
@@ -195,8 +195,14 @@ function testPeople(program: Program, lock: Lock): { lock: Lock; keys: TrustedKe
   const roles = Object.fromEntries([...new Set([...rolesNamed(program.defs), "owner"])].sort().map((r) => [r, [member(`test_1_${r}`), member(`test_2_${r}`)]]));
   member("test");
   const members = Object.fromEntries([...signers].map(([name, key]) => [name, { keys: [key.keyId] }]));
+  // A test runs its workflows live on its own database, with its own people: it climbs no promotion ladder (0.7,
+  // spec/attention.md "Promotion"), whose runs would have to be promoted one by one in the test.
+  const { promotion: _ladder, role_classes: classes, ...given } = lock;
+  // Its roles are the test's own, those the program names: a class the lock gives a role it binds no more is left out
+  // (`validateLock` refuses a class of a role `roles` does not hold); each other keeps its class (0.7, B4).
+  const kept = classes ? Object.fromEntries(Object.entries(classes).filter(([r]) => Object.hasOwn(roles, r))) : undefined;
   return {
-    lock: { ...lock, members, roles },
+    lock: { ...given, members, roles, ...(kept && Object.keys(kept).length ? { role_classes: kept } : {}) },
     keys: new TrustedKeys([...signers.values()].map((k) => k.publicKey)),
     sign: (role, other) => {
       const name = role === undefined ? "test" : Object.hasOwn(roles, role) ? roles[role]![other ? 1 : 0]! : undefined;
@@ -218,7 +224,8 @@ async function runOne(program: Program, o: TestOptions, h: Handlers, workflow: s
   };
   // The envelope's owner approves the test's package: without it the run would not start (unapproved_envelope).
   const wf = Object.hasOwn(program.defs, workflow) ? program.defs[workflow] : undefined;
-  const owner = wf?.kind === "workflow" ? wf.envelope?.owner : undefined;
+  // 0.7: a workflow's own `owner` approves its card the same way (spec/attention.md "Card approval").
+  const owner = workflowOwner(wf);
   const approver = owner === undefined ? undefined : people?.sign(owner, false);
   if (approver) await rt.approveEnvelope(pkg, signDecision(approver.key, shownPackage(pkg.hash, owner!), { kind: "envelope", member: approver.member, at: new Date(h.adapters.clock.now()) }));
   let run = await rt.startRun({ pkg, workflow, input, runId });

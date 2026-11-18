@@ -1101,7 +1101,20 @@ impl<'a> Resolver<'a> {
                         self.expr(v, &format!("{path}/value"), &c);
                     }
                 }
-                None => {}
+                // 0.7: a report's fields are expressions, each resolved; its
+                // role is a role site (E1501, `crate::roles`), not a name of
+                // this resolver, and a field's name binds nothing. It opens
+                // no scope (spec/attention.md "`report`").
+                Some(StmtOp::Report) => {
+                    for (i, f) in s.fields().iter().enumerate() {
+                        if let Some(v) = mandate_ir::ReportField::of(f).and_then(|f| f.value()) {
+                            self.expr(v, &format!("{path}/fields/{i}/value"), &c);
+                        }
+                    }
+                }
+                // 0.7: a stage's name is no reference and binds nothing; it
+                // opens no scope (spec/attention.md "`stage`").
+                Some(StmtOp::Stage) | None => {}
             }
         }
     }

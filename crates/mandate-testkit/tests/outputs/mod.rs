@@ -11,17 +11,20 @@
 
 #![allow(dead_code)]
 
-use mandate_check::{CheckResult, requirements_to_js, sandbox_requirements, semantic_diff_with};
+use mandate_check::{
+    CheckOptions, CheckResult, requirements_to_js, sandbox_requirements, semantic_diff_with,
+};
 use mandate_ir::{Diagnostic, JsObject, JsValue, canonicalize, stringify_pretty};
 use mandate_syntax::{kind_of, load};
 use mandate_testkit::read_json;
 use mandate_views::{
-    architecture_with_lock, authority_with, card, card_doc, cost_with, envelope_workflows,
-    program_doc, to_html, to_markdown,
+    architecture_with_lock, attention_doc, attention_program_doc, attention_view,
+    attention_views_js, authority_with, card_doc_given, card_given, cost_with, envelope_workflows,
+    has_attention, program_doc_given, to_html, to_markdown, workflow_names,
 };
 
 use crate::common::{
-    check_text, check_with_libraries, modules_of, read_source, run_subprogram, subprogram_case,
+    check_text, check_with_lock_value, modules_of, read_source, run_subprogram, subprogram_case,
 };
 
 /// `MODULE_FILES` in `compiler/test/golden-outputs.ts`, and `MODULE_FILES_OF`
@@ -39,6 +42,7 @@ pub fn module_files_of(program: &str) -> Vec<String> {
             "fixtures/library/acme.connectors/connectors.mdt",
         ]
     } else if program == "fixtures/library/invoices.mdt"
+        || program == "fixtures/attention/invoices.mdt"
         || program == "fixtures/library/migrate-all.mdt"
     {
         // The acceptance program: its modules come from its libraries. The
@@ -64,7 +68,7 @@ pub fn module_files_of(program: &str) -> Vec<String> {
 /// and `--lock`, and its views): those its lock pins, besides the built-in
 /// `std.patterns`.
 pub fn library_dirs_of(program: &str) -> Vec<String> {
-    if program == "fixtures/library/invoices.mdt" {
+    if program == "fixtures/library/invoices.mdt" || program == "fixtures/attention/invoices.mdt" {
         vec!["fixtures/library/acme.connectors".to_owned()]
     } else {
         Vec::new()
@@ -83,6 +87,25 @@ pub fn library_modules_of(program: &str) -> Result<mandate_check::Modules, Strin
         }
     }
     Ok(out)
+}
+
+/// The libraries of `program` as the doors take them (`opts.libraries`): an
+/// array of `{ manifest, files }`, or none for a program that imports none.
+pub fn library_sources_js_of(program: &str) -> Result<Option<JsValue>, String> {
+    let mut out = Vec::new();
+    for source in crate::common::libraries_of(&library_dirs_of(program))? {
+        let files: JsObject = source
+            .files
+            .iter()
+            .map(|(path, text)| (path.as_str(), JsValue::from(text.as_str())))
+            .collect();
+        out.push(JsValue::Object(
+            JsObject::new()
+                .with("manifest", source.manifest.as_str())
+                .with("files", files),
+        ));
+    }
+    Ok((!out.is_empty()).then_some(JsValue::Array(out)))
 }
 
 /// `lockFileOf` in `compiler/test/helpers.ts`: `<name>.lock.json` beside the
@@ -114,14 +137,60 @@ pub fn checked_text(
     with_modules: bool,
     with_lock: bool,
 ) -> Result<CheckResult, String> {
+    checked_text_more(program, text, with_modules, with_lock, None)
+}
+
+/// [`checked_text`] with `more` given besides the program's modules, with
+/// or without them: what a relabelled program is given
+/// ([`crate::common::relabelled_modules`]).
+pub fn checked_text_more(
+    program: &str,
+    text: &str,
+    with_modules: bool,
+    with_lock: bool,
+    more: Option<&mandate_check::Modules>,
+) -> Result<CheckResult, String> {
+    checked_text_given(program, text, with_modules, with_lock, more, false)
+}
+
+/// [`checked_text_more`] of a program of 0.6 relabelled 0.7: besides
+/// `more`, its lock is the one [`crate::common::relabelled_lock`] makes.
+///
+/// # Errors
+///
+/// As [`checked_text`].
+pub fn checked_text_relabelled(
+    program: &str,
+    text: &str,
+    with_modules: bool,
+    with_lock: bool,
+    more: Option<&mandate_check::Modules>,
+) -> Result<CheckResult, String> {
+    checked_text_given(program, text, with_modules, with_lock, more, true)
+}
+
+fn checked_text_given(
+    program: &str,
+    text: &str,
+    with_modules: bool,
+    with_lock: bool,
+    more: Option<&mandate_check::Modules>,
+    relabelled: bool,
+) -> Result<CheckResult, String> {
     let files = module_files_of(program);
     let modules = if with_modules {
         Some(modules_of(&files, &files)?)
     } else {
         None
     };
+    let modules = crate::common::with_more(modules.as_ref(), more).or(modules);
     let lock = if with_lock {
-        Some(lock_file_of(program).ok_or("the program has no lock")?)
+        let lock = read_json(&lock_file_of(program).ok_or("the program has no lock")?)?;
+        Some(if relabelled {
+            crate::common::relabelled_lock(&lock)
+        } else {
+            lock
+        })
     } else {
         None
     };
@@ -130,11 +199,11 @@ pub fn checked_text(
     } else {
         Vec::new()
     };
-    check_with_libraries(
+    check_with_lock_value(
         text,
         kind_of(program),
         modules.as_ref(),
-        lock.as_deref(),
+        lock.as_ref(),
         &libraries,
         None,
     )
@@ -167,14 +236,38 @@ pub fn outputs_of(program: &str) -> Result<Vec<(String, String)>, String> {
 ///
 /// As [`outputs_of`].
 pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)>, String> {
+    outputs_of_text_more(program, text, None, false)
+}
+
+/// [`outputs_of_text`] of a program of 0.6 relabelled 0.7: its checks and
+/// those of its sub-programs given what
+/// [`crate::common::relabelled_modules`] says a relabelled program is
+/// given, its views what they were given.
+///
+/// # Errors
+///
+/// As [`outputs_of`].
+pub fn outputs_of_relabelled(program: &str, text: &str) -> Result<Vec<(String, String)>, String> {
+    let more = crate::common::relabelled_modules(text, kind_of(program), &library_dirs_of(program));
+    outputs_of_text_more(program, text, more.as_ref(), true)
+}
+
+fn outputs_of_text_more(
+    program: &str,
+    text: &str,
+    more: Option<&mandate_check::Modules>,
+    relabelled: bool,
+) -> Result<Vec<(String, String)>, String> {
     let mut out: Vec<(String, String)> = Vec::new();
     let lock_path = lock_file_of(program);
-    let plain = checked_text(program, text, false, false)?;
+    let plain = checked_text_given(program, text, false, false, more, relabelled)?;
     out.push(("check".to_owned(), check_text(&plain)));
-    let linked = checked_text(program, text, true, false)?;
+    let linked = checked_text_given(program, text, true, false, more, relabelled)?;
     out.push(("check --module".to_owned(), check_text(&linked)));
     let with_lock = match lock_path {
-        Some(_) => Some(checked_text(program, text, true, true)?),
+        Some(_) => Some(checked_text_given(
+            program, text, true, true, more, relabelled,
+        )?),
         None => None,
     };
     if let Some(r) = &with_lock {
@@ -202,6 +295,14 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
             modules.insert(m, ir.clone());
         }
         let lock = lock_path.as_deref().map(read_json).transpose()?;
+        // The attention view and the card check the program, with the lock
+        // its check was given (a relabelled program's,
+        // `common::relabelled_lock`); every other view is given the lock as
+        // it is.
+        let checked_lock = match (&lock, relabelled) {
+            (Some(l), true) => Some(crate::common::relabelled_lock(l)),
+            _ => lock.clone(),
+        };
         // The views as `mandate view --module …` gives them: with the
         // modules, so that a workflow that applies a pattern of one of them
         // is shown as its expansion (the same as without them for a program
@@ -217,9 +318,56 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
             "view --format json".to_owned(),
             pretty(&JsValue::Object(views)),
         ));
-        let doc = program_doc(p, lock.as_ref(), Some(&modules));
+        // A program of 0.7 has its attention view in the document; the check
+        // that makes it is given the program's own modules and libraries.
+        let own_modules = modules_of(&files, &files)?;
+        let own_modules = crate::common::with_more(Some(&own_modules), more).unwrap_or(own_modules);
+        let libraries = crate::common::libraries_of(&library_dirs_of(program))?;
+        let check_with = CheckOptions {
+            modules: Some(&own_modules),
+            libraries: (!libraries.is_empty()).then_some(libraries.as_slice()),
+            ..CheckOptions::default()
+        };
+        let doc = program_doc_given(p, lock.as_ref(), Some(&modules), None, &check_with);
         out.push(("view --format md".to_owned(), to_markdown(&doc)));
         out.push(("view --format html".to_owned(), to_html(&doc)));
+        // 0.7: `view --attention --format json|md|html`: the attention view
+        // of each workflow, as `mandate view` writes it (the JSON: one object
+        // with every workflow; the text: the document of the one workflow, or
+        // of all of them).
+        if has_attention(p) && !workflow_names(p).is_empty() {
+            let opts = CheckOptions {
+                lock: checked_lock.as_ref(),
+                ..check_with
+            };
+            let mut views = Vec::new();
+            for name in workflow_names(p) {
+                views.push(
+                    attention_view(text, kind_of(program), &opts, &name)
+                        .ok_or_else(|| format!("{program}: {name} has no attention view"))?,
+                );
+            }
+            let first = views
+                .first()
+                .ok_or_else(|| format!("{program}: no workflow has an attention view"))?;
+            let json = attention_views_js(&first.program, &views);
+            let (md, html) = match views.as_slice() {
+                [only] => (
+                    to_markdown(&attention_doc(only)),
+                    to_html(&attention_doc(only)),
+                ),
+                all => {
+                    let doc = attention_program_doc(all);
+                    (
+                        doc.as_ref().map(to_markdown).unwrap_or_default(),
+                        doc.as_ref().map(to_html).unwrap_or_default(),
+                    )
+                }
+            };
+            out.push(("view --attention --format json".to_owned(), pretty(&json)));
+            out.push(("view --attention --format md".to_owned(), md));
+            out.push(("view --attention --format html".to_owned(), html));
+        }
         out.push((
             "view --against itself".to_owned(),
             pretty(&semantic_diff_with(p, p, None, Some(&modules)).to_js()),
@@ -237,12 +385,24 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
         // program has exactly one, with its modules and its lock.
         if let [name] = envelope_workflows(p).as_slice() {
             let missing = || format!("{name} has no card");
-            let view = card(p, name, lock.as_ref(), Some(&modules)).ok_or_else(missing)?;
+            // A program of 0.7 has its attention part made by a check that is
+            // given its own modules and libraries, as the document's is, and
+            // the lock its check was given (a relabelled program's card, which
+            // the gates leave out by name, is made with it throughout).
+            let opts = CheckOptions {
+                lock: checked_lock.as_ref(),
+                ..check_with
+            };
+            let view = card_given(p, name, checked_lock.as_ref(), Some(&modules), &opts)
+                .map_err(|e| e.message)?
+                .ok_or_else(missing)?;
             out.push((
                 "view --card --format json".to_owned(),
                 pretty(&view.to_js()),
             ));
-            let doc = card_doc(p, name, lock.as_ref(), Some(&modules)).ok_or_else(missing)?;
+            let doc = card_doc_given(p, name, checked_lock.as_ref(), Some(&modules), &opts)
+                .map_err(|e| e.message)?
+                .ok_or_else(missing)?;
             out.push(("view --card --format md".to_owned(), to_markdown(&doc)));
             out.push(("view --card --format html".to_owned(), to_html(&doc)));
         }
@@ -253,11 +413,168 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
                 r#"{{"workflow":"{workflow}","number":{number},"defs":{{"file":"{file}","kind":"mdt"}},"room":{{"left":{{"tokens":50000000,"steps":1000,"agents":100,"spend:USD":100000000}},"time_left_ms":18000000}}}}"#
             ).as_bytes())?;
             let case = subprogram_case("fixtures/library", &s, p)?;
-            let r = run_subprogram(&case, p, &modules)?;
+            let given =
+                crate::common::with_more(Some(&modules), more).unwrap_or_else(|| modules.clone());
+            let r = run_subprogram(&case, p, &given)?;
             out.push((format!("check_subprogram {file}"), r.text));
         }
     }
     Ok(out)
+}
+
+/// The outputs with each card reduced to what 0.7 does not change of the
+/// card of 0.6: a 0.7 card adds the stages, the table of questions, what it
+/// tells whom, the owner, the bound, the ladder and the shapes, and states a
+/// review's deadlines exactly, so a gate that compares a program relabelled
+/// 0.7, or given stages and reports, with the program it was keeps the rest
+/// and compares it byte for byte: in the JSON every member but `attention`,
+/// `ladder` and `shapes`, but for a review's `longest`; in the Markdown and the HTML the sections "What it
+/// can touch", "What it commits" and "The most it spends" (but for the
+/// notes on a review's wait), and the tables of waits, authorizations and
+/// criteria under "When it asks whom". `card_0_7.rs` and
+/// `vectors/golden/0.7.json` hold the card of 0.7.
+pub fn card_unchanged(outs: Vec<(String, String)>) -> Vec<(String, String)> {
+    outs.into_iter()
+        .map(|(n, t)| {
+            let t = match n.as_str() {
+                "view --card --format json" => card_json_unchanged(&t),
+                "view --card --format md" => card_sections_unchanged(&t, "## ", false),
+                "view --card --format html" => card_sections_unchanged(&t, "<h2>", true),
+                _ => t,
+            };
+            (n, t)
+        })
+        .collect()
+}
+
+/// The members of the card's JSON that 0.7 does not add (the text is the
+/// pretty one, a member a line at two spaces).
+fn card_json_unchanged(text: &str) -> String {
+    let mut kept: Vec<&str> = Vec::new();
+    let mut skipping = false;
+    for line in text.lines() {
+        let top = line.starts_with("  \"") || line.starts_with('}');
+        if top {
+            skipping = ["attention", "ladder", "shapes"]
+                .iter()
+                .any(|m| line.starts_with(&format!("  \"{m}\":")));
+        }
+        // A review's longest wait is told exactly in 0.7 (the spec's
+        // sentence on the 0.6 card's wording): the one member that differs.
+        if !skipping && !line.trim_start().starts_with("\"longest\":") {
+            kept.push(line);
+        }
+    }
+    // The member before a dropped one ends without its comma.
+    let mut out = kept.join(
+        "
+",
+    );
+    out = out.replace(
+        ",
+}", "
+}",
+    );
+    out
+}
+
+/// The sections of a rendered card that 0.7 leaves as 0.6 has them.
+/// `heading` begins a heading's line; a table of Markdown is its lines up to
+/// a blank one, one of HTML its lines up to `</tbody></table>`.
+fn card_sections_unchanged(text: &str, heading: &str, html: bool) -> String {
+    const KEPT: [&str; 4] = [
+        "What it can touch",
+        "What it commits",
+        "The most it spends",
+        "When it asks whom",
+    ];
+    // The heads of the tables of 0.6 under "When it asks whom".
+    const HEADS: [&str; 3] = [
+        "Wait | Role | In | Members",
+        "Effect | Authorized",
+        "Contract | Criterion",
+    ];
+    let heads_html = HEADS.map(|h| h.replace(" | ", "</th><th>"));
+    let mut out: Vec<String> = Vec::new();
+    let mut section: Option<&str> = None;
+    let mut in_table = false;
+    for line in text.lines() {
+        if line.starts_with(heading) {
+            section = KEPT.into_iter().find(|h| line.contains(h));
+            in_table = false;
+            if let Some(h) = section {
+                out.push(format!("[{h}]"));
+            }
+            continue;
+        }
+        let Some(h) = section else { continue };
+        if h != "When it asks whom" {
+            // The notes on a review's wait are 0.7's to say exactly, and
+            // the list of the names a note is about (an item of a list, and
+            // the blank lines between blocks) goes with them. Nothing else
+            // of these sections is a list.
+            let note = line.contains("The review of");
+            let item = line.starts_with("- ") || line.starts_with("<ul>");
+            if !note && !item && !line.is_empty() {
+                out.push(line.to_owned());
+            }
+            continue;
+        }
+        // Under "When it asks whom": the tables of waits, of authorizations
+        // and of criteria; the table of questions is the 0.7's.
+        if !in_table {
+            let starts = if html {
+                heads_html
+                    .iter()
+                    .any(|h| line.starts_with(&format!("<table><thead><tr><th>{h}")))
+            } else {
+                HEADS.iter().any(|h| line.starts_with(&format!("| {h}")))
+            };
+            in_table = starts;
+        }
+        if in_table {
+            out.push(line.to_owned());
+            if (html && line == "</tbody></table>") || (!html && line.is_empty()) {
+                in_table = false;
+            }
+        }
+    }
+    out.join(
+        "
+",
+    )
+}
+
+/// The outputs of a program without what its attention view adds: the
+/// outputs `view --attention …`, and the attention section of its document
+/// (the last blocks of `view --format md` and `html`). A gate that holds
+/// the views of a program relabelled 0.7, or given stages and reports, to
+/// those it had compares the old views; the attention view shows exactly
+/// what the program's stages, reports and questions are.
+pub fn without_attention(outs: Vec<(String, String)>) -> Vec<(String, String)> {
+    outs.into_iter()
+        .filter(|(n, _)| !n.starts_with("view --attention"))
+        .map(|(n, t)| {
+            let t = match n.as_str() {
+                "view --format md" => match t.find("\n\n## Attention: ") {
+                    Some(at) => format!("{}\n", t.get(..at).unwrap_or_default()),
+                    None => t,
+                },
+                "view --format html" => {
+                    match (t.find("\n<h2>Attention: "), t.find("\n</body></html>")) {
+                        (Some(from), Some(to)) if from < to => format!(
+                            "{}{}",
+                            t.get(..from).unwrap_or_default(),
+                            t.get(to..).unwrap_or_default()
+                        ),
+                        _ => t,
+                    }
+                }
+                _ => t,
+            };
+            (n, t)
+        })
+        .collect()
 }
 
 /// The sub-programs of a program of 0.6 whose outputs are pinned with it:

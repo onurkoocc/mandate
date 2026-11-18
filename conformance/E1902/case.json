@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1902",
+  "kind": "compile",
+  "title": "Two stages of one body with one name are refused at the second (a mutation: the stage post renamed collect).",
+  "spec": [
+    "spec/attention.md#stage",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/6/name",
+      "value": "collect"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1902",
+        "path": "/defs/BatchWithExceptions/body/6/name",
+        "facts": {
+          "pattern": "BatchWithExceptions",
+          "stage": "collect",
+          "problem": "duplicate"
+        }
+      }
+    ]
+  }
+}

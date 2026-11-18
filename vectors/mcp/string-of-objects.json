@@ -1,0 +1,75 @@
+{
+ "format": "mandate/vectors/mcp/0.1",
+ "name": "string-of-objects",
+ "about": "String(v) of an object with its own toString throws (TypeError), at any depth of an array, where the server makes text of a value: an initialize's protocolVersion, which then opens no session, a tool's name, and as a notification; an object with only its own valueOf is [object Object]",
+ "args": [
+  "mcp"
+ ],
+ "input": [
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":{\"toString\":1},\"capabilities\":{},\"clientInfo\":{\"name\":\"old\",\"version\":\"1\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"initialize\",\"params\":{\"protocolVersion\":[[\"2025-06-18\"]],\"capabilities\":{},\"clientInfo\":{\"name\":\"old\",\"version\":\"1\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":{\"toString\":1}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":[{\"toString\":null}]}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":{\"valueOf\":1}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":[[{\"toString\":{}}]]}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"initialize\",\"params\":{\"protocolVersion\":{\"toString\":\"2025-03-26\",\"valueOf\":\"2025-03-26\"},\"capabilities\":{},\"clientInfo\":{\"name\":\"old\",\"version\":\"1\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/list\"}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":[{\"toString\":1}]}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"ping\"}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"initialize\",\"params\":{\"protocolVersion\":{\"valueOf\":\"2025-03-26\"},\"capabilities\":{},\"clientInfo\":{\"name\":\"old\",\"version\":\"1\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"ping\"}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":13,\"method\":\"initialize\",\"params\":{\"protocolVersion\":[1,[\"2025-03-26\"]],\"capabilities\":{},\"clientInfo\":{\"name\":\"old\",\"version\":\"1\"}}}"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":14,\"method\":\"initialize\",\"params\":{\"protocolVersion\":[[\"2025-03-26\"]],\"capabilities\":{},\"clientInfo\":{\"name\":\"old\",\"version\":\"1\"}}}"
+  }
+ ],
+ "output": [
+  "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32603,\"message\":\"Internal error: Cannot convert object to primitive value\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32022,\"message\":\"Unsupported protocol version\",\"data\":{\"supported\":[\"2026-07-28\",\"2025-11-25\",\"2025-06-18\",\"2025-03-26\",\"2024-11-05\"],\"requested\":null}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"},\"instructions\":\"Mandate's compiler. Check a program before proposing it, read a diagnostic's code and repair, and change programs with apply_patch against the hash you read. A patch that widens authority, raises a budget, removes a criterion or adds an irreversible effect needs a person's approval; you cannot grant it.\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":4,\"error\":{\"code\":-32603,\"message\":\"Internal error: Cannot convert object to primitive value\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":-32603,\"message\":\"Internal error: Cannot convert object to primitive value\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: [object Object]\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32603,\"message\":\"Internal error: Cannot convert object to primitive value\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":8,\"error\":{\"code\":-32603,\"message\":\"Internal error: Cannot convert object to primitive value\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{\"tools\":[{\"name\":\"mandate.check\",\"title\":\"Check a program\",\"description\":\"Validates a Mandate program (text or IR), resolves names and runs every static check. Returns ok, the program and definition hashes, and the diagnostics with their codes, facts and repair patches.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"source\":{\"type\":\"string\",\"description\":\"The program: .mdt text or canonical JSON IR.\"},\"kind\":{\"type\":\"string\",\"enum\":[\"mdt\",\"json\"],\"description\":\"What `source` is. Default: json if it starts with '{', else mdt.\"},\"modules\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Modules the program imports with `use` (e.g. a system model), each as .mdt text or JSON IR. Added to the modules the server was started with (`mandate mcp --module <file>`).\"},\"lock\":{\"type\":\"object\",\"description\":\"The lock file (mandate.lock.json), to check model tiers and W0504.\"}},\"required\":[\"source\"],\"additionalProperties\":false}},{\"name\":\"mandate.explain\",\"title\":\"Explain a diagnostic code\",\"description\":\"What a diagnostic code such as MDT-E0320 or E0320 means and how to fix it.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"code\":{\"type\":\"string\"}},\"required\":[\"code\"],\"additionalProperties\":false}},{\"name\":\"mandate.apply_patch\",\"title\":\"Apply an IR patch\",\"description\":\"Applies RFC 6902 operations (add, remove, replace) to a program's canonical IR, against the program hash they were written for. A stale base is refused (MDT-E0130). Returns the new program and hash, its diagnostics, and the governance changes it makes; those need a person's approval. Nothing is saved.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"source\":{\"type\":\"string\",\"description\":\"The program: .mdt text or canonical JSON IR.\"},\"kind\":{\"type\":\"string\",\"enum\":[\"mdt\",\"json\"],\"description\":\"What `source` is. Default: json if it starts with '{', else mdt.\"},\"modules\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Modules the program imports with `use` (e.g. a system model), each as .mdt text or JSON IR. Added to the modules the server was started with (`mandate mcp --module <file>`).\"},\"base\":{\"type\":\"string\",\"description\":\"The program hash the patch was written against, sha256:\u2026\"},\"ops\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"op\":{\"enum\":[\"add\",\"remove\",\"replace\"]},\"path\":{\"type\":\"string\"},\"value\":{}},\"required\":[\"op\",\"path\"],\"additionalProperties\":false}}},\"required\":[\"source\",\"base\",\"ops\"],\"additionalProperties\":false}},{\"name\":\"mandate.caps_of\",\"title\":\"Authority of an agent or workflow\",\"description\":\"The paths, hosts, model tiers, commands, repositories, money and external effects an agent or workflow may use, and each of its delegations' grants.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"source\":{\"type\":\"string\",\"description\":\"The program: .mdt text or canonical JSON IR.\"},\"kind\":{\"type\":\"string\",\"enum\":[\"mdt\",\"json\"],\"description\":\"What `source` is. Default: json if it starts with '{', else mdt.\"},\"modules\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Modules the program imports with `use` (e.g. a system model), each as .mdt text or JSON IR. Added to the modules the server was started with (`mandate mcp --module <file>`).\"},\"name\":{\"type\":\"string\"}},\"required\":[\"source\",\"name\"],\"additionalProperties\":false}},{\"name\":\"mandate.project\",\"title\":\"A human view of a program\",\"description\":\"A view people review (\u00a715): architecture, authority or cost of a program, or the semantic diff from `before` (governance changes, behavior changes, what stayed the same).\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"source\":{\"type\":\"string\",\"description\":\"The program: .mdt text or canonical JSON IR.\"},\"kind\":{\"type\":\"string\",\"enum\":[\"mdt\",\"json\"],\"description\":\"What `source` is. Default: json if it starts with '{', else mdt.\"},\"modules\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Modules the program imports with `use` (e.g. a system model), each as .mdt text or JSON IR. Added to the modules the server was started with (`mandate mcp --module <file>`).\"},\"view\":{\"enum\":[\"architecture\",\"authority\",\"cost\",\"diff\"]},\"before\":{\"type\":\"string\",\"description\":\"For diff: the earlier program.\"},\"before_kind\":{\"type\":\"string\",\"enum\":[\"mdt\",\"json\"],\"description\":\"What `source` is. Default: json if it starts with '{', else mdt.\"},\"lock\":{\"type\":\"object\"}},\"required\":[\"source\",\"view\"],\"additionalProperties\":false}},{\"name\":\"mandate.spec\",\"title\":\"The core specification\",\"description\":\"Mandate's core specification (spec/core.md), whole or one numbered section, e.g. 4 for capabilities.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"section\":{\"type\":\"string\",\"description\":\"A section number such as 4 or 7.2.\"}},\"additionalProperties\":false}}]}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32603,\"message\":\"Internal error: Cannot convert object to primitive value\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":10,\"result\":{}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":11,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"},\"instructions\":\"Mandate's compiler. Check a program before proposing it, read a diagnostic's code and repair, and change programs with apply_patch against the hash you read. A patch that widens authority, raises a budget, removes a criterion or adds an irreversible effect needs a person's approval; you cannot grant it.\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":12,\"result\":{}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":13,\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"},\"instructions\":\"Mandate's compiler. Check a program before proposing it, read a diagnostic's code and repair, and change programs with apply_patch against the hash you read. A patch that widens authority, raises a budget, removes a criterion or adds an irreversible effect needs a person's approval; you cannot grant it.\"}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":14,\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"},\"instructions\":\"Mandate's compiler. Check a program before proposing it, read a diagnostic's code and repair, and change programs with apply_patch against the hash you read. A patch that widens authority, raises a budget, removes a criterion or adds an irreversible effect needs a person's approval; you cannot grant it.\"}}"
+ ],
+ "tools_list": [
+  8
+ ]
+}

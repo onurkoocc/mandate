@@ -1,0 +1,70 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906n",
+  "kind": "compile",
+  "title": "The branches of a par that supervise restart_all runs again count twice (a mutation: a question in a par of Asking under restart_all).",
+  "spec": [
+    "spec/attention.md#the-algebra",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Asking/body/7",
+      "value": {
+        "op": "par",
+        "branches": {
+          "q": {
+            "op": "call",
+            "callee": {
+              "op": "field",
+              "of": {
+                "op": "var",
+                "name": "human"
+              },
+              "name": "ask"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "text",
+                  "value": "Both?"
+                }
+              },
+              {
+                "name": "role",
+                "value": {
+                  "op": "var",
+                  "name": "accountant"
+                }
+              }
+            ]
+          }
+        },
+        "supervise": {
+          "name": "restart_all"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Asking/budget/asks",
+        "facts": {
+          "workflow": "Asking",
+          "asks": 9,
+          "total": 11
+        }
+      }
+    ]
+  }
+}

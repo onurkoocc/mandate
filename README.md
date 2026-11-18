@@ -4,7 +4,7 @@ Mandate is an agent-native coordination and contract language. Agents write
 and edit programs; people review them through generated views; the compiler
 checks capabilities, effects, budgets, contracts and delegation before
 anything runs. This repository holds the reference implementation of
-versions 0.1 to 0.6: the TypeScript compiler (frozen at 0.5) and the Rust
+versions 0.1 to 0.7: the TypeScript compiler (frozen at 0.5) and the Rust
 compiler, which reads every version, and the runtime, which calls the Rust
 one (see [Rust](#rust) and [Using the compiler](#using-the-compiler)).
 
@@ -254,6 +254,56 @@ pull request was opened, for 0.23 USD.
     pattern or pins a library (the list is under "Not in 0.6" in the
     specification).
 
+14. **0.7, Attention (done, but for the live session):** a program states
+    whom it asks, when and how often, and the runtime holds it, specified in
+    [`spec/attention.md`](spec/attention.md). Everything the release includes
+    is implemented, in the Rust compiler, the runtime and the commands; the
+    one thing left open is the live acceptance session, which the project's
+    owner holds with the kit in
+    [`fixtures/attention/live/`](fixtures/attention/live/README.md) and
+    whose result is not recorded yet.
+
+    - **Language.** `stage`, a marker that names the statements after it, and
+      `report`, a few typed values shown to a role without stopping the run
+      (E1901 to E1905); `asks`, a bound on the questions a run may put to
+      people, checked against what the program can ask (E1906 to E1908);
+      `owner`, the role that approves a workflow's card and promotes it
+      (E1910); in the lock (format 0.7), `role_classes`, the highest data
+      class each role may be shown, and `promotion`, which requires a
+      workflow to climb from `design` to `read_only` to `live` by signed
+      promotions (E1909, E1911). `std.patterns` 2.0.0 has the three patterns
+      with stages and two reports.
+    - **Views.** The attention view (`mandate view --attention`): for each
+      role, when the workflow can ask it something, about what, at most how
+      many times, by when, and what happens when nobody answers. The card of
+      a 0.7 program says it before a person approves, and is refused, not
+      made incomplete, when its facts cannot be made. An agent authors a
+      program through `mandate mcp` (Node and native), which computes and
+      never signs, approves or promotes.
+    - **Runtime.** A run stores the attention facts at its start. Each role
+      is shown only what concerns it: its events, the open decisions of every
+      run (`waits`), every value above the role's class masked and every
+      value labelled with how it is known. A person watches (`mandate
+      watch`), decides (`mandate decide`) and promotes (`mandate promote`)
+      with a signed record. The `asks` bound is counted as questions open
+      (`attention_above_asks`, `asks_exhausted`). A deadline that passes
+      unanswered escalates when `mandate tick` runs, and a role is told
+      through a webhook or a file, with ids and never content.
+    - **Held by.** `runtime/test/attention-acceptance.test.ts`, which plays
+      the flow of `fixtures/attention/invoices.mdt` with scripted people, and
+      the rows of the status table in `spec/attention.md`.
+
+    Left out by decision: a hosted console, a network listener and
+    authenticated reads, `asks` per role, nested stages, webhook body
+    templates and adapters native to chat tools, the commands that control a
+    run in the native `mandate`, revoking a promotion, and a review under
+    Temporal (the list is under "Not in 0.7" in the specification).
+
+    Known limits, collected in "Known limits of 0.7" of the specification:
+    a promotion binds no store; reading is not authenticated; a replayed
+    `read_only` run is `partial`; idempotency of a write holds within a run,
+    not across runs. What is carried to 0.8 is listed after them.
+
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
 
@@ -262,19 +312,21 @@ enough for an agent's context.
 ```text
 spec/        core spec, IR schema and rules, static checks, diagnostic codes, the lock, runtime,
              sandboxes, executors, views, the compiler's MCP server, the system model (0.3),
-             the envelope (0.4), the boundary, egress and journal (0.5), and
-             libraries, patterns and connectors (0.6)
+             the envelope (0.4), the boundary, egress and journal (0.5),
+             libraries, patterns and connectors (0.6), and attention (0.7)
 compiler/    reference compiler (TypeScript, frozen at 0.5)
 bridge/      the one place the runtime and the Node `mandate` reach a compiler:
              the Rust compiler as a WebAssembly module (`@mandate/bridge`)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 crates/      the Rust compiler, its native command line, and verify-journal (below)
-lib/         std.patterns, the library built into the compiler (0.6)
+lib/         std.patterns, the library built into the compiler (0.6; 2.0.0 is 0.7's)
 fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
              fixbug-target/ the same workflow bound to a seeded test project,
              system/ a fictional system's model (Acme) and programs over it,
              envelope/ the 0.4 migration, boundary/ a 0.5 agent that may only GET,
-             library/ the 0.6 acceptance program (invoices) and its libraries
+             library/ the 0.6 acceptance program (invoices) and its libraries,
+             attention/ the 0.7 programs and its acceptance program (invoices),
+             attention/live/ the kit for the live acceptance session
 conformance/ language-independent compile and journal cases
 vectors/     what the TypeScript reader, canonical text and hashes give, for
              other implementations to match
@@ -283,18 +335,17 @@ vectors/     what the TypeScript reader, canonical text and hashes give, for
 ## Rust
 
 The repository is also a Cargo workspace (`Cargo.toml`, `crates/`): the Rust
-compiler, which reads every version and is the only one that reads 0.6; its
+compiler, which reads every version and is the only one that reads 0.6 and 0.7; its
 native command line; and an independent journal verifier.
 
 There are two executables called `mandate`. The one the runtime ships, from
 `bridge/` (`@mandate/bridge`, `bridge/dist/cli.js`), runs on Node and has
 every command, those that control a run included; it calls the Rust compiler
-as a WebAssembly module (`MANDATE_COMPILER=rust`, the default; `ts` calls the
-TypeScript compiler and `both` compares them). The native one, built from
+as a WebAssembly module, and no other compiler. The native one, built from
 `crates/mandate-cli` (`cargo build -p mandate-cli`), has the compiler's
-commands (`check`, `view`, `fmt`, `hash`, …) and `add`, `upgrade` and `publish`,
-with the same output byte for byte; the commands that control a run and
-`mcp` are the Node one's. The TypeScript compiler keeps its own command,
+commands (`check`, `view`, `fmt`, `hash`, …), `add`, `upgrade` and `publish`, and from 0.7 `mcp`,
+with the same output byte for byte; the commands that control a run (`run`, `waits`,
+`watch`, `decide`, `promote`, `tick`, …) are the Node one's. The TypeScript compiler keeps its own command,
 `mandate-ts`.
 
 - [`crates/mandate-ir`](crates/mandate-ir/README.md): the IR as a value in
@@ -316,7 +367,8 @@ with the same output byte for byte; the commands that control a run and
 - `crates/mandate-views`: the document model with Markdown and HTML, the
   views of a program (architecture, authority, cost, system), the diff view,
   the envelope card (and, from 0.6, the card of a workflow without an
-  envelope) and the ACS/Rego target.
+  envelope; from 0.7, the card of a 0.7 program), the attention view and the
+  ACS/Rego target.
 - `crates/mandate-lib`: the model of a library, with no file read and no
   program checked: versions and ranges, the manifest, the digest, the lock's
   pins, publication time and the waiting period, resolution, and publish's
@@ -334,9 +386,10 @@ WASI):
 
 - all 234 pinned outputs of `compiler/test/golden/outputs.json` (21
   programs, ten to fourteen outputs each), by `sha256`;
-- all 125 `compile` cases of `conformance/` for 0.1 to 0.5 (the 265 cases of
+- all 125 `compile` cases of `conformance/` for 0.1 to 0.5 (the 267 cases of
   0.6 and the 135 outputs of `vectors/golden/0.6.json` are the Rust
-  compiler's own, since it alone reads 0.6);
+  compiler's own, since it alone reads 0.6, and so are the 151 cases of 0.7
+  and `vectors/golden/0.7.json`);
 - the stored results in [`vectors/`](vectors/README.md): the syntax and
   span vectors, the schema vectors, 193 diagnostic vectors, 183 diff
   vectors, and the compiled corpus (1,226 calls the TypeScript tests make
@@ -376,7 +429,9 @@ vectors and fails when the committed ones differ; the Rust tests read them and n
 The 0.6 pins (`vectors/golden/0.6.json`, `vectors/diagnostics-0.6/`) are the
 Rust compiler's own, since the TypeScript compiler does not read 0.6: the
 gates that read them write them again under `MANDATE_UPDATE_0_6=1`, never by
-hand ([`vectors/README.md`](vectors/README.md)).
+hand ([`vectors/README.md`](vectors/README.md)); the 0.7 pins
+(`vectors/golden/0.7.json`, `vectors/diagnostics-0.7/`) under
+`MANDATE_UPDATE_0_7=1`.
 
 ```sh
 cargo test --locked                       # where native executables may run
@@ -427,9 +482,10 @@ The TypeScript compiler's own command, for 0.1 to 0.5 only, is
 | `sandbox <file> [--agent <name>]` | Print each local agent's sandbox requirement, or one agent's |
 | `explain <code>` | Explain a diagnostic code |
 | `test <file> [--json]` | Run the program's tests against their effect handlers (§6.4) |
-| `mcp` | Serve `check`, `explain`, `apply_patch`, authority and views to agents over MCP on stdio ([`spec/mcp.md`](spec/mcp.md)) |
+| `mcp` | Serve `check`, `explain`, `apply_patch`, authority and views to agents over MCP on stdio ([`spec/mcp.md`](spec/mcp.md)); from 0.7 in the native command too, and it never signs, approves or promotes |
 | `target acs <file> [--out <dir>]` | Each agent's ACS manifest, Rego policy and sandbox requirement, for an AGT host ([`spec/executors.md`](spec/executors.md)) |
-| `view <file> [--against <old>] [--format md\|html\|json]` | The program's views: architecture, authority, cost; with `--against`, what changed ([`spec/views.md`](spec/views.md)); with `--card`, the card a person reads before approving a workflow |
+| `view <file> [--against <old>] [--format md\|html\|json]` | The program's views: architecture, authority, cost; with `--against`, what changed ([`spec/views.md`](spec/views.md)); with `--card`, the card a person reads before approving a workflow; with `--attention`, 0.7: whom the workflow asks, when and how often ([`spec/attention.md`](spec/attention.md#the-attention-view)) |
+| `waits`, `watch`, `decide`, `promote`, `tick`; `run … --limit asks=N` | 0.7, in the Node command: the open decisions of a role or a member; a role's pages or event stream; one signed decision; a workflow's promotion from `design` to `read_only` to `live`; the driver loop that makes deadlines pass and sends notifications; the bound on a run's questions ([`spec/attention.md`](spec/attention.md#the-command-line)) |
 | `add`, `upgrade <library>[@<range>]`, `publish <dir>` | 0.6: pin a library of the operator's directory in the lock, pin a newer version (a widened authority signature is shown and needs `--accept-governance`), copy a library into the directory ([`spec/library.md`](spec/library.md#mandate-add-upgrade-and-publish)); with `--libraries DIR`, `--config FILE`, `--json` |
 | `connector pin <program>`, `review <run> …` | 0.6, in the Node command: write a connector's tool schema digests into the lock; decide a review's wait with a signed decision |
 

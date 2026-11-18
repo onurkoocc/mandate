@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1501b",
+  "kind": "compile",
+  "title": "A report to a name no role definition has is refused as a role site, with the nearest role as a suggestion (a mutation: the role of Greet's first report).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/envelope.md#roles"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/3/role",
+      "value": "acountant"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1501",
+        "path": "/defs/Greet/body/3/role",
+        "facts": {
+          "role": "acountant",
+          "where": "a report",
+          "did_you_mean": "accountant"
+        }
+      }
+    ]
+  }
+}

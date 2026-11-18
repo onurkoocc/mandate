@@ -88,14 +88,20 @@
 
 use mandate_ir::{JsObject, JsValue, Value};
 
+mod attention;
 mod authority;
+mod connectors;
 mod front;
 pub mod input;
 mod library;
 mod lock;
+mod mcp_tools;
 mod patch;
 mod program;
 mod tables;
+
+pub use connectors::tool_canonical;
+pub use library::{config_of, sources_of};
 
 /// A door: the input object in, the output value or the error out.
 pub type DoorFn = fn(&Value) -> Result<JsValue, DoorError>;
@@ -234,6 +240,10 @@ impl Door {
 /// The note of a view door that takes the modules besides what its
 /// TypeScript function takes (language 0.6, which only the Rust reads).
 pub const MODULES_NOTE: &str = "modules (optional) is the Rust's alone: the modules a workflow's pattern comes from (language 0.6), so that a workflow that applies one is read as its expansion. The TypeScript function is not given it; a program that applies no pattern gives the same with or without it.";
+
+/// The note of `check_patch`, which takes `opts` besides what its TypeScript
+/// function takes (language 0.7, which only the Rust reads).
+pub const OPTS_NOTE: &str = "opts (optional, language 0.7) is the Rust's alone: { lock?, libraries?, config? }, read as the door check reads them, so that the patched program is checked as check checks it. A program of 0.7 or later reads the embedded std.patterns also with no opts, and a program of 0.1 to 0.5 reads no library whatever opts holds (its lock is still checked as check checks it). The TypeScript function is not given it. When the patch does not apply the program is not checked, so the door can report fewer diagnostics than check, never a weaker ok.";
 
 /// Every door, in the order of `doors.json`: reading and checking, the parts
 /// of a program, the lock and the sandbox, patches and diffs, the run-time
@@ -407,10 +417,11 @@ pub static DOORS: &[Door] = &[
         patch::APPLY_PATCH,
         patch::apply_patch,
     ),
-    Door::new(
+    Door::noted(
         "check_patch",
         "checkPatch",
         patch::CHECK_PATCH,
+        OPTS_NOTE,
         patch::check_patch,
     ),
     Door::new(
@@ -481,7 +492,9 @@ pub static DOORS: &[Door] = &[
 /// The note of a library door: no TypeScript function stands for it.
 const LIBRARY_NOTE: &str = "Language 0.6, which only the Rust compiler reads: no TypeScript function stands for it, and crates/mandate-check/tests/library_doors.rs holds it to the compiler's functions (crate::library).";
 
-/// The library doors of language 0.6 (spec/library.md "The bridge"), in a
+/// The library doors of language 0.6 (spec/library.md "The bridge"), and
+/// those of 0.7 (`tool_schema_digest`, `callable_connectors`, `mcp_tools`,
+/// `attention_facts`, spec/attention.md), in a
 /// table of their own, since no TypeScript function stands for them and
 /// [`DOORS`] is held to the TypeScript call for call. It is committed as
 /// `crates/mandate-check/tests/library_doors/doors.json`, and the
@@ -517,7 +530,34 @@ pub static LIBRARY_DOORS: &[Door] = &[
         LIBRARY_NOTE,
         library::authority_signature,
     ),
+    Door::own(
+        "tool_schema_digest",
+        connectors::TOOL_SCHEMA_DIGEST,
+        "Language 0.7, which only the Rust compiler reads: no TypeScript function of the compiler stands for it. It gives what schemaDigest of runtime/src/mcp-client.ts gives for a tool, byte for byte (the lock's sha256 of the canonical JSON of { name, inputSchema, outputSchema }), and crates/mandate-check/tests/connector_doors.rs holds it to vectors/tool-digest/tool-schema-digest.json, which scripts/tool-digest-vectors.mjs writes from that function. tool is the JSON text of the tool, not an object, so that a number keeps its JSON form.",
+        connectors::tool_schema_digest,
+    ),
+    Door::own(
+        "callable_connectors",
+        connectors::CALLABLE_CONNECTORS,
+        "Language 0.7, which only the Rust compiler reads: no TypeScript function stands for it. The connectors a program can call, [{ id, name }] with id <module>.<connector>: those the check demands a lock entry for (E1407), by the same function (crate::lock::callable_connectors), for the program as the runtime has it at start.",
+        connectors::callable_connectors,
+    ),
+    Door::own(
+        "mcp_tools",
+        mcp_tools::MCP_TOOLS,
+        "Language 0.7, which only the Rust compiler reads: no TypeScript function stands for it. The tools of the MCP servers of a language, { language, tools, modern }: tools is the tools member of the result of tools/list, unchanged, for both servers and both protocol eras, and modern is what the modern era adds beside it ({ ttlMs, cacheScope }). language is required, mandate/0.1 to mandate/0.7: those up to 0.6 give the frozen list (the tables door's TOOLS), 0.7 the frozen list and the changes spec/attention.md names (crates/mandate-check/tests/mcp_tools.rs holds the set of differences), and vectors/mcp-tools/mcp-tools-0.7.json holds the output.",
+        mcp_tools::mcp_tools,
+    ),
+    Door::own(
+        "attention_facts",
+        attention::ATTENTION_FACTS,
+        ATTENTION_NOTE,
+        attention::attention_facts,
+    ),
 ];
+
+/// The note of the door of the attention facts (language 0.7).
+const ATTENTION_NOTE: &str = "Language 0.7, which only the Rust compiler reads: the attention facts of a workflow (spec/attention.md, The facts), from the typing of the check that checks it, with the input of the door check and the workflow's name; null when the program does not check. No TypeScript function stands for it, and crates/mandate-testkit/tests/attention_0_7.rs holds it to the fixtures of 0.7.";
 
 /// The library door named `name`.
 #[must_use]

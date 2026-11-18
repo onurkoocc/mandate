@@ -1,0 +1,46 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1902d",
+  "kind": "compile",
+  "title": "An on error directly after a stage is refused: it handles the statement before the stage, which belongs to another stage (a mutation: one handler added after Greet's first stage).",
+  "spec": [
+    "spec/attention.md#stage",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Greet/body/1",
+      "value": {
+        "op": "on_error",
+        "pattern": {
+          "p": "wild"
+        },
+        "then": {
+          "op": "var",
+          "name": "name"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1902",
+        "path": "/defs/Greet/body/0",
+        "facts": {
+          "workflow": "Greet",
+          "stage": "draft",
+          "problem": "on_error"
+        }
+      }
+    ]
+  }
+}

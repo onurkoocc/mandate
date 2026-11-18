@@ -28,9 +28,9 @@
 )]
 
 use mandate_check::{
-    AmendmentInput, CapVal, CheckOptions, DataClass, Modules, PatchOp, Room, SubprogramInput,
-    cap_ctor, check, check_amendment, check_patch, check_subprogram, language_of, skeleton,
-    subprogram_linked,
+    AmendmentInput, CapVal, CheckOptions, DataClass, Modules, PatchOp, PatchOptions, Room,
+    SubprogramInput, cap_ctor, check, check_amendment, check_patch, check_subprogram, language_of,
+    skeleton, subprogram_linked,
 };
 use mandate_ir::{Diagnostic, JsObject, JsValue, Value, hash_program, stringify, stringify_pretty};
 use mandate_syntax::{SourceKind, load};
@@ -294,7 +294,13 @@ fn run_patch(inputs: &Inputs, c: &Value) -> Got {
         Some(b) => b.to_owned(),
         None => hash_program(&program).program,
     };
-    let r = check_patch(&program, &base, &ops_of(c.get("ops")), modules.as_ref());
+    let r = check_patch(
+        &program,
+        &base,
+        &ops_of(c.get("ops")),
+        modules.as_ref(),
+        &PatchOptions::default(),
+    );
     Got::Text(with_digest(r.to_js()))
 }
 
@@ -362,6 +368,9 @@ fn run_subprogram(inputs: &Inputs, c: &Value) -> Got {
         ops: &ops,
         lead: DataClass::from_name(lead).unwrap(),
         room: &room,
+        std_patterns: None,
+        role_classes: None,
+        member_without_role: None,
     }) {
         Ok(r) => Got::Text(with_digest(r.to_js())),
         Err(message) => Got::Throws(format!("Error: {message}")),
@@ -390,6 +399,7 @@ fn run_amendment(inputs: &Inputs, c: &Value) -> Got {
         modules: modules.as_ref(),
         workflow,
         envelope,
+        std_patterns: None,
     }) {
         Ok(r) => Got::Text(with_digest(r.to_js())),
         Err(message) => Got::Throws(format!("Error: {message}")),

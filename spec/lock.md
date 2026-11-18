@@ -39,6 +39,8 @@ All of these are reported as `MDT-E0140`.
 | `egress` | Per agent, the credential each host's requests carry, by name. Needs format `0.5` |
 | `libraries` | 0.6: each library's version, digest and modules; see [below](#libraries-and-connectors-06). Needs format `0.6` |
 | `connectors` | 0.6: each connector's credential, the URL it goes to and the digest of each tool's schema. Needs format `0.6` |
+| `role_classes` | 0.7: each role's highest data class; see [below](#role-classes-and-promotion-07). Needs format `0.7` |
+| `promotion` | 0.7: `"required"`, the promotion ladder. Needs format `0.7` |
 
 The format is `mandate/lock/0.5` below 0.6, and `mandate/lock/0.6` for a program of 0.6. A `0.4` lock, which has no host,
 isolation or egress, a `0.3` lock, which has no members or roles either,
@@ -142,6 +144,44 @@ them is `MDT-E0140`, reported at the lock's root.
   pin (`library_digest_mismatch`) or is revoked (`library_revoked`), and a
   run whose server lists another schema than a pinned digest
   (`tool_schema_mismatch`).
+
+## Role classes and promotion (0.7)
+
+*Added 2026-11-17. Specified in [`attention.md`](attention.md#lock-07).
+The Rust compiler reads both fields (their schema, `MDT-E0140`, `MDT-E1909`,
+`MDT-E1910` and `MDT-E1911`), and the runtime runs both (it masks by
+`role_classes` and climbs the ladder). Everything above holds as it is.*
+
+Format `mandate/lock/0.7` has every field of `0.6` and two more, closed by
+its own schema, `lock-0.7.schema.json`. In a lock older than `0.7` each of
+them is `MDT-E0140`, reported at the lock's root. `roles` and `members` do
+not change.
+
+```json
+{
+  "lock": "mandate/lock/0.7",
+  "modules": {},
+  "role_classes": { "accountant": "confidential" },
+  "promotion": "required"
+}
+```
+
+- `role_classes` gives a role the highest data class it may be shown; a role
+  it does not name may be shown `internal`. A role that `roles` does not
+  name is `MDT-E0140`. With the lock, `mandate check` adds `MDT-E1909`: a
+  question, an escalation or a report that would show a role data above its
+  class. The runtime masks such data as well.
+- `promotion: "required"` (its one value) makes a `read_only` or `live` run
+  wait for a signed promotion by the workflow's owner role, and makes
+  `MDT-E1910` require an `owner` or an envelope of every workflow.
+- A lock is read by the schema of its own format, whatever the program's
+  language. A 0.7 program accepts an older lock: every role may then be
+  shown `internal`, and there is no ladder. For a program older than 0.7 the
+  two fields would not apply, and the check refuses them (`MDT-E1911`), as
+  `MDT-E1803` refuses `isolation` and `egress` for a program before 0.5.
+- Both are in the package hash, as every field is: raising a role's class is
+  a new package. Where notifications go is not in the lock, but in the
+  runtime's configuration ([`attention.md`](attention.md#notifications)).
 
 ## What reads it
 

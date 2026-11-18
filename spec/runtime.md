@@ -1,10 +1,10 @@
-# Mandate runtime, 0.1 to 0.6
+# Mandate runtime, 0.1 to 0.7
 
 This is the reference runtime in `runtime/`. It runs a checked package
 against adapters and keeps every decision that must survive a crash in
 PostgreSQL. Section numbers refer to the design document (Doc 4).
 
-The page describes the runtime of releases 0.1 to 0.6. The parts that came
+The page describes the runtime of releases 0.1 to 0.7. The parts that came
 with 0.4 and 0.5 are specified in [`envelope.md`](envelope.md) and
 [`boundary.md`](boundary.md); here they are named where they touch the
 runtime's storage, load-time checks, control API, control CLI and
@@ -623,7 +623,12 @@ The loop stops with `SkillFailed(kind, detail, partial)` (§8.7):
 When a parallel branch fails (fail_fast), a loop stops before its next
 step, and leaves its delegation in flight, as after a crash. If the run goes
 on, for example after a person raised its budget, the loop resumes from
-the journal. The block fails with the fault that stopped the others.
+the journal. In a run of a package of 0.7 or later, when several branches
+fail in one round, the block fails with the fault of the first of them in
+the order of the branches' names; in a run of an older package, it fails
+with the fault that stopped the others. A replay takes the rule from the
+package, not from the journal, so the journal of a package of 0.7 written
+by a build before this rule may replay with the other fault.
 
 `partial` lists the files the loop wrote. A turn observed something new
 when one of its tool calls returned something the loop had not seen from
@@ -970,12 +975,21 @@ mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER
 mandate drift --module MODEL --component NAME=DIR… [--json]
 mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [--name PREFIX] [--harness-tokens N]
 mandate connector pin <program> [--lock FILE] [--config FILE] [--module FILE]… [--libraries DIR]
+mandate promote <run> --to read_only|live --key FILE [--member NAME] [--yes]
+mandate waits (--role R | --member M) [--tenant T] [--json]
+mandate watch --member M --out DIR [--follow] [--interval 10s] [--refresh SECONDS]
+mandate watch <run> --role R --jsonl
+mandate decide --key FILE [--member NAME]
 ```
 
 `review` decides a 0.6 review wait and `connector pin` writes the schema
 digests of a 0.6 package's connectors into its lock
 ([`library.md`](library.md#the-lock-binding-and-schema-digests)); `--libraries`
 names the directory the libraries a lock pins are read from.
+
+`waits`, `watch` and `decide` (0.7) read only the projections of a run for a role
+and submit decisions through the paths above; they are described in
+[`attention.md`](attention.md#the-command-line).
 
 `reconcile` is signed when `--key` is given. A run of a signed package (a
 0.4 program, or a runtime configured for signed decisions) requires the key;
@@ -1020,9 +1034,14 @@ configuration) and the secrets in its own environment. It opens no database,
 and serves until SIGINT or SIGTERM ([`egress.md`](egress.md#running-the-proxy)).
 
 `--limit` takes `spend`, `tokens`, `steps` and, for a workflow with an
-envelope, `agents`, separated by commas. `approve-envelope` signs a
+envelope, `agents`, separated by commas, and for a package of 0.7 `asks`,
+a whole number of questions ([`attention.md`](attention.md#asks-at-run-time);
+for an earlier package it is refused, `unsupported_limit`). `approve-envelope` signs a
 package's envelope so that its runs may start
-([`envelope.md`](envelope.md#approving-an-envelope)). `amend` is the
+([`envelope.md`](envelope.md#approving-an-envelope)); for a package of 0.7
+also one whose workflow has an `owner`. `promote` is that owner's promotion
+of a 0.7 workflow up the ladder `design`, `read_only`, `live`
+([`attention.md`](attention.md#promotion)). `amend` is the
 owner's decision on an amendment a lead asked for: `status` shows who
 asks, both package hashes, each line of the envelope that changes and the
 lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
@@ -1209,9 +1228,9 @@ here. A package of 0.1 to 0.5 runs as above.*
 
 - **The compiler** is called through the bridge, as an in-process
   WebAssembly module, for every language version
-  ([`library.md`](library.md#the-bridge)): `MANDATE_COMPILER=rust` (the
-  default), `ts` or `both`. A 0.6 package is refused under `ts`
-  (`unsupported_language`), at load and at a resume or a replay. A failure
+  ([`library.md`](library.md#the-bridge)); there is no other compiler
+  behind the bridge (the modes of 0.6, which could name the TypeScript
+  compiler or compare the two, are gone). A failure
   of the module while a run is driven stops the run for a person
   (`compiler_failed`); at load it refuses the package
   (`load_verification_failed`).
@@ -1275,6 +1294,56 @@ here. A package of 0.1 to 0.5 runs as above.*
   as itself escaped, and `show` has a `reviews` section
   ([`views.md`](views.md)).
 
+## Release 0.7
+
+*Implemented. The rules are in [`attention.md`](attention.md#run-time); this
+is what they change here. A package of 0.1 to 0.6 runs as above.*
+
+- **New commands.** `mandate tick [--follow] [--interval 10s] [--no-notify]`,
+  `mandate promote <run> --to read_only|live --key FILE [--yes]`, `mandate
+  watch --member M --out DIR [--follow] [--refresh SECONDS]` and `mandate
+  watch <run> --role R --jsonl`, `mandate waits (--role R | --member M)
+  [--tenant T] [--json]`, `mandate decide --key FILE`, and `mandate run
+  --limit asks=N`. `approve-envelope` also approves a package whose 0.7
+  workflow has an `owner`. A native `mandate mcp` joins the native command
+  ([`mcp.md`](mcp.md#07)).
+- **The driver loop.** Outside Temporal nothing called `tick` before 0.7, so no
+  deadline passed from the command line. `mandate tick` selects the runs that
+  wait, calls `tick` for each under its own package (a decision expires, a
+  review is escalated or expires, a timer is due; in a 0.7 run for every open
+  wait whose deadline has passed, not only the one `runs.waiting` names),
+  drives a 0.7 run whose wait was decided and not driven on, and then sends
+  notifications. It acts under
+  each run's lock, so it and a Temporal worker do not act twice on one run.
+- **`asks`.** A row of its own in the run's budget, the declared `asks` and
+  the caller's limit taken together as every limit is (`minLimits`); with
+  neither, no limit. A start whose bound under the runtime's `authorize`
+  configuration is above the limit is refused (`attention_above_asks`). A
+  wait is counted when it opens, and one past the limit is not asked
+  (`Rejected(asks_exhausted)`, the event `asks_exhausted`).
+- **The control API** gains `watchRun` (a role's events, filtered by class,
+  then through a fixed allow-list of fields per event type, masked; polled
+  with a cursor), `listWaits` (the open decisions of every run, for a role or
+  a member) and `promote` (a signed decision of kind `promote`).
+- **The ladder.** With `promotion: "required"` in the lock, a `read_only`
+  run starts only on a promotion from a succeeded `design` run of the same
+  package and workflow, and a `live` run on one from a succeeded `read_only`
+  run, with the shadow diff's digest; otherwise `unpromoted`. A promotion
+  holds for every later run of the same package hash and workflow in its
+  target mode; one from a run that did not succeed, of another package or
+  workflow, or that skips a mode is refused (`bad_promotion`). A workflow with
+  an `owner` starts in no mode before its card is approved
+  (`unapproved_envelope`).
+- **Notifications.** A cursor pump, at least once, for 0.7 runs only: S0 to
+  the role asked (a wait that asks no role to the owner role) and S1 to the
+  roles that ask for outcomes and to the owner role, in order per channel and
+  run, through an HTTPS webhook (only through the egress proxy) or a local
+  file, with a fixed payload and no content. Configured under
+  `notifications` in `mandate.runtime.json`, not in the lock.
+- **Storage.** `notify_cursors`, `notify_dead`, a partial index of the
+  waiting commands; the manifest gains `attention` (the stored facts, read
+  back by every resume and replay, `facts_mismatch`) and `promotion`.
+
 ## Not in this runtime yet
 
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
@@ -1288,6 +1357,7 @@ here. A package of 0.1 to 0.5 runs as above.*
   traffic through the egress proxy ([`boundary.md`](boundary.md#what-stays-outside-it)).
 - **Masking by data class in the views of a run**; a role's view and the
   audit view show or hide whole classes ([`boundary.md`](boundary.md#views-by-role-and-the-audit-view)).
+  It is 0.7's, for 0.7 runs only ([`attention.md`](attention.md#masking-and-how-a-value-is-known)).
 - **Decision and evidence records in a journal export**
   ([`journal.md`](journal.md#the-export)).
 

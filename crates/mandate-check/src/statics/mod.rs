@@ -56,7 +56,7 @@ use crate::cost::{Budget, CostEnv, StaticCost, block_cost, micros_text};
 use crate::stdlib::DataClass;
 use crate::ty::{
     Level, Problem, Ty, TypeEnv, UNKNOWN, assignable, bool_ty, from_type_expr, named, peeled_type,
-    ty_of,
+    ty_of, weaker_level,
 };
 use crate::walk::{walk_exprs, walk_stmt_exprs};
 
@@ -88,6 +88,17 @@ pub(crate) struct Val {
     /// statement that yields no value (a `return`): one mistake is one
     /// diagnostic. Always `false` before 0.6.
     pub(crate) silent: bool,
+    /// 0.7 (Rust only): how the weakest value it is made of is known, where
+    /// its type does not say so: a text that interpolates a model's output,
+    /// a function's `Text` made of an outside one, a binding of either.
+    /// `Verified`, which lowers nothing, for a value made of nothing known
+    /// worse than its type says. It flows as the data class does, from what
+    /// a value is made of to the value, through a binding and a function's
+    /// result; a verification starts it again, and a count (`len`) is the
+    /// run's own. How a value is known is the weaker of this and its type's
+    /// level ([`Checker::level_of`]). Only the attention facts read it, so
+    /// no diagnostic of any language does.
+    pub(crate) made: Level,
 }
 
 impl Val {
@@ -103,6 +114,7 @@ impl Val {
             cls,
             waivable: false,
             silent: false,
+            made: Level::Verified,
         }
     }
 
@@ -114,6 +126,7 @@ impl Val {
             cls: from.cls,
             waivable: from.waivable,
             silent: from.silent,
+            made: from.made,
         }
     }
 
@@ -146,6 +159,12 @@ pub(crate) struct ReviewSource {
     /// Whether what was verified was untrusted content, which a declined
     /// item stays.
     pub(crate) untrusted: bool,
+    /// 0.7: how what was verified was known before it was verified, as a
+    /// review shows its open items (`crate::asks`).
+    pub(crate) level: Level,
+    /// 0.7: the map's `max`, the most items the review decides on (or,
+    /// without one, the envelope's `agents`, `crate::asks`).
+    pub(crate) items: Option<i64>,
 }
 
 /// 0.6: what a `let` bound its name to, as `human.review` reads its source
@@ -212,6 +231,45 @@ impl Usage {
             via: None,
             path: path.to_owned(),
         }
+    }
+}
+
+/// 0.7: where the program's own text reaches a definition of another module
+/// that a diagnostic is about ([`Checker::elsewhere`]): the diagnostic is
+/// reported there, since the other module's text is not the program's.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Elsewhere {
+    /// The call or `verify` of the program that reaches it.
+    pub(crate) site: String,
+    /// The definition.
+    pub(crate) def: String,
+    /// Its module, when the checks were told it.
+    pub(crate) module: Option<String>,
+    /// The path of what the diagnostic is about, in the definition.
+    pub(crate) at: String,
+}
+
+impl Elsewhere {
+    /// What a message adds: where it is.
+    pub(crate) fn said(&self) -> String {
+        match &self.module {
+            Some(m) => format!(
+                " It is in {} of the module {m}, which the program reaches here.",
+                self.def
+            ),
+            None => format!(
+                " It is in {}, of another module, which the program reaches here.",
+                self.def
+            ),
+        }
+    }
+
+    /// `facts` with the definition, its module and `at`.
+    pub(crate) fn facts(&self, facts: JsObject) -> JsObject {
+        facts
+            .with("definition", self.def.as_str())
+            .with_some("module", self.module.as_deref())
+            .with("at", self.at.as_str())
     }
 }
 
@@ -485,7 +543,92 @@ pub(crate) struct Checker<'a> {
     /// wrappers peeled, and how it was known (`human.review` reads the
     /// one a review's source map ends with).
     pub(crate) verified: HashMap<String, (Ty, Level)>,
+    /// 0.7: what the typing gave each field of a report, by the path of
+    /// the field's value: its type, its data class and how it is known
+    /// (spec/attention.md "What is shown"). The attention facts read it
+    /// ([`Shown`]).
+    pub(crate) shown: Shown,
+    /// 0.7: while a report's field is typed, the weakest level of every
+    /// value typed for it (but what `len` counts): a field is known as
+    /// weakly as the weakest thing it is made of, also where the type the
+    /// typing gives it does not say so (a text template is `Text` whatever
+    /// it interpolates, a list is of its first item's type). `None` outside
+    /// a report's field.
+    ///
+    /// The same floor is set while the typing types what a wait for a
+    /// person shows ([`Checker::asked`]): a question is known as weakly as
+    /// what it is made of.
+    pub(crate) report_floor: Option<Level>,
+    /// 0.7: what the typing gave what each wait for a person shows, by the
+    /// path of the construct that opens it (`crate::asks::Asked`). The
+    /// attention bound reads it for each question's `shown` and `known`.
+    pub(crate) asked: crate::asks::AskedMap,
+    /// 0.7: the attention bound of each of the program's own workflows, in
+    /// the order of the definitions, computed once every definition is
+    /// typed (`crate::asks`).
+    pub(crate) bounds: Vec<crate::asks::WorkflowBound>,
+    /// 0.7: what each call of a function of the program and each `verify`
+    /// hands its function or contract, with the definition the call stands
+    /// in: `(caller, callee, handed)` (`crate::asks`, the floor of what a
+    /// site in a function or a contract shows).
+    pub(crate) handed_calls: Vec<(String, String, crate::asks::Handed)>,
+    /// 0.6 and later: what each function returns, as its body typed it
+    /// with its parameters of their declared types: the highest class and
+    /// the weakest level of its last value and of every `return`'s. A
+    /// call's value is of that class at least and, in 0.7, known no better
+    /// ([`Checker::fn_usages`], `call_fn`).
+    pub(crate) fn_result: HashMap<String, (DataClass, Level)>,
+    /// 0.6 and later: while a function's body is typed, what its `return`s
+    /// gave so far, the innermost function last (a body is typed at its
+    /// first call, so one is typed inside another).
+    pub(crate) returning: Vec<(DataClass, Level)>,
+    /// 0.7: the module each definition another module defines comes from
+    /// (`crate::modules::Linked::origin`), so that a diagnostic in it names
+    /// its module. Empty when the checks were given no modules.
+    pub(crate) origin: HashMap<String, String>,
+    /// 0.7: above 0, the checks type a definition of another module only to
+    /// find what a question of the program reaches there (E1501, `crate::asks`),
+    /// and report nothing else of it.
+    pub(crate) muted: usize,
+    /// 0.7: what each review decides on, by its path: the bound of its
+    /// items and the criteria a person may waive (`crate::asks::Detail`).
+    pub(crate) reviewed: HashMap<String, (crate::attention::Count, Vec<String>)>,
 }
+
+/// 0.7: what the one pass of the static checks gives the attention facts:
+/// what its typing gave each field of a report ([`Shown`]), and the
+/// attention bound of each workflow, with what each question shows.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Typing {
+    /// Each report's fields, by the path of the field's value.
+    pub shown: Shown,
+    /// The bound of each of the program's own workflows, in the order of
+    /// the definitions.
+    pub bounds: Vec<crate::asks::WorkflowBound>,
+}
+
+/// 0.7: what the typing of a program gave one field of a report.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShownField {
+    /// The role its report is addressed to (in a workflow that applies a
+    /// pattern, the role the application binds to the pattern's slot): who
+    /// is shown it, which E1909 compares [`ShownField::cls`] with the class
+    /// of, in the lock's `role_classes`.
+    pub role: String,
+    /// Its type, [`Val::ty`].
+    pub ty: Ty,
+    /// Its data class, [`Val::cls`].
+    pub cls: DataClass,
+    /// How it is known: the level of its type, the weakest wrapper deciding
+    /// ([`crate::reports::known`]).
+    pub known: Level,
+}
+
+/// 0.7: what the typing of a program gave each field of its reports, by the
+/// path of the field's value (`/defs/W/body/i/fields/j/value`). The pass
+/// that checks a workflow fills it ([`static_check_shown`]); the attention
+/// facts read it (`crate::attention`).
+pub type Shown = HashMap<String, ShownField>;
 
 impl TypeEnv for Checker<'_> {
     fn type_def(&self, name: &str) -> Option<&Value> {
@@ -533,6 +676,68 @@ pub fn static_check(
         Some(p) => Checker::new(p, &defs, spans, claim).run(),
         None => Vec::new(),
     }
+}
+
+/// [`static_check`], and what its typing gave each field of a report of
+/// 0.7 and the attention bound of each workflow ([`Typing`]): the one pass,
+/// whose diagnostics are those of [`static_check`], and what it typed on the
+/// way.
+#[must_use]
+pub fn static_check_shown(
+    program: Program<'_>,
+    spans: Option<&Spans>,
+    linked: Option<&Map>,
+    claim: Option<&Value>,
+) -> (Vec<Diagnostic>, Typing) {
+    static_check_from(program, spans, linked, claim, &[])
+}
+
+/// [`static_check_shown`], told the module each definition of another
+/// module comes from (`origin`, [`crate::modules::Linked::origin`]): a
+/// diagnostic of 0.7 that a definition of another module gives is reported
+/// where the program reaches it, and names the module (E1501, E0502, E1907).
+pub(crate) fn static_check_from(
+    program: Program<'_>,
+    spans: Option<&Spans>,
+    linked: Option<&Map>,
+    claim: Option<&Value>,
+    origin: &[(String, String)],
+) -> (Vec<Diagnostic>, Typing) {
+    let (canonical_program, defs) = canonical_parts(program, linked);
+    match Program::of(&canonical_program) {
+        Some(p) => {
+            let mut checker = Checker::new(p, &defs, spans, claim);
+            checker.origin = origin.iter().cloned().collect();
+            checker.run_passes();
+            (
+                checker.out,
+                Typing {
+                    shown: checker.shown,
+                    bounds: checker.bounds,
+                },
+            )
+        }
+        None => (Vec::new(), Typing::default()),
+    }
+}
+
+/// The static nodes each workflow of `program` expands to: `countNodes` of
+/// its body, which E0105 holds to `LIMITS.expandedNodes`, by the workflow's
+/// name in the order of the canonical program. `linked` is as for
+/// [`static_check`]. What a test compares where no count is over the limit,
+/// and so in no diagnostic (a stage of 0.7 counts as none).
+#[must_use]
+pub fn workflow_nodes(program: Program<'_>, linked: Option<&Map>) -> Vec<(String, f64)> {
+    let (canonical_program, defs) = canonical_parts(program, linked);
+    let Some(p) = Program::of(&canonical_program) else {
+        return Vec::new();
+    };
+    let mut checker = Checker::new(p, &defs, None, None);
+    checker.find_recursion();
+    p.definitions()
+        .filter(|(_, d)| d.kind() == Some(DefKind::Workflow))
+        .map(|(name, d)| (name.to_owned(), checker.count_nodes(d.body(), &[])))
+        .collect()
 }
 
 /// `checker(program, …)` of `static.ts`: the canonical program, and the
@@ -622,6 +827,16 @@ impl<'a> Checker<'a> {
             recursive: HashSet::new(),
             leads: Vec::new(),
             verified: HashMap::new(),
+            shown: HashMap::new(),
+            report_floor: None,
+            asked: HashMap::new(),
+            bounds: Vec::new(),
+            handed_calls: Vec::new(),
+            fn_result: HashMap::new(),
+            returning: Vec::new(),
+            origin: HashMap::new(),
+            muted: 0,
+            reviewed: HashMap::new(),
         }
     }
 
@@ -663,6 +878,22 @@ impl<'a> Checker<'a> {
 
     /// The sink: `report(code, message, path, facts)`, with the nearest span.
     pub(crate) fn report(
+        &mut self,
+        code: &str,
+        message: impl Into<String>,
+        path: &str,
+        facts: Option<JsObject>,
+    ) {
+        if self.muted > 0 {
+            return;
+        }
+        self.report_through(code, message, path, facts);
+    }
+
+    /// [`Checker::report`], also while the checks type a definition of
+    /// another module for what the program reaches there
+    /// ([`Checker::muted`]): a diagnostic at `path`, in the program's text.
+    pub(crate) fn report_through(
         &mut self,
         code: &str,
         message: impl Into<String>,
@@ -745,6 +976,145 @@ impl<'a> Checker<'a> {
             let usages = w.usages.borrow().clone();
             self.reach(&w.name, w.max, &usages);
         }
+        // 0.7: what the program reaches in another module's contracts and
+        // functions, typed for what its questions ask there (E1501), and
+        // then the attention bound of each workflow, once every definition
+        // it may reach is typed (E1906, E1907; `crate::asks`).
+        if self.at_least(Language::V0_7) {
+            self.reached_elsewhere();
+            self.attention_bounds();
+        }
+    }
+
+    /// 0.7: each contract and function of another module that a definition
+    /// of the program reaches by calls and `verify`s, through any number of
+    /// others, typed as a definition of the program is, with everything
+    /// but what [`Checker::report_through`] reports muted: a question there
+    /// is one of this program's, whatever language its module is written
+    /// in, and the role it names is held as a role the program names
+    /// (E1501, reported where the program reaches it). Functions of the
+    /// program, and those of other modules it calls, are typed already.
+    fn reached_elsewhere(&mut self) {
+        let program = self.program;
+        let mut queue: Vec<&'a str> = Vec::new();
+        for (_, d) in program.definitions() {
+            self.callees_in(d.value(), &mut queue);
+        }
+        let mut next = 0;
+        while let Some(&u) = queue.get(next) {
+            next = next.saturating_add(1);
+            let Some(d) = self.def(u) else { continue };
+            if !self.is_own(u) {
+                self.muted = self.muted.saturating_add(1);
+                match d.kind() {
+                    Some(DefKind::Contract) => {
+                        self.check_contract(u, d, &ptr(&[&"defs", &u]));
+                    }
+                    Some(DefKind::Fn) => {
+                        self.fn_usages(u);
+                    }
+                    _ => {}
+                }
+                self.muted = self.muted.saturating_sub(1);
+            }
+            self.callees_in(d.value(), &mut queue);
+        }
+    }
+
+    /// Whether `name` is one of the program's own definitions, and none of
+    /// another module's.
+    pub(crate) fn is_own(&self, name: &str) -> bool {
+        self.program.defs().is_some_and(|d| d.get(name).is_some())
+    }
+
+    /// 0.7: where the program's own text reaches `def`, a definition of
+    /// another module: the first call of a function or a workflow, or
+    /// `verify` against a contract, of its definitions (in their order, each
+    /// in the order of its text) whose callee is of another module and is
+    /// `def` or reaches it; else the `use` of `def`'s module; else `def`'s
+    /// own path.
+    pub(crate) fn reaching_site(&self, def: &str) -> String {
+        let program = self.program;
+        for (name, d) in program.definitions() {
+            let mut calls: Vec<(String, &'a str)> = Vec::new();
+            self.reaching_calls(d.value(), &ptr(&[&"defs", &name]), &mut calls);
+            if let Some((at, _)) = calls
+                .into_iter()
+                .find(|(_, callee)| !self.is_own(callee) && self.reaches(callee, def))
+            {
+                return at;
+            }
+        }
+        let module = self.origin.get(def);
+        match program
+            .imports()
+            .position(|u| module.is_some_and(|m| u.module() == Some(m.as_str())))
+        {
+            Some(i) => format!("/uses/{i}"),
+            None => ptr(&[&"defs", &def]),
+        }
+    }
+
+    /// The calls and `verify`s [`Checker::callees_in`] finds in `v`, each
+    /// with its path (`v` is at `path`), in the order of the text.
+    fn reaching_calls(&self, v: &'a Value, path: &str, out: &mut Vec<(String, &'a str)>) {
+        match v {
+            Value::Array(items) => {
+                for (i, x) in items.iter().enumerate() {
+                    self.reaching_calls(x, &format!("{path}/{i}"), out);
+                }
+            }
+            Value::Object(m) => {
+                let mut one: Vec<&'a str> = Vec::new();
+                self.callee_of(v, &mut one);
+                if let Some(c) = one.first() {
+                    out.push((path.to_owned(), c));
+                }
+                for (k, x) in m.iter() {
+                    self.reaching_calls(x, &format!("{path}/{}", mandate_ir::ptr_token(k)), out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Whether `from` is `to`, or reaches it by calls and `verify`s.
+    fn reaches(&self, from: &'a str, to: &str) -> bool {
+        let mut seen: Vec<&'a str> = Vec::new();
+        let mut stack: Vec<&'a str> = vec![from];
+        while let Some(u) = stack.pop() {
+            if u == to {
+                return true;
+            }
+            if seen.contains(&u) {
+                continue;
+            }
+            seen.push(u);
+            if let Some(d) = self.def(u) {
+                self.callees_in(d.value(), &mut stack);
+            }
+        }
+        false
+    }
+
+    /// 0.7: for a diagnostic of a definition of another module at `path`,
+    /// where the program reaches it and what names it. `None` for a path in
+    /// the program's own definitions, or before 0.7.
+    pub(crate) fn elsewhere(&self, path: &str) -> Option<Elsewhere> {
+        if !self.at_least(Language::V0_7) {
+            return None;
+        }
+        let token = path.strip_prefix("/defs/")?.split('/').next()?;
+        let def = token.replace("~1", "/").replace("~0", "~");
+        if self.is_own(&def) || self.def(&def).is_none() {
+            return None;
+        }
+        Some(Elsewhere {
+            site: self.reaching_site(&def),
+            module: self.origin.get(&def).cloned(),
+            at: path.to_owned(),
+            def,
+        })
     }
 
     /// 0.6: E1307 for a workflow that still applies a pattern when the
@@ -858,7 +1228,26 @@ impl<'a> Checker<'a> {
         let frame = self.fn_frame(name, d);
         let base = ptr(&[&"defs", &name]);
         let at = sub(&base, "body");
-        self.body(d.body(), &frame, &at, true);
+        // 0.7: a function's body is typed once, wherever it is first
+        // called; what it holds lowers no floor of the expression that
+        // calls it, whose value is of the function's declared type.
+        let floor = self.report_floor.take();
+        // 0.6 and later: what it returns is recorded, of its class and (read
+        // in 0.7 only) how it is known ([`Checker::fn_result`]).
+        let returns = self.at_least(Language::V0_6);
+        if returns {
+            self.returning.push((DataClass::Public, Level::Verified));
+        }
+        let last = self.body(d.body(), &frame, &at, true);
+        if returns {
+            let (c, l) = self
+                .returning
+                .pop()
+                .unwrap_or((DataClass::Public, Level::Verified));
+            let returned = (c.max(last.cls), weaker_level(l, self.level_of(&last)));
+            self.fn_result.insert(name.to_owned(), returned);
+        }
+        self.report_floor = floor;
         let usages = frame.usages();
         self.fn_declared(name, d, &base, &usages);
         self.fn_usage
@@ -911,6 +1300,8 @@ impl<'a> Checker<'a> {
     fn check_contract(&mut self, name: &str, d: Definition<'a>, base: &str) {
         // 0.6: what a person approves is never waived (E1504).
         self.check_waivers(name, d, base);
+        // 0.7: a method name the runtime keeps for its own records (E1509).
+        self.check_reserved_methods(name, d, base);
         let mut frame = self.body_frame(Where::Contract, name, d.params(), None, None);
         for (i, r) in d.require().iter().enumerate() {
             let at = format!("{base}/require/{i}");
@@ -1037,24 +1428,123 @@ impl<'a> Checker<'a> {
         for (n, _) in &calls {
             visit(n, &mut Vec::new(), &calls, &mut state, &mut found);
         }
+        self.recursion_found(found);
+        // 0.7: a cycle may go through a contract too: a `verify` runs its
+        // contract's `require`, criteria and verifiers' arguments, which may
+        // call a function that verifies against it again. Each such cycle
+        // is refused as one of calls is; a cycle of functions and workflows
+        // alone was found above, as before 0.7.
+        if self.at_least(Language::V0_7) {
+            let mut graph: Vec<(&'a str, Vec<&'a str>)> = Vec::new();
+            for (name, d) in defs.iter() {
+                let kind = Definition::of(d).kind();
+                if !matches!(
+                    kind,
+                    Some(DefKind::Fn | DefKind::Workflow | DefKind::Contract)
+                ) {
+                    continue;
+                }
+                let mut set: Vec<&'a str> = Vec::new();
+                let parts: Vec<&'a Value> = match kind {
+                    Some(DefKind::Contract) => ["require", "accept", "invariant"]
+                        .iter()
+                        .filter_map(|k| d.get(k))
+                        .collect(),
+                    _ => d.get("body").into_iter().collect(),
+                };
+                for part in parts {
+                    self.callees_in(part, &mut set);
+                }
+                graph.push((name, set));
+            }
+            let mut state: HashMap<&'a str, bool> = HashMap::new();
+            let mut through: Vec<(Vec<&'a str>, &'a str)> = Vec::new();
+            for (n, _) in &graph {
+                visit(n, &mut Vec::new(), &graph, &mut state, &mut through);
+            }
+            through.retain(|(cycle, _)| {
+                cycle
+                    .iter()
+                    .any(|c| self.def_of(c, DefKind::Contract).is_some())
+            });
+            self.recursion_found(through);
+        }
+    }
+
+    /// The functions, workflows and (0.7) contracts `v` calls or verifies
+    /// against, each once, in order.
+    fn callees_in(&self, v: &'a Value, out: &mut Vec<&'a str>) {
+        match v {
+            Value::Array(items) => {
+                for x in items {
+                    self.callees_in(x, out);
+                }
+            }
+            Value::Object(m) => {
+                self.callee_of(v, out);
+                for (_, x) in m.iter() {
+                    self.callees_in(x, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The function or workflow the expression `v` calls, or the contract
+    /// it verifies against, onto `out` (as the definition's own key) unless
+    /// it is there already; nothing for any other node.
+    fn callee_of(&self, v: &'a Value, out: &mut Vec<&'a str>) {
+        let Some(e) = Expr::of(v) else { return };
+        let callee = match e.op() {
+            Some(ExprOp::Call) => e
+                .callee()
+                .filter(|c| c.is(ExprOp::Var))
+                .and_then(Expr::name)
+                .filter(|n| {
+                    self.def(n)
+                        .is_some_and(|t| matches!(t.kind(), Some(DefKind::Fn | DefKind::Workflow)))
+                }),
+            Some(ExprOp::Verify) => e
+                .contract()
+                .filter(|c| self.def_of(c, DefKind::Contract).is_some()),
+            _ => None,
+        };
+        if let Some(c) = callee
+            && let Some((key, _)) = self.defs.iter().find(|(k, _)| *k == c)
+            && !out.contains(&key)
+        {
+            out.push(key);
+        }
+    }
+
+    /// E0502 for each cycle `found`, every name on it marked `recursive`.
+    fn recursion_found(&mut self, found: Vec<(Vec<&'a str>, &'a str)>) {
         for (cycle, n) in found {
             for c in &cycle {
                 self.recursive.insert((*c).to_owned());
             }
             let mut shown: Vec<&str> = cycle.clone();
             shown.push(n);
-            self.report(
-                "E0502",
-                format!(
-                    "Recursive call cycle {}; static node and budget bounds need an acyclic call graph.",
-                    shown.join(" → ")
-                ),
-                &ptr(&[&"defs", &n]),
-                Some(JsObject::new().with(
-                    "cycle",
-                    cycle.iter().map(|c| JsValue::from(*c)).collect::<Vec<_>>(),
-                )),
+            let message = format!(
+                "Recursive call cycle {}; static node and budget bounds need an acyclic call graph.",
+                shown.join(" → ")
             );
+            let facts = JsObject::new().with(
+                "cycle",
+                cycle.iter().map(|c| JsValue::from(*c)).collect::<Vec<_>>(),
+            );
+            let at = ptr(&[&"defs", &n]);
+            // 0.7: a cycle in another module's definitions is reported where
+            // the program reaches it, with the definition and its module.
+            match self.elsewhere(&at) {
+                Some(e) => self.report(
+                    "E0502",
+                    format!("{message}{}", e.said()),
+                    &e.site,
+                    Some(e.facts(facts)),
+                ),
+                None => self.report("E0502", message, &at, Some(facts)),
+            }
         }
     }
 
@@ -1181,6 +1671,19 @@ impl<'a> Checker<'a> {
         for (i, s) in stmts.iter().enumerate() {
             let path = sub_n(base, i);
             let s = Stmt::of(s);
+            // 0.7: a stage is no statement of the block's value: what is
+            // before it and after it is as if it were not there (an `on
+            // error` never follows one, E1902).
+            if s.is_some_and(|s| s.op() == Some(StmtOp::Stage)) {
+                continue;
+            }
+            // 0.7: a report is typed, and is no statement of the block's
+            // value either: it changes no value of the run (an `on error`
+            // never follows one, E1905).
+            if let Some(s) = s.filter(|s| s.op() == Some(StmtOp::Report)) {
+                self.report_stmt(s, &mut frame, &path);
+                continue;
+            }
             if let Some(s) = s.filter(|s| s.op() == Some(StmtOp::OnError)) {
                 self.after_error(s, &mut frame, &path, &mut last, bound);
                 continue;
@@ -1255,7 +1758,13 @@ impl<'a> Checker<'a> {
             .enumerate()
             .rev()
             .filter_map(|(i, s)| Some((i, Stmt::of(s)?)))
-            .find(|(_, s)| !typed || s.op() != Some(StmtOp::OnError));
+            .find(|(_, s)| {
+                !typed
+                    || !matches!(
+                        s.op(),
+                        Some(StmtOp::OnError | StmtOp::Stage | StmtOp::Report)
+                    )
+            });
         let last_index = stmts.len().checked_sub(1);
         let Some((i, tail)) = tail.filter(|(i, _)| typed || Some(*i) == last_index) else {
             return;
@@ -1265,7 +1774,18 @@ impl<'a> Checker<'a> {
             Some(StmtOp::Expr) => self.expect_val(last, &returns, &sub(&at, "value")),
             Some(StmtOp::Let) if typed => self.expect_val(last, &returns, &sub(&at, "value")),
             Some(StmtOp::If | StmtOp::Loop) if typed => self.expect_val(last, &returns, &at),
-            _ => {}
+            Some(
+                StmtOp::Let
+                | StmtOp::If
+                | StmtOp::Loop
+                | StmtOp::Par
+                | StmtOp::Return
+                | StmtOp::OnError
+                | StmtOp::Run
+                | StmtOp::Stage
+                | StmtOp::Report,
+            )
+            | None => {}
         }
     }
 
@@ -1293,7 +1813,73 @@ impl<'a> Checker<'a> {
                 None
             }
             Some(StmtOp::Expr) => Some(self.expr_or_unknown(s.value(), frame, &sub(path, "value"))),
-            None => None,
+            // 0.7: a report's fields are typed, each held to a type a
+            // person can be shown (E1904); it has no value, binds nothing
+            // and opens no scope. Where it stands, its title and what its
+            // fields may hold are `crate::reports`' (E1903 to E1905).
+            Some(StmtOp::Report) => {
+                self.report_stmt(s, frame, path);
+                None
+            }
+            // 0.7: a stage has no value, binds nothing and opens no scope;
+            // where it stands and what it is named are E1901 and E1902
+            // (`crate::stages`).
+            Some(StmtOp::Stage) | None => None,
+        }
+    }
+
+    /// 0.7: a `report` (spec/attention.md "`report`"): each field's value
+    /// typed in `frame`, as every expression is, and held to a type a person
+    /// can be shown (E1904, [`crate::reports::not_shown`]). What the typing
+    /// gives of each field, its type and its data class, is kept by the
+    /// field's path ([`Checker::shown`]): the attention facts read it there
+    /// ([`crate::attention`]), so that what a person is told of a field is
+    /// what this pass found, and nothing computed a second way.
+    fn report_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+        let role = s.role().unwrap_or_default();
+        let title = s.title().unwrap_or_default();
+        for (i, f) in s.fields().iter().enumerate() {
+            let Some(f) = mandate_ir::ReportField::of(f) else {
+                continue;
+            };
+            let at = format!("{path}/fields/{i}/value");
+            // The weakest level of what the field is made of: from
+            // verified up, lowered by each value typed for it.
+            let outer = self.report_floor.replace(Level::Verified);
+            let v = self.expr_or_unknown(f.value(), frame, &at);
+            let floor = std::mem::replace(&mut self.report_floor, outer);
+            if let Some(why) = crate::reports::not_shown(&v.ty, self) {
+                let name = f.name().unwrap_or_default();
+                let shown = crate::ty::show(&v.ty);
+                self.report(
+                    "E1904",
+                    format!(
+                        "Field '{name}' of the report \"{title}\" to {role} is of type {shown}, which a person is not shown: {why}. A field is of a type a person can read: Int, Dec, Bool, Text, Money, Duration, Time, an enum, an Option or a List of one of these, or a record of these one level deep, each of them optionally inside Verified, Inferred or Untrusted (spec/attention.md \"report\")."
+                    ),
+                    &at,
+                    Some(
+                        JsObject::new()
+                            .with("role", role)
+                            .with("field", name)
+                            .with("problem", "type")
+                            .with("type", shown.as_str()),
+                    ),
+                );
+            }
+            let typed = self.level_of(&v);
+            let known = match floor {
+                Some(f) if crate::ty::level_rank(f) > crate::ty::level_rank(typed) => f,
+                _ => typed,
+            };
+            self.shown.insert(
+                at,
+                ShownField {
+                    role: role.to_owned(),
+                    ty: v.ty,
+                    cls: v.cls,
+                    known,
+                },
+            );
         }
     }
 
@@ -1403,6 +1989,13 @@ impl<'a> Checker<'a> {
         let v = self.expr_or_unknown(s.value(), frame, &at);
         if let (Some(returns), Some(_)) = (frame.returns.clone(), s.value()) {
             self.expect_val(&v, &returns, &at);
+        }
+        // 0.6 and later: what a function returns ([`Checker::fn_result`]).
+        if frame.where_ == Where::Fn && s.value().is_some() && self.at_least(Language::V0_6) {
+            let level = self.level_of(&v);
+            if let Some(top) = self.returning.last_mut() {
+                *top = (top.0.max(v.cls), weaker_level(top.1, level));
+            }
         }
     }
 
@@ -1606,10 +2199,16 @@ impl<'a> Checker<'a> {
     /// statement each, a loop's body `max_iter` times, an `if`'s two
     /// blocks, a delegation, effect, inference, verification, map or plan
     /// each, and the body of every function it calls that is not on a
-    /// cycle (once per call, so a diamond of calls counts each path).
+    /// cycle (once per call, so a diamond of calls counts each path). A
+    /// stage and a report of 0.7 are no nodes: neither counts toward any
+    /// limit, and a report's pure fields hold nothing that would
+    /// (spec/attention.md "`stage`", "`report`").
     pub(crate) fn count_nodes(&self, stmts: &'a [Value], seen: &[&'a str]) -> f64 {
         let mut n = 0.0;
         for s in stmts.iter().filter_map(Stmt::of) {
+            if matches!(s.op(), Some(StmtOp::Stage | StmtOp::Report)) {
+                continue;
+            }
             n += 1.0;
             match s.op() {
                 Some(StmtOp::Loop) => {
@@ -1620,7 +2219,17 @@ impl<'a> Checker<'a> {
                     n += self.count_nodes(s.then_block(), seen)
                         + self.count_nodes(s.else_block().unwrap_or_default(), seen);
                 }
-                _ => {}
+                Some(
+                    StmtOp::Let
+                    | StmtOp::Par
+                    | StmtOp::Return
+                    | StmtOp::OnError
+                    | StmtOp::Run
+                    | StmtOp::Expr
+                    | StmtOp::Stage
+                    | StmtOp::Report,
+                )
+                | None => {}
             }
             walk_stmt_exprs(
                 s,

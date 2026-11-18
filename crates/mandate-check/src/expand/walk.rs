@@ -13,7 +13,7 @@
 
 use std::rc::Rc;
 
-use mandate_ir::{Pattern, PatternKind, Value, ptr_token};
+use mandate_ir::{Pattern, PatternKind, StmtOp, Value, ptr_token};
 
 use crate::caps::callee_path;
 
@@ -165,17 +165,17 @@ impl Walk {
         let mut scope = Rc::clone(scope);
         for (i, s) in stmts.iter().enumerate() {
             let at = format!("{path}/{i}");
-            let op = s.get("op").and_then(Value::as_str);
+            let op = s.get("op").and_then(StmtOp::from_value);
             self.node(s, &at, &scope, false);
             let mut bound: Vec<String> = Vec::new();
             match op {
-                Some("let") => {
+                Some(StmtOp::Let) => {
                     if let Some(n) = s.get("name").and_then(Value::as_str) {
                         self.found(Named::Bind(n.to_owned()), sub(&at, "name"), false);
                         bound.push(n.to_owned());
                     }
                 }
-                Some("par") => {
+                Some(StmtOp::Par) => {
                     for (n, _) in s
                         .get("branches")
                         .and_then(Value::as_object)
@@ -186,7 +186,20 @@ impl Walk {
                         bound.push(n.to_owned());
                     }
                 }
-                _ => {}
+                // Bind nothing for what follows; a stage and a report of
+                // 0.7 open no scope either (spec/attention.md "`stage`",
+                // "`report`").
+                Some(
+                    StmtOp::If
+                    | StmtOp::Loop
+                    | StmtOp::Return
+                    | StmtOp::OnError
+                    | StmtOp::Run
+                    | StmtOp::Expr
+                    | StmtOp::Stage
+                    | StmtOp::Report,
+                )
+                | None => {}
             }
             if !bound.is_empty() {
                 scope = Scope::child(&scope, bound);
@@ -517,6 +530,25 @@ impl Walk {
                             }
                         }
                         _ => self.node(x, &sub(path, k), scope, false),
+                    }
+                }
+                return;
+            }
+            // 0.7: a stage names nothing: its name is no reference and its
+            // title is text (spec/attention.md "`stage`").
+            "stage" => return,
+            // 0.7: a report names what its fields' expressions name. Its
+            // role is one of the pattern's role slots, which E1903 holds it
+            // to (`crate::reports`), and no name the walk follows; its title
+            // is text, and a field's name binds nothing.
+            "report" => {
+                let fields = v
+                    .get("fields")
+                    .and_then(Value::as_array)
+                    .unwrap_or_default();
+                for (i, f) in fields.iter().enumerate() {
+                    if let Some(x) = f.get("value") {
+                        self.node(x, &format!("{path}/fields/{i}/value"), scope, false);
                     }
                 }
                 return;

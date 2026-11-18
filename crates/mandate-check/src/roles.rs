@@ -16,8 +16,8 @@
 
 use mandate_ir::{
     Arg, Criterion, DefKind, Definition, Diagnostic, Expr, ExprOp, JsObject, JsValue, Language,
-    Location, Map, Program, Repair, RepairOp, RepairOpKind, Risk, Spans, Tier, TierBy, Value,
-    Verifier, VerifierForm, compare_utf16, nearest_span, ptr, ptr_token, sort_utf16,
+    Location, Map, Program, Repair, RepairOp, RepairOpKind, Risk, Spans, StmtOp, Tier, TierBy,
+    Value, Verifier, VerifierForm, compare_utf16, nearest_span, ptr, ptr_token, sort_utf16,
 };
 
 use crate::caps::callee_path;
@@ -168,6 +168,12 @@ impl Sites {
                 }
             }
         }
+        // 0.7: a report names the role it is addressed to, as a name
+        // (spec/attention.md "`report`"). No IR before 0.7 has one, so the
+        // sites of an older program are what they were.
+        if let Some(s) = mandate_ir::Stmt::of(v).filter(|s| s.op() == Some(StmtOp::Report)) {
+            self.text(s.role(), format!("{path}/role"), "a report");
+        }
         // `sup && typeof sup === "object" && sup.name === "escalate"`.
         if let Some(sup) = o.get("supervise")
             && sup.get("name").and_then(Value::as_str) == Some("escalate")
@@ -197,7 +203,10 @@ impl Sites {
 /// (by UTF-16 code units, stably): a component's owner, an environment's
 /// authorization, an envelope's owner and approvals, a change set's
 /// approvers, `human.approve`, `human.ask`, `escalate human(…)` and
-/// `supervise escalate(human, …)`: `roleSites(defs)`.
+/// `supervise escalate(human, …)`: `roleSites(defs)`; and, in 0.7, the
+/// role a `report` is addressed to ("a report") and a workflow's `owner`
+/// ("a workflow's owner"), which no IR before 0.7 has, so that the sites of
+/// an older program are the TypeScript's.
 #[must_use]
 pub fn role_sites(defs: &Map) -> Vec<RoleSite> {
     let mut s = Sites {
@@ -230,6 +239,13 @@ pub fn role_sites(defs: &Map) -> Vec<RoleSite> {
                 }
             }
             Some(DefKind::Workflow) => {
+                // 0.7: the workflow's own owner, written out or applying a
+                // pattern (spec/attention.md "`owner`"). No IR before 0.7
+                // has one, so the sites of an older program are what they
+                // were.
+                if d.members().is_some_and(|m| m.contains_key("owner")) {
+                    s.text(d.owner(), format!("{base}/owner"), "a workflow's owner");
+                }
                 if let Some(env) = d.envelope() {
                     if env.members().contains_key("owner") {
                         s.text(
@@ -311,9 +327,21 @@ pub fn role_sites_of(defs: &Map, language: Option<Language>) -> Vec<RoleSite> {
 /// expansion, so that it names the roles its body asks, as the same workflow
 /// written out does (`crate::expand::expanded_program`); one whose pattern
 /// the definitions do not hold names none until it is expanded.
+///
+/// The door gives the definitions alone, with no program's language: they
+/// are expanded as a program of the newest version ([`Language::NEWEST`]),
+/// which reads every construct a definition of any version can hold.
+/// [`roles_named_in`] is the same for definitions of a known language.
 #[must_use]
 pub fn roles_named(defs: &Map) -> Vec<String> {
-    let expanded = expanded_defs(defs);
+    roles_named_in(defs, Language::NEWEST)
+}
+
+/// [`roles_named`] of the definitions of a program of `language`: a workflow
+/// that applies a pattern is expanded as that program's.
+#[must_use]
+pub fn roles_named_in(defs: &Map, language: Language) -> Vec<String> {
+    let expanded = expanded_defs(defs, language);
     let defs = expanded.as_ref().unwrap_or(defs);
     let mut out: Vec<String> = Vec::new();
     for s in role_sites(defs) {
@@ -328,8 +356,9 @@ pub fn roles_named(defs: &Map) -> Vec<String> {
 }
 
 /// The definitions with each workflow that applies a pattern they hold
-/// replaced by its expansion, when one does and every application expands.
-fn expanded_defs(defs: &Map) -> Option<Map> {
+/// replaced by its expansion, when one does and every application expands,
+/// as the definitions of a program of `language`.
+fn expanded_defs(defs: &Map, language: Language) -> Option<Map> {
     if !defs
         .iter()
         .any(|(_, d)| mandate_ir::Application::of_workflow(d).is_some())
@@ -337,7 +366,7 @@ fn expanded_defs(defs: &Map) -> Option<Map> {
         return None;
     }
     let mut program = Map::new();
-    program.insert("language", Language::V0_6.as_str());
+    program.insert("language", language.as_str());
     program.insert("defs", Value::Object(defs.clone()));
     crate::expand::expanded_program(&Value::Object(program), None)?
         .get("defs")?

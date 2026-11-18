@@ -1,0 +1,65 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1906m",
+  "kind": "compile",
+  "title": "if takes the larger branch: one question more in one branch of Asking's if is one more in all (a mutation: the else branch asks twice).",
+  "spec": [
+    "spec/attention.md#the-algebra",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/asks.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Asking/body/6/else/0",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "human"
+            },
+            "name": "ask"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "Really?"
+              }
+            },
+            {
+              "name": "role",
+              "value": {
+                "op": "var",
+                "name": "finance_lead"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1906",
+        "path": "/defs/Asking/budget/asks",
+        "facts": {
+          "workflow": "Asking",
+          "asks": 9,
+          "total": 10
+        }
+      }
+    ]
+  }
+}

@@ -4,15 +4,16 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, capsOf, check, domainHash, hashProgram, isProgram06, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { atLeast, attentionFacts, callableConnectors, capsOf, check, domainHash, hashProgram, isProgram06OrLater, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type AttentionFacts, type Budget07, type Def, type DenialReport, type Json, type LibrariesConfig, type Lock, type Modules, type Program, type WorkflowDef } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters, Cost, EgressNeed, RunComponents, RunMode, ToolAdapter } from "./adapters.js";
 import { Connectors, ConnectorWrite, connectorsOf } from "./connectors.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
+import { ATTENTION_MEDIA_TYPE, factsAtStart, readFacts, type FactsDoor } from "./attention.js";
 import { recordProblem, type AttestationRule } from "./attestation.js";
 import { criterionMethods } from "./criteria.js";
-import { approvalProblem, authorizationId, InvalidDecision, isSignedDecision, payloadOf, roleRefusal, shownRefusal, signerRefusal, storedProblem, type DecisionKind, type Refusal, type Shown, type SignedDecision, type StoredDecision } from "./decisions.js";
+import { approvalProblem, authorizationId, InvalidDecision, isSignedDecision, payloadOf, PROMOTED_FROM, promotionSubject, roleRefusal, shownRefusal, signerRefusal, storedProblem, type DecisionKind, type PromotedMode, type Refusal, type Shown, type SignedDecision, type StoredDecision } from "./decisions.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
 import { RateLimiter, type BucketConfig } from "./ratelimit.js";
 import type { Db, Row, Tx } from "./db.js";
@@ -20,20 +21,58 @@ import { Faults } from "./faults.js";
 import { checkFitness, systemProbe, type HostProbe } from "./fitness.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
-import { costDims, haltedRefusal, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
+import { claimRunStarts, costDims, haltedRefusal, Journal, limitDims, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
+import { ASKS, asksLimit, boundUnder } from "./asks.js";
+import { authorizerBelowClass, authorizerBelowText } from "./mask.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
-import { buildPackage, isPackage06, isSigned04, libraryModules, refuseReference06, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
+import { buildPackage, isPackage06OrLater, isPackage07OrLater, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
+import { escalationRefused, tickOpenWaits } from "./tick.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { givenValueProblem, listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
 import { canonical, digest, isObj, type Obj, type Value } from "./values.js";
+import { listWaits, watchRun, type WaitItem, type Watched } from "./watch.js";
+import type { Audience } from "./classes.js";
+import { shadowDiff } from "./views.js";
 
 export type { Lock };
 export { buildPackage, isSigned04, notRunYet, RUNTIME_LANGUAGES, verifyPackage, type Package } from "./package.js";
 
-/** The roles that own an envelope in a program: who may approve its package. */
-function envelopeOwners(program: Program): Set<string> {
-  return new Set(Object.values(program.defs).flatMap((d) => (d.kind === "workflow" && d.envelope?.owner !== undefined ? [d.envelope.owner] : [])));
+/**
+ * The roles that own a workflow's card in a program: who may approve its package. An envelope's `owner` (0.4), and
+ * (0.7) a workflow's own `owner`; `running`, the running program, adds what its expansions keep of each.
+ */
+function envelopeOwners(program: Program, running?: Program): Set<string> {
+  const defs = [...Object.values(program.defs), ...Object.keys(program.defs).flatMap((n) => (running && Object.hasOwn(running.defs, n) ? [running.defs[n]!] : []))];
+  return new Set(defs.flatMap((d) => (d.kind === "workflow" && workflowOwner(d) !== undefined ? [workflowOwner(d)!] : [])));
+}
+
+/**
+ * The one maker of the starts `Journal.createRun` takes, claimed when this module loads and kept here: only
+ * `Runtime.startRun` makes one, after the card and the ladder, so no other code can create a run (spec/attention.md
+ * "Promotion"). Not exported.
+ */
+const runStart = claimRunStarts();
+
+/**
+ * The role that approves a workflow's card and signs its promotions (spec/attention.md "`owner`", "Card approval",
+ * "Promotion"): the workflow's own `owner` (0.7), or else its envelope's `owner` (0.4); none for a workflow with
+ * neither, or for what is not a workflow.
+ */
+export function workflowOwner(d: Def | undefined): string | undefined {
+  if (d?.kind !== "workflow") return undefined;
+  const own = (d as unknown as { owner?: unknown }).owner;
+  return typeof own === "string" ? own : d.envelope?.owner;
+}
+
+/** What a run that starts under a promotion records of it: its manifest's `promotion`, and its `promotion_accepted`. */
+interface Promoted {
+  decision: string;
+  member: string;
+  role: string;
+  key: string;
+  from: { run: string; mode: string };
+  to: PromotedMode;
 }
 
 /**
@@ -178,7 +217,7 @@ export const EXPANDED_MEDIA_TYPE = "application/vnd.mandate.expanded+json";
 const CONNECTOR_STOPS = ["tool_schema_mismatch", "connector_protocol", "egress_denied", "no_egress_for_connector", "bad_connector"] as const;
 
 /** What stops a run at its resume for a person, as `attention_required`, rather than being thrown at the caller. */
-const STOPS_AT_RESUME = new Set(["library_revoked", "expansion_mismatch", ...CONNECTOR_STOPS]);
+const STOPS_AT_RESUME = new Set(["library_revoked", "expansion_mismatch", "facts_mismatch", ...CONNECTOR_STOPS]);
 
 /** The violation limit of a 0.5 package's run when the configuration names none. */
 export const VIOLATION_LIMIT = 3;
@@ -202,6 +241,13 @@ class Refused extends Error {
 }
 
 /** A package as a run uses it: the linked program, the lock, and whether its decisions must be signed. */
+/** A package as it is: its hash, its program and the modules it links, what the compiler is asked which connectors it can call of. */
+interface PackageSource {
+  hash: string;
+  program: Program;
+  modules: Modules;
+}
+
 interface Loaded {
   program: Program;
   lock: Lock;
@@ -209,6 +255,8 @@ interface Loaded {
   /** The program and its modules as they were packaged: what a sub-program is checked and linked against. */
   source: Program;
   modules: Modules;
+  /** The package holds anything of 0.7 or later (`isPackage07OrLater` of the program and modules as stored). */
+  package07: boolean;
 }
 
 export class Runtime {
@@ -237,6 +285,13 @@ export class Runtime {
   private readonly packages = new Map<string, Package>();
   /** The modules of a stored package's libraries, as loaded again from their text, by package hash. */
   private readonly linkingCache = new Map<string, Modules>();
+  /** The connectors a package of 0.7 can call, by package hash (callableOf). */
+  private readonly callableCache = new Map<string, ReadonlySet<string>>();
+  /**
+   * 0.7: the compiler's door of the attention facts, which a run's start asks, and nothing after it (attention.ts). A
+   * seam: a test stands another in for it, to show that a resume and a replay read what the start stored.
+   */
+  attentionFacts: FactsDoor = attentionFacts;
 
   constructor(
     readonly db: Db,
@@ -286,12 +341,27 @@ export class Runtime {
     // applies a pattern): never one the program only imports.
     const wf = Object.hasOwn(o.pkg.program.defs, o.workflow) && Object.hasOwn(verified.running.defs, o.workflow) ? verified.running.defs[o.workflow] : undefined;
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
+    // 0.7: the attention facts of the workflow, asked of the compiler with what the check at load was given, which the
+    // run stores and reads from then on (spec/attention.md "The stored facts"). None given refuses the start.
+    const facts = verified.facts ? factsAtStart(this.attentionFacts, verified.facts, o.workflow) : undefined;
+    // 0.7: the run's `asks` limit, and the bound under the runtime's configuration it is held to (asks.ts).
+    const asks = this.asksAtStart(o, wf, facts?.facts);
+    // 0.7: an authorization the runtime's configuration hands to another role than the program names is held to that
+    // role's cap, as E1909 holds the role the program names: one that would ask it to decide on data above its cap
+    // refuses the start before anything is written (spec/attention.md "Effects and the runtime's configuration").
+    const below = facts ? authorizerBelowClass(facts.facts, o.authorize, o.pkg.lock, wf.envelope?.approve) : undefined;
+    if (below) {
+      throw new Violation(
+        "authorizer_below_class",
+        `${authorizerBelowText(below)}: the run does not start. Raise the class of ${below.role} in the lock, or hand the effect to a role whose class covers it (spec/attention.md "Effects and the runtime's configuration").`,
+      );
+    }
     const linked = verified.running;
     // The input is a value of the workflow's parameter types, as a model's answer is of its type: a Path in it keeps the Path rule (K68).
     const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
     // 0.6: what a run is started with holds none of the members the runtime's own values are known by, at any depth,
     // as a person's answer holds none: a Verified value is made by a verify of the run, never handed in.
-    const given = isPackage06(o.pkg) ? givenValueProblem(input) : undefined;
+    const given = isPackage06OrLater(o.pkg) ? givenValueProblem(input) : undefined;
     if (given) throw new Violation(given.reason, `The input of ${o.workflow} is not taken. ${given.message}`);
     for (const p of wf.params) {
       if (!Object.hasOwn(input, p.name)) continue;
@@ -308,10 +378,11 @@ export class Runtime {
     }
     // 0.6: the connectors the package can call, bound by its lock. A run that reaches their servers (`read_only`,
     // `live`) starts only where their requests have a way out, and the proxy is asked for their credentials too.
-    const connectors = isPackage06(o.pkg) ? this.connectorsFor(linked, o.pkg.lock, this.adapters) : undefined;
+    const connectors = isPackage06OrLater(o.pkg) ? this.connectorsFor(linked, o.pkg.lock, this.adapters, { hash: o.pkg.hash, program: o.pkg.program, modules: verified.modules }) : undefined;
     // Every declared tool is bound now, in every mode: one that cannot be (`bad_connector`) starts nothing.
     connectors?.bindAll();
-    const reaches = connectors !== undefined && (o.mode ?? "live") !== "design" ? connectors : undefined;
+    // 0.7: a package whose connectors none can be called binds none, and needs no way out for them.
+    const reaches = connectors?.any && (o.mode ?? "live") !== "design" ? connectors : undefined;
     if (reaches) {
       if (!this.adapters.connectors) {
         throw new Violation("no_egress_for_connector", `The package can call ${reaches.names().join(", ")}; a connector's requests leave only through the egress proxy, and this runtime's configuration names none (egress.admin).`);
@@ -319,19 +390,24 @@ export class Runtime {
       need.connectors = reaches.credentials();
     }
     // A batch commit step is authorized by policy, never by a person: a policy that hands a person an effect a map's body commits starts nothing.
-    if (isPackage06(o.pkg)) refusePersonInMap(wf, o.authorize);
+    if (isPackage06OrLater(o.pkg)) refusePersonInMap(wf, o.authorize);
     await this.adapters.egress?.ready(need);
     await this.validateBindings(linked, o.workflow);
     await this.validateExecutor(o.pkg);
-    // A workflow with an envelope starts only once a member of its owner role approved this package (H03).
-    const approval = wf.envelope ? await this.envelopeApproval(o.pkg, o.workflow, wf.envelope) : undefined;
+    // A workflow with an envelope starts only once a member of its owner role approved this package (H03); so does,
+    // in any mode, a workflow of 0.7 with an `owner` (spec/attention.md "Card approval").
+    const owner = workflowOwner(wf) ?? workflowOwner(o.pkg.program.defs[o.workflow]);
+    const approval = wf.envelope || owner !== undefined ? await this.envelopeApproval(o.pkg, o.workflow, wf.envelope ? wf.envelope.owner : owner) : undefined;
     const approved = approval ? { package: o.pkg.hash, member: approval.record.member, role: approval.record.role ?? null, key: approval.record.key, decision: approval.decision_id } : undefined;
+    // 0.7: with `promotion: "required"` in the lock, a run of `read_only` or `live` starts only under a promotion
+    // that holds (spec/attention.md "Promotion"); the card is approved first.
+    const promoted = await this.promotionAtStart(o.pkg, o.workflow, o.mode ?? "live", owner);
     // 0.6: what the run runs, so that a remote agent or a component a library or an expansion brings is seen; before
     // 0.6, the program as packaged, as it was.
-    const seen = isPackage06(o.pkg) ? verified.running : undefined;
+    const seen = isPackage06OrLater(o.pkg) ? verified.running : undefined;
     const lowered = this.remoteGuarantees(seen ?? o.pkg.program);
     const runId = o.runId ?? randomUUID();
-    const limits = minLimits(costDims(workflowBounds(wf).budget), costDims(o.limits));
+    const limits = { ...minLimits(costDims(workflowBounds(wf).budget), costDims(o.limits)), ...(asks ? { [ASKS]: asks.limit } : {}) };
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
     // A halted scope starts nothing (spec/boundary.md "Violations and halt"). Asked here so that nothing is prepared
     // for a run that will not start; what decides is asked again where the run is created.
@@ -357,9 +433,13 @@ export class Runtime {
       mode: o.mode ?? "live",
       components,
       ...(approved ? { envelope_approval: { decision: approved.decision, member: approved.member, role: approved.role, key: approved.key } } : {}),
+      ...(promoted ? { promotion: { decision: promoted.decision, from: promoted.from, to: promoted.to } } : {}),
       ...(expanded ? { expanded: expanded.hash } : {}),
+      ...(facts ? { attention: facts.digest } : {}),
     } as unknown as Value;
     const manifestHash = digest("run", manifest);
+    // Made here, after the card and the ladder, and nowhere else: what createRun takes.
+    const start = runStart(runId, manifestHash);
     try {
       await this.db.tx(async (tx) => {
         // Under the lock a halt of this tenant takes: a halt either committed before and is seen here, or waits for
@@ -367,10 +447,13 @@ export class Runtime {
         const halt = await this.journal.holdOffHalts(tx, policy.tenant);
         if (halt) throw haltedRefusal(halt, `Run ${runId} does not start`);
         await this.keep(tx, o.pkg);
-        await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
+        await this.journal.createRun(tx, start, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash, ...(asks ? { asksReserved: asks.reserved } : {}) });
         // The running program the run runs from here on, its resumes and its replays: never one made again (spec/library.md).
         if (expanded) await this.artifacts.put({ tenant: policy.tenant, runId }, canonical(expanded.program as unknown as Value), EXPANDED_MEDIA_TYPE, tx);
+        // 0.7: the attention facts the run shows from here on, in its resumes and its replays: never asked again.
+        if (facts) await this.artifacts.put({ tenant: policy.tenant, runId }, facts.bytes, ATTENTION_MEDIA_TYPE, tx);
         if (approved) await this.journal.event(tx, runId, "envelope_approved", approved);
+        if (promoted) await this.journal.event(tx, runId, "promotion_accepted", promoted as unknown as Value);
         for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
       });
     } catch (e) {
@@ -382,14 +465,45 @@ export class Runtime {
     return this.drive(runId, true);
   }
 
-  /** Stores a package under its hash; one that is already there is left as it is. */
+  /**
+   * 0.7 (spec/attention.md "`asks` at run time"): the run's `asks` limit, the declared `asks` of its workflow (or of
+   * its envelope) and the caller's `--limit asks=N` taken together, the smaller of the two; with neither, none, and the
+   * run has no such row. With a limit, the bound under the runtime's configuration (the static total of the facts, and
+   * the effect sites `authorize` hands to a person that the total does not count) is held to it: one above it, or
+   * unbounded, refuses the start before anything is written (`attention_above_asks`). The bound is what the run
+   * reserves for its own program's questions (`reserved`). A package of 0.1 to 0.6 counts no questions: a caller's
+   * `asks` limit for one is refused (`unsupported_limit`).
+   */
+  private asksAtStart(o: StartOptions, wf: Def, facts: AttentionFacts | undefined): { limit: number; reserved: number } | undefined {
+    const caller = o.limits?.asks;
+    if (caller !== undefined && (!Number.isSafeInteger(caller) || caller < 0)) throw new Violation("invalid_limit", "The asks limit is a whole number of at least 0.");
+    if (!facts) {
+      if (caller !== undefined) throw new Violation("unsupported_limit", "The run is limited in asks, which only a run of a package of mandate/0.7 or later counts: a run of an earlier package puts no bound on its questions.");
+      return undefined;
+    }
+    const declared = (workflowBounds(wf as WorkflowDef).budget as Budget07 | undefined)?.asks;
+    const limit = asksLimit(declared, caller);
+    if (limit === undefined) return undefined;
+    const bound = boundUnder(facts, o.authorize);
+    if (typeof bound !== "number") {
+      throw new Violation("attention_above_asks", `The run's questions are more than the bound can count${bound === undefined ? " (its facts give no total)" : ""}, under the runtime's configuration, and its asks limit is ${limit}: it does not start (spec/attention.md "\`asks\` at run time").`);
+    }
+    if (bound > limit) {
+      const added = bound - (facts.totals!.questions as number);
+      throw new Violation("attention_above_asks", `The run can ask ${bound} questions under the runtime's configuration (${String(facts.totals!.questions)} in the program, and ${added} the configuration hands to a person), above its asks limit of ${limit}: it does not start (spec/attention.md "\`asks\` at run time").`);
+    }
+    return { limit, reserved: bound };
+  }
+
+  /** Stores a package under its hash, with whether it holds anything of 0.7 (notify.ts reads it); one that is already there is left as it is. */
   private async keep(tx: Tx, pkg: Package): Promise<void> {
-    await tx.query("insert into packages (package_hash, program, lock, modules, libraries) values ($1, $2, $3, $4, $5) on conflict (package_hash) do nothing", [
+    await tx.query("insert into packages (package_hash, program, lock, modules, libraries, is_07) values ($1, $2, $3, $4, $5, $6) on conflict (package_hash) do nothing", [
       pkg.hash,
       JSON.stringify(pkg.program),
       JSON.stringify(pkg.lock),
       JSON.stringify(pkg.modules ?? {}),
       pkg.libraries?.length ? JSON.stringify(pkg.libraries) : null,
+      isPackage07OrLater(pkg),
     ]);
   }
 
@@ -406,9 +520,10 @@ export class Runtime {
    * record it.
    */
   async approveEnvelope(pkg: Package, signed: SignedDecision): Promise<string> {
-    verifyPackage(pkg, this.load);
-    const owners = envelopeOwners(pkg.program);
-    if (!owners.size) throw new Violation("no_envelope", "The package has no workflow with an envelope, so there is nothing to approve.");
+    const verified = verifyPackage(pkg, this.load);
+    // 0.7: a workflow's own `owner` approves its card as an envelope's owner does (spec/attention.md "Card approval").
+    const owners = envelopeOwners(pkg.program, verified.running);
+    if (!owners.size) throw new Violation("no_envelope", "The package has no workflow with an envelope or an owner, so there is nothing to approve.");
     const refusal = (): Refusal | undefined => {
       const who = signerRefusal(signed, this.decisionKeys, pkg.lock);
       if (who) return who;
@@ -435,17 +550,143 @@ export class Runtime {
    * a member of that role. Without one the run does not start (`unapproved_envelope`, H03). An approval of another
    * package, however alike, is none: a changed program, lock or module is a new hash (N04).
    */
-  private async envelopeApproval(pkg: Package, workflow: string, envelope: Envelope): Promise<StoredDecision> {
+  private async envelopeApproval(pkg: Package, workflow: string, owner: string | undefined): Promise<StoredDecision> {
     const holds = (d: StoredDecision): boolean =>
-      d.record.role === envelope.owner && !shownRefusal(d.record, { package: pkg.hash, subject: pkg.hash }, ["envelope"]) && !storedProblem(d, this.decisionKeys, pkg.lock);
+      d.record.role === owner && !shownRefusal(d.record, { package: pkg.hash, subject: pkg.hash }, ["envelope"]) && !storedProblem(d, this.decisionKeys, pkg.lock);
     const found = (await this.journal.envelopeApprovals(pkg.hash)).find(holds);
     if (!found) {
       throw new Violation(
         "unapproved_envelope",
-        `No member of ${envelope.owner ?? "its owner role"} has approved package ${pkg.hash}, so ${workflow} does not start. Read its card (mandate view --card) and sign it (mandate approve-envelope).`,
+        `No member of ${owner ?? "its owner role"} has approved package ${pkg.hash}, so ${workflow} does not start. Read its card (mandate view --card) and sign it (mandate approve-envelope).`,
       );
     }
     return found;
+  }
+
+  // ── Promote (0.7; spec/attention.md "Promotion") ──────────────────────
+
+  /**
+   * Takes the owner's promotion of a workflow up the ladder: a signed decision of kind `promote`, made on a run A of
+   * the package that succeeded in the mode directly below `to` (`design` for `read_only`, `read_only` for `live`). Its
+   * subject is the request digest of `{ format: "mandate/promotion/0.1", package, workflow, from: { run: A, mode,
+   * manifest: <A's manifest hash> }, to, shadow }`, where `shadow` is, for a promotion to `live`, the digest of the
+   * shadow diff of A against the `design` run A itself started under, and null for one to `read_only`; its payload is
+   * the request digest of `{ to }`. Returns the decision's digest.
+   *
+   * It is held to the rules of every decision (INV-16), in their order: who signed, what the record is for, then the
+   * role (the workflow's `owner`, or its envelope's). A record of another kind, package or `to` is `subject_mismatch`.
+   * A from-run that did not succeed, is not of this package, or is not in the mode directly below `to`, is
+   * `bad_promotion`: this is known before the subject can be computed, so it is said before. A refused promotion
+   * stores nothing and records no event: the run it names has ended, and its journal is closed.
+   */
+  async promote(pkg: Package, signed: SignedDecision): Promise<string> {
+    const verified = verifyPackage(pkg, this.load);
+    const who = signerRefusal(signed, this.decisionKeys, pkg.lock);
+    if (who) throw new InvalidDecision(who.reason, who.message);
+    const r = signed.record;
+    if (r.kind !== "promote") throw new InvalidDecision("subject_mismatch", `A decision of kind ${r.kind} does not answer this; it takes promote.`);
+    if (r.package !== pkg.hash) throw new InvalidDecision("subject_mismatch", `The decision is for package ${r.package}, not for package ${pkg.hash}.`);
+    const to = (["read_only", "live"] as const).find((t) => r.payload !== undefined && r.payload === payloadOf.promotion(t));
+    if (to === undefined) throw new InvalidDecision("subject_mismatch", "The decision's payload is not the digest of a promotion to read_only or live.");
+    const facts = await this.promotionFacts(pkg.hash, r.run, to);
+    const owner = workflowOwner(Object.hasOwn(verified.running.defs, facts.workflow) ? verified.running.defs[facts.workflow] : undefined) ?? workflowOwner(Object.hasOwn(pkg.program.defs, facts.workflow) ? pkg.program.defs[facts.workflow] : undefined);
+    if (owner === undefined) throw new Violation("bad_promotion", `${facts.workflow} has no owner role, nor an envelope with one, so nobody can promote it (spec/attention.md "Promotion").`);
+    const why = shownRefusal(r, facts.shown, ["promote"], payloadOf.promotion(to)) ?? roleRefusal(r, pkg.lock, owner);
+    if (why) throw new InvalidDecision(why.reason, why.message);
+    return this.db.tx(async (tx) => {
+      await this.keep(tx, pkg);
+      return this.journal.recordDecision(tx, signed);
+    });
+  }
+
+  /**
+   * What a promotion of run `runId`'s workflow to `to` must name (`Shown`, with the owner role it asks), and what the
+   * command shows of it: the run's workflow, mode and state, and for a promotion to `live` the `design` run whose shadow
+   * diff against it the promotion carries. A person signs a record of it (`signDecision`); `promote` computes it again
+   * when the record arrives. A run that cannot be promoted to `to` is `bad_promotion`.
+   */
+  async promotionShown(runId: string, to: PromotedMode): Promise<Shown & { role: string; workflow: string; mode: string; state: string; design: string | null }> {
+    const run = await this.journal.run(runId);
+    const facts = await this.promotionFacts(run.package_hash, runId, to);
+    const { program, source } = await this.loaded(run.package_hash, run);
+    const owner = workflowOwner(Object.hasOwn(program.defs, facts.workflow) ? program.defs[facts.workflow] : undefined) ?? workflowOwner(Object.hasOwn(source.defs, facts.workflow) ? source.defs[facts.workflow] : undefined);
+    if (owner === undefined) throw new Violation("bad_promotion", `${facts.workflow} has no owner role, nor an envelope with one, so nobody can promote it (spec/attention.md "Promotion").`);
+    return { ...facts.shown, role: owner, workflow: facts.workflow, mode: facts.mode, state: run.state, design: facts.design };
+  }
+
+  /**
+   * The facts a promotion to `to` from run `runId` of package `packageHash` rests on, computed now: the from-run, which
+   * must exist, be a run of this package (as its manifest says and as it stands), have succeeded, be in the mode
+   * directly below `to`, and have a manifest that hashes to its manifest hash; and for `to` = `live`, the `design` run D
+   * its own manifest's `promotion` names, and the digest of `shadowDiff(D, A)`. Otherwise `bad_promotion`.
+   */
+  private async promotionFacts(packageHash: string, runId: string | undefined, to: PromotedMode): Promise<{ shown: Shown; workflow: string; mode: string; design: string | null }> {
+    const bad = (why: string): Violation => new Violation("bad_promotion", `${why}, so it does not promote a workflow to ${to} (spec/attention.md "Promotion").`);
+    let from: RunRow | undefined;
+    try {
+      from = runId === undefined ? undefined : await this.journal.run(runId);
+    } catch (e) {
+      if (!(e instanceof Violation && e.code === "unknown_run")) throw e;
+    }
+    if (!from) throw bad(runId === undefined ? "The decision names no run" : `There is no run ${runId}`);
+    const manifest = isObj(from.manifest) ? from.manifest : {};
+    if (from.package_hash !== packageHash || manifest["package"] !== packageHash) throw bad(`Run ${from.run_id} is not a run of package ${packageHash}`);
+    if (from.state !== "succeeded") throw bad(`Run ${from.run_id} is ${from.state}, and has not succeeded`);
+    const mode = typeof manifest["mode"] === "string" ? manifest["mode"] : "live";
+    if (mode !== PROMOTED_FROM[to]) throw bad(`Run ${from.run_id} ran ${mode}; a promotion to ${to} is made on a run of ${PROMOTED_FROM[to]}, the mode directly below it`);
+    if (from.manifest_hash === null || digest("run", from.manifest) !== from.manifest_hash) throw bad(`Run ${from.run_id}'s manifest does not hash to its manifest hash`);
+    let shadow: string | null = null;
+    let design: string | null = null;
+    if (to === "live") {
+      const under = isObj(manifest["promotion"] ?? null) ? (manifest["promotion"] as Obj) : undefined;
+      const named = under && isObj(under["from"] ?? null) ? (under["from"] as Obj)["run"] : undefined;
+      if (typeof named !== "string") throw bad(`Run ${from.run_id} did not start under a promotion, so there is no design run to compare it with`);
+      design = named;
+      const diff = await shadowDiff(this, named, from.run_id).catch((e: unknown) => {
+        throw e instanceof Violation && e.code === "unknown_run" ? bad(`The design run ${named} that run ${from!.run_id} started under is not stored`) : e;
+      });
+      shadow = digest("request", diff as unknown as Value);
+    }
+    const subject = promotionSubject({ package: packageHash, workflow: from.workflow, from: { run: from.run_id, mode, manifest: from.manifest_hash }, to, shadow });
+    return { shown: { package: packageHash, run: from.run_id, revision: from.revision, subject }, workflow: from.workflow, mode, design };
+  }
+
+  /**
+   * The promotion a run of `workflow` of `pkg` in `mode` starts under (spec/attention.md "Promotion"), only when the
+   * package's lock says `promotion: "required"` and the mode is `read_only` or `live`; a `design` run needs none, and
+   * without the lock's word none is looked for. It is the oldest stored `promote` decision for this package hash, this
+   * workflow and this `to` that still holds: its record unchanged and signed by a key the lock lists under a member of
+   * the owner role, its from-run still a succeeded run of the package and workflow in the mode below, and its subject
+   * the one computed now, for `live` with the shadow diff computed again, so that a promotion is not taken once the
+   * evidence it was made on has changed. It holds for every later run in its mode, not for one. Without one the run
+   * does not start (`unpromoted`), before anything is written.
+   */
+  private async promotionAtStart(pkg: Package, workflow: string, mode: RunMode, owner: string | undefined): Promise<Promoted | undefined> {
+    // A package older than 0.7 is refused with a `promotion` in its lock at load (E0140); asked here too, so that no
+    // lock of an older package can bring the ladder to it.
+    if (pkg.lock.promotion !== "required" || mode === "design" || !isPackage07OrLater(pkg)) return undefined;
+    const to: PromotedMode = mode;
+    if (owner === undefined) {
+      throw new Violation("unpromoted", `${workflow} has no owner role, nor an envelope with one, to sign a promotion, so it does not run ${to} under package ${pkg.hash}, whose lock requires one (spec/attention.md "Promotion").`);
+    }
+    for (const d of await this.journal.promotions(pkg.hash, workflow)) {
+      const r = d.record;
+      if (r.payload !== payloadOf.promotion(to) || storedProblem(d, this.decisionKeys, pkg.lock) || roleRefusal(r, pkg.lock, owner)) continue;
+      let facts: Awaited<ReturnType<Runtime["promotionFacts"]>>;
+      try {
+        facts = await this.promotionFacts(pkg.hash, r.run, to);
+      } catch (e) {
+        if (e instanceof Violation && e.code === "bad_promotion") continue;
+        throw e;
+      }
+      if (facts.workflow !== workflow || shownRefusal(r, facts.shown, ["promote"], payloadOf.promotion(to))) continue;
+      return { decision: d.decision_id, member: r.member, role: owner, key: r.key, from: { run: facts.shown.run, mode: facts.mode }, to };
+    }
+    const below = PROMOTED_FROM[to];
+    throw new Violation(
+      "unpromoted",
+      `No promotion that holds lets ${workflow} of package ${pkg.hash} run ${to}: a member of ${owner} promotes it from a ${below} run of the same package and workflow that succeeded${to === "live" ? " and started under a promotion" : ""} (mandate promote <run> --to ${to} --key FILE).`,
+    );
   }
 
   /**
@@ -563,9 +804,6 @@ export class Runtime {
     // Every resume checks the host against the package's lock before it takes the lease. An unfit host takes nothing
     // and writes nothing: the run stays as it was, for a fit host to resume (unfit_host). A finished run runs nothing.
     const current = await this.journal.run(runId);
-    // A run of 0.6 is driven on the Rust compiler alone: on the reference it is refused by name before anything is
-    // taken or written, and stays as it was.
-    if (!TERMINAL.has(current.state)) refuseReference06(await this.packaged(current.package_hash));
     if (!TERMINAL.has(current.state)) await checkFitness((await this.packaged(current.package_hash)).lock, this.hostProbe);
     const { run, fence } = await this.journal.acquire(runId);
     if (TERMINAL.has(run.state)) return run;
@@ -581,8 +819,10 @@ export class Runtime {
       // is not the one the lock pins stops the run for a person (`tool_schema_mismatch`); nothing is called. A design
       // run reaches no server. (A start asks too, before the run exists: a difference there starts nothing.)
       const connectors = await this.connectorsAtResume(run, loaded, fence);
+      // 0.7: the attention facts the run stored at its start (`facts_mismatch` when they are missing or another).
+      const facts = await this.storedFacts(run);
       await this.write(runId, fence, async (tx) => this.journal.setState(tx, runId, "running"));
-      interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run), connectors);
+      interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run), connectors, facts);
     } catch (e) {
       if (!(e instanceof CompilerFailure) && !(e instanceof Violation && STOPS_AT_RESUME.has(e.code))) throw e;
       await this.settle(runId, fence, e);
@@ -670,7 +910,11 @@ export class Runtime {
       if (open.length) s = { state: "attention_required", attention: { open_actions: open } };
     }
     const { state, ...fields } = s;
-    await this.write(runId, fence, (tx) => this.journal.setState(tx, runId, state, fields));
+    await this.write(runId, fence, async (tx) => {
+      // 0.7: every stage begun and not ended ends before the run's `run_succeeded` (spec/attention.md "Events").
+      if (state === "succeeded") await this.journal.endStages(tx, runId);
+      await this.journal.setState(tx, runId, state, fields);
+    });
   }
 
   private async write(runId: string, fence: number, fn: (tx: Parameters<Parameters<Db["tx"]>[0]>[0]) => Promise<void>): Promise<void> {
@@ -737,10 +981,38 @@ export class Runtime {
    * a package of 0.1 to 0.5, and for one that holds no connector. Building it reaches no server. Their requests leave
    * by `adapters.connectors`, and a design run's samples come from `adapters.samples`.
    */
-  private connectorsFor(program: Program, lock: Lock, adapters: Adapters): Connectors | undefined {
-    if (!isProgram06(program) || !connectorsOf(program).length) return undefined;
+  private connectorsFor(program: Program, lock: Lock, adapters: Adapters, from: PackageSource): Connectors | undefined {
+    if (!isProgram06OrLater(program) || !connectorsOf(program).length) return undefined;
     const samples = adapters.samples;
-    return new Connectors({ program, lock, transport: adapters.connectors, samples: samples?.tool ? (name) => samples.tool!(name) : undefined });
+    const callable = this.callableOf(from);
+    return new Connectors({ program, lock, transport: adapters.connectors, samples: samples?.tool ? (name) => samples.tool!(name) : undefined, ...(callable ? { callable } : {}) });
+  }
+
+  /**
+   * Language 0.7 (spec/attention.md "Carry-over from 0.6"): the lock keys of the connectors the compiler says the
+   * package can call, those E1407 demands a lock entry for; undefined for a package of 0.1 to 0.6, which binds every
+   * connector its program declares. The compiler is given the package as it has it (its program and the modules it
+   * links), never the running program, whose definitions hold what the modules it imports declare. A refusal of
+   * the door starts nothing (`bad_connector`): the runtime does not guess which connectors can be called.
+   */
+  private callableOf(from: PackageSource): ReadonlySet<string> | undefined {
+    if (!isPackage07OrLater({ program: from.program, modules: from.modules })) return undefined;
+    const known = this.callableCache.get(from.hash);
+    if (known) return known;
+    let ids: Set<string>;
+    try {
+      ids = new Set(callableConnectors(from.program, from.modules).map((c) => c.id));
+    } catch (e) {
+      if (e instanceof CompilerFailure) throw e;
+      throw new Violation("bad_connector", `The compiler could not say which connectors the package can call: ${e instanceof Error ? e.message : String(e)}.`);
+    }
+    this.callableCache.set(from.hash, ids);
+    return ids;
+  }
+
+  /** A loaded package as the compiler is asked about it: as packaged, with the modules it links. */
+  private sourceOf(hash: string, loaded: Loaded): PackageSource {
+    return { hash, program: loaded.source, modules: loaded.modules };
   }
 
   /**
@@ -749,11 +1021,11 @@ export class Runtime {
    * run stops.
    */
   private async connectorsAtResume(run: RunRow, loaded: Loaded, fence: number): Promise<Connectors | undefined> {
-    const connectors = this.connectorsFor(loaded.program, loaded.lock, this.adapters);
+    const connectors = this.connectorsFor(loaded.program, loaded.lock, this.adapters, this.sourceOf(run.package_hash, loaded));
     const mode = isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? run.manifest["mode"] : "live";
     // As at the start: every declared tool is bound before the run goes on, in every mode.
     connectors?.bindAll();
-    if (!connectors || mode === "design") return connectors;
+    if (!connectors?.any || mode === "design") return connectors;
     if (!this.adapters.connectors) throw new Violation("no_egress_for_connector", `Run ${run.run_id} can call ${connectors.names().join(", ")}; a connector's requests leave only through the egress proxy, and this runtime's configuration names none (egress.admin).`);
     try {
       await connectors.verifySchemas();
@@ -771,9 +1043,9 @@ export class Runtime {
    */
   private async toolOf(runId: string, effect: string): Promise<{ tool: ToolAdapter | undefined }> {
     const run = await this.journal.run(runId);
-    if (isPackage06(await this.packaged(run.package_hash))) {
+    if (isPackage06OrLater(await this.packaged(run.package_hash))) {
       const loaded = await this.loaded(run.package_hash, run);
-      const write = this.connectorsFor(loaded.program, loaded.lock, this.adapters)?.write(effect);
+      const write = this.connectorsFor(loaded.program, loaded.lock, this.adapters, this.sourceOf(run.package_hash, loaded))?.write(effect);
       if (write) return { tool: write };
     }
     return { tool: this.adapters.tools[effect] };
@@ -787,7 +1059,7 @@ export class Runtime {
    */
   private async namesConnector(runId: string, effect: string): Promise<boolean> {
     const run = await this.journal.run(runId);
-    if (!isPackage06(await this.packaged(run.package_hash))) return false;
+    if (!isPackage06OrLater(await this.packaged(run.package_hash))) return false;
     const dot = effect.indexOf(".");
     if (dot <= 0) return false;
     let program: Program;
@@ -799,15 +1071,16 @@ export class Runtime {
     return connectorsOf(program).some(([name]) => name === effect.slice(0, dot));
   }
 
-  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[], bound?: Connectors): Interpreter {
+  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[], bound?: Connectors, attention?: AttentionFacts): Interpreter {
     const wf = Object.hasOwn(loaded.program.defs, run.workflow) ? loaded.program.defs[run.workflow] : undefined;
-    const connectors = bound ?? this.connectorsFor(loaded.program, loaded.lock, adapters);
+    const connectors = bound ?? this.connectorsFor(loaded.program, loaded.lock, adapters, this.sourceOf(run.package_hash, loaded));
     // The limit is the package's language's: a 0.5 program's run has one by default, an earlier one's only when configured.
     const violationLimit = this.violationLimit ?? (atLeast(loaded.source.language, "mandate/0.5") ? VIOLATION_LIMIT : undefined);
     return new Interpreter({
       journal: this.journal,
       adapters,
       program: loaded.program,
+      ...(loaded.package07 ? { package07: true } : {}),
       plan: { parent: loaded.source, modules: loaded.modules, lock: loaded.lock, checker: this.checker, checkMs: this.checkMs, startedAt },
       ...(earlier.length ? { earlier } : {}),
       decisions: { keys: this.decisionKeys, lock: loaded.lock, required: loaded.signed },
@@ -830,10 +1103,19 @@ export class Runtime {
       ...(this.limiter ? { limiter: this.limiter } : {}),
       ...(violationLimit !== undefined ? { violationLimit } : {}),
       ...(connectors ? { connectors } : {}),
+      ...(attention ? { attention } : {}),
     });
   }
 
   /** The program, modules, lock and libraries of a package, as packaged. */
+  /** A stored package as `buildPackage` makes it, for a command that names it by a run (`mandate promote`); one that does not hash to its name is refused. */
+  async storedPackage(packageHash: string): Promise<Package> {
+    const p = await this.packaged(packageHash);
+    const pkg = buildPackage(p.program, p.lock, p.modules, p.libraries ?? []);
+    if (pkg.hash !== packageHash) throw new Violation("package_hash_mismatch", `The package stored as ${packageHash} hashes to ${pkg.hash}.`);
+    return pkg;
+  }
+
   private async packaged(packageHash: string): Promise<{ program: Program; modules: Modules; lock: Lock; libraries: Package["libraries"] }> {
     const cached = this.packages.get(packageHash);
     if (cached) return { program: cached.program, modules: cached.modules ?? {}, lock: cached.lock, libraries: cached.libraries };
@@ -861,8 +1143,6 @@ export class Runtime {
    */
   private async loaded(packageHash: string, run?: RunRow): Promise<Loaded> {
     const p = await this.packaged(packageHash);
-    // The program of a run of 0.6 is read on the Rust compiler alone (a resume, a replay, its evidence).
-    if (run) refuseReference06(p);
     const modules = await this.linking(packageHash);
     const stored = run ? await this.storedExpansion(run) : undefined;
     if (stored) {
@@ -874,7 +1154,7 @@ export class Runtime {
         throw new Violation("expansion_mismatch", `Run ${run!.run_id} stored an expansion without the definitions its program imports (${[...new Set(missing)].sort().join(", ")}): it is not a running program, and is not run (spec/library.md).`);
       }
     }
-    return { program: stored ?? linkedProgram(p.program, modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules };
+    return { program: stored ?? linkedProgram(p.program, modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules, package07: isPackage07OrLater(p) };
   }
 
   /**
@@ -921,6 +1201,25 @@ export class Runtime {
     );
   }
 
+  /**
+   * The attention facts a run of 0.7 stored at its start (spec/attention.md "The stored facts"), by the digest its
+   * manifest names as `attention`: undefined for a run whose manifest names none (every run of 0.1 to 0.6). Facts that
+   * are missing, or whose bytes do not hash to that digest, are not read: `facts_mismatch`. They are never asked of the
+   * compiler again: one upgraded while the run goes on does not change what the run shows.
+   *
+   * After an amendment the owner approved (D6 of slice B3), the facts in force are those of the amended workflow,
+   * stored with the lead's request and named by the run's latest `package_amended` (`attention`): the run reads them
+   * from there on, at every resume and replay. The facts of each earlier package stay stored, named where they were.
+   */
+  async storedFacts(run: RunRow): Promise<AttentionFacts | undefined> {
+    const named = isObj(run.manifest) ? run.manifest["attention"] : undefined;
+    if (named === undefined) return undefined;
+    const scope = { tenant: run.tenant, runId: run.run_id };
+    const [amended] = await this.db.query<Row>("select data->'attention' as attention from events where run_id = $1 and type = 'package_amended' and data ? 'attention' order by seq desc limit 1", [run.run_id]);
+    if (amended) return readFacts(this.artifacts, scope, amended["attention"], `Run ${run.run_id}'s amendment`);
+    return readFacts(this.artifacts, scope, named, `Run ${run.run_id}'s manifest`);
+  }
+
   /** The package's program with its imported modules linked in: what the interpreter runs. Never hashed. */
   private async program(packageHash: string): Promise<Program> {
     const p = await this.packaged(packageHash);
@@ -931,6 +1230,27 @@ export class Runtime {
 
   getRun(runId: string): Promise<RunRow> {
     return this.journal.run(runId);
+  }
+
+  /** A package's program and lock, as packaged: what a projection reads a role's cap from (0.7). */
+  async packageOf(packageHash: string): Promise<{ program: Program; lock: Lock }> {
+    const p = await this.packaged(packageHash);
+    return { program: p.program, lock: p.lock };
+  }
+
+  // ── WatchRun and ListWaits (0.7) ──────────────────────────────────────
+
+  /**
+   * The run's events after `afterSeq` that `audience` may see, each through its type's allow-list, a wait's values and
+   * a report's fields masked and labelled in a run of 0.7 (spec/attention.md "`WatchRun`"). Polled with `next`.
+   */
+  watchRun(runId: string, audience: Audience, o: { afterSeq?: number; limit?: number } = {}): Promise<Watched> {
+    return watchRun(this, runId, audience, o);
+  }
+
+  /** Every open question across all runs for a role or a member, masked by the role's cap (spec/attention.md "`ListWaits`"). */
+  listWaits(who: { role: string } | { member: string }, o: { tenant?: string } = {}): Promise<WaitItem[]> {
+    return listWaits(this, who, o);
   }
 
   /** The run's budget table: limits, settled, reserved and available per dimension, and each command's share (§8.6). */
@@ -963,14 +1283,14 @@ export class Runtime {
     const rows = await this.journal.evidence(runId);
     // A waiver (0.6) is held to the review decision it names and the failed record it waives (review.ts); in a run of
     // 0.1 to 0.5 one holds nothing.
-    const v06 = isProgram06(program);
-    const facts = v06 && rows.some((e) => e.method === WAIVER) ? await waiverFacts(this.journal, runId, { contract: contractOf, keys: this.decisionKeys, lock, trusted: this.trusted }) : undefined;
+    const from06 = isProgram06OrLater(program);
+    const facts = from06 && rows.some((e) => e.method === WAIVER) ? await waiverFacts(this.journal, runId, { contract: contractOf, keys: this.decisionKeys, lock, trusted: this.trusted }) : undefined;
     // A verify's own record (0.6) is of the contract whole, and no criterion's check: it holds by its signature.
     const holds = (e: (typeof rows)[number], record: EvidenceRecord): boolean =>
       record.method === WAIVER || e.method === WAIVER
         ? !!facts && record.method === e.method && !waiverProblem(record, facts)
         : record.method === VERIFY || e.method === VERIFY
-          ? v06 && record.method === e.method && record.criterion === WHOLE
+          ? from06 && record.method === e.method && record.criterion === WHOLE
           : !recordProblem(record, { ...e, run: runId }, declared(record), rule) && !approvalProblem(record, decisions, this.decisionKeys, lock, signed);
     return rows.map((e) => ({
       evidence_id: e.evidence_id,
@@ -998,7 +1318,10 @@ export class Runtime {
     // A review's decision (0.6) is one like any other: its record, signature and the lock's binding of its key.
     const listed = isObj(run.manifest) && isObj(run.manifest["envelope_approval"] ?? null) ? (run.manifest["envelope_approval"] as Obj)["decision"] : undefined;
     const approval = typeof listed === "string" ? await this.journal.decision(listed) : undefined;
-    return [...(approval ? [approval] : []), ...(await this.journal.decisions(runId))].map((d) => {
+    // 0.7: a run that started under a promotion lists it next; it is a decision on the run it was made from.
+    const promotedBy = isObj(run.manifest) && isObj(run.manifest["promotion"] ?? null) ? (run.manifest["promotion"] as Obj)["decision"] : undefined;
+    const promotion = typeof promotedBy === "string" ? await this.journal.decision(promotedBy) : undefined;
+    return [...(approval ? [approval] : []), ...(promotion ? [promotion] : []), ...(await this.journal.decisions(runId))].map((d) => {
       const problem = storedProblem(d, this.decisionKeys, lock);
       return { ...d, valid: !problem, ...(problem ? { problem } : {}) };
     });
@@ -1086,9 +1409,9 @@ export class Runtime {
     const at = "signed" in i ? named(i.signed) : i;
     // 0.6: an answer holds none of the members the runtime's own values are known by, at any depth: a person's answer
     // that looked like a Verified value would otherwise reach a step that takes one. Refused by name, and the wait stays.
-    const v06 = isPackage06(await this.packaged((await this.journal.run(runId)).package_hash));
+    const from06 = isPackage06OrLater(await this.packaged((await this.journal.run(runId)).package_hash));
     const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "input", i as unknown as Value, { signed, kinds: ["answer"], payload: payloadOf.answer(i.value) }, async () => {
-      const why = v06 ? givenValueProblem(i.value) : undefined;
+      const why = from06 ? givenValueProblem(i.value) : undefined;
       if (why) throw new Refused({ reason: why.reason, message: `The answer is not taken. ${why.message}` }, signed, at.commandId);
       return { state: "succeeded", result: i.value };
     });
@@ -1236,6 +1559,15 @@ export class Runtime {
     const to = typeof asked["package"] === "string" ? asked["package"] : undefined;
     const next = approve && to !== undefined ? await this.packaged(to) : undefined;
     const prev = next && typeof asked["from"] === "string" ? await this.packaged(asked["from"]) : undefined;
+    // 0.7 (D6 of slice B3): the facts of the amended workflow, stored with the request, and those in force now, read
+    // before the transaction too; the run's own reservation of `asks` moves by what the bound under the configuration
+    // moves by.
+    const seen = await this.journal.run(runId);
+    const amended = approve && typeof asked["attention"] === "string" ? await readFacts(this.artifacts, { tenant: seen.tenant, runId }, asked["attention"], `The amendment at ${at.commandId}`) : undefined;
+    const now = amended ? await this.storedFacts(seen) : undefined;
+    const authorize = (seen.policy as unknown as Policy).authorize;
+    const boundNow = now ? boundUnder(now, authorize) : undefined;
+    const boundNext = amended ? boundUnder(amended, authorize) : undefined;
     const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "amendment", { signed } as unknown as Value, { signed, kinds: ["amend", "decline"] }, async (tx, request, run, who) => {
       const r = isObj(request) ? request : {};
       const deadline = r["deadline"];
@@ -1249,9 +1581,23 @@ export class Runtime {
       // A limit rises in the dimensions the amendment raises, to what the new envelope gives. In any other the run
       // keeps the limit it has, also one its caller set below the envelope: that is a raise's to lift, not this.
       const was = prev?.program.defs[run.workflow];
-      const before = costDims(was?.kind === "workflow" ? was.envelope?.budget : undefined);
-      const limits = Object.fromEntries(Object.entries(costDims(wf.envelope.budget)).filter(([dim, amount]) => amount > (before[dim] ?? amount)));
+      // 0.7: `asks` rises with the envelope's, as every other dimension does.
+      const dims = (b: Budget07 | undefined): Record<string, number> => ({ ...costDims(b), ...(amended && typeof b?.asks === "number" ? { [ASKS]: b.asks } : {}) });
+      const before = dims(was?.kind === "workflow" ? was.envelope?.budget : undefined);
+      const limits = Object.fromEntries(Object.entries(dims(wf.envelope.budget)).filter(([dim, amount]) => amount > (before[dim] ?? amount)));
+      // 0.7 (D6): what the amended program adds to the run's own reservation must still fit what is left of `asks`
+      // under the limit the approval gives, under the run's lock: since the request, a sub-program another lead
+      // admitted may have taken the room. If it does not fit, the approval does not take effect: the amendment ends
+      // refused, as a start above the limit would be, and the run keeps its package, its limits and its reservation.
+      const grows = typeof boundNext === "number" ? boundNext - (typeof boundNow === "number" ? boundNow : boundNext) : 0;
+      const room = grows > 0 ? (await this.journal.budget(runId, tx))[ASKS] : undefined;
+      if (room && grows > Math.max(room.limit, limits[ASKS] ?? room.limit) - room.settled - room.reserved) {
+        return { state: "failed", error: { tag: "Rejected", args: ["attention_above_asks"] } };
+      }
       const moved = await this.journal.amendRun(tx, runId, at.commandId, to, limits);
+      // The run's own questions are bounded by the amended program's bound from here on: its reservation moves by what
+      // the bound moves by (which fits, as checked above).
+      if (grows !== 0) await this.journal.moveParentAsks(tx, run, grows);
       await this.journal.event(tx, runId, "package_amended", {
         from: run.package_hash,
         to,
@@ -1262,6 +1608,7 @@ export class Runtime {
         superseded: moved.superseded,
         by: who.by,
         ...who.signed,
+        ...(amended ? { attention: String(asked["attention"]) } : {}),
       });
       return { state: "succeeded", result: { approved: true, package: to, by: who.by, ...who.signed } };
     });
@@ -1281,8 +1628,12 @@ export class Runtime {
     const seen = await this.journal.run(runId);
     const loaded = await this.loaded(seen.package_hash, seen);
     const wf = loaded.program.defs[seen.workflow];
-    const program = costDims(wf?.kind === "workflow" ? workflowBounds(wf).budget : undefined);
-    const wanted = costDims(r.limits);
+    // 0.7: `asks` too, up to the declared value and no further; a run whose workflow declares none was limited by its
+    // caller alone, and is raised as any other such limit is, with no ceiling of the program's.
+    const declared = wf?.kind === "workflow" ? (workflowBounds(wf).budget as Budget07 | undefined)?.asks : undefined;
+    const program: Record<string, number> = { ...costDims(wf?.kind === "workflow" ? workflowBounds(wf).budget : undefined), ...(typeof declared === "number" ? { [ASKS]: declared } : {}) };
+    if (r.limits.asks !== undefined && (!Number.isSafeInteger(r.limits.asks) || r.limits.asks < 0)) throw new Violation("invalid_limit", "The asks limit is a whole number of at least 0.");
+    const wanted = limitDims(r.limits);
     const signed = "signed" in r ? r.signed : undefined;
     await this.deciding(runId, msg, () => this.db.tx(async (tx) => {
       const run = await this.journal.lock(tx, runId);
@@ -1296,11 +1647,12 @@ export class Runtime {
       for (const [dim, limit] of Object.entries(wanted)) {
         if (dim in program && limit > program[dim]!) {
           const enveloped = wf?.kind === "workflow" && !!wf.envelope;
+          const what = dim === ASKS ? `asks: ${program[dim]}` : `a ${dim} budget of ${program[dim]}`;
           throw new Violation(
             "above_program_budget",
             enveloped
-              ? `${run.workflow}'s envelope gives a ${dim} budget of ${program[dim]}; raising the run to ${limit} needs an amendment of the envelope, which its owner approves (spec/envelope.md).`
-              : `${run.workflow} declares a ${dim} budget of ${program[dim]}; raising the run to ${limit} needs a new program version (§13.2).`,
+              ? `${run.workflow}'s envelope gives ${what}; raising the run to ${limit} needs an amendment of the envelope, which its owner approves (spec/envelope.md).`
+              : `${run.workflow} declares ${what}; raising the run to ${limit} needs a new program version (§13.2).`,
           );
         }
       }
@@ -1316,6 +1668,11 @@ export class Runtime {
    */
   async tick(runId: string): Promise<RunRow> {
     const run = await this.journal.run(runId);
+    // 0.7 (spec/attention.md "The driver loop"): every open wait past its deadline, and a wait decided and not driven on.
+    if (run.state === "waiting" && isPackage07OrLater(await this.packaged(run.package_hash))) {
+      const fit = async (): Promise<void> => (this.driver ? undefined : checkFitness((await this.packaged(run.package_hash)).lock, this.hostProbe));
+      return tickOpenWaits(this, runId, { fit, drive: (id) => this.drive(id) });
+    }
     const w = run.waiting;
     if (run.state !== "waiting" || !isObj(w)) return run;
     const req = w["request"];
@@ -1369,7 +1726,7 @@ export class Runtime {
       const run = await this.journal.lock(tx, runId);
       const w = isObj(run.waiting) ? run.waiting : {};
       if (run.state !== "waiting" || w["command"] !== command) return undefined;
-      const [row] = await tx.query<Row>("select kind, state, result from commands where run_id = $1 and command_id = $2", [runId, command]);
+      const [row] = await tx.query<Row>("select kind, state, result, inside from commands where run_id = $1 and command_id = $2", [runId, command]);
       if (row && row["kind"] === REVIEW && row["state"] !== "waiting") return "decided";
       const req = row && isObj((row["result"] ?? null) as Value) ? (row["result"] as Obj) : undefined;
       if (!row || row["kind"] !== REVIEW || row["state"] !== "waiting" || !req) return undefined;
@@ -1379,7 +1736,9 @@ export class Runtime {
       if (!q || typeof deadline !== "number" || typeof ms !== "number" || now < deadline) return undefined;
       const role = String(req["role"]);
       const to = req["escalate_to"];
-      if (typeof to === "string" && to !== role && req["escalated"] === undefined) {
+      // The escalation is a question, counted in this transaction (spec/attention.md "Counting"); a run of 0.1 to 0.6
+      // has no `asks` limit, and counts nothing. Past the limit it is not made, and the review expires below.
+      if (typeof to === "string" && to !== role && req["escalated"] === undefined && !(await escalationRefused(this.journal, tx, run, command, row["inside"]))) {
         const next: Obj = { ...req, role: to, deadline: now + ms, escalated: { from: role, at: now } };
         await tx.query("update commands set result = $3 where run_id = $1 and command_id = $2 and state = 'waiting'", [runId, command, JSON.stringify(next)]);
         await this.journal.event(tx, runId, "review_escalated", { command, from: role, to, deadline: now + ms });
@@ -1758,22 +2117,25 @@ export class Runtime {
   async replayRun(runId: string, adapters: Adapters = refusingAdapters(this.adapters)): Promise<ReplayResult> {
     const run = await this.journal.run(runId);
     let loaded: Loaded;
+    let facts: AttentionFacts | undefined;
     try {
       loaded = await this.loaded(run.package_hash, run);
+      facts = await this.storedFacts(run);
     } catch (e) {
-      // A stored expansion that is missing or another: the replay reports it, and runs nothing.
-      if (e instanceof Violation && e.code === "expansion_mismatch") return { status: "attention_required", reason: { violation: e.code, message: e.message } };
+      // A stored expansion, or stored attention facts (0.7), missing or another: the replay reports it, and runs nothing.
+      if (e instanceof Violation && (e.code === "expansion_mismatch" || e.code === "facts_mismatch")) return { status: "attention_required", reason: { violation: e.code, message: e.message } };
       throw e;
     }
-    const interp = this.interpreter(run, loaded, run.fence, true, adapters, await this.journal.startedAt(runId), await this.earlier(run));
+    const interp = this.interpreter(run, loaded, run.fence, true, adapters, await this.journal.startedAt(runId), await this.earlier(run), undefined, facts);
     try {
       return { status: "complete", value: await interp.runWorkflow(run.workflow, run.input as Obj) };
     } catch (e) {
       if (e instanceof ReplayEnd) return e.reason === "payload_purged" ? { status: "incomplete_replay", missing: e.commandId } : { status: "partial", stoppedAt: e.commandId };
       if (e instanceof Fault) return { status: "failed", error: e.value() };
       if (e instanceof Attention) return { status: "attention_required", reason: e.reason };
-      // A sub-program's stored running program that is missing or another: reported as the run's own is, above.
-      if (e instanceof Violation && e.code === "expansion_mismatch") return { status: "attention_required", reason: { violation: e.code, message: e.message } };
+      // A sub-program's stored running program or facts missing or another, or a report or a stage the stored facts do
+      // not describe (0.7): reported as the run's own are, above.
+      if (e instanceof Violation && (e.code === "expansion_mismatch" || e.code === "facts_mismatch")) return { status: "attention_required", reason: { violation: e.code, message: e.message } };
       throw e;
     }
   }
@@ -1815,7 +2177,7 @@ export interface HaltReport {
 }
 
 /** What a waiting command shows to whoever decides on it: its digest and the role it asks (`Shown`). */
-function shownBy(run: RunRow, commandId: string, row: Row): Shown {
+export function shownBy(run: RunRow, commandId: string, row: Row): Shown {
   const request = isObj((row["result"] ?? null) as Value) ? (row["result"] as Obj) : {};
   // A decision wait shows the digest it is bound to; an amendment's, the hash of the package it asks for; a review's,
   // the digest of what it asks, which its escalation leaves as it was (0.6); a question shows the digest of the

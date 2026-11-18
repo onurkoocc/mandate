@@ -4,7 +4,6 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import { check } from "@mandate/bridge";
-import { compilerMode } from "@mandate/bridge/mode";
 import { afterAll, describe, expect, it } from "vitest";
 import { AnthropicModel, boundOf, forApi, priceUsage, type AnthropicClient } from "../src/anthropic.js";
 import { closeAll, world } from "./helpers.js";
@@ -106,7 +105,7 @@ describe("infer through the Anthropic adapter", () => {
     expect(client.created[0]!.messages).toEqual([{ role: "user", content: `<data>\n${CLOSING}\n</data>` }]);
   });
 
-  (compilerMode() !== "ts" ? it : it.skip)("quotes the input of a package of 0.6 as JSON with < and > escaped: no text in it closes the region", async () => {
+  it("quotes the input of a package of 0.6 as JSON with < and > escaped: no text in it closes the region", async () => {
     const SRC = ASK_CAPITAL.replace("mandate @ 0.2", "mandate @ 0.6").replace("workflow Ask", "/// Asks for a country's capital.\nworkflow Ask");
     const checked = check(SRC, "mdt");
     expect(checked.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);

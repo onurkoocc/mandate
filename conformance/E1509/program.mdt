@@ -1,0 +1,20 @@
+// A program of language 0.7 with one contract whose one criterion is met by
+// a call of a function of the program (spec/attention.md "Static rules",
+// E1509). It checks; the cases of E1509 name that function `waiver` or
+// `verify`, which are the runtime's own method names.
+
+mandate @ 0.7
+
+module example.reserved @ 0.1
+
+type Change = { files: List<Text> }
+
+/// Whether the change touches at least one file.
+fn touched(c: Change) -> Bool ! {} {
+  len(c.files) >= 1
+}
+
+contract Tested(c: Change) {
+  accept touched "The change touches a file"
+    by touched(c)
+}

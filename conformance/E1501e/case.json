@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1501e",
+  "kind": "compile",
+  "title": "A workflow's owner that no role definition has is refused as a role site, with the nearest role as a suggestion (a mutation: Describe's owner).",
+  "spec": [
+    "spec/attention.md#owner",
+    "spec/envelope.md#roles"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/owner.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Describe/owner",
+      "value": "acountant"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1501",
+        "path": "/defs/Describe/owner",
+        "facts": {
+          "role": "acountant",
+          "where": "a workflow's owner",
+          "did_you_mean": "accountant"
+        }
+      }
+    ]
+  }
+}

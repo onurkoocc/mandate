@@ -17,8 +17,9 @@ export default defineConfig({
     include: ["test/**/*.test.ts"],
     testTimeout: 30_000,
     hookTimeout: 30_000,
-    // The compiler behind the bridge (MANDATE_COMPILER): the module it needs, the divergences of `both`, its counts.
+    // The compiler behind the bridge: the module it needs (the bridge's test/compiler-setup.ts).
     globalSetup: ["test/global-setup.ts"],
-    setupFiles: ["test/setup.ts"],
+    // 0.7: every test run of a package of 0.7 is held to its attention bound at the end of each test (slice B3).
+    setupFiles: ["test/asks-hook.ts"],
   },
 });

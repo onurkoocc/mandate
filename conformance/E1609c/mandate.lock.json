@@ -1,0 +1,70 @@
+{
+  "lock": "mandate/lock/0.7",
+  "modules": {},
+  "libraries": {
+    "std.patterns": {
+      "version": "1.0.0",
+      "digest": "sha256:cea6319dba99a4e2790b07038eba90a87a4cb9b036f3c7d87e4b26d68fbacd26",
+      "modules": {
+        "std.patterns": "sha256:092932757be73f0b172d1638d5ab62cdf400cc5273682714633c95dc3864c941"
+      }
+    }
+  },
+  "connectors": {
+    "example.attention.batch.erp": {
+      "credential": "example_erp",
+      "url": "https://erp.example.com/mcp",
+      "tools": {
+        "list_invoices": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "list_orders": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "find_draft": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "post_draft": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    }
+  },
+  "models": {
+    "standard": {
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "max_input_tokens": 8000,
+      "max_output_tokens": 1500
+    }
+  },
+  "members": {
+    "ana": {
+      "keys": [
+        "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+      ]
+    },
+    "ben": {
+      "keys": [
+        "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+      ]
+    }
+  },
+  "roles": {
+    "accountant": [
+      "ana"
+    ],
+    "finance_lead": [
+      "ben"
+    ]
+  },
+  "role_classes": {
+    "accountant": "confidential",
+    "finance_lead": "confidential"
+  },
+  "tariffs": {
+    "claude-opus-5-5": {
+      "currency": "USD",
+      "as_of": "2026-10-09",
+      "micros_per_mtok": {
+        "input": 4000000,
+        "output": 20000000,
+        "cache_read": 200000,
+        "cache_write": 5000000
+      }
+    }
+  }
+}

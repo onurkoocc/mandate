@@ -1,0 +1,57 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1904o",
+  "kind": "compile",
+  "title": "A report's field that holds a call of a connector's tool is refused: the one call a field may hold is the built-in len (a mutation: the field words).",
+  "spec": [
+    "spec/attention.md#report",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/reports.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/3/fields/3/value",
+      "value": {
+        "op": "call",
+        "callee": {
+          "op": "field",
+          "of": {
+            "op": "var",
+            "name": "erp"
+          },
+          "name": "vendor_name"
+        },
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "vendor_id"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1904",
+        "path": "/defs/Greet/body/3/fields/3/value",
+        "facts": {
+          "role": "accountant",
+          "field": "words",
+          "problem": "impure",
+          "what": "call",
+          "callee": "erp.vendor_name"
+        }
+      }
+    ]
+  }
+}

@@ -266,6 +266,67 @@ pub fn subprogram_shape(
     out
 }
 
+/// 0.7, E1705: what a sub-program may show (spec/attention.md "What a
+/// sub-program may show"). A `stage` or a `report` written in the
+/// sub-program's own text is refused, each at its place, with the fact
+/// `construct` (`stage`, `report`), and so is a workflow's `owner`
+/// (`owner`, at `/defs/<W>/owner`): what a person is shown is written by the
+/// program's author and named on the approved card, never by a lead. A
+/// sub-program whose workflow applies a pattern the envelope's `shapes`
+/// lists has that pattern's stages and reports through its expansion, which
+/// no lead wrote: this reads the sub-program as the lead wrote it, never its
+/// expansion. Nothing for a sub-program older than 0.7, whose schema has
+/// neither.
+#[must_use]
+pub fn subprogram_attention(sub: &Value) -> Vec<Diagnostic> {
+    let language = sub
+        .get("language")
+        .and_then(Value::as_str)
+        .and_then(Language::from_tag);
+    if !language.is_some_and(|l| l.at_least(Language::V0_7)) {
+        return Vec::new();
+    }
+    let mut out: Vec<Diagnostic> = Vec::new();
+    let mut entries: Vec<(&str, &Value)> = sub
+        .get("defs")
+        .and_then(Value::as_object)
+        .map(|d| d.iter().collect())
+        .unwrap_or_default();
+    entries.sort_by(|(a, _), (b, _)| compare_utf16(a, b));
+    for (name, d) in entries {
+        let at = ptr(&[&"defs", &name]);
+        for (construct, what) in [("stage", "a stage"), ("report", "a report")] {
+            let mut found: Vec<String> = Vec::new();
+            nodes(d, construct, &at, &mut found);
+            sort_utf16(&mut found);
+            for path in found {
+                out.push(diagnostic(
+                    "E1705",
+                    format!(
+                        "A sub-program cannot write {what} ('{name}'): what a person is shown is written by the program a person approved, and a sub-program shows only the stages and reports of a pattern its envelope's shapes list (spec/attention.md \"Sub-programs and amendments\")."
+                    ),
+                    &path,
+                    JsObject::new().with("def", name).with("construct", construct),
+                ));
+            }
+        }
+        // An owner approves a card and signs promotions of a program a
+        // person approved; a sub-program runs under its parent's envelope,
+        // whose owner has that place.
+        if Definition::of(d).kind() == Some(DefKind::Workflow) && d.get("owner").is_some() {
+            out.push(diagnostic(
+                "E1705",
+                format!(
+                    "A sub-program cannot name an owner ('{name}'): it runs inside the envelope a person approved, whose owner decides for it (spec/attention.md \"Sub-programs and amendments\")."
+                ),
+                &format!("{at}/owner"),
+                JsObject::new().with("def", name).with("construct", "owner"),
+            ));
+        }
+    }
+    out
+}
+
 /// The name of a sub-program's one workflow, once [`subprogram_shape`] has
 /// passed it: `subprogramWorkflow(sub)`, the first definition (in the order
 /// of `Object.keys`) that is a workflow.
@@ -416,6 +477,22 @@ fn num(x: f64) -> JsValue {
     JsValue::Number(x)
 }
 
+/// 0.7: what a sub-program's admission reserves of the run's `asks`
+/// (spec/attention.md "Sub-programs and amendments"): the `asks` its
+/// workflow declares, or, when it declares none, its static attention total
+/// (`crate::asks`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AsksClaim {
+    /// The `asks` the workflow's budget declares.
+    pub declared: Option<i64>,
+    /// The static total of the questions it can ask.
+    pub total: crate::attention::Count,
+}
+
+/// The dimension of the room that is the run's `asks` (0.7), not one of the
+/// ledger's.
+pub const ASKS_DIMENSION: &str = "asks";
+
 /// E1706: whether a sub-program's claim fits what is left of the envelope
 /// (N01, INV-15): `containment(defs, workflow, envelope, room, opts)`.
 /// `defs` is every definition the sub-program sees, its own and its
@@ -423,6 +500,13 @@ fn num(x: f64) -> JsValue {
 /// envelope's capabilities, evaluated; `opts` says how the sub-program's own
 /// are read (its language). Each diagnostic names the dimension that does
 /// not fit, with the numbers, so that the lead can ask for less.
+///
+/// 0.7: `asks` is the sub-program's claim on the run's `asks` when its
+/// language is 0.7. When the room limits `asks` (`left.asks`, which the
+/// runtime gives for a run with an `asks` limit and no other), the claim
+/// fits what is left, and a claim without a declared `asks` whose total is
+/// unbounded does not fit; the budget need not name `asks`. Without the
+/// claim, or without the limit, nothing is held to it.
 #[must_use]
 pub fn containment(
     defs: &Map,
@@ -430,6 +514,7 @@ pub fn containment(
     envelope: &[CapVal],
     room: &Room,
     opts: CapOptions,
+    asks: Option<AsksClaim>,
 ) -> Vec<Diagnostic> {
     let mut out: Vec<Diagnostic> = Vec::new();
     let Some(wf) = defs
@@ -491,6 +576,11 @@ pub fn containment(
     sort_utf16(&mut dimensions);
     for dimension in dimensions {
         if asked.iter().any(|(d, _, _)| d == dimension) {
+            continue;
+        }
+        // 0.7: a sub-program need not name `asks`: its admission reserves
+        // its declared `asks` or its static total (below).
+        if dimension == ASKS_DIMENSION && asks.is_some() {
             continue;
         }
         no(
@@ -564,7 +654,64 @@ pub fn containment(
             Some(_) => {}
         }
     }
+    if let (Some(claim), Some(left)) = (asks, room.left_of(ASKS_DIMENSION)) {
+        asks_fit(&mut no, workflow, &at, has_budget, claim, left);
+    }
     out
+}
+
+/// 0.7: E1706 for a sub-program whose claim on `asks` does not fit the
+/// `left` of the run's `asks`.
+fn asks_fit(
+    no: &mut impl FnMut(String, &str, JsObject),
+    workflow: &str,
+    at: &str,
+    has_budget: bool,
+    claim: AsksClaim,
+    left: f64,
+) {
+    use crate::attention::Count;
+    let reserved = match (claim.declared, claim.total) {
+        (Some(n), _) => n as f64,
+        (None, Count::Finite(n)) => n as f64,
+        (None, Count::Unbounded) => {
+            no(
+                format!(
+                    "{workflow} declares no asks, and the questions it can ask are more than the bound can count (a question in a loop without max_iter, or a recursion). Under an envelope that limits asks, a sub-program's questions come out of what is left of the run's: declare asks, or bound the loop (spec/attention.md \"Sub-programs and amendments\")."
+                ),
+                &if has_budget {
+                    format!("{at}/budget")
+                } else {
+                    at.to_owned()
+                },
+                JsObject::new()
+                    .with("dimension", ASKS_DIMENSION)
+                    .with("asked", JsValue::Null)
+                    .with("total", "unbounded")
+                    .with("left", num(left)),
+            );
+            return;
+        }
+    };
+    if reserved <= left {
+        return;
+    }
+    let (what, path) = match claim.declared {
+        Some(_) => ("declares asks", format!("{at}/budget/asks")),
+        None => ("can ask", at.to_owned()),
+    };
+    no(
+        format!(
+            "{workflow} {what} {} questions, and the run has {} left of its asks (spec/attention.md \"Sub-programs and amendments\").",
+            number_to_string(reserved),
+            number_to_string(left)
+        ),
+        &path,
+        JsObject::new()
+            .with("dimension", ASKS_DIMENSION)
+            .with("asked", num(reserved))
+            .with("left", num(left)),
+    );
 }
 
 /// The program of a sub-program's view, as a typed view: its language.

@@ -12,9 +12,9 @@
 )]
 
 use mandate_ir::{
-    DefKind, ExprOp, IR_0_6_SCHEMA_TEXT, IR_SCHEMA_TEXT, Language, PatternKind, Program,
-    ReadSource, StmtOp, TemplatePart, TierBy, TypeForm, Value, VerifierForm, load_json, parse,
-    ptr_token,
+    DefKind, ExprOp, IR_0_6_SCHEMA_TEXT, IR_0_7_SCHEMA_TEXT, IR_SCHEMA_TEXT, Language, PatternKind,
+    Program, ReadSource, StmtOp, TemplatePart, TierBy, TypeForm, Value, VerifierForm, load_json,
+    parse, ptr_token,
 };
 
 fn schema() -> Value {
@@ -95,11 +95,15 @@ fn one_of_pointers(v: &Value, pointer: &str, out: &mut Vec<String>) {
 #[test]
 fn every_closed_set_of_the_schema_is_an_enum_with_the_same_values() {
     let schema = schema();
-    // The versions of 0.1 to 0.5, then those of the 0.6 schema.
+    // The versions of 0.1 to 0.5, then those of the 0.6 schema and of the
+    // 0.7 schema.
     let schema_0_6 = parse(IR_0_6_SCHEMA_TEXT)
         .expect("the embedded 0.6 schema")
         .value;
-    let language: Vec<String> = [&schema, &schema_0_6]
+    let schema_0_7 = parse(IR_0_7_SCHEMA_TEXT)
+        .expect("the embedded 0.7 schema")
+        .value;
+    let language: Vec<String> = [&schema, &schema_0_6, &schema_0_7]
         .iter()
         .flat_map(|s| {
             at(s, "/properties/language/enum")
@@ -133,7 +137,12 @@ fn every_closed_set_of_the_schema_is_an_enum_with_the_same_values() {
         (
             "/$defs/Stmt",
             tag_values(&schema, "/$defs/Stmt", "op"),
-            texts(StmtOp::ALL, StmtOp::as_str),
+            // The statements of 0.1 to 0.5; those of 0.7 are checked below.
+            StmtOp::ALL
+                .iter()
+                .filter(|s| s.since() < Language::V0_7)
+                .map(|s| s.as_str().to_owned())
+                .collect(),
         ),
         (
             "/$defs/Pattern",
@@ -169,12 +178,42 @@ fn every_closed_set_of_the_schema_is_an_enum_with_the_same_values() {
     for (pointer, in_schema, in_enum) in &sets {
         assert_eq!(in_enum, in_schema, "the enum of {pointer} and the schema");
     }
-    // Every kind, those of 0.6 included, is a kind of the 0.6 schema.
+    // Every kind, those of 0.6 included, is a kind of the 0.6 schema, and
+    // of the 0.7 schema.
     assert_eq!(
         texts(DefKind::ALL, DefKind::as_str),
         tag_values(&schema_0_6, "/$defs/Def", "kind"),
         "the kinds of the 0.6 schema"
     );
+    assert_eq!(
+        texts(DefKind::ALL, DefKind::as_str),
+        tag_values(&schema_0_7, "/$defs/Def", "kind"),
+        "the kinds of the 0.7 schema"
+    );
+    // The statements older than 0.7 are those of the 0.6 schema, and every
+    // statement, those of 0.7 included, is one of the 0.7 schema.
+    assert_eq!(
+        StmtOp::ALL
+            .iter()
+            .filter(|s| s.since() < Language::V0_7)
+            .map(|s| s.as_str().to_owned())
+            .collect::<Vec<_>>(),
+        tag_values(&schema_0_6, "/$defs/Stmt", "op"),
+        "the statements of the 0.6 schema"
+    );
+    assert_eq!(
+        texts(StmtOp::ALL, StmtOp::as_str),
+        tag_values(&schema_0_7, "/$defs/Stmt", "op"),
+        "the statements of the 0.7 schema"
+    );
+    // The expressions are the same in every schema.
+    for s in [&schema_0_6, &schema_0_7] {
+        assert_eq!(
+            texts(ExprOp::ALL, ExprOp::as_str),
+            tag_values(s, "/$defs/Expr", "op"),
+            "the expressions of a later schema"
+        );
+    }
     // A closed set the schema adds has no enum yet.
     let mut found = Vec::new();
     one_of_pointers(&schema, "", &mut found);
@@ -212,11 +251,26 @@ fn tags_convert_both_ways_and_versions_are_ordered() {
         Some(Language::V0_6),
         "the tag of 0.6"
     );
-    assert_eq!(Language::from_tag("mandate/0.7"), None);
+    // 0.7 reads everything 0.6 does.
+    assert!(Language::V0_7.at_least(Language::V0_6));
+    assert!(Language::V0_7.at_least(Language::V0_4));
+    assert!(!Language::V0_6.at_least(Language::V0_7));
+    assert_eq!(
+        Language::from_tag("mandate/0.7"),
+        Some(Language::V0_7),
+        "the tag of 0.7"
+    );
+    assert_eq!(Language::from_tag("mandate/0.8"), None);
     assert_eq!(DefKind::Role.since(), Language::V0_4);
     assert_eq!(ExprOp::Changeset.since(), Language::V0_3);
     assert_eq!(ExprOp::Int.since(), Language::V0_1);
-    assert_eq!(Language::NEWEST.to_string(), "mandate/0.6");
+    assert_eq!(StmtOp::OnError.since(), Language::V0_1);
+    // The statements of 0.7, in the 0.7 schema alone.
+    assert_eq!(StmtOp::Stage.since(), Language::V0_7);
+    assert_eq!(StmtOp::Report.since(), Language::V0_7);
+    assert_eq!(StmtOp::from_tag("report"), Some(StmtOp::Report));
+    assert_eq!(Language::NEWEST.to_string(), "mandate/0.7");
+    assert_eq!(Language::ALL.last(), Some(&Language::NEWEST));
     let refine = parse(r#"{"refine": {"ref": "Int"}, "where": {"op": "bool", "value": true}}"#)
         .unwrap()
         .value;

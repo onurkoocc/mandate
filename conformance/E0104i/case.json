@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104i",
+  "kind": "compile",
+  "title": "A stage title of 81 characters is refused by the schema of 0.7, which holds a title to 1 to 80 code points (a mutation: the title).",
+  "spec": [
+    "spec/attention.md#titles",
+    "spec/attention.md#the-ir"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/stages.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Greet/body/2/title",
+      "value": "Give the greeting back to the one who asked for it, once it is written and signed"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/Greet/body/2/title",
+        "facts": {
+          "keyword": "maxLength"
+        }
+      }
+    ]
+  }
+}

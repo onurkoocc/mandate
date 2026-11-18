@@ -286,6 +286,13 @@ impl<'a> Parser<'a> {
         self.language.at_least(Language::V0_6)
     }
 
+    /// Whether the program reads what 0.7 adds (spec/attention.md): it is of
+    /// language 0.7 or later. Each construct of 0.7 is read behind it: today
+    /// `stage`; `report`, `owner` and `asks` by the slices that add them.
+    pub(crate) fn reads_0_7(&self) -> bool {
+        self.language.at_least(Language::V0_7)
+    }
+
     /// `MDT-E0101` at the first doc line before the current token that no
     /// definition has taken: a `///` line stands only directly before a
     /// definition (or its `pub`). Nothing in a program that does not read

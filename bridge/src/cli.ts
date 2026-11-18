@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// mandate — the command line (language 0.1 to 0.6), written over the bridge's entry point (./index.js), so that it
+// mandate — the command line (language 0.1 to 0.7), written over the bridge's entry point (./index.js), so that it
 // follows the bridge to whichever compiler stands behind it. The TypeScript compiler keeps its own copy as `mandate-ts`.
 //
 //   mandate check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]… [--libraries <dir>] [--config <file>]
@@ -13,7 +13,8 @@
 //                                          for an AGT host (spec/executors.md, item 40)
 //   mandate explain <code>                 explain a diagnostic code
 //   mandate mcp [--module <file>]…         serve check, explain, apply_patch and views to agents
-//                                          over MCP on stdio (§14)
+//                                          over MCP on stdio (§14); the tools of language 0.7 (spec/attention.md
+//                                          "The MCP server"), as the native command serves them
 //   mandate view <file> [--against <old>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>]
 //                                          the program's human views (§15): architecture,
 //                                          authority and cost; with --against, what changed,
@@ -22,10 +23,13 @@
 //                                          the card a person reads before approving a
 //                                          workflow's envelope, with the package hash
 //                                          the approval binds to (spec/views.md)
-//   mandate add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
+//   mandate view <file> --attention [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]…
+//                                          the attention view of a program of 0.7: what each workflow asks
+//                                          of whom, and at most how many questions (spec/attention.md)
+//   mandate add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]
 //                                          pin a library of the operator's directory in the lock, and
 //                                          show its authority signature (language 0.6, spec/library.md)
-//   mandate upgrade <library>[@<range>] [--accept-governance] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
+//   mandate upgrade <library>[@<range>] [--accept-governance] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]
 //                                          pin a newer version; a change that widens the authority
 //                                          signature is shown as a governance change, and the lock is
 //                                          written only with --accept-governance
@@ -43,6 +47,11 @@
 //   mandate halt                           the operator's hard stop of a tenant or of all, its lift and
 //                                          the list of halts (spec/boundary.md, the runtime's CLI)
 //   mandate otel export --endpoint <url>   the journal as OpenTelemetry spans, without content (spec/boundary.md, the runtime's CLI)
+//   mandate tick [--follow]                the driver loop: deadlines pass, reviews escalate, notifications of 0.7
+//                                          runs go out (spec/attention.md, the runtime's CLI)
+//   mandate promote <run> --to <mode>      the owner promotes a workflow up its ladder on a run (0.7, spec/attention.md, the runtime's CLI)
+//   mandate waits | watch | decide         what a person is shown and decides (0.7, spec/attention.md "The command line", the runtime's CLI):
+//                                          the open decisions of a role or member, script-free pages and a role's events, a signed decision
 //   mandate egress serve --config <file>   the reference egress proxy, which holds the secrets (spec/egress.md)
 //   mandate connector pin <program>        writes the schema digests of a program's connectors into its lock,
 //                                          asking each server through the egress proxy (0.6, spec/library.md; the runtime's CLI)
@@ -71,6 +80,7 @@ import {
   acsTarget,
   applyPatch,
   architecture,
+  attentionView,
   authority,
   canonicalize,
   card,
@@ -83,6 +93,7 @@ import {
   envelopeWorkflows,
   formatDiagnostic,
   hasErrors,
+  isProgram07OrLater,
   kindOf,
   load,
   loadModules,
@@ -121,8 +132,9 @@ function usageText(): string {
       "  explain <code>",
       "  view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
       "  view <file> --card [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
-      "  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]",
-      "  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]",
+      "  view <file> --attention [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
+      "  add <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--json]",
+      "  upgrade <library>[@<range>] [--lock <lock.json>] [--program <file>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]",
       "  publish <source dir> [--libraries <dir>] [--config <file>] [--json]",
       "  mcp [--module <file>]…   (an MCP server on stdio)",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
@@ -135,6 +147,12 @@ function usageText(): string {
       "  egress serve --config <mandate.egress.json>   (the reference egress proxy)",
       "  connector pin <program> [--lock FILE] [--module FILE]… [--libraries DIR] [--config FILE]",
       "  review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]",
+      "  tick [--follow] [--interval 10s] [--no-notify]",
+      "  promote <run> --to read_only|live --key FILE [--member NAME] [--yes]",
+      "  waits (--role R | --member M) [--tenant T] [--json]",
+      "  watch --member M --out DIR [--follow] [--interval 10s] [--refresh SECONDS]",
+      "  watch <run> --role R --jsonl",
+      "  decide --key FILE [--member NAME]",
       "  test <file> [--json] [--libraries <dir>]",
       "",
     ].join("\n")
@@ -240,6 +258,8 @@ function main(argv: string[]): void {
   const format = option(plain, "--format") ?? "md";
   const librariesDir = option(plain, "--libraries");
   const configFile = option(plain, "--config");
+  // 0.7: the program a lock is for (`add`, `upgrade`).
+  const programFile = option(plain, "--program");
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
   const args = plain.filter((a) => !a.startsWith("--"));
   const asJson = flags.has("--json");
@@ -252,6 +272,7 @@ function main(argv: string[]): void {
     ...(librariesDir !== undefined ? { libraries: librariesDir } : {}),
     ...(configFile !== undefined ? { config: configFile } : {}),
     acceptGovernance: flags.has("--accept-governance"),
+    ...(programFile !== undefined ? { program: programFile } : {}),
   };
 
   switch (cmd) {
@@ -393,7 +414,34 @@ function main(argv: string[]): void {
       const program = loadChecked(file, g, lock);
       // The modules a view is given: the caller's, and those of the libraries the lock pins (0.6).
       const linked = withModules(g, modules);
-      if (flags.has("--card")) {
+      if (flags.has("--attention")) {
+        if (against !== undefined || flags.has("--card")) usage();
+        // The attention view is of a program of 0.7: of each of its workflows, in the order of its definitions, or of the
+        // one --workflow names (the native command's, byte for byte: crates/mandate-cli/src/commands.rs).
+        if (!isProgram07OrLater(program)) {
+          process.stderr.write(`mandate: ${file} is not a program of language 0.7, so it has no attention view\n`);
+          process.exit(1);
+        }
+        const names = Object.entries(program.defs).filter(([, d]) => d.kind === "workflow").map(([n]) => n);
+        if (workflow !== undefined && !names.includes(workflow)) {
+          process.stderr.write(`mandate: no workflow ${workflow} in ${file}; name one of: ${names.join(", ")}\n`);
+          process.exit(2);
+        }
+        if (!names.length) {
+          process.stderr.write(`mandate: ${file} has no workflow, so it has no attention view\n`);
+          process.exit(1);
+        }
+        // The check of the view is given what the check was: the lock, the libraries, the configuration's revoked digests.
+        const opts = { modules, ...(lock ? { lock } : {}), ...givenOptions(g) };
+        const shown = attentionView({ text: read(file), kind: kindOf(file), opts, ...(workflow !== undefined ? { workflow } : {}), format: format as "md" | "html" | "json" });
+        if (shown === null) {
+          process.stderr.write(`mandate: the attention view of ${workflow ?? names[0]} of ${file} could not be made\n`);
+          process.exit(1);
+        }
+        // Markdown and HTML are the document, of the one workflow or of all of them; JSON is the view of the one workflow
+        // --workflow names, else { format, kind, program, workflows }, whatever their number.
+        process.stdout.write(typeof shown === "string" ? shown : JSON.stringify(shown, null, 2) + "\n");
+      } else if (flags.has("--card")) {
         if (against !== undefined) usage();
         // The card is of one workflow with an envelope: the only one, or the one --workflow names.
         const all = envelopeWorkflows(program);
@@ -407,8 +455,18 @@ function main(argv: string[]): void {
           process.exit(2);
         }
         const name = workflow ?? all[0]!;
-        const opts = { modules: linked, ...(lock ? { lock } : {}) };
-        process.stdout.write(format === "json" ? JSON.stringify(card(program, name, opts), null, 2) + "\n" : format === "html" ? toHtml(cardDoc(program, name, opts)!) : toMarkdown(cardDoc(program, name, opts)!));
+        // The libraries the command was given go to the card as they went to the check: a card of 0.7 is made from a check
+        // that has them, and without them it is not made (the call throws, saying what is missing).
+        const opts = { modules: linked, ...(lock ? { lock } : {}), ...(g.libraries.length ? { libraries: g.libraries } : {}) };
+        let text: string;
+        try {
+          text = format === "json" ? JSON.stringify(card(program, name, opts), null, 2) + "\n" : format === "html" ? toHtml(cardDoc(program, name, opts)!) : toMarkdown(cardDoc(program, name, opts)!);
+        } catch (e) {
+          if (!(e instanceof Error) || e instanceof CompilerFailure) throw e;
+          process.stderr.write(`mandate: ${file}: ${e.message}\n`);
+          process.exit(1);
+        }
+        process.stdout.write(text);
       } else if (against !== undefined) {
         // The old version is checked without its lock, as before 0.6, but with the libraries that lock pins (0.6).
         const old = givenFor(library, peekLock(against, againstLock));
@@ -434,7 +492,8 @@ function main(argv: string[]): void {
     }
     // falls through
     case "mcp":
-      void serveStdio(process.stdin, process.stdout, modules).then(() => process.exit(0));
+      // The tools of language 0.7, which the door `mcp_tools` lists, as the native command serves them (spec/mcp.md "0.7").
+      void serveStdio(process.stdin, process.stdout, modules, "mandate/0.7").then(() => process.exit(0));
       return;
     case "explain": {
       const raw = args[0] ?? usage();
@@ -464,7 +523,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review", "tick", "promote", "waits", "watch", "decide"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {

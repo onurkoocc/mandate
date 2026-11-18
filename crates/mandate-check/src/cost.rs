@@ -510,7 +510,11 @@ fn stmt_cost(
                 None => once,
             })
         }
-        _ => None,
+        // An `on error`'s handler and a test's `run` add nothing here, as
+        // in `blockCost`; a stage and a report of 0.7 cost nothing: a
+        // report's fields are pure, so it reserves nothing and counts in no
+        // budget (spec/attention.md "`stage`", "`report`").
+        Some(StmtOp::OnError | StmtOp::Run | StmtOp::Stage | StmtOp::Report) | None => None,
     }
 }
 
