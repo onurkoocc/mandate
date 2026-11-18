@@ -914,7 +914,7 @@ fn libraries_that_are_not_libraries_are_a_tool_error_in_each_tool_that_takes_the
 }
 
 #[test]
-fn caps_of_takes_the_lock_and_the_libraries_and_apply_patch_does_not_yet() {
+fn caps_of_and_apply_patch_take_the_lock_and_the_libraries() {
     let out = serve(&[
         call(
             1,
@@ -962,25 +962,94 @@ fn caps_of_takes_the_lock_and_the_libraries_and_apply_patch_does_not_yet() {
         out[2],
         io.out
     );
-    // apply_patch: its door, check_patch, takes no lock and no libraries
-    // (spec/attention.md "The MCP server"), so a program that uses a pinned
-    // library does not check after the patch.
+    // apply_patch takes them too (spec/attention.md "The MCP server"): its
+    // door, check_patch, checks the patched program with the lock and the
+    // libraries, as `check` does.
     let hash = {
         let line = serve(&[call(5, "mandate.check", &invoices_args(""))]).remove(0);
         let at = line.find(r#""program":"sha256:"#).unwrap() + r#""program":""#.len();
         line[at..at + 71].to_owned()
     };
-    let patched = serve(&[call(
-        6,
-        "mandate.apply_patch",
-        &invoices_args(&format!(r#","base":"{hash}","ops":[]"#)),
-    )]);
-    assert!(
-        patched[0].contains(r#""structuredContent":{"ok":false"#),
-        "{}",
-        &patched[0][..400]
+    let patch = format!(r#","base":"{hash}","ops":[]"#);
+    // The pinned library's digest, made another: the lock says what the
+    // library must be (E1605), and without a lock there is no pin to break.
+    let pinned = read_text("fixtures/library/invoices.lock.json").unwrap();
+    let digest = "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220";
+    assert!(pinned.contains(digest));
+    let other = format!("sha256:{}", "a".repeat(64));
+    let broken = pinned.replace(digest, &other);
+    let broken = mandate_ir::stringify(&mandate_ir::JsValue::from(
+        &mandate_ir::parse(&broken).unwrap().value,
+    ))
+    .unwrap();
+    let broken_args = format!(
+        r#"{{"source":{},"lock":{broken},"libraries":{}{patch}}}"#,
+        quoted(&read_text("fixtures/library/invoices.mdt").unwrap()),
+        acme_connectors(),
     );
-    assert!(patched[0].contains("MDT-E1604"), "{}", &patched[0][..400]);
+    let patched = serve(&[
+        call(6, "mandate.apply_patch", &invoices_args(&patch)),
+        call(7, "mandate.apply_patch", &invoices_args_with(&patch)),
+        call(
+            8,
+            "mandate.apply_patch",
+            &invoices_args(&format!("{patch},\"lock\":null")),
+        ),
+        call(9, "mandate.apply_patch", &broken_args),
+        call(
+            10,
+            "mandate.apply_patch",
+            &invoices_args(&format!("{patch},\"libraries\":[]")),
+        ),
+    ]);
+    // With both: the patched program checks, and is what the patch made.
+    assert!(
+        patched[0].contains(r#""structuredContent":{"ok":true"#),
+        "{}",
+        &patched[0][..400.min(patched[0].len())]
+    );
+    assert!(patched[0].contains(&hash), "{}", &patched[0]);
+    // With the lock and no libraries (as `check` gives it): the pinned
+    // library is not there.
+    assert!(
+        patched[1].contains(r#""structuredContent":{"ok":false"#),
+        "{}",
+        &patched[1][..400.min(patched[1].len())]
+    );
+    assert!(patched[1].contains("MDT-E1604"), "{}", &patched[1]);
+    // With the libraries and no lock: as `check` with no lock, whatever it says.
+    assert_eq!(
+        patched[2].contains(r#""structuredContent":{"ok":true"#),
+        checks,
+        "{}
+{}",
+        patched[2],
+        io.out
+    );
+    // The answer differs with the lock: a lock that pins another digest of
+    // the library breaks the pin (E1605) of a program that checked.
+    assert!(
+        patched[3].contains(r#""structuredContent":{"ok":false"#),
+        "{}",
+        &patched[3][..400.min(patched[3].len())]
+    );
+    assert!(patched[3].contains("MDT-E1605"), "{}", &patched[3]);
+    assert_ne!(patched[0], patched[3]);
+    // An empty list of libraries is none, as it is for `check`.
+    assert_eq!(patched[4].replace(r#""id":10"#, r#""id":7"#), patched[1]);
+    // A list that is not libraries is the tool error `caps_of` gives.
+    let refused = serve(&[call(
+        11,
+        "mandate.apply_patch",
+        &invoices_args_with(&format!(r#"{patch},"libraries":[5]"#)),
+    )]);
+    assert_eq!(
+        refused,
+        [tool_error(
+            11,
+            "libraries must be a list of libraries, each { manifest, files }"
+        )]
+    );
 }
 
 #[test]

@@ -237,8 +237,8 @@ pub use diff::{
     system_changes,
 };
 pub use doors::{
-    AmendmentCheck, AmendmentInput, PatchCheck, SubprogramCheck, SubprogramInput, check_amendment,
-    check_patch, check_subprogram, subprogram_linked, subprogram_linked_pinned,
+    AmendmentCheck, AmendmentInput, PatchCheck, PatchOptions, SubprogramCheck, SubprogramInput,
+    check_amendment, check_patch, check_subprogram, subprogram_linked, subprogram_linked_pinned,
 };
 pub use grant::{
     AuthorityContext, Capability, GrantDelegation, GrantInput, GrantOutput, InFlightOverlapInput,

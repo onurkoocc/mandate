@@ -9,7 +9,9 @@ use super::DoorError;
 use super::front::{diagnostics_js, ir};
 use super::input::args;
 use crate::diff::{Change, KindedChange, Locks};
-use crate::doors::{AmendmentCheck, AmendmentInput, SubprogramCheck, SubprogramInput};
+use crate::doors::{
+    AmendmentCheck, AmendmentInput, PatchOptions, SubprogramCheck, SubprogramInput,
+};
 use crate::patch::GovernanceChange;
 use crate::subprogram::Room;
 
@@ -50,13 +52,23 @@ pub(super) fn apply_patch(input: &Value) -> Result<JsValue, DoorError> {
 }
 
 /// The parameters of [`check_patch`].
-pub(super) const CHECK_PATCH: &[&str] = &["program", "base", "ops", "modules"];
+pub(super) const CHECK_PATCH: &[&str] = &["program", "base", "ops", "modules", "opts"];
 
 /// `checkPatch(program, base, ops, modules)`, `compiler/src/check.ts`: a
 /// patch applied to a program, with the patched program's own checks.
 ///
 /// Input: `{ program, base: string, ops: [{ op, path, value? }], modules?:
-/// { <name>: program } }`.
+/// { <name>: program }, opts?: { lock?, libraries?, config? } }`. Language
+/// 0.7 adds `opts`, the Rust's alone (the TypeScript function has no fifth
+/// parameter), read as the door `check` reads the same members: `lock`, the
+/// lock as read (any value: the check validates it), `libraries`, the
+/// libraries the lock pins as `[{ manifest, files }]`, and `config`, the
+/// `libraries` member of the runtime's configuration (its revoked digests).
+/// The patched program is checked with them beside `modules`, as `check`
+/// checks it, and the names of the patch are resolved against the modules of
+/// the libraries too (a `use` of a pinned library's module, or of the
+/// embedded `std.patterns`, resolves). Without `opts` the door answers as it
+/// did.
 /// Output: `PatchCheck`, `{ ok, hash?, diagnostics, governance,
 /// requires_approval, program? }`.
 pub(super) fn check_patch(input: &Value) -> Result<JsValue, DoorError> {
@@ -65,7 +77,19 @@ pub(super) fn check_patch(input: &Value) -> Result<JsValue, DoorError> {
     let base = a.str("base")?;
     let ops = a.ops("ops")?;
     let modules = a.opt_modules("modules")?;
-    Ok(crate::doors::check_patch(program, base, &ops, modules).to_js())
+    let mut options = PatchOptions::default();
+    let mut libraries = Vec::new();
+    let mut config = None;
+    if let Some(o) = a.opt_members("opts", "opts.")? {
+        options.lock = o.opt_lock("lock");
+        libraries = super::library::sources_of(o, "libraries")?;
+        config = super::library::config_of(o)?;
+    }
+    if !libraries.is_empty() {
+        options.libraries = Some(&libraries);
+    }
+    options.revoked = config.as_ref().map(mandate_lib::LibrariesConfig::revoked);
+    Ok(crate::doors::check_patch(program, base, &ops, modules, &options).to_js())
 }
 
 /// The parameters of [`check_subprogram`].

@@ -1889,15 +1889,17 @@ fn a_functions_result_is_of_the_class_of_what_it_returns_in_0_7() {
     );
     let f = facts(&asked, "ViaText");
     assert_eq!(f.bound.questions[0].shown.as_str(), "confidential");
-    // 0.6, the finding: the same function's result is of its arguments'
-    // class alone, public, and the model is handed the row unrefused. The
-    // older language is checked as it was.
+    // 0.6 as well since 2026-11-18 (spec/attention.md, the security note):
+    // the same function's result was of its arguments' class alone, public,
+    // and the model was handed the row unrefused; it is refused now, the
+    // one 0.6 diagnostic that changed after release (more routes in
+    // tests/class_0_6.rs).
     let six = READS.replace("mandate @ 0.7", "mandate @ 0.6").replace(
         "  let q = human.ask(\"Is {n} right?\", role: accountant)\n",
         "",
     );
     let r6 = checked(&six);
-    assert!(errors(&r6).is_empty(), "{:?}", errors(&r6));
+    assert_eq!(errors(&r6), ["MDT-E0220 at /defs/ViaText/body/1/value"]);
 }
 
 // ── G6, G3: what a verify's, a review's and a plan's row say ──────────────

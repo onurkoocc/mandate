@@ -81,7 +81,7 @@
   {
     "name": "mandate.apply_patch",
     "title": "Apply an IR patch",
-    "description": "Applies RFC 6902 operations (add, remove, replace) to a program's canonical IR, against the program hash they were written for. A stale base is refused (MDT-E0130). Returns the new program and hash, its diagnostics, and the governance changes it makes; those need a person's approval. Nothing is saved.",
+    "description": "Applies RFC 6902 operations (add, remove, replace) to a program's canonical IR, against the program hash they were written for. A stale base is refused (MDT-E0130). Returns the new program and hash, its diagnostics, and the governance changes it makes; those need a person's approval. Nothing is saved. A program of 0.6 or 0.7 is checked with its `lock` and the libraries the lock pins (`libraries`), as `check` is, so that the answer says what `check` would say of the patched program.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -131,6 +131,35 @@
             ],
             "additionalProperties": false
           }
+        },
+        "lock": {
+          "type": "object",
+          "description": "The lock file (mandate.lock.json), to check model tiers and W0504."
+        },
+        "libraries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "manifest": {
+                "type": "string",
+                "description": "The text of the library's mandate.library.json."
+              },
+              "files": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Each module file the manifest lists, by its path, with its text."
+              }
+            },
+            "required": [
+              "manifest",
+              "files"
+            ],
+            "additionalProperties": false
+          },
+          "description": "The libraries the program's lock pins, each as its manifest and its module files. The embedded std.patterns is found without being given."
         }
       },
       "required": [
