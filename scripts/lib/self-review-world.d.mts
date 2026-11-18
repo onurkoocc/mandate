@@ -53,4 +53,11 @@ export function startReviewWorld(
   deps: { serveEgress: (o: { config: string; env: Record<string, string>; resolve: unknown; dial: unknown }) => Promise<{ stop(): Promise<void> }>; defaultDialer?: unknown; isPublicAddress?: (a: string) => boolean },
 ): Promise<{ dir: string; id: string; config: string; components: Component[]; report: ReturnType<typeof reportState>; port: number; admin: string; stop(): Promise<void> }>;
 export function newReviewSessionDir(): string;
+export const MODEL_KEY_VARIABLES: string[];
+export function childEnv(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
+export const SESSION_MARKER: string;
+export function readReviewMarker(dir: string): { format: string; id: string; created: string } | undefined;
+export function checkReviewSessionDir(dir: string): { resume: boolean };
+export function markReviewSessionDir(dir: string): string;
+export function assertReviewSessionDir(dir: string): { format: string; id: string; created: string };
 export function cleanReviewSession(dir: string): { removed: string[]; left: string[]; dirRemoved: boolean; snapshot: string | undefined; snapshotRemoved: boolean };

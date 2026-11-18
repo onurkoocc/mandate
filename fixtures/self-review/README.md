@@ -58,12 +58,18 @@ With the simulated Reviewer, two findings are grounded, one (`agent-tools`) is g
 you may waive, and one (`child-env`) names a line past the end of its file, which nobody may waive: it is declined
 without anyone being asked. So a live run appends three entries when you waive the one, two when you decline it.
 
-The budget: the program may spend at most **20 USD** in a run. Only the Reviewer spends: 4 components, at most
-**1.20 USD** each on the tier `standard`, which the lock maps to Opus 5.5 (`claude-opus-5-5`, effort medium, at most
-40,000 input and 4,000 output tokens per call, priced at 4 / 20 USD per million input / output tokens). So the card's
-static bound is **4 × 1.20 = 4.80 USD** per run, and the three runs of the ladder (design, read_only, live) spend at
-most **14.40 USD** together with the real model. The check also warns (`MDT-W0504`) that 12 steps at the most a call
-can cost would be 3.36 USD: the Reviewer's 1.20 USD is the ceiling, and a review that reaches it ends unfinished.
+The budget. The owner's limit is **20 USD for the whole session**; a program's budget is a run's, so the program
+spends at most **6 USD in a run**. Only the Reviewer spends: 4 components, at most **1.20 USD** each on the tier
+`standard`, which the lock maps to Opus 5.5 (`claude-opus-5-5`, effort medium, at most 40,000 input and 4,000 output
+tokens per call). So the card's static bound is **4 × 1.20 = 4.80 USD** per run, under the 6 USD. The three runs
+that spend with the real model (design, read_only and live: every mode runs the model) are held to 3 × 6 = 18 USD by
+the program's limit, and to 3 × 4.80 = **14.40 USD** by the Reviewer's, both under the 20 USD.
+
+The lock's tariff prices Opus 5.5 at 4 USD per million input tokens, 5 USD per million when the input is written to
+the cache, 0.20 USD when it is read from it, and 20 USD per million output tokens. The check bounds a call at the
+dearest of these for its input: 40,000 × 5 + 4,000 × 20 USD per million = 0.28 USD. It warns (`MDT-W0504`) that 12
+steps at that bound would be 3.36 USD: the Reviewer's 1.20 USD is the ceiling, and a review that reaches it ends
+unfinished.
 
 ## Step 1. Start the world (terminal A)
 
@@ -131,8 +137,8 @@ node bridge/dist/cli.js view fixtures/self-review/self-review.mdt --card --workf
 
 You should see:
 
-- "Spend bound of map it: 4 × 1.20 USD = 4.80 USD ≤ 20 USD", and in "The most it spends" the row
-  `spend (USD) | 20 USD | 4.8 USD | 15.2 USD`;
+- "Spend bound of map it: 4 × 1.20 USD = 4.80 USD ≤ 6 USD", and in "The most it spends" the row
+  `spend (USD) | 6 USD | 4.8 USD | 1.2 USD`;
 - under "What it can touch", the read path `/mandate-self-review/snapshot` and nothing to write, no network host and no
   command: the Reviewer reads, and only the workflow appends to the report;
 - "At most 2 questions in all (asks: 2)", the maintainer and then the deputy, a day each;
@@ -227,17 +233,25 @@ finding is a new entry. Skip this step with a real model: it spends.
 
 ## Step 12. The result checklist
 
+The figures in steps 6 to 11 and in rows 4 to 6 and 8 below (one item waiting, `child-env` declined, three report
+entries, "3 would apply") are the simulated Reviewer's. With a real model the number of items waiting, which are
+declined and the report's entries differ from run to run, and that is not a finding by itself. What has to hold in
+both modes: no report entry before the live run; in the report, only findings the contract accepted or you waived,
+each once; the `asks` bound (row 7); what the maintainer is shown (row 10); and replay (row 8: the design and live runs
+replay to their own results, whatever they were).
+
 | # | What | What to look at | Verdict | Notes |
 |---|---|---|---|---|
 | 1 | The program checks | Step 3: `check` ends `ok sha256:…`. | | |
-| 2 | The card shows the limit and the bound | Step 4: 20 USD, 4 × 1.20 = 4.80 USD, the one read path, no write path or host. | | |
+| 2 | The card shows the limit and the bound | Step 4: 6 USD a run, 4 × 1.20 = 4.80 USD, the one read path, no write path or host. | | |
 | 3 | Nothing runs unapproved | Step 5: `unapproved_envelope`, then a signed approval. | | |
-| 4 | design, then read_only, then live | Steps 6 to 8: no entry after design and read_only; the shadow diff's three appends; three entries after live. | | |
-| 5 | The contract decides, the person decides the rest | Step 6: one item asked about (`confident`), one declined unasked (`known_line`). | | |
-| 6 | Each accepted finding is appended once | Steps 8 and 11: three entries, not six. | | |
+| 4 | design, then read_only, then live | Steps 6 to 8: no entry after design and read_only; the shadow diff's appends (three, simulated); the entries after live (three, simulated). | | |
+| 5 | The contract decides, the person decides the rest | Step 6: the items that failed only `confident` are asked about (one, simulated); those that failed another criterion are declined unasked (one, simulated: `known_line`). | | |
+| 6 | Each accepted finding is appended once | Steps 8 and 11: each entry once (three, not six, simulated). | | |
 | 7 | The `asks` bound holds | Step 9. | | |
 | 8 | Replay is equal | Step 10: `d1` and `l1` complete with their results; `r1` partial. | | |
 | 9 | With a real model: the findings | The last section: each entry names a real line, and the evidence is on that line. | | |
+| 10 | The maintainer sees only what the role may be shown | `watch l1 --role maintainer --jsonl --config $C`: the `class` of every event is S0, S1 or S2. `$S/notifications.jsonl`: every line's `class` is S0 or S1 (PowerShell: `Get-Content $S/notifications.jsonl \| ForEach-Object { ($_ \| ConvertFrom-Json).class } \| Sort-Object -Unique`; POSIX: `grep -o '"class":"S[0-9]"' $S/notifications.jsonl \| sort \| uniq -c`). | | |
 
 ## Step 13. Stop and clean up
 
@@ -247,6 +261,16 @@ then:
 ```sh
 node scripts/self-review.mjs down --session $S
 node scripts/self-review.mjs clean --session $S
+```
+
+With a real model, clear the key in terminal A once `up` has stopped:
+
+```powershell
+Remove-Item Env:CLAUDE_API_KEY; Remove-Variable k
+```
+
+```sh
+unset CLAUDE_API_KEY
 ```
 
 Copy `$S/report.md` somewhere first if you want to keep it: `clean` removes what the kit made in the session directory
@@ -263,12 +287,22 @@ About the product, which a pass here does not cover:
 - A contract cannot say "every finding of a list" (there is no quantifier over a list), so a review returns one
   finding, not several. Nor can it ask whether a file exists: `known_file` checks the file against the list the
   connector gives, which the kit made from the snapshot.
-- A budget is a run's. Nothing in the program caps what several runs spend together: the 14.40 USD of the ladder is
-  three runs' static bounds added up, not a limit the runtime holds. Every mode spends: a design run runs the model too.
+- A budget is a run's. Nothing in the program caps what several runs spend together: the owner's 20 USD total is
+  kept by running at most three spending runs (see the last section), not by a limit the runtime holds. Every mode
+  spends: a design run runs the model too.
 - Replaying a read_only run returns `partial`.
 - One person in two roles: the escalation to the deputy goes to the same person.
 
+About what the session reviews:
+
+- Only four components are reviewed, 8 files of the repository. A short or an empty report says nothing about the
+  rest of the repository, nor that these 8 files are free of defects: each review reports at most one finding.
+
 About what the kit fakes, which a pass here does not cover either:
+
+- The real-model path (the last section) has not been run by the kit's author: no model call through the proxy, no
+  Reviewer loop in the sandbox, no real finding and no real spend has been seen. A pass with the simulated Reviewer
+  says nothing about it.
 
 - With the simulated Reviewer, the runtime in terminal B is patched as it loads: one adapter is replaced (the line that
   would refuse an agent without a model and a sandbox). No code is read, no sandbox is opened and nothing marks the
@@ -293,7 +327,17 @@ About what the kit fakes, which a pass here does not cover either:
 
 **This path has not been run by the kit's author**: it needs a key, and spends. It is checked by its configuration,
 by the real AppContainer sandbox reading a snapshot at a path of this shape on Windows, and by reading. Run steps 1 to
-10 with it (three runs that spend, at most 14.40 USD), not step 11.
+10 with it, not step 11.
+
+The owner's limit is 20 USD for the session, and the runtime holds only each run's 6 USD. At most three spending runs
+fit in the 20 USD: the design run d1, the read_only run r1 and the live run l1 (3 × 6 = 18 USD at the most; the
+Reviewer's own bound makes it 14.40). `u0` and `x1` are refused before they start and spend nothing; a replay calls no
+model. A rerun of a run that failed or stopped is a spending run too: after one rerun, stop, and do not start another
+run without deciding to spend more. Add up `budget spend:USD … settled` of `status <run>` for every run as you go.
+
+The outputs of steps 6 to 11 differ with a real model (step 12 says what must hold in both modes): how many items
+wait for you, which are declined and what the report holds depend on what the Reviewer found. Decide each waiting item
+as you judge it: `waive` the ones you accept despite the Reviewer's lower confidence, `decline` the others.
 
 The key comes from the environment of terminal A only, never from a file and never from a `.env` (the kit reads none),
 and is not shown as you type it:
@@ -323,7 +367,8 @@ What changes:
   make `/mandate-self-review` once and give it to yourself (`sudo mkdir /mandate-self-review && sudo chown $USER
   /mandate-self-review`). The path names no person on purpose: the Reviewer's tools show it to the model. `clean`
   removes the snapshot.
-- Each run spends up to 4.80 USD. `status <run>` shows the `budget spend:USD` line: settled and reserved.
+- Each run spends up to 4.80 USD (the Reviewer's bound), and the runtime stops it at 6 USD. `status <run>` shows the
+  `budget spend:USD` line: settled and reserved.
 
 What to look at in the report: does each entry's line hold what its evidence quotes (open the file at that line in
 the commit `up` printed)? Is what it says wrong really wrong? That is row 9 of the checklist, and the reason for the

@@ -44,10 +44,11 @@ agent Reviewer {
 /// Reviews each component of the snapshot and appends each grounded finding
 /// to the local report. Asks the maintainer once about the rest.
 ///
-/// Spend: at most 20 USD. Only the Reviewer spends: 4 components, at most
-/// 1.20 USD each on the standard tier (Opus 5.5 in the lock), so a run's
-/// static bound is 4.80 USD, and the three runs of the ladder (design,
-/// read_only, live) at most 14.40 USD together.
+/// Spend: at most 6 USD a run. Only the Reviewer spends: 4 components, at
+/// most 1.20 USD each on the standard tier (Opus 5.5 in the lock), so a
+/// run's static bound is 4.80 USD. The owner's total for the session is
+/// 20 USD: the three spending runs of the ladder (design, read_only, live)
+/// are held to 18 USD by this limit, and bound to 14.40 USD by the Reviewer's.
 workflow ReviewRepository = BatchWithExceptions<Component, Finding, Entry>(
     source: report.list_components, work: Reviewer.review, accepted: Grounded,
     reviewer: maintainer, escalate_to: deputy,
@@ -55,4 +56,4 @@ workflow ReviewRepository = BatchWithExceptions<Component, Finding, Entry>(
     max_items: 4, concurrency: 2, deadline: 1d)
   owner  maintainer
   caps   Components, Append, Snapshot, ModelStd
-  budget { spend: 20 USD, time: 2h, asks: 2 }
+  budget { spend: 6 USD, time: 2h, asks: 2 }

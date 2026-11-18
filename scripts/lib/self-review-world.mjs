@@ -6,9 +6,10 @@
 // behind the egress proxy the runtime requires.
 //
 // It reuses the live kit's pieces (scripts/lib/live-world.mjs): the MCP server, the loopback guard, the templates'
-// filling and the session directory's marker. Nothing here is a secret: the one secret the report connector checks
-// (what the egress proxy puts in the header of each of its requests) is made at run time, held in this process, and
-// never written or printed. Only Node's own modules are imported; the egress proxy is handed in (`deps`).
+// filling and the work-tree check. Its session directories have a marker of their own, so that neither kit takes the
+// other's directory for its own. Nothing here is a secret: the one secret the report connector checks (what the
+// egress proxy puts in the header of each of its requests) is made at run time, held in this process, and never
+// written or printed. The git processes the kit starts get this process's environment without the model's key. Only Node's own modules are imported; the egress proxy is handed in (`deps`).
 
 import { randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -16,7 +17,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSyn
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
-import { assertLocalOnly, assertSessionDir, checkSessionDir, fill, hostsIn, insideGitWorkTree, listen, markSessionDir, mcpServer, realPathOf } from "./live-world.mjs";
+import { assertLocalOnly, fill, hostsIn, insideGitWorkTree, listen, mcpServer, realPathOf } from "./live-world.mjs";
 
 // ── what is reviewed ────────────────────────────────────────────────────
 
@@ -75,9 +76,21 @@ export const SNAPSHOT_MARKER = ".mandate-self-review-snapshot";
 
 const lineCount = (text) => (text === "" ? 0 : text.split("\n").length - (text.endsWith("\n") ? 1 : 0));
 
+/** The variables that may hold the model's key in terminal A (`up --real-model`): no child process gets them. */
+export const MODEL_KEY_VARIABLES = ["CLAUDE_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_WORKSPACE_ID"];
+
+/** The environment of a child process the kit starts (git): this process's, without the model's key. */
+export function childEnv(env = process.env) {
+  const out = { ...env };
+  for (const k of MODEL_KEY_VARIABLES) delete out[k];
+  return out;
+}
+
+const git = (repo, args, o = {}) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", env: childEnv(), stdio: ["ignore", "pipe", "pipe"], ...o });
+
 /** The commit `rev` of the repository at `repo`, in full. */
 export function commitOf(repo, rev = "HEAD") {
-  return execFileSync("git", ["-C", repo, "rev-parse", "--verify", `${rev}^{commit}`], { encoding: "utf8" }).trim();
+  return git(repo, ["rev-parse", "--verify", `${rev}^{commit}`]).trim();
 }
 
 /**
@@ -105,7 +118,7 @@ export function writeSnapshot(repo, target, commit, sessionId, components = COMP
     focus: c.focus,
     files: c.paths.map((p) => {
       if (!/^[A-Za-z0-9._/-]+$/.test(p) || p.split("/").some((s) => s === ".." || s === "" || s.startsWith(".env"))) throw new Error(`${p} is not a path the snapshot takes`);
-      const text = execFileSync("git", ["-C", repo, "show", `${commit}:${p}`], { encoding: "utf8", maxBuffer: 4_000_000 });
+      const text = git(repo, ["show", `${commit}:${p}`], { maxBuffer: 4_000_000 });
       const file = join(target, ...p.split("/"));
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, text);
@@ -329,8 +342,8 @@ export async function startReviewWorld(o, deps) {
   for (const host of [...hostsIn(lockTemplate), ...hostsIn(readFileSync(join(libraryDir, "connectors.mdt"), "utf8"))]) assertLocalOnly("a connector's host", host);
   if (o.database !== undefined && !/^(pglite:|postgres(ql)?:\/\/)/.test(o.database)) throw new Error("the database is a PostgreSQL URL (postgresql://…) or pglite:<directory>");
 
-  checkSessionDir(dir);
-  const sessionId = markSessionDir(dir);
+  checkReviewSessionDir(dir);
+  const sessionId = markReviewSessionDir(dir);
   for (const d of ["people", "decision-keys", "libraries", "pages"]) mkdirSync(join(dir, d), { recursive: true });
   const version = JSON.parse(readFileSync(join(libraryDir, "mandate.library.json"), "utf8")).version;
   cpSync(libraryDir, join(dir, "libraries", "local.review", version), { recursive: true });
@@ -397,8 +410,64 @@ export function newReviewSessionDir() {
   return join(tmpdir(), `mandate-self-review-${randomBytes(4).toString("hex")}`);
 }
 
+// ── the session directory: what the kit may write into and remove ───────
+//
+// A marker of this kit's own, so that a session of the live kit (scripts/live-session.mjs, marker
+// .mandate-live-session) is never taken for one of this kit's, nor the other way round.
+
+/** The file that says a directory is a self-review session's, with the session's random id (session.json carries the same id). */
+export const SESSION_MARKER = ".mandate-self-review-session";
+const SESSION_MARKER_FORMAT = "mandate/self-review-session-marker/0.1";
+
+/** The marker of the session directory `dir`, or undefined when there is none or it is not this kit's. */
+export function readReviewMarker(dir) {
+  try {
+    const m = JSON.parse(readFileSync(join(dir, SESSION_MARKER), "utf8"));
+    return m && m.format === SESSION_MARKER_FORMAT && /^[0-9a-f]{32}$/.test(m.id) ? m : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether the kit may bring a world up in `dir`: not inside a git work tree, and new, empty, or a session of its own. Refuses by saying why. */
+export function checkReviewSessionDir(dir) {
+  const repository = insideGitWorkTree(realPathOf(dir));
+  if (repository) throw new Error(`${dir} is inside a git work tree (${repository}): the session writes a key and a store, and the kit will not put them in a repository`);
+  if (!existsSync(dir)) return { resume: false };
+  if (!statSync(dir).isDirectory()) throw new Error(`${dir} is not a directory`);
+  if (readReviewMarker(dir)) return { resume: true };
+  if (readdirSync(dir).length > 0) throw new Error(`${dir} is not empty and is not a self-review session's directory (it has no ${SESSION_MARKER}): the kit writes only into a new or an empty directory, or its own`);
+  return { resume: false };
+}
+
+/** Makes `dir` (if need be) and its marker, once. Gives the session id. */
+export function markReviewSessionDir(dir) {
+  mkdirSync(dir, { recursive: true });
+  const had = readReviewMarker(dir);
+  if (had) return had.id;
+  const id = randomBytes(16).toString("hex");
+  writeFileSync(join(dir, SESSION_MARKER), JSON.stringify({ format: SESSION_MARKER_FORMAT, id, created: new Date().toISOString() }) + "\n");
+  return id;
+}
+
+/** Whether `dir` is a session directory of this kit's: its marker, and a session.json (if any) of the same id. Throws when not. */
+export function assertReviewSessionDir(dir) {
+  const m = readReviewMarker(dir);
+  if (!m) throw new Error(`${dir} is not a self-review session's directory (no ${SESSION_MARKER} of this kit's)`);
+  if (existsSync(join(dir, "session.json"))) {
+    let id;
+    try {
+      id = JSON.parse(readFileSync(join(dir, "session.json"), "utf8")).id;
+    } catch {
+      id = undefined;
+    }
+    if (id !== m.id) throw new Error(`${dir}: session.json does not belong to the marker's session`);
+  }
+  return m;
+}
+
 /** Every entry of the top of a session directory that the kit makes; `clean` removes these and nothing else. */
-export const REVIEW_KNOWN = [".mandate-live-session", "session.json", "mandate.runtime.json", "mandate.egress.json", "samples.json", "self-review.lock.json", "notifications.jsonl", "egress.sock", "report.md", "report.jsonl", "snapshot", "people", "decision-keys", "libraries", "pages", "store", ".mandate"];
+export const REVIEW_KNOWN = [SESSION_MARKER, "session.json", "mandate.runtime.json", "mandate.egress.json", "samples.json", "self-review.lock.json", "notifications.jsonl", "egress.sock", "report.md", "report.jsonl", "snapshot", "people", "decision-keys", "libraries", "pages", "store", ".mandate"];
 
 /**
  * Removes what the kit made: the snapshot when it is this session's, and in the session directory only the entries
@@ -406,7 +475,7 @@ export const REVIEW_KNOWN = [".mandate-live-session", "session.json", "mandate.r
  * kit's marker, or inside a git work tree.
  */
 export function cleanReviewSession(dir) {
-  const m = assertSessionDir(dir);
+  const m = assertReviewSessionDir(dir);
   const repository = insideGitWorkTree(realPathOf(dir));
   if (repository) throw new Error(`${dir} is inside a git work tree (${repository}): the kit removes nothing there`);
   let snapshot;

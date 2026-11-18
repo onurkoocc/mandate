@@ -26,8 +26,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { assertLocalOnly, assertSessionDir, checkSessionDir, listen } from "./lib/live-world.mjs";
-import { cleanReviewSession, commitOf, newReviewSessionDir, reviewLockFrom, snapshotGrant, startReviewWorld } from "./lib/self-review-world.mjs";
+import { assertLocalOnly, listen } from "./lib/live-world.mjs";
+import { assertReviewSessionDir, checkReviewSessionDir, cleanReviewSession, commitOf, newReviewSessionDir, reviewLockFrom, snapshotGrant, startReviewWorld } from "./lib/self-review-world.mjs";
 
 const repo = fileURLToPath(new URL("..", import.meta.url));
 const PROGRAM = join(repo, "fixtures", "self-review", "self-review.mdt");
@@ -68,7 +68,7 @@ function sessionDir() {
   if (typeof given !== "string") fail("which session? name its directory with --session DIR (`up` printed it)");
   const dir = resolve(given);
   try {
-    assertSessionDir(dir);
+    assertReviewSessionDir(dir);
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
   }
@@ -107,7 +107,7 @@ function shellLines(dir, real) {
 async function up() {
   const dir = resolve(typeof flags["--dir"] === "string" ? flags["--dir"] : newReviewSessionDir());
   try {
-    checkSessionDir(dir);
+    checkReviewSessionDir(dir);
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
   }

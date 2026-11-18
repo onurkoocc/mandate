@@ -17,8 +17,7 @@ import * as nodeModule from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { patched } from "./live-loader.mjs";
-import { assertSessionDir } from "./live-world.mjs";
-import { simulatedReview } from "./self-review-world.mjs";
+import { assertReviewSessionDir, simulatedReview } from "./self-review-world.mjs";
 
 const real = (p) => {
   try {
@@ -37,7 +36,7 @@ if (isMandate) {
   let session;
   try {
     if (!dir) throw new Error("no ?session=<directory> on the preload's URL");
-    assertSessionDir(dir);
+    assertReviewSessionDir(dir);
     session = JSON.parse(readFileSync(join(dir, "session.json"), "utf8"));
   } catch (e) {
     process.stderr.write(`self-review preload: not applied, the session is gone or is not one (${e instanceof Error ? e.message : String(e)}); unset NODE_OPTIONS in this terminal\n`);

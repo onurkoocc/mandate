@@ -9,14 +9,35 @@
 // No secret is made by hand: the maintainer's key is made at run time by `mandate key new`, and the connector's
 // credential is random, made by the kit when it starts, and held in memory.
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { placeholders } from "../../scripts/lib/live-world.mjs";
-import { cleanReviewSession, commitOf, COMPONENTS, findingKey, readSnapshotMarker, reportState, reviewLockFrom, SIMULATED, simulatedReview, snapshotGrant, writeSnapshot, type Component, type Finding } from "../../scripts/lib/self-review-world.mjs";
+import { cleanSession, hostsIn, MARKER, markSessionDir, placeholders, readMarker } from "../../scripts/lib/live-world.mjs";
+import {
+  checkReviewSessionDir,
+  childEnv,
+  cleanReviewSession,
+  commitOf,
+  COMPONENTS,
+  findingKey,
+  markReviewSessionDir,
+  readSnapshotMarker,
+  reportState,
+  reviewEgressConfig,
+  reviewLockFrom,
+  reviewRuntimeConfig,
+  SIMULATED,
+  simulatedReview,
+  SNAPSHOT_MARKER,
+  snapshotGrant,
+  startReviewWorld,
+  writeSnapshot,
+  type Component,
+  type Finding,
+} from "../../scripts/lib/self-review-world.mjs";
 
 const repo = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const CLI = join(repo, "bridge", "dist", "cli.js");
@@ -124,10 +145,11 @@ describe("the self-review kit, as its guide runs it with the simulated Reviewer"
         expect(pinned.out.match(/-> sha256:/g)).toHaveLength(3);
         expect(ok(await mandate(["check", PROGRAM, "--lock", lock]), "check").out).toMatch(/^ok sha256:/m);
 
-        // Step 4: the card shows the 20 USD limit and the static bound under it.
+        // Step 4: the card shows the run's 6 USD limit and the static bound under it (the owner's 20 USD is the session's total: three runs).
         const card = ok(await mandate(["view", PROGRAM, "--card", "--workflow", "ReviewRepository", "--lock", lock]), "card").out;
-        expect(card).toContain("4 × 1.20 USD = 4.80 USD ≤ 20 USD");
-        expect(card).toMatch(/\| spend \(USD\) \| 20 USD \| 4\.8 USD \|/);
+        expect(card).toContain("4 × 1.20 USD = 4.80 USD ≤ 6 USD");
+        expect(card).toContain("| spend (USD) | 6 USD | 4.8 USD | 1.2 USD |");
+        expect(card, "the run's limit holds three runs within the owner's 20 USD").not.toContain("| spend (USD) | 20 USD");
         expect(card).toContain("| Read paths | /mandate-self-review/snapshot |");
         expect(card).toContain("At most 2 questions");
 
@@ -171,6 +193,21 @@ describe("the self-review kit, as its guide runs it with the simulated Reviewer"
         const shown = ok(await kit(["report"]), "report").out;
         expect(shown).toContain(`3 entries in the report`);
         expect(shown).toMatch(/R-2\s+agent-tools\s+runtime\/src\/tools\.ts:3\s+low\s+medium/);
+        // Row 10: the maintainer is shown events of classes S0 to S2, and notified of S0 and S1 only.
+        const events = ok(await mandate(["watch", "l1", "--role", "maintainer", "--jsonl"]), "watch role").out.split("\n").filter((l) => l !== "").map((l) => (JSON.parse(l) as { class: string }).class);
+        expect(events.length).toBeGreaterThan(5);
+        expect(events.filter((c) => !["S0", "S1", "S2"].includes(c))).toEqual([]);
+        expect(lines(join(dir, "notifications.jsonl")).map((l) => (JSON.parse(l) as { class: string }).class).filter((c) => c !== "S0" && c !== "S1")).toEqual([]);
+
+        // The preload gives the simulated Reviewer to this repository's mandate command and to nothing else.
+        const probe = "console.log(typeof globalThis.__mandateLiveAgents)";
+        const other = ok(await run(["-e", probe], { env }), "another program under the preload");
+        expect([other.out.trim(), other.err]).toEqual(["undefined", ""]);
+        const lookalike = join(scratch, "elsewhere", "bridge", "dist", "cli.js");
+        mkdirSync(join(lookalike, ".."), { recursive: true });
+        writeFileSync(lookalike, probe);
+        const named = ok(await run([lookalike], { env }), "a program named like the mandate command, elsewhere");
+        expect([named.out.trim(), named.err]).toEqual(["undefined", ""]);
 
         // Step 9: the asks bound.
         expect(ok(await mandate(["status", "l1"]), "status l1").out).toMatch(/budget asks: limit 2/);
@@ -311,7 +348,87 @@ describe("the self-review kit's pieces", () => {
     expect(lock.models["standard"]!.model).toBe("claude-opus-5-5");
   });
 
-  it("cleans only a session directory of its own, with the snapshot it made", () => {
-    expect(() => cleanReviewSession(join(scratch, "report"))).toThrow(/not a live session's directory/);
+  it("cleans only a session directory of its own, never one of the live kit's", () => {
+    expect(() => cleanReviewSession(join(scratch, "report"))).toThrow(/not a self-review session's directory/);
+    // A directory of the live kit (its marker, its session.json): this kit neither cleans nor reuses it, and leaves it as it was.
+    const live = join(scratch, "live-kit-session");
+    const id = markSessionDir(live);
+    writeFileSync(join(live, "session.json"), JSON.stringify({ id }));
+    writeFileSync(join(live, "report.md"), "the live kit's\n");
+    expect(() => cleanReviewSession(live)).toThrow(/not a self-review session's directory/);
+    expect(() => checkReviewSessionDir(live)).toThrow(/not a self-review session's directory/);
+    expect(readdirSync(live).sort()).toEqual([MARKER, "report.md", "session.json"].sort());
+    // And the live kit does not take this kit's directory for its own.
+    const own = join(scratch, "own-session");
+    const ownId = markReviewSessionDir(own);
+    writeFileSync(join(own, "session.json"), JSON.stringify({ id: ownId }));
+    expect(readMarker(own)).toBeUndefined();
+    expect(() => cleanSession(own)).toThrow(/not a live session's directory/);
+    expect(cleanReviewSession(own)).toMatchObject({ dirRemoved: true });
+  });
+
+  it("starts git without the model's key", () => {
+    expect(Object.keys(childEnv({ PATH: "p", CLAUDE_API_KEY: "made-up", ANTHROPIC_API_KEY: "made-up", CLAUDE_WORKSPACE_ID: "made-up" }))).toEqual(["PATH"]);
+  });
+
+  it("builds the snapshot from the commit, not from the working tree", () => {
+    // A repository of its own, outside any work tree: a file committed, then changed, and a file never committed.
+    const root = join(scratch, "tiny-repo");
+    mkdirSync(root, { recursive: true });
+    const git = (...a: string[]): string => execFileSync("git", ["-c", "user.email=t@mandate", "-c", "user.name=t", "-c", "core.autocrlf=false", ...a], { cwd: root, encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    writeFileSync(join(root, "kept.txt"), "as committed\n");
+    git("add", "kept.txt");
+    git("commit", "-q", "-m", "seed");
+    const commit = commitOf(root);
+    writeFileSync(join(root, "kept.txt"), "changed in the working tree\nand longer\n");
+    writeFileSync(join(root, "untracked.txt"), "made-up local value\n");
+    const target = join(scratch, "tiny-snapshot");
+    const made = writeSnapshot(root, target, commit, "c".repeat(32), [{ task: "t", title: "t", focus: "f", paths: ["kept.txt"] }]);
+    expect(readFileSync(join(target, "kept.txt"), "utf8")).toBe("as committed\n");
+    expect(made[0]!.files).toEqual([{ path: "kept.txt", lines: 1 }]);
+    expect(readdirSync(target).sort()).toEqual([SNAPSHOT_MARKER, "kept.txt"].sort());
+    const other = join(scratch, "tiny-snapshot-untracked");
+    expect(() => writeSnapshot(root, other, commit, "d".repeat(32), [{ task: "t", title: "t", focus: "f", paths: ["untracked.txt"] }]), "a file the commit does not hold").toThrow(/untracked\.txt/);
+    expect(existsSync(join(other, "untracked.txt"))).toBe(false);
+  });
+
+  it("lets the real model's configuration reach the model's host and the loopback connector, and nothing else", async () => {
+    const real = { env: "MADE_UP_MODEL_KEY_VARIABLE" };
+    const egress = reviewEgressConfig("admin-pipe", real) as { allow_private: boolean; credentials: Record<string, { hosts: string[]; env: string }> };
+    expect(Object.values(egress.credentials).flatMap((c) => c.hosts).sort()).toEqual(["api.anthropic.com", "review.self.example"]);
+    expect(egress.credentials["anthropic"]!.env).toBe(real.env);
+    expect(Object.values((reviewEgressConfig("admin-pipe") as typeof egress).credentials).flatMap((c) => c.hosts)).toEqual(["review.self.example"]);
+    const template = JSON.parse(readFileSync(join(repo, "fixtures", "self-review", "mandate.runtime.template.json"), "utf8")) as unknown;
+    const config = reviewRuntimeConfig(template, { database: "pglite:store", admin: "admin-pipe", real });
+    expect(hostsIn(JSON.stringify(config)), "the runtime's configuration names no host").toEqual([]);
+    expect(config["egress"]).toEqual({ admin: "admin-pipe", gateways: { model: "anthropic" } });
+    expect(config["sandbox"]).toMatchObject({ host: "mxc" });
+    expect(Object.keys(config["sandbox"] as object).filter((k) => !["host", "toolchain", "isolation", "mode"].includes(k)), "the sandbox is given no network").toEqual([]);
+
+    // The proxy the world starts resolves and dials the connector's name and the model's host only.
+    let given: { resolve: (h: string) => Promise<unknown>; dial: (r: { host: string; port: number }) => Promise<unknown> } | undefined;
+    const dir = join(scratch, "proxy-world");
+    const world = await startReviewWorld(
+      { dir, repo, snapshot: join(scratch, "proxy-snapshot"), commit: commitOf(repo), real },
+      {
+        serveEgress: async (o) => {
+          given = o as never;
+          return { stop: async () => undefined };
+        },
+        defaultDialer: () => async () => "dialed",
+        isPublicAddress: () => true,
+      },
+    );
+    try {
+      expect(await given!.resolve("review.self.example")).toEqual([{ address: "127.0.0.1", family: 4 }]);
+      for (const host of ["example.com", "api.anthropic.com.evil.example", "localhost", "127.0.0.1"]) {
+        await expect(given!.resolve(host), host).rejects.toThrow(/does not resolve/);
+        await expect(given!.dial({ host, port: 443 }), host).rejects.toThrow(/does not dial/);
+      }
+      expect(await given!.dial({ host: "api.anthropic.com", port: 443 })).toBe("dialed");
+    } finally {
+      await world.stop();
+    }
   });
 });
