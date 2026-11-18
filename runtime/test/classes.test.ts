@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CLASSES, commandClass, EVENT_CLASSES, eventClass, SECTION_CLASSES, sectionClass, shows, stepClass } from "../src/classes.js";
 import { STATE_EVENTS } from "../src/journal-chain.js";
-import { MASKED, NOTHING, PROJECTIONS, WITHHELD } from "../src/projection.js";
+import { DIGESTS, LEAD_TEXT, MASKED, NOTHING, PROJECTIONS, WITHHELD } from "../src/projection.js";
 
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
@@ -56,8 +56,9 @@ function writtenTypes(): { types: Set<string>; sites: number } {
   const types = new Set<string>();
   let sites = 0;
   for (const { file, text } of sources(SRC)) {
-    const calls = [...text.matchAll(/\.event\(\s*tx\s*,\s*[\w.]+\s*,\s*((?:"[^"]*"|`[^`]*`|[^,"`])+?)\s*,/g)];
-    expect(calls.length, `every event(tx, …) call in ${file} is read`).toBe([...text.matchAll(/\.event\(\s*tx\b/g)].length);
+    // Whatever its transaction is named: every `.event(` call of the sources is one of these.
+    const calls = [...text.matchAll(/\.event\(\s*\w+\s*,\s*[\w.]+\s*,\s*((?:"[^"]*"|`[^`]*`|[^,"`])+?)\s*,/g)];
+    expect(calls.length, `every .event(…) call in ${file} is read`).toBe([...text.matchAll(/\.event\(/g)].length);
     for (const c of calls) {
       sites++;
       const arg = c[1]!.trim();
@@ -206,6 +207,52 @@ function typeAsLiteral(body: string): string {
   return `{ ${[...flat.matchAll(/(?:^|[;\n])\s*(\w+)\??:/g)].map((m) => m[1]).join(", ")} }`;
 }
 
+/** The text of the type of parameter `name` in a signature's parameter list, up to its `,` or the list's end at depth 0. */
+function paramTypeOf(params: string, name: string): string | undefined {
+  const m = new RegExp(`(?:^|[(,\\s])${name}\\??: `).exec(params);
+  if (!m) return undefined;
+  let depth = 0;
+  let i = m.index + m[0].length;
+  const start = i;
+  for (; i < params.length; i++) {
+    const ch = params[i]!;
+    if ("{<([".includes(ch)) depth++;
+    else if ("}>)]".includes(ch)) depth--;
+    else if (ch === "," && depth === 0) break;
+    if (depth < 0) break;
+  }
+  return params.slice(start, i).replace(/\s*=.*$/s, "").trim();
+}
+
+/** `text` split at each `sep` that is not inside braces, angle brackets or parentheses. */
+function splitTop(text: string, sep: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if ("{<([".includes(ch)) depth++;
+    else if ("}>)]".includes(ch)) depth--;
+    else if (ch === sep && depth === 0) {
+      out.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  return [...out, text.slice(start)];
+}
+
+/** The member names of a type: an inline object type, `Partial<Pick<T, "a" | "b">>`, or an interface of the sources; else undefined. */
+function typeKeys(t: string, all: Array<{ file: string; text: string }>): string[] | undefined {
+  if (t.startsWith("{") && t.endsWith("}")) return keysOf(typeAsLiteral(t.slice(1, -1)));
+  const picked = /^Partial<Pick<\w+, ([^>]+)>>$/.exec(t);
+  if (picked) return literals(picked[1]!);
+  if (!/^\w+$/.test(t)) return undefined;
+  const decl = all.map((s) => new RegExp(`export interface ${t} \\{([\\s\\S]*?)\\n\\}`).exec(s.text)).find(Boolean);
+  return decl ? keysOf(typeAsLiteral(decl[1]!)) : undefined;
+}
+
+const keysOf = (literal: string): string[] => literal.slice(1, -1).split(",").map((k) => k.trim()).filter(Boolean);
+
 /** What a name an event's data is written from stands for, where the runtime builds it: read from the sources. */
 function resolver(file: string, text: string, at: number, all: Array<{ file: string; text: string }>): (name: string) => string | undefined {
   const src = (f: string): string => all.find((s) => s.file === f)!.text;
@@ -225,14 +272,13 @@ function resolver(file: string, text: string, at: number, all: Array<{ file: str
     // A parameter of the method the call is in, typed inline or by an interface of the sources.
     const method = before.slice(before.lastIndexOf("\n  async "));
     const sig = /^\n {2}async \w+\(([\s\S]*?)\): Promise/.exec(method);
-    const param = sig ? new RegExp(`\\b${name}\\??: (\\{[^}]*\\}|\\w+)`).exec(sig[1]!) : null;
-    // `Partial<Pick<T, "a" | "b">>`: those members.
-    const picked = sig ? new RegExp(`\\b${name}\\??: Partial<Pick<\\w+, ([^>]+)>>`).exec(sig[1]!) : null;
-    if (picked) return `{ ${literals(picked[1]!).join(", ")} }`;
-    if (param && param[1]!.startsWith("{")) return typeAsLiteral(param[1]!.slice(1, -1));
-    if (param && param[1] !== "Value") {
-      const decl = all.map((s) => new RegExp(`export interface ${param[1]} \\{([\\s\\S]*?)\\n\\}`).exec(s.text)).find(Boolean);
-      if (decl) return typeAsLiteral(decl[1]!);
+    // Its type whole, each part of an intersection (`T & { more }`) read on its own: a part that cannot be read leaves
+    // the data unread, which fails the test.
+    const typed = sig ? paramTypeOf(sig[1]!, name) : undefined;
+    if (typed !== undefined && typed !== "Value") {
+      const parts = splitTop(typed, "&").map((t) => typeKeys(t.trim(), all));
+      if (parts.every((k) => k !== undefined)) return `{ ${[...new Set(parts.flat() as string[])].join(", ")} }`;
+      return undefined;
     }
     // A value built where the method is called, and written there once: a review's (interp.ts), an amendment's (plan.ts).
     if (file === "journal.ts" && name === "requested") {
@@ -254,7 +300,7 @@ function resolver(file: string, text: string, at: number, all: Array<{ file: str
 function writeSites(): Array<{ file: string; types: string[]; keys: string[] }> {
   const all = sources(SRC);
   return all.flatMap(({ file, text }) =>
-    [...text.matchAll(/\.event\(\s*tx\b/g)].map((m) => {
+    [...text.matchAll(/\.event\(/g)].map((m) => {
       const [, , type, data] = callArgs(text, m.index! + m[0].indexOf("("));
       const t = type!.trim();
       const template = /^`([a-z_]+)\$\{(\w+)\}`$/.exec(t);
@@ -269,6 +315,12 @@ function writeSites(): Array<{ file: string; types: string[]; keys: string[] }> 
   );
 }
 
+// The allow-list is by field: what a field it gives holds is its writer's to keep to what its name says, and this test
+// reads names, not contents (a field given as a name that came to hold an error's detail would pass it). The fields
+// given today that hold free text: a halt's `cancel_requested.reason`, which a person wrote; `decision_refused.reason`
+// and `guarantee_lowered.reason`, the runtime's own words; and the titles of `stage_started` and `report`, the
+// program's, or, in a sub-program, a lead's, which are masked as a model's values are (projection.ts `LEAD_TEXT`). None
+// holds a value of the run.
 describe("the allow-list of WatchRun", () => {
   it("has an entry for every event type with a class, and for no other: a new event type is given to no role until it is decided", () => {
     expect(Object.keys(PROJECTIONS).sort()).toEqual(Object.keys(EVENT_CLASSES).sort());
@@ -320,5 +372,8 @@ describe("the allow-list of WatchRun", () => {
     expect(Object.fromEntries(rows.map((r) => [r[1]!, r[2] === "nothing" ? NOTHING : names(r[2]!)]))).toEqual(PROJECTIONS);
     expect(Object.fromEntries(rows.filter((r) => names(r[3]!).length).map((r) => [r[1]!, names(r[3]!)]))).toEqual(WITHHELD);
     expect(Object.fromEntries(rows.flatMap((r) => [...r[2]!.matchAll(/`([a-z_]+)` \(masked\)/g)].map((m) => [r[1]!, m[1]!])))).toEqual(MASKED);
+    const marked = (tag: string): Record<string, string[]> => Object.fromEntries(rows.map((r) => [r[1]!, [...r[2]!.matchAll(new RegExp(`\`([a-z_]+)\` \\(${tag}\\)`, "g"))].map((m) => m[1]!)]).filter(([, f]) => f!.length));
+    expect(marked("digest")).toEqual(DIGESTS);
+    expect(marked("lead")).toEqual(LEAD_TEXT);
   });
 });

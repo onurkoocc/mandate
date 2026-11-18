@@ -199,12 +199,12 @@ export interface Planned extends World {
 
 /**
  * The program on a runtime where Alice, the platform lead, has approved its envelope, and Bob is the release
- * manager. `lead` is the lead's turns in order; a worker finishes at once, saying which item it fixed.
+ * manager (`lock` adds to its lock, `role_classes` for one). `lead` is the lead's turns in order; a worker finishes at once, saying which item it fixed.
  */
-export async function planned(checker: ProgramChecker, lead: Turn[], o: { src?: string; worker?: (req: TurnRequest) => SimTurn | Promise<SimTurn>; plan?: RuntimeOptions["plan"]; tools?: SimTool[]; model?: SimModel } = {}): Promise<Planned> {
+export async function planned(checker: ProgramChecker, lead: Turn[], o: { src?: string; worker?: (req: TurnRequest) => SimTurn | Promise<SimTurn>; plan?: RuntimeOptions["plan"]; tools?: SimTool[]; model?: SimModel; lock?: Record<string, unknown> } = {}): Promise<Planned> {
   const alice = EvidenceSigner.generate();
   const bob = EvidenceSigner.generate();
-  const lock = { modules: {}, members: { alice: { keys: [alice.keyId] }, bob: { keys: [bob.keyId] } }, roles: { platform_lead: ["alice"], release_manager: ["bob"] } };
+  const lock = { modules: {}, members: { alice: { keys: [alice.keyId] }, bob: { keys: [bob.keyId] } }, roles: { platform_lead: ["alice"], release_manager: ["bob"] }, ...o.lock };
   const w = await world(o.src ?? program(), { lock, decisions: { keys: new TrustedKeys([alice.publicKey, bob.publicKey]) }, plan: o.plan ?? { checker }, ...(o.tools ? { tools: o.tools } : {}), ...(o.model ? { model: o.model } : {}) });
   const host = new SimSandboxHost();
   const { chat, told } = leadChat(lead, o.worker);

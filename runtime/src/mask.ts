@@ -1,8 +1,11 @@
 // Masking and how a value is known (spec/attention.md "Masking and how a value is known"; language 0.7).
 //
-// In a run of 0.7 each value shown to a role is a `ShownValue` (the specification's `Shown`): the value, or
-// `{ "$masked": class }` when its data class is above what the role may be shown, with its class and how it is known
-// either way. The class and the level are the compiler's, from the attention facts the run stored at its start (a
+// In a run of 0.7 each value shown to a role is a `ShownValue` (the specification's `Shown`): `masked: false` and the
+// value, or `masked: true` and no value when its data class is above what the role may be shown, with its class and
+// how it is known either way. That a value is masked is a member of the `ShownValue` itself, never a marker inside its
+// value, so no value a program holds can read as a mask. A digest computed over a wait's values is masked with them
+// (`maskRequest`): the rest of what it is computed over is shown to the role, so a value with few possibilities could
+// be found by trying each against the digest. The class and the level are the compiler's, from the attention facts the run stored at its start (a
 // wait's, found by its site tag) or from the `report` event (a report's fields, which carry their own): nothing here
 // works a class out of a value. A value whose class is not known is masked for every role (`UNKNOWN`).
 //
@@ -27,8 +30,11 @@ export const KNOWN_LEVELS: readonly Known[] = ["verified", "plain", "model", "ex
  * A value as a role of a run of 0.7 is shown it: the specification's `Shown` (named `ShownValue` here, since
  * decisions.ts's `Shown` is the record a decision signs).
  */
-export interface ShownValue {
-  value: Value | { $masked: DataClass };
+export type ShownValue = { masked: false; value: Value; class: DataClass; known: Known } | MaskedValue;
+
+/** A value, or a digest of values, a role is not shown: its class and how it is known, and no value. */
+export interface MaskedValue {
+  masked: true;
   class: DataClass;
   known: Known;
 }
@@ -75,9 +81,18 @@ export function labelOf(cls: unknown, known: unknown): Label | undefined {
  * undefined) and the audience is a role; labelled either way. The audit audience sees the value.
  */
 export function maskValue(value: Value, label: Label | undefined, cap: Cap): ShownValue {
+  return hides(label, cap) ? maskedAs(label) : { masked: false, value, class: (label ?? UNKNOWN).class, known: (label ?? UNKNOWN).known };
+}
+
+/** Whether `cap` is not shown a value labelled `label`: one above the cap, or one whose class is not known, to a role. */
+export function hides(label: Label | undefined, cap: Cap): boolean {
+  return cap !== "audit" && (label === undefined || classRank(label.class) > classRank(cap));
+}
+
+/** The masked form of a value, or of a digest of values, labelled `label` (`UNKNOWN` when undefined). */
+export function maskedAs(label: Label | undefined): MaskedValue {
   const l = label ?? UNKNOWN;
-  const shown = cap === "audit" || (label !== undefined && classRank(l.class) <= classRank(cap));
-  return { value: shown ? value : { $masked: l.class }, class: l.class, known: l.known };
+  return { masked: true, class: l.class, known: l.known };
 }
 
 // ── a wait's request ────────────────────────────────────────────────────
@@ -95,6 +110,14 @@ const PLAIN: Readonly<Record<string, ReadonlySet<string>>> = {
   review: new Set(["subject_digest", "role", "escalate_to", "deadline", "deadline_ms", "escalated"]),
   amendment: new Set(["plan", "workflow", "lead", "from", "package", "role", "envelope", "diff", "changes", "deadline", "attention"]),
 };
+
+/**
+ * The members of a request that are digests computed over the wait's values (`interp.ts`: a criterion's
+ * `subject_digest` is over its subject, an action's `action_digest` over its parameters, a change set member's
+ * `changeset` over the set's actions, a review's `subject_digest` over its items). Each is masked, as its wait's
+ * values are, for a role the wait's label hides (`maskRequest`); otherwise it is shown as it is.
+ */
+export const DIGEST_MEMBERS: ReadonlySet<string> = new Set(["subject_digest", "action_digest", "changeset"]);
 
 /** The members of a review's question (review.ts `Question`) that are the runtime's own; its items are read below. */
 const REVIEW_PLAIN = new Set(["review", "contract", "map", "role", "escalate_to", "deadline_ms", "declined", "failed", "accepted"]);
@@ -126,26 +149,34 @@ export function maskRequest(kind: string, request: Value, label: Label | undefin
     shown.push({ name, ...s });
     return s as unknown as Value;
   };
-  return { request: splitRequest(kind, request, one), shown };
+  // The wait's label is one for all it shows: when it hides a value, it hides every digest over its values too.
+  const hide = hides(label, cap);
+  return { request: splitRequest(kind, request, one, (v) => (hide ? (maskedAs(label) as unknown as Value) : v)), shown };
 }
 
 /** The values a wait's request shows in a run of 0.1 to 0.6, as they are, unlabelled, by the same split as `maskRequest`. */
 export function plainValues(kind: string, request: Value): UnlabelledValue[] {
   const out: UnlabelledValue[] = [];
-  splitRequest(kind, request, (name, value) => {
-    out.push({ name, value, class: null, known: null });
-    return value;
-  });
+  splitRequest(
+    kind,
+    request,
+    (name, value) => {
+      out.push({ name, value, class: null, known: null });
+      return value;
+    },
+    (v) => v,
+  );
   return out;
 }
 
 /** The request with each value it shows given to `one`, by the kind's split; anything that is no object is one value. */
-function splitRequest(kind: string, request: Value, one: (name: string, v: Value) => Value): Value {
+function splitRequest(kind: string, request: Value, one: (name: string, v: Value) => Value, digest: (v: Value) => Value): Value {
   if (!isObj(request)) return one("request", request) as Value;
   const plain = PLAIN[kind] ?? new Set<string>();
   const out: Obj = {};
   for (const [k, v] of Object.entries(request)) {
-    if (plain.has(k)) out[k] = v;
+    if (plain.has(k) && DIGEST_MEMBERS.has(k)) out[k] = digest(v);
+    else if (plain.has(k)) out[k] = v;
     else if (kind === "review" && k === "question" && isObj(v)) out[k] = reviewQuestion(v, one);
     else out[k] = one(k, v) as Value;
   }

@@ -12,8 +12,8 @@
 import { isProgram07OrLater, type Lock } from "@mandate/bridge";
 import type { Audience } from "./classes.js";
 import { TERMINAL, type RunRow } from "./journal.js";
-import { capOf, plainValues, type NamedShown, type UnlabelledValue } from "./mask.js";
-import { askedOf, attentionContext, given, maskedWait, projectEvent, type AttentionContext, type Ev, type ProjectedEvent } from "./projection.js";
+import { capOf, maskedAs, plainValues, type MaskedValue, type NamedShown, type UnlabelledValue } from "./mask.js";
+import { askedOf, attentionContext, given, maskedWait, projectEvent, waitHidden, type AttentionContext, type Ev, type ProjectedEvent } from "./projection.js";
 import { shownBy, type Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { isObj, type Obj, type Value } from "./values.js";
@@ -104,8 +104,11 @@ export interface WaitItem {
   escalates_to: string | null;
   on_no_answer: string;
   stage: string | null;
-  /** The digest a decision on it names (`Runtime.shown`'s `subject`). */
-  subject: string;
+  /**
+   * The digest a decision on it names (`Runtime.shown`'s `subject`). In a run of 0.7, masked (`MaskedValue`) for a
+   * role its values are masked from: it is computed over them, and the rest of what it is computed over is shown.
+   */
+  subject: string | MaskedValue;
   /** What it shows, by where each value stands in its request: masked and labelled in a run of 0.7, as recorded in an older one. */
   shown: Array<NamedShown | UnlabelledValue>;
 }
@@ -142,8 +145,11 @@ export async function listWaits(rt: Runtime, who: { role: string } | { member: s
     if (!packages.has(hash)) packages.set(hash, rt.packageOf(hash).then((p) => ({ is07: isProgram07OrLater(p.program), lock: p.lock })));
     return packages.get(hash)!;
   };
-  const runs = new Map<string, Promise<{ run: RunRow; events: Ev[]; ctx: AttentionContext | undefined }>>();
-  const runOf = (runId: string): Promise<{ run: RunRow; events: Ev[]; ctx: AttentionContext | undefined }> => {
+  // One source for whether a wait is masked and for the facts it is masked by: the run's context, built from its events
+  // and its package's lock whenever the run's package or the wait's is of 0.7. Should the two ever differ in language,
+  // the wait is masked (the facts of a run of 0.6 give no label, so every value is).
+  const runs = new Map<string, Promise<{ run: RunRow; events: Ev[]; is07: boolean; ctx: () => Promise<AttentionContext> }>>();
+  const runOf = (runId: string): Promise<{ run: RunRow; events: Ev[]; is07: boolean; ctx: () => Promise<AttentionContext> }> => {
     if (!runs.has(runId)) {
       runs.set(
         runId,
@@ -151,7 +157,8 @@ export async function listWaits(rt: Runtime, who: { role: string } | { member: s
           const run = await rt.getRun(runId);
           const events = await contextEvents(rt, runId);
           const p = await packageOf(run.package_hash);
-          return { run, events, ctx: p.is07 ? await attentionContext(rt, run, events, p.lock) : undefined };
+          let made: Promise<AttentionContext> | undefined;
+          return { run, events, is07: p.is07, ctx: () => (made ??= attentionContext(rt, run, events, p.lock)) };
         })(),
       );
     }
@@ -159,9 +166,11 @@ export async function listWaits(rt: Runtime, who: { role: string } | { member: s
   };
   const out: WaitItem[] = [];
   for (const row of rows) {
-    const { run, events, ctx } = await runOf(row.run_id);
+    const r = await runOf(row.run_id);
+    const { run, events } = r;
     const hash = row.package ?? run.package_hash;
-    const { is07, lock } = await packageOf(hash);
+    const { is07: wait07, lock } = await packageOf(hash);
+    const ctx = r.is07 || wait07 ? await r.ctx() : undefined;
     const bound = isObj((lock.roles ?? null) as Value) ? (lock.roles as Record<string, unknown>) : {};
     const roles = "role" in who ? [who.role] : Object.entries(bound).filter(([, ms]) => Array.isArray(ms) && ms.includes(who.member)).map(([r]) => r);
     const req = isObj(row.result) ? row.result : {};
@@ -172,6 +181,9 @@ export async function listWaits(rt: Runtime, who: { role: string } | { member: s
     const facts = ctx?.waits.get(row.command_id);
     const escalated = req["escalated"] !== undefined;
     for (const role of listed) {
+      const cap = capOf(lock, role);
+      const subject = shownBy(run, row.command_id, { kind: row.kind, result: row.result, request_digest: row.request_digest }).subject;
+      const hidden = ctx ? waitHidden(ctx, row.command_id, cap) ?? (ctx.waits.has(row.command_id) ? undefined : { label: undefined }) : undefined;
       out.push({
         run: run.run_id,
         tenant: run.tenant,
@@ -187,8 +199,8 @@ export async function listWaits(rt: Runtime, who: { role: string } | { member: s
         escalates_to: row.kind === "review" ? (typeof req["escalate_to"] === "string" && !escalated ? req["escalate_to"] : null) : (facts?.escalates_to ?? null),
         on_no_answer: facts?.on_no_answer ?? noAnswer(row.kind, req),
         stage: facts?.stage ?? null,
-        subject: shownBy(run, row.command_id, { kind: row.kind, result: row.result, request_digest: row.request_digest }).subject,
-        shown: is07 && ctx ? maskedWait(ctx, row.command_id, row.kind, row.result, capOf(lock, role)).shown : plainValues(row.kind, row.result),
+        subject: hidden ? maskedAs(hidden.label) : subject,
+        shown: ctx ? maskedWait(ctx, row.command_id, row.kind, row.result, cap).shown : plainValues(row.kind, row.result),
       });
     }
   }

@@ -1144,28 +1144,44 @@ written that it neither gives nor leaves out, and on a difference between
 this table and the runtime's. The audit audience is given every event's data
 whole.
 
+A field marked digest is a digest computed over a wait's values (a
+decision's id, whose record holds the wait's subject digest; an action's
+digest; a waiver's evidence id), given masked, as `{masked: true, class,
+known}`, to a role the wait's values are masked from (`DIGESTS`): what
+else it is computed over is shown to the role, so a value with few
+possibilities could be found by trying each against it. A field marked lead
+holds, in an event of a sub-program, text its lead wrote (a stage's name or
+title, a report's title, its workflow's name and shape), given as a value a
+model wrote, of the class of what the lead received (`program_started`'s
+`class`), masked by the role's cap (`LEAD_TEXT`); of the run's own
+program, it is the program's text. The table is by field: what a field it
+gives holds is its writer's to keep to what its name says. The fields given
+that hold free text are a halt's `cancel_requested.reason`, which a person
+wrote, `decision_refused.reason` and `guarantee_lowered.reason`, the
+runtime's own words, and the titles above; none holds a value of the run.
+
 | Event type | Fields a role is given | Fields left out |
 |---|---|---|
 | `wait_opened` | `command`, `kind`, `site`, `request` (masked) |  |
 | `wait_expired` | `command` |  |
-| `decision_received` | `command`, `member`, `role`, `decision` | `sender`, `message`, `key` |
-| `input_received` | `command`, `member`, `role`, `decision` | `sender`, `message`, `key` |
+| `decision_received` | `command`, `member`, `role`, `decision` (digest) | `sender`, `message`, `key` |
+| `input_received` | `command`, `member`, `role`, `decision` (digest) | `sender`, `message`, `key` |
 | `decision_refused` | `command`, `reason`, `kind`, `member`, `role` | `key`, `sender`, `message` |
-| `criterion_approved` | `command`, `by`, `member`, `role`, `decision` | `key` |
-| `criterion_denied` | `command`, `by`, `member`, `role`, `decision` | `key` |
-| `governance_approved` | `command`, `digest`, `by`, `member`, `role`, `decision` | `key` |
-| `governance_denied` | `command`, `digest`, `by`, `member`, `role`, `decision` | `key` |
-| `action_authorized` | `authorization`, `digest`, `by`, `member`, `role`, `decision` | `key` |
+| `criterion_approved` | `command`, `by`, `member`, `role`, `decision` (digest) | `key` |
+| `criterion_denied` | `command`, `by`, `member`, `role`, `decision` (digest) | `key` |
+| `governance_approved` | `command`, `digest` (digest), `by`, `member`, `role`, `decision` (digest) | `key` |
+| `governance_denied` | `command`, `digest` (digest), `by`, `member`, `role`, `decision` (digest) | `key` |
+| `action_authorized` | `authorization`, `digest` (digest), `by`, `member`, `role`, `decision` (digest) | `key` |
 | `envelope_approved` | `package`, `member`, `role`, `decision` | `key` |
 | `amendment_requested` | `plan`, `step`, `lead`, `from`, `package`, `diff` |  |
-| `package_amended` | `from`, `to`, `diff`, `plan`, `command`, `limits`, `superseded`, `by`, `member`, `role`, `decision`, `attention` | `key` |
+| `package_amended` | `from`, `to`, `diff`, `plan`, `command`, `limits`, `superseded`, `by`, `member`, `role`, `decision` (digest), `attention` | `key` |
 | `limits_raised` | `by`, `from`, `to`, `member`, `role`, `decision` | `sender`, `message`, `key` |
 | `reconcile_requested` | `operation`, `member`, `role`, `decision` | `key` |
 | `review_requested` | `node`, `contract`, `map`, `role`, `escalate_to`, `deadline`, `open`, `declined`, `failed`, `accepted` |  |
-| `review_decided` | `command`, `waive`, `decline`, `by`, `member`, `role`, `decision` | `key` |
+| `review_decided` | `command`, `waive`, `decline`, `by`, `member`, `role`, `decision` (digest) | `key` |
 | `review_escalated` | `command`, `from`, `to`, `deadline` |  |
 | `review_expired` | `command`, `role`, `declined` |  |
-| `criterion_waived` | `command`, `index`, `contract`, `criterion`, `waiver`, `failed`, `decision` |  |
+| `criterion_waived` | `command`, `index`, `contract`, `criterion`, `waiver` (digest), `failed` (digest), `decision` (digest) |  |
 | `run_succeeded` | nothing |  |
 | `run_failed` | nothing |  |
 | `run_cancelled` | nothing |  |
@@ -1188,10 +1204,10 @@ whole.
 | `charge_settled` | `command`, `cost` |  |
 | `map_started` | `map`, `items`, `par` |  |
 | `map_ended` | `map`, `outcomes`, `failed` |  |
-| `stage_started` | `node`, `stage`, `title`, `index`, `program` |  |
-| `stage_ended` | `node`, `stage`, `program` |  |
-| `report` | `node`, `command`, `role`, `title`, `fields` (masked) |  |
-| `program_started` | `plan`, `number`, `command`, `workflow`, `shape` |  |
+| `stage_started` | `node`, `stage` (lead), `title` (lead), `index`, `program` |  |
+| `stage_ended` | `node`, `stage` (lead), `program` |  |
+| `report` | `node`, `command`, `role`, `title` (lead), `fields` (masked) |  |
+| `program_started` | `plan`, `number`, `command`, `workflow` (lead), `shape` (lead), `class` |  |
 | `program_ended` | `plan`, `number`, `ok` |  |
 | `action_prepared` | nothing |  |
 | `action_committed` | nothing |  |

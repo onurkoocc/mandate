@@ -871,7 +871,7 @@ the repository pins.
 | `stage_started` | S2 | `{node, stage, title, index, program?: {plan, number}}` |
 | `stage_ended` | S2 | `{node, stage}` |
 | `report` | S2, addressed | `{node, command, role, title, fields: [{name, value, class, known, type}]}` |
-| `program_started` | S2 | `{plan, number, command, workflow, shape?}` |
+| `program_started` | S2 | `{plan, number, command, workflow, shape?, class}`: `class` is the class of what its lead received |
 | `program_ended` | S2 | `{plan, number, ok}` |
 | `asks_exhausted` | S1 | `{command, kind, limit, settled, inside?}`: the question's command and kind, the run's `asks` limit and what it had settled, and the sub-program it was asked in |
 | `promotion_accepted` | S0 | `{decision, member, role, key, from: {run, mode}, to}`, asked of the owner role |
@@ -1060,8 +1060,14 @@ on does not change what that run shows, masks or counts.
 In a 0.7 run, each value shown to a role is shown as:
 
 ```ts
-interface Shown { value: Value | { $masked: DataClass }; class: DataClass; known: "verified" | "plain" | "model" | "external" }
+type Shown =
+  | { masked: false; value: Value; class: DataClass; known: "verified" | "plain" | "model" | "external" }
+  | { masked: true; class: DataClass; known: "verified" | "plain" | "model" | "external" }
 ```
+
+That a value is masked is a member of `Shown` itself, and a masked one has no
+`value`: no value a program holds, whatever its members, reads as a mask or
+as a label.
 
 The runtime calls this type `ShownValue` (`runtime/src/mask.ts`), because
 `Shown` is already the record a decision signs (`runtime/src/decisions.ts`).
@@ -1069,8 +1075,26 @@ The runtime calls this type `ShownValue` (`runtime/src/mask.ts`), because
 - **The cap.** A role's cap is `role_classes[role]` in the package's lock, or
   `internal` when the lock does not name the role.
 - **The mask.** For a value at a node whose facts give class `c`: when `c` is
-  above the cap, the value is `{ "$masked": c }`; otherwise it is the value.
-  Either way it carries `class` and `known`. The audit view sees every value.
+  above the cap, it is `{ masked: true }` with no value; otherwise
+  `{ masked: false, value }`. Either way it carries `class` and `known`. The
+  audit view sees every value.
+- **A digest of masked values is masked.** Where a wait's values are masked
+  for a role, so is every digest computed over them that the role would be
+  given: the subject a decision names (`ListWaits`'s `subject`), a request's
+  `subject_digest`, `action_digest` and `changeset`, a review item's
+  `value_digest`, the id of a decision on the wait (its record holds the
+  subject), an authorization's or a governance gate's digest, and a waiver's
+  evidence id. The rest of what such a digest is computed over is shown to
+  the role (the question's template, the contract and criterion, the run),
+  so a value with few possibilities could be found by trying each against
+  it. What a decision signs, and how its subject is obtained, do not change;
+  a role the wait is masked from cannot read its subject from a listing.
+- **What a lead wrote.** In a sub-program, the text its lead wrote (a
+  stage's name and title, a report's title, its workflow's name and shape)
+  is a value a model wrote (`known: model`), of the class of what the lead
+  received, which `program_started` records as `class`; where that is not
+  known, it is masked for every role. The run's own program's text, which a
+  person approved, is shown as it is.
 - **A class that is not known.** A value whose class the stored facts do not
   give (facts that are missing or do not hash to their digest, a site with no
   row, or a row with no class, such as an effect's) is masked for every role,

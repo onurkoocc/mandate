@@ -40,8 +40,8 @@ import type { Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { covers, type ChangeKind } from "./specdiff.js";
 import { canonical, digest, isObj, show, type Obj, type Value } from "./values.js";
-import { capOf, maskValue, type Cap } from "./mask.js";
-import { attentionContext, maskedWait, programsView, reportsView, stagesView, type AttentionContext, type ProgramsView, type ReportView, type StageView } from "./projection.js";
+import { capOf, maskedAs, maskValue, type Cap, type ShownValue } from "./mask.js";
+import { attentionContext, maskedWait, programsView, reportsView, stagesView, waitHidden, type AttentionContext, type ProgramsView, type ReportView, type StageView } from "./projection.js";
 
 export interface AsOf {
   revision: number;
@@ -431,14 +431,25 @@ function roleView(v: RunView, role: string, events: Stored[], ctx?: AttentionCon
   out["decisions"] = v.decisions.filter((d) => may("decisions", askedOf(d)));
   // A review (0.6) is shown to each role it was asked of: the first, and the one it was escalated to.
   if (v.reviews) out["reviews"] = v.reviews.filter((r) => may("reviews", r.role) || (r.escalated !== null && may("reviews", r.escalated.to)));
+  // 0.7: a decision's id is a digest over its record, which holds the digest of what its wait showed; for a role that
+  // wait's values are masked from, it is masked too (projection.ts `DIGESTS`).
+  if (ctx) {
+    const cap = capOf(ctx.lock, role);
+    const id = (about: string | null, decisionId: string | null): string | null => {
+      const hidden = decisionId !== null ? waitHidden(ctx, about ?? undefined, cap) : undefined;
+      return hidden ? (maskedAs(hidden.label) as unknown as string) : decisionId;
+    };
+    out["decisions"] = (out["decisions"] as DecisionView[]).map((d) => ({ ...d, decision_id: id(d.about, d.decision_id) }));
+    if (out["reviews"]) out["reviews"] = (out["reviews"] as ReviewView[]).map((r) => (r.decision ? { ...r, decision: { ...r.decision, decision_id: id(r.node, r.decision.decision_id) } } : r));
+  }
   if (out["budget"]) out["budget"] = { dimensions: v.budget.dimensions, commands: v.budget.commands.filter((c) => shows(audience, stepClass(c.kind), asked.get(c.command))) };
   if (v.envelope && out["envelope"]) out["envelope"] = { ...v.envelope, amendments: may("envelope.amendments", v.envelope.owner) ? v.envelope.amendments : [] };
   // What stopped the run is drawn from the events of the classes the role sees, by their types; an addressed one (a
   // report, 0.7) only when it is addressed to this role.
   if (may("exceptions")) out["exceptions"] = exceptionsOf(v, events.filter((e) => shows(audience, eventClass(e.type), undefined, addressee(e.type, e.data))), may("exceptions.violations.detail"));
   if (ctx) {
-    if (may("stages")) out["stages"] = stagesView(ctx, events);
-    if (may("reports")) out["reports"] = reportsView(audience, capOf(ctx.lock, role), events);
+    if (may("stages")) out["stages"] = stagesView(ctx, events, capOf(ctx.lock, role));
+    if (may("reports")) out["reports"] = reportsView(audience, capOf(ctx.lock, role), events, ctx);
     if (may("programs")) out["programs"] = programsView(events);
   }
   const first = ROLE_ORDER.filter((k) => Object.hasOwn(out, k));
@@ -1005,40 +1016,57 @@ function statusBlocks(v: RunView): Block[] {
   return out;
 }
 
-/** Whether `v` is a value as a role of a run of 0.7 is shown it (mask.ts `ShownValue`): its value or mask, its class and how it is known. */
-function isShownValue(v: Value | undefined): v is Obj {
-  return isObj(v ?? null) && Object.keys(v as Obj).length === 3 && "value" in (v as Obj) && typeof (v as Obj)["class"] === "string" && typeof (v as Obj)["known"] === "string";
+/**
+ * A member of a role's projection of a run of 0.7 as a `ShownValue` (mask.ts), or undefined. Only a caller that holds
+ * such a projection asks (`projected`): what a value of a run of 0.1 to 0.6, or of the audit's or the operator's
+ * view, looks like never makes it one.
+ */
+function shownOf(v: Value | undefined, projected: boolean): ShownValue | undefined {
+  if (!projected || !isObj(v ?? null)) return undefined;
+  const o = v as Obj;
+  return typeof o["masked"] === "boolean" && typeof o["class"] === "string" && typeof o["known"] === "string" ? (o as unknown as ShownValue) : undefined;
 }
-
-/** Whether `v` is a mask in place of a value: `{ "$masked": class }`. */
-const isMask = (v: Value | undefined): boolean => isObj(v ?? null) && Object.keys(v as Obj).length === 1 && typeof (v as Obj)["$masked"] === "string";
 
 /**
- * A value a wait or a report shows, as a document prints it: as recorded (a run of 0.1 to 0.6, and the audit's), or a
- * `ShownValue` (0.7), its value with its class and how it is known, or, masked, only that it is and its class.
+ * A value a wait or a report shows, as a document prints it: as recorded (a run of 0.1 to 0.6, and the audit's and
+ * the operator's view), or, in a role's projection of a run of 0.7 (`projected`), a `ShownValue`: its value with its
+ * class and how it is known, or, masked, only that it is and its class.
  */
-function valueBlocks(v: Value, render: (v: Value) => string): Block[] {
-  if (!isShownValue(v)) return [{ code: render(v), untrusted: true }];
-  const label = `class ${String(v["class"])}, known ${String(v["known"])}`;
-  if (isMask(v["value"])) return [{ note: `Masked: its class is ${String(v["class"])}, above what this role may be shown (${label}).` }];
-  return [{ code: render(v["value"]!), untrusted: true }, { note: `Its ${label}.` }];
+function valueBlocks(v: Value, render: (v: Value) => string, projected: boolean): Block[] {
+  const shown = shownOf(v, projected);
+  if (!shown) return [{ code: render(v), untrusted: true }];
+  const label = `class ${shown.class}, known ${shown.known}`;
+  if (shown.masked) return [{ note: `Masked: its class is ${shown.class}, above what this role may be shown (${label}).` }];
+  return [{ code: render(shown.value), untrusted: true }, { note: `Its ${label}.` }];
 }
 
-/** What the run waits for, with the command that answers it at this revision. */
-function waitBlocks(v: Pick<RunView, "run" | "as_of" | "waiting">): Block[] {
+/** A digest as a document's cell prints it; in a role's projection of 0.7, a masked one as `masked (class)`. */
+function digestCell(v: Value | undefined, projected: boolean): Cell {
+  const shown = shownOf(v, projected);
+  return shown?.masked ? `masked (${shown.class})` : mono(String(v ?? ""));
+}
+
+/** A program's or a lead's text in a cell: the program's as it is, a lead's (a `ShownValue`) as shown or masked. */
+function textCell(v: string | ShownValue, at: (s: string) => Cell): Cell {
+  if (typeof v === "string") return at(v);
+  return v.masked ? `masked (${v.class})` : at(String(v.value));
+}
+
+/** What the run waits for, with the command that answers it at this revision; `projected` for a role's projection of 0.7. */
+function waitBlocks(v: Pick<RunView, "run" | "as_of" | "waiting">, projected = false): Block[] {
   const out: Block[] = [];
   const w = isObj(v.waiting) ? v.waiting : undefined;
   if (v.run.state === "waiting" && w) {
     const req = isObj(w["request"] ?? null) ? (w["request"] as Obj) : {};
     if (w["kind"] === "decision" && "criterion" in req) {
       out.push({ p: `Waiting for ${String(req["role"] ?? "a person")} to approve ${String(req["contract"])}.${String(req["criterion"])}. The decision applies only to this subject:` });
-      out.push({ table: { head: ["Subject digest", "Deadline"], rows: [[mono(String(req["subject_digest"])), typeof req["deadline"] === "number" ? new Date(req["deadline"]).toISOString() : "—"]] } });
-      out.push(...valueBlocks(req["subject"] ?? null, (x) => JSON.stringify(x, null, 2)));
+      out.push({ table: { head: ["Subject digest", "Deadline"], rows: [[digestCell(req["subject_digest"], projected), typeof req["deadline"] === "number" ? new Date(req["deadline"]).toISOString() : "—"]] } });
+      out.push(...valueBlocks(req["subject"] ?? null, (x) => JSON.stringify(x, null, 2), projected));
       out.push({ note: `Approve or decline at revision ${v.as_of.revision}: mandate approve ${v.run.id} --revision ${v.as_of.revision} --by <you>. A decision on an older revision is refused.` });
     } else if (w["kind"] === "decision") {
       out.push({ p: `Waiting for ${String(req["role"] ?? "a person")} to authorize ${String(req["effect"] ?? "an action")}, exactly these parameters:` });
-      out.push({ table: { head: ["Action digest"], rows: [[mono(String(req["action_digest"]))]] } });
-      out.push(...valueBlocks(req["params"] ?? null, (x) => JSON.stringify(x, null, 2)));
+      out.push({ table: { head: ["Action digest"], rows: [[digestCell(req["action_digest"], projected)]] } });
+      out.push(...valueBlocks(req["params"] ?? null, (x) => JSON.stringify(x, null, 2), projected));
     } else if (w["kind"] === "amendment") {
       // The owner's decision is for the hash of the package with the new envelope. The reason is the lead's own
       // text, and a model wrote it (G09).
@@ -1046,15 +1074,15 @@ function waitBlocks(v: Pick<RunView, "run" | "as_of" | "waiting">): Block[] {
       out.push({ table: { head: ["Package now", "Package asked for", "Deadline"], rows: [[mono(String(req["from"])), mono(String(req["package"])), typeof req["deadline"] === "number" ? new Date(req["deadline"]).toISOString() : "—"]] } });
       const changes = (Array.isArray(req["changes"]) ? req["changes"] : []).flatMap((c) => (isObj(c) ? [String(c["text"])] : []));
       if (changes.length) out.push({ p: "What it changes in the envelope:" }, { list: changes });
-      out.push({ p: "The lead's reason:" }, ...valueBlocks(req["reason"] ?? "", (x) => String(x)));
+      out.push({ p: "The lead's reason:" }, ...valueBlocks(req["reason"] ?? "", (x) => String(x), projected));
       out.push({ note: `Approve or decline at revision ${v.as_of.revision}: mandate amend ${v.run.id} --revision ${v.as_of.revision} --key <your key file> approve. A decision on an older revision is refused.` });
     } else if (w["kind"] === "timer") {
       out.push({ p: `Waiting until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "a timer")}); the scheduler resumes it then.` });
     } else if (w["kind"] === "review") {
-      out.push(...reviewWaitBlocks(v, req));
+      out.push(...reviewWaitBlocks(v, req, projected));
     } else {
       out.push({ p: w["kind"] === "budget_exceeded" ? "Waiting for a person after the budget ran out. The question, as the program asks it:" : "Waiting for an answer. The question, as the program asks it:" });
-      out.push(...valueBlocks((req["question"] ?? req["escalation"] ?? null) as Value, show));
+      out.push(...valueBlocks((req["question"] ?? req["escalation"] ?? null) as Value, show, projected));
     }
   }
   return out;
@@ -1065,19 +1093,19 @@ function waitBlocks(v: Pick<RunView, "run" | "as_of" | "waiting">): Block[] {
  * to; each open item by its index with what it failed and who may waive that, and its value, which a model wrote;
  * and the command that decides it at this revision.
  */
-function reviewWaitBlocks(v: Pick<RunView, "run" | "as_of">, req: Obj): Block[] {
+function reviewWaitBlocks(v: Pick<RunView, "run" | "as_of">, req: Obj, projected: boolean): Block[] {
   const q = isObj(req["question"] ?? null) ? (req["question"] as Obj) : {};
   const items = (Array.isArray(q["items"]) ? q["items"] : []).filter(isObj) as Obj[];
   const until = typeof req["deadline"] === "number" ? new Date(req["deadline"]).toISOString() : "—";
   const then = typeof req["escalate_to"] === "string" && req["escalated"] === undefined ? `then ${req["escalate_to"]} is asked the same` : "then every open item is declined; nothing passes on its own";
   const out: Block[] = [
     { p: `Waiting for ${String(req["role"] ?? "a person")} to review ${items.length} item${items.length === 1 ? "" : "s"} of the map at ${String(q["map"] ?? "?")} that failed ${String(q["contract"] ?? "its contract")} only where a person may waive it; ${then}. The decision applies only to this subject:` },
-    { table: { head: ["Subject digest", "Deadline"], rows: [[mono(String(req["subject_digest"] ?? "")), until]] } },
+    { table: { head: ["Subject digest", "Deadline"], rows: [[digestCell(req["subject_digest"] ?? "", projected), until]] } },
   ];
   for (const i of items) {
     const unmet = (Array.isArray(i["unmet"]) ? i["unmet"] : []).filter(isObj) as Obj[];
     out.push({ p: `Item ${String(i["index"])} did not meet ${unmet.map((u) => `${String(q["contract"])}.${String(u["criterion"])} ("${String(u["description"] ?? "")}", which ${(Array.isArray(u["waive"]) ? u["waive"] : []).join(" or ")} may waive)`).join(", ")}. Its value, as the map recorded it:` });
-    out.push(...valueBlocks(i["value"] ?? null, (x) => JSON.stringify(x, null, 2)));
+    out.push(...valueBlocks(i["value"] ?? null, (x) => JSON.stringify(x, null, 2), projected));
   }
   out.push({ note: `Decide every open item at revision ${v.as_of.revision}: mandate review ${v.run.id} --revision ${v.as_of.revision} --key <your key file> --waive <indices> --decline <indices>. A decision on an older revision, or one that leaves an item out, is refused.` });
   return out;
@@ -1340,7 +1368,8 @@ function metaOf(v: Pick<RunView, "program" | "package" | "run" | "manifest" | "m
  */
 export function roleDoc(v: RoleView, program: Program, modules?: Modules): Doc {
   const status: Block[] = [{ h: "Status" }, { p: `Run ${v.run.id} of ${v.run.workflow} is ${v.run.state} at revision ${v.as_of.revision} (event ${v.as_of.event}).` }];
-  if (v.run.state === "waiting") status.push(...(v.waiting === null ? [{ p: `It waits for nothing asked of ${v.role}.` }] : waitBlocks(v)));
+  // A role's view of a run of 0.7 holds projected values (`ShownValue`s); of an earlier run, values as recorded.
+  if (v.run.state === "waiting") status.push(...(v.waiting === null ? [{ p: `It waits for nothing asked of ${v.role}.` }] : waitBlocks(v, isProgram07OrLater(program))));
   return {
     title: `Run ${v.run.id}: ${v.run.workflow}, as ${v.role} sees it`,
     meta: metaOf(v, `${VIEW_FORMAT}, the view of the role ${v.role}: what was asked of it, how the run ended and what stopped it, and its progress`),
@@ -1367,8 +1396,9 @@ function stageBlocks(v: Pick<RoleView, "stages" | "programs">): Block[] {
   if (!v.stages) return [];
   const rows: Cell[][] = [];
   const add = (s: StageView, depth: number): void => {
-    const name = s.program ? `${s.program.plan} #${s.program.number}: ${s.stage}` : s.stage;
-    rows.push([mono(`${"  ".repeat(depth)}${name}`), untrusted(s.title), s.state.replace("_", " "), when(s.started_at), when(s.ended_at)]);
+    const stage = typeof s.stage === "string" ? s.stage : s.stage.masked ? `masked (${s.stage.class})` : String(s.stage.value);
+    const name = s.program ? `${s.program.plan} #${s.program.number}: ${stage}` : stage;
+    rows.push([mono(`${"  ".repeat(depth)}${name}`), textCell(s.title, untrusted), s.state.replace("_", " "), when(s.started_at), when(s.ended_at)]);
     for (const c of s.stages ?? []) add(c, depth + 1);
   };
   for (const s of v.stages) add(s, 0);
@@ -1384,8 +1414,9 @@ function reportBlocks(v: Pick<RoleView, "reports" | "role">): Block[] {
   const out: Block[] = [{ h: "Reports" }];
   if (!v.reports.length) return [...out, { p: `No report is addressed to ${v.role}.` }];
   for (const r of v.reports) {
-    out.push({ p: `${r.title} (${r.node}, ${when(r.at)}):` });
-    const rows = r.fields.map((f): Cell[] => [mono(f.name), isMask(f.value as Value) ? `masked (${f.class})` : untrusted(f.value as Value), f.class, f.known]);
+    const title = typeof r.title === "string" ? r.title : r.title.masked ? `A report whose title is masked (${r.title.class})` : JSON.stringify(String(r.title.value));
+    out.push({ p: `${title} (${r.node}, ${when(r.at)}):` });
+    const rows = r.fields.map((f): Cell[] => [mono(f.name), f.masked ? `masked (${f.class})` : untrusted(f.value), f.class, f.known]);
     out.push(rows.length ? { table: { head: ["Field", "Value", "Class", "Known"], rows } } : { p: "It has no field." });
   }
   return out;

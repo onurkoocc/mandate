@@ -8,11 +8,11 @@
 // reaches the database reads everything already (spec/attention.md "The command line"), so these are projections for
 // people, not a security boundary of their own; they are made as if they were one.
 
-import type { AttentionFacts, AttentionStage, Lock } from "@mandate/bridge";
+import { DATA_CLASSES, type AttentionFacts, type AttentionStage, type DataClass, type Lock } from "@mandate/bridge";
 import { readFacts } from "./attention.js";
 import { addressee, eventClass, shows, type Audience, type ViewClass } from "./classes.js";
 import type { RunRow } from "./journal.js";
-import { capOf, labelOf, maskRequest, maskValue, siteOf, waitFacts, type Cap, type ShownValue, type WaitFacts } from "./mask.js";
+import { capOf, hides, labelOf, maskedAs, maskRequest, maskValue, siteOf, waitFacts, type Cap, type Label, type ShownValue, type WaitFacts } from "./mask.js";
 import type { Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { isObj, type Obj, type Value } from "./values.js";
@@ -50,6 +50,14 @@ export interface AttentionContext {
   programs: Map<string, { command: string; plan: string; number: number; facts: AttentionFacts | undefined }>;
   /** Each wait's facts, by its command: from the facts in force where it was opened, by its site tag. */
   waits: Map<string, WaitFacts>;
+  /** The wait each action's digest was asked about, by `action_digest` (an `action_authorized` names the digest, not the wait). */
+  actions: Map<string, string>;
+  /**
+   * The class of what each sub-program's lead received, by `plan#number`, as its `program_started` records it: what a
+   * lead wrote into a sub-program (its stages' names and titles, its reports' titles, its workflow's name and shape) is
+   * a value of that class a model wrote. Absent where no `program_started` names one: such text is masked for every role.
+   */
+  leads: Map<string, DataClass>;
 }
 
 /** The key of a sub-program by its `plan` node and number. */
@@ -67,16 +75,21 @@ export async function attentionContext(rt: Runtime, run: RunRow, events: readonl
   const admitted: Admitted[] = [];
   const opened: Array<{ command: string; site: Value | undefined; digest: string | null }> = [];
   const escalated = new Set<string>();
+  const actions = new Map<string, string>();
+  const leads = new Map<string, DataClass>();
   for (const e of events) {
     const d = objOf(e.data);
     if (e.type === "package_amended" && typeof d["attention"] === "string") inForce = d["attention"];
     else if (e.type === "program_admitted" && typeof d["command"] === "string") admitted.push({ command: d["command"], plan: String(d["plan"]), number: Number(d["number"]), attention: text(d["attention"]) ?? undefined });
     else if (e.type === "review_escalated" && typeof d["command"] === "string") escalated.add(d["command"]);
+    else if (e.type === "program_started" && typeof d["plan"] === "string" && (DATA_CLASSES as readonly unknown[]).includes(d["class"])) leads.set(programKey(d["plan"], Number(d["number"])), d["class"] as DataClass);
     else if (e.type === "wait_opened" && typeof d["command"] === "string") {
       const cmd = d["command"];
       // A wait of a sub-program stands under the command it was admitted as; the longest such command is its own.
       const inside = admitted.filter((a) => cmd.startsWith(`${a.command}/`)).sort((a, b) => b.command.length - a.command.length)[0];
       opened.push({ command: cmd, site: d["site"], digest: inside ? (inside.attention ?? null) : inForce });
+      const action = objOf(d["request"])["action_digest"];
+      if (typeof action === "string" && !actions.has(action)) actions.set(action, cmd);
     }
   }
   const scope = { tenant: run.tenant, runId: run.run_id };
@@ -98,7 +111,36 @@ export async function attentionContext(rt: Runtime, run: RunRow, events: readonl
   for (const w of opened) if (!waits.has(w.command)) waits.set(w.command, waitFacts(await factsOf(w.digest), siteOf(w.site), escalated.has(w.command)));
   const programs: AttentionContext["programs"] = new Map();
   for (const a of admitted) programs.set(programKey(a.plan, a.number), { command: a.command, plan: a.plan, number: a.number, facts: await factsOf(a.attention) });
-  return { lock, facts: await factsOf(inForce), programs, waits };
+  return { lock, facts: await factsOf(inForce), programs, waits, actions, leads };
+}
+
+/**
+ * Whether `cap` is not shown the values of the wait `command`, and the label they are masked with: a wait the context
+ * knows (one it saw opened), whose label hides its values from `cap`. A command that is no wait the run opened gives
+ * undefined: what is decided on it (an envelope, a raise of the limits) is no value of a wait.
+ */
+export function waitHidden(ctx: AttentionContext, command: string | undefined, cap: Cap): { label: Label | undefined } | undefined {
+  if (command === undefined || !ctx.waits.has(command)) return undefined;
+  const label = ctx.waits.get(command)!.label;
+  return hides(label, cap) ? { label } : undefined;
+}
+
+/** The sub-program the command `command` stands in, by its `plan#number`: the admitted one whose command is the longest prefix of it. */
+export function programOfCommand(ctx: AttentionContext, command: string): string | undefined {
+  let best: { key: string; length: number } | undefined;
+  for (const [key, p] of ctx.programs) if (command.startsWith(`${p.command}/`) && (!best || p.command.length > best.length)) best = { key, length: p.command.length };
+  return best?.key;
+}
+
+/**
+ * Text a lead wrote into sub-program `key` (a stage's name or title, a report's title, its workflow's name or shape)
+ * as `cap` is shown it: a value a model wrote, of the class of what the lead received; masked for every role when
+ * that class is not known.
+ */
+export function leadText(ctx: AttentionContext, key: string, v: Value, cap: Cap): ShownValue {
+  const cls = ctx.leads.get(key);
+  if (cls !== undefined) return maskValue(v, { class: cls, known: "model" }, cap);
+  return { ...maskValue(v, undefined, cap), known: "model" };
 }
 
 /** The cap of an audience: a role's, from the lock, or the audit's, which sees every value. */
@@ -115,8 +157,9 @@ export function maskedWait(ctx: AttentionContext, command: string, kind: string,
 
 /** A stage as a role's view shows it (spec/attention.md "A role's view"). */
 export interface StageView {
-  stage: string;
-  title: string;
+  /** A stage of the run's own program: its name and title as the program says them. A sub-program's: `ShownValue`s (`leadText`). */
+  stage: string | ShownValue;
+  title: string | ShownValue;
   state: "done" | "current" | "not_started";
   started_at: number | null;
   ended_at: number | null;
@@ -130,7 +173,8 @@ export interface StageView {
 export interface ReportView {
   node: string;
   command: string;
-  title: string;
+  /** As the program says it; a sub-program's report's, a `ShownValue` (`leadText`). */
+  title: string | ShownValue;
   seq: number;
   at: number;
   fields: Array<{ name: string; type: string } & ShownValue>;
@@ -148,7 +192,7 @@ export interface ProgramsView {
  * while it was current (each with its `program`); a sub-program that started before any stage of the run's own, in
  * the list itself.
  */
-export function stagesView(ctx: AttentionContext, events: readonly Ev[]): StageView[] {
+export function stagesView(ctx: AttentionContext, events: readonly Ev[], cap: Cap): StageView[] {
   type Seen = { started: Ev | undefined; ended: Ev | undefined };
   const seen = new Map<string, Seen>();
   const progOf = (d: Obj): string => {
@@ -189,7 +233,9 @@ export function stagesView(ctx: AttentionContext, events: readonly Ev[]): StageV
     return listed.map((l) => {
       const s = seen.get(`${p}|${l.node}`);
       const state = s?.ended ? "done" : s?.started ? "current" : "not_started";
-      return { view: { stage: l.stage, title: l.title, state, started_at: s?.started?.at ?? null, ended_at: s?.ended?.at ?? null, ...(program ? { program } : {}) }, startedSeq: s?.started?.seq };
+      // What a lead wrote is a value a model wrote, masked by the role's cap (`leadText`); the run's own program's is the program's.
+      const named = (v: string): string | ShownValue => (program ? leadText(ctx, p, v, cap) : v);
+      return { view: { stage: named(l.stage), title: named(l.title), state, started_at: s?.started?.at ?? null, ended_at: s?.ended?.at ?? null, ...(program ? { program } : {}) }, startedSeq: s?.started?.seq };
     });
   };
   const own = view("", ctx.facts?.stages ?? []);
@@ -210,12 +256,14 @@ export function stagesView(ctx: AttentionContext, events: readonly Ev[]): StageV
 }
 
 /** The reports addressed to `audience` (`shows`'s `addressed`: a role sees those to it; the audit view every one), its fields masked by `cap`. */
-export function reportsView(audience: Audience, cap: Cap, events: readonly Ev[]): ReportView[] {
+export function reportsView(audience: Audience, cap: Cap, events: readonly Ev[], ctx: AttentionContext): ReportView[] {
   return events
     .filter((e) => e.type === "report" && shows(audience, eventClass(e.type), undefined, addressee(e.type, e.data)))
     .map((e) => {
       const d = objOf(e.data);
-      return { node: String(d["node"]), command: String(d["command"]), title: String(d["title"]), seq: e.seq, at: e.at, fields: reportFields(d["fields"], cap) };
+      const key = programOfCommand(ctx, String(d["command"]));
+      const title = key !== undefined ? leadText(ctx, key, String(d["title"]), cap) : String(d["title"]);
+      return { node: String(d["node"]), command: String(d["command"]), title, seq: e.seq, at: e.at, fields: reportFields(d["fields"], cap) };
     });
 }
 
@@ -293,7 +341,7 @@ export const PROJECTIONS: Readonly<Record<string, readonly string[] | typeof NOT
   stage_started: ["node", "stage", "title", "index", "program"],
   stage_ended: ["node", "stage", "program"],
   report: ["node", "command", "role", "title", "fields"],
-  program_started: ["plan", "number", "command", "workflow", "shape"],
+  program_started: ["plan", "number", "command", "workflow", "shape", "class"],
   program_ended: ["plan", "number", "ok"],
   // S3 and S4: no role is given them; their entries say so.
   action_prepared: NOTHING,
@@ -346,6 +394,38 @@ export const WITHHELD: Readonly<Record<string, readonly string[]>> = {
 
 /** The fields of an entry whose values a role is given masked and labelled (0.7): a wait's request and a report's fields. */
 export const MASKED: Readonly<Record<string, string>> = { wait_opened: "request", report: "fields" };
+
+/**
+ * The fields of an entry that are digests computed over a wait's values (0.7): a decision's id (its record holds the
+ * wait's subject digest), a governance gate's or an authorization's action digest. Each is masked, as the wait's values
+ * are, for a role the wait's label hides them from (`waitHidden`): the rest of what it is computed over is shown, so a
+ * value with few possibilities could be found by trying each. The wait is the event's `command`; an authorization's,
+ * the wait its digest was asked about, and when none is known the digests are masked.
+ */
+export const DIGESTS: Readonly<Record<string, readonly string[]>> = {
+  decision_received: ["decision"],
+  input_received: ["decision"],
+  criterion_approved: ["decision"],
+  criterion_denied: ["decision"],
+  governance_approved: ["digest", "decision"],
+  governance_denied: ["digest", "decision"],
+  action_authorized: ["digest", "decision"],
+  review_decided: ["decision"],
+  // A waiver's evidence and the failure it waives are statements over the item's value: their ids are digests of it.
+  criterion_waived: ["waiver", "failed", "decision"],
+  package_amended: ["decision"],
+};
+
+/**
+ * The fields of an entry that hold text a lead wrote, when the event is of a sub-program (0.7): each is a value a
+ * model wrote, of the class of what the lead received (`leadText`). Of the run's own program, the program's text.
+ */
+export const LEAD_TEXT: Readonly<Record<string, readonly string[]>> = {
+  stage_started: ["stage", "title"],
+  stage_ended: ["stage"],
+  report: ["title"],
+  program_started: ["workflow", "shape"],
+};
 
 /** An event as `WatchRun` gives it. */
 export interface ProjectedEvent {
@@ -426,11 +506,36 @@ export function projectEvent(e: Ev, audience: Audience, ctx: AttentionContext | 
   const masked = Object.hasOwn(MASKED, e.type) ? MASKED[e.type] : undefined;
   const cap = ctx ? capFor(ctx, audience) : undefined;
   const data: Obj = {};
+  const digests = ctx && cap !== undefined && Object.hasOwn(DIGESTS, e.type) ? DIGESTS[e.type]! : [];
+  const hidden = ctx && cap !== undefined && digests.length ? digestsHidden(ctx, e.type, d, cap) : undefined;
+  const lead = ctx && cap !== undefined && Object.hasOwn(LEAD_TEXT, e.type) ? LEAD_TEXT[e.type]! : [];
+  const key = ctx && lead.length ? leadKey(ctx, e.type, d) : undefined;
   for (const f of entry) {
     if (!Object.hasOwn(d, f)) continue;
-    if (f !== masked || !ctx || cap === undefined) data[f] = d[f]!;
+    if (hidden && digests.includes(f)) data[f] = maskedAs(hidden.label) as unknown as Value;
+    else if (ctx && cap !== undefined && key !== undefined && lead.includes(f)) data[f] = leadText(ctx, key, d[f]!, cap) as unknown as Value;
+    else if (f !== masked || !ctx || cap === undefined) data[f] = d[f]!;
     else if (e.type === "report") data[f] = reportFields(d[f], cap) as unknown as Value;
     else data[f] = maskedWait(ctx, String(d["command"]), String(d["kind"]), d[f]!, cap).request;
   }
   return { ...shell, data };
+}
+
+/** Whether the digests of event data `d` are hidden from `cap` (`DIGESTS`), and the label they are masked with. */
+function digestsHidden(ctx: AttentionContext, type: string, d: Obj, cap: Cap): { label: Label | undefined } | undefined {
+  if (type === "action_authorized") {
+    const wait = ctx.actions.get(String(d["digest"]));
+    // An authorization whose action no wait of the run was asked about is not known to be shown, so it is masked.
+    if (wait === undefined) return cap === "audit" ? undefined : { label: undefined };
+    return waitHidden(ctx, wait, cap);
+  }
+  return waitHidden(ctx, text(d["command"]) ?? undefined, cap);
+}
+
+/** The sub-program an event of `LEAD_TEXT` is of, by `plan#number`; undefined for the run's own program. */
+function leadKey(ctx: AttentionContext, type: string, d: Obj): string | undefined {
+  if (type === "program_started") return typeof d["plan"] === "string" ? programKey(d["plan"], Number(d["number"])) : undefined;
+  if (type === "report") return programOfCommand(ctx, String(d["command"]));
+  const p = objOf(d["program"]);
+  return typeof p["plan"] === "string" ? programKey(p["plan"], Number(p["number"])) : undefined;
 }

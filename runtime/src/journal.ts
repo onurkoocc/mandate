@@ -223,6 +223,8 @@ export interface ProgramStarted {
   command: string;
   workflow: string;
   shape?: { pattern: string; module: string };
+  /** The class of what its lead received (plan.ts `leadClass`): what the lead wrote into it is a value of that class a model wrote. */
+  class: string;
 }
 
 /** `stage_started` (spec/attention.md "Events"): the stage's node in the running program, its name, title and index. */
