@@ -84,7 +84,7 @@ import { exportJournal, parseExportJson, publicKeysIn, readExport, verifyExport,
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { otelEndpoint, otelExport, type OtelReport } from "./otel.js";
 import { egressTransport } from "./notify.js";
-import { driveLoop, MAX_INTERVAL_MS, TICK_INTERVAL_MS } from "./tick.js";
+import { driveLoop, MAX_INTERVAL_MS, sleep, TICK_INTERVAL_MS } from "./tick.js";
 import { libraryModules, refuseRevoked } from "./package.js";
 import { buildPackage, Runtime, workflowOwner } from "./runtime.js";
 import { Violation } from "./signals.js";
@@ -190,11 +190,17 @@ a decision is signed with --key; in unsigned mode (decisions.mode in the configu
 
 export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review", "tick", "promote", "waits", "watch", "decide"]);
 
+/** The commands of 0.7 that show a person what a run holds; what they print on their error path is escaped. */
+const PERSON_COMMANDS = new Set(["waits", "watch", "decide"]);
+
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env, answer: () => Promise<string> = stdinLine, standardInput?: AsyncIterable<string>): Promise<number> {
   let db: Db | undefined;
   /** The runtime the command made: what its gateways opened at the proxy is closed when the command ends. */
   let made: Runtime | undefined;
+  // What the commands of 0.7 that show a run print on their error path is escaped as everything else they print is: a
+  // refusal names a run id or a role the store holds, which is any text. The bytes of every other command are as they were.
+  const said = (m: string): string => (PERSON_COMMANDS.has(argv[0] ?? "") ? terminalText(m) : m);
   try {
     const [cmd, ...rest] = argv;
     const a = parse(rest);
@@ -405,22 +411,22 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     return 0;
   } catch (e) {
     if (e instanceof Usage) {
-      process.stderr.write(`mandate: ${e.message}\n${USAGE}\n`);
+      process.stderr.write(`mandate: ${said(e.message)}\n${USAGE}\n`);
       return 2;
     }
     if (e instanceof Unchecked) {
-      process.stderr.write(`mandate: ${e.message}\n`);
+      process.stderr.write(`mandate: ${said(e.message)}\n`);
       return 2;
     }
     if (e instanceof Violation) {
       // A violation's message starts with its code.
-      process.stderr.write(`mandate: ${e.message}\n`);
+      process.stderr.write(`mandate: ${said(e.message)}\n`);
       return 1;
     }
     // The compiler behind the bridge failed (its module missing, trapping, out of memory, answering what is not an
     // answer): the command did not do what it was asked, as with a usage error, and nothing was taken as checked.
     if (e instanceof CompilerFailure) {
-      process.stderr.write(`mandate: ${e.message}\n`);
+      process.stderr.write(`mandate: ${said(e.message)}\n`);
       return 2;
     }
     throw e;
@@ -1441,13 +1447,6 @@ async function waits(a: Args, config: RuntimeConfig, db: Db, out: (s: string) =>
   return 0;
 }
 
-/** Waits `ms` or until `signal` aborts. */
-const pause = (ms: number, signal: AbortSignal): Promise<void> =>
-  new Promise((done) => {
-    const t = setTimeout(done, ms);
-    signal.addEventListener("abort", () => (clearTimeout(t), done()), { once: true });
-  });
-
 /**
  * `mandate watch` (spec/attention.md "The command line"), two forms:
  *
@@ -1516,7 +1515,7 @@ async function watch(a: Args, config: RuntimeConfig, db: Db, out: (s: string) =>
         process.stderr.write(`mandate: a pass failed: ${terminalText(e instanceof Error ? e.message : String(e))}; the next one comes in ${intervalMs} ms\n`);
       }
       passes++;
-      await pause(intervalMs, stop.signal);
+      await sleep(intervalMs, stop.signal);
     }
   } finally {
     process.off("SIGINT", interrupt);
@@ -1538,11 +1537,12 @@ function stdinLines(): { lines: AsyncIterator<string>; close: () => void } {
  * that member, as the lock says per wait. Sorted as `listWaits` sorts.
  */
 async function waitsOfKey(reader: Runtime, db: Db, key: EvidenceSigner, explicit: string | undefined): Promise<WaitItem[]> {
-  if (explicit !== undefined) return await reader.listWaits({ member: explicit });
   const locks = new Map((await db.query<{ package_hash: string; lock: Lock }>("select package_hash, lock from packages")).map((p) => [p.package_hash, p.lock] as const));
   const members = [...new Set([...locks.values()].map((l) => memberOf(l, key.keyId)).filter((m): m is string => m !== undefined))].sort();
+  // `--member` names who signs: the key must be listed under that member in a package's lock, which is said before anything is asked.
+  if (explicit !== undefined && !members.includes(explicit)) throw new Violation("invalid_decision", `unknown_key: no package's lock lists key ${key.keyId} under member ${explicit}, so nothing could be signed for them with it.`);
   const seen = new Map<string, WaitItem>();
-  for (const member of members) {
+  for (const member of explicit !== undefined ? [explicit] : members) {
     for (const item of await reader.listWaits({ member })) {
       const lock = locks.get(item.package);
       if (lock !== undefined && memberOf(lock, key.keyId) === member) seen.set(`${item.run}\u0000${item.command}\u0000${item.role}`, item);

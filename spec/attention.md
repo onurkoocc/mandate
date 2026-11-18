@@ -1531,6 +1531,9 @@ operator's, or reads a run's values from the store.
   then `terminalDocument`. A value a model wrote is marked as one (`value (model output)`, a
   page's `untrusted` class). `waits --json` and `watch --jsonl` print the same JSON values,
   with each such code point written as a JSON escape.
+  What these three commands print on their error path (a usage error, a refusal of the runtime
+  that names a run id, a role or a member) is escaped the same way; the other commands print
+  their errors as they did.
 - **The pages.** The HTML has no `<script>`, no event-handler attribute, no external resource
   and no `javascript:` URL; it carries a `Content-Security-Policy` of `default-src 'none'`. The
   builders have no link block, so `index.html` names a run's pages as text, not as links. A
@@ -1538,13 +1541,17 @@ operator's, or reads a run's values from the store.
   pass writes a file only when its content changed. A member's runs are those of the packages
   whose lock lists them under a role, not finished or finished within 7 days, newest first, at
   most 200.
-- **File names.** A page is `<run>.<role>.html`. A run id or a role that is not made of
-  letters, digits, dot, underscore and hyphen only (never `..`, a separator, or a Windows device
-  name) is replaced in the name by `_h-` and 16 hexadecimal digits of its SHA-256, so nothing a
-  run says steers where a file is written. Files are written under a temporary name in the
-  directory and renamed.
+- **File names.** A page is `<run>.<role>.html`. A run id or a role is written in the name as it is
+  only when it is 1 to 40 characters of lowercase letters, digits, underscore and hyphen, is not a
+  Windows device name (`con`, `nul`, `com1`, …) and does not start `_h-`; otherwise it is replaced
+  by `_h-` and 16 hexadecimal digits of its SHA-256. Two names are then two files whatever the
+  file system folds (`Run1` and `run1` on NTFS, a role `Lead` and a role `lead`), no part holds
+  a dot, so a name ends in no dot and is read in one way only, none is longer than 86 characters,
+  and nothing a run says steers where a file is written. Files are written under a temporary name
+  in the directory and renamed.
 - **`decide`.** It lists the waits of whoever holds the key (the members the key is listed
-  under in a package's lock, or the one `--member` names), asks for one, shows it as its role
+  under in a package's lock, or the one `--member` names, which the key must be listed under,
+  said before anything is asked), asks for one, shows it as its role
   is shown it, and reads one answer per prompt: the wait's number; `approve` or `decline` for a
   decision or an amendment; the text for a question; for a review each open item in turn
   (`waive`, `decline`), or all at once as `waive 0,2 decline 1`; then `y` or `yes` to sign.

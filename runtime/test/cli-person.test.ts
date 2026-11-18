@@ -10,9 +10,11 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
-import { pageName, partName, safeName } from "../src/person.js";
+import { indexDoc, openItemLines, pageHtml, pageName, partName, requestLines, safeName, waitLines, waitListLine, waitsText } from "../src/person.js";
+import { Runtime } from "../src/runtime.js";
+import type { WaitItem } from "../src/watch.js";
 
 const dir = mkdtempSync(join(tmpdir(), "mandate-cli-person-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -175,6 +177,50 @@ beforeAll(async () => {
   }
 }, 240_000);
 
+/**
+ * The columns an SQL string of the new commands selects: the strings of the code that hold a select, each one's select list
+ * split at its top-level commas, whitespace collapsed. A column added to a select, or a select added, is one this lists.
+ */
+function sqlOf(code: string): string[][] {
+  const out: string[][] = [];
+  for (const m of code.matchAll(/(["`])((?:\\.|(?!\1)[^\\])*?)\1/gs)) {
+    const sql = m[2]!.replace(/\s+/g, " ");
+    const at = sql.search(/\bselect\b/i);
+    if (at < 0) continue;
+    const list: string[] = [];
+    let depth = 0;
+    let start = at + "select".length;
+    for (let i = start; i < sql.length; i++) {
+      const c = sql[i]!;
+      if (c === "(") depth++;
+      else if (c === ")") depth--;
+      else if (depth === 0 && c === ",") (list.push(sql.slice(start, i).trim()), (start = i + 1));
+      if (depth === 0 && /^ from /i.test(sql.slice(i, i + 6))) {
+        list.push(sql.slice(start, i).trim());
+        start = -1;
+        break;
+      }
+    }
+    if (start !== -1) list.push(sql.slice(start).trim());
+    out.push(list);
+  }
+  return out;
+}
+
+/** What the new commands may select: a lock, and the identity and counters of a run, and the last event number as an integer (a change marker). */
+const ALLOWED_COLUMNS = [
+  "package_hash",
+  "lock",
+  "r.run_id",
+  "r.tenant",
+  "r.workflow",
+  "r.state",
+  "r.revision",
+  "r.updated_at",
+  "r.package_hash",
+  "(select coalesce(max(e.seq), 0) from events e where e.run_id = r.run_id) as last",
+];
+
 describe("mandate waits", () => {
   it("lists a role's open decisions, escaped, each value labelled, and masks what is above the role's cap", { timeout: 120_000 }, async () => {
     const w = await mandate(["waits", "--role", "reviewer"]);
@@ -238,8 +284,10 @@ describe("mandate waits", () => {
       expect(text, name).not.toMatch(/\bwaiting\b[^\n]*\bfrom\s+runs\b/);
       expect(text, name).not.toMatch(/\bstatusOf\(|\bstatus\(/);
       expect(text, name).not.toMatch(/select\s+\*/i);
-      // The one read of a table is an integer: the last event number of a run, which says that its page may have changed.
-      expect(text.replace("select coalesce(max(e.seq), 0) from events e where e.run_id = r.run_id", ""), name).not.toMatch(/from\s+(events|commands|decisions|evidence|artifacts)\b/i);
+      // Every SQL string reads only what the allow-list names (below), and nothing else of any table.
+      const found = sqlOf(text);
+      expect(found.length, name).toBeGreaterThan(0);
+      for (const columns of found) for (const column of columns) expect(ALLOWED_COLUMNS, `${name}: ${column}`).toContain(column);
     }
     // The role view is read with the role named, never the audit audience.
     expect(code(person) + code(mine)).not.toMatch(/audit:\s*true/);
@@ -392,21 +440,33 @@ describe("mandate watch --member M --out DIR", () => {
     expect(statSync(join(dir, "a-file")).isFile()).toBe(true);
   });
 
-  it("makes a file name of a run and a role only from safe characters, and none from a path, a device name or an override", () => {
+  it("makes a file name of a run and a role that is safe and one of a kind: no path, device name, case, dot or length steers or shares it", () => {
     expect(pageName("shown1", "reviewer")).toBe("shown1.reviewer.html");
-    const named = new Set<string>();
-    for (const bad of ["../evil", "a/b", "a\\b", "..", ".", "", "CON", "con", "nul.txt", "COM1", "LPT9", "x\u202Ey", "x y", "x\u0000y", "é", "a:b", "x\n", "C:\\x", "_h-0123456789abcdef"]) {
-      expect(safeName(bad) && !bad.startsWith("_h-"), JSON.stringify(bad)).toBe(false);
-      for (const page of [pageName(bad, "reviewer"), pageName("shown1", bad)]) {
-        expect(page, JSON.stringify(bad)).toMatch(/^[A-Za-z0-9._-]+\.html$/);
-        expect(page).not.toContain("..");
-        expect(page).toContain("_h-");
-        named.add(page);
+    // The name is injective whatever the file system folds: every part is lowercase, dotless, at most 40 long, or a digest.
+    const runs = ["../evil", "a/b", "a\\b", "..", ".", "", "CON", "con", "nul", "COM1", "lpt9", "AUX.txt", "x\u202Ey", "x y", "x\u0000y", "é", "a:b", "x\n", "C:\\x","_h-0123456789abcdef", "Run1", "run1", "RUN1", "x.", ".x", "x ", " x", "a.b", "a", "b", "A", "a".repeat(40), "a".repeat(41), "a".repeat(300), "run_2.x", "R.1", "run-1", "x..y"];
+    const roles = ["reviewer", "Lead", "lead", "LEAD", "finance_lead"];
+    const pages = new Set<string>();
+    const folded = new Set<string>();
+    for (const run of runs) {
+      for (const role of roles) {
+        const page = pageName(run, role);
+        expect(page, `${JSON.stringify(run)} ${role}`).toMatch(/^(?:[a-z0-9_-]{1,40}|_h-[0-9a-f]{16})\.(?:[a-z0-9_-]{1,40}|_h-[0-9a-f]{16})\.html$/);
+        expect(page.length).toBeLessThanOrEqual(86);
+        pages.add(page);
+        folded.add(page.toLowerCase());
       }
     }
-    // Each of them is a name of its own.
-    expect(named.size).toBe(19 * 2);
-    for (const ok of ["a", "run-1", "run_2.x", "R.1"]) expect([safeName(ok), partName(ok)]).toEqual([true, ok]);
+    // All of them are names of their own, also where a file system sees no difference between a capital and its small letter.
+    expect(pages.size).toBe(runs.length * roles.length);
+    expect(folded.size).toBe(pages.size);
+    // The case pairs, the trailing dot, a long name and the device names are each a digest, never the name itself.
+    for (const bad of ["Run1", "x.", "a".repeat(41), "CON", "con", "nul", "COM1", "AUX.txt", "../evil", "_h-0123456789abcdef"]) {
+      expect(safeName(bad), JSON.stringify(bad)).toBe(false);
+      expect(partName(bad), JSON.stringify(bad)).toMatch(/^_h-[0-9a-f]{16}$/);
+    }
+    expect(partName("Run1")).not.toBe(partName("run1"));
+    expect(partName("Lead")).not.toBe(partName("lead"));
+    for (const ok of ["a", "run-1", "run_2", "a".repeat(40)]) expect([safeName(ok), partName(ok)]).toEqual([true, ok]);
   });
 });
 
@@ -546,5 +606,261 @@ describe("mandate decide", () => {
     const no = await mandate(["decide", "--key", ben.key], [await number(), "waive 1,3,4", "n"]);
     expect([no.code, no.out]).toEqual([1, expect.stringContaining("not confirmed; nothing was signed")]);
     expect((await mandate(["status", "v-bad"])).out).toContain("waiting for: accountant to review");
+  });
+});
+
+// ── the review of the first pass: every print site, the signing invariants, the page names, the error path ──────────
+
+/** A text hostile to a terminal and to a page, with a marker naming the source it stands in: markup, an OSC and a CSI sequence, a bidirectional override, a line and a next-line separator, a carriage return. */
+const hostileOf = (source: string): string => `${source}<b>\u001b]0;${source}\u0007\u001b[2J‮${source} ${source}\nline\r\u0085`;
+
+/** No raw control, no override, no line break of any kind in `text`, on top of `noRaw`. */
+const flat = (text: string): void => {
+  noRaw(text);
+  for (const c of ["\n", " ", " "]) expect(text).not.toContain(c);
+};
+
+describe("every print site", () => {
+  const sources = ["run-id", "tenant", "workflow", "command", "kind", "asked-of", "role", "escalates-to", "no-answer", "stage", "subject", "shown-name", "shown-value", "value-class", "value-known", "masked-name", "masked-class", "masked-known"];
+  const item = (over: Partial<WaitItem> = {}): WaitItem =>
+    ({
+      run: hostileOf("run-id"),
+      tenant: hostileOf("tenant"),
+      workflow: hostileOf("workflow"),
+      package: "sha256:p",
+      revision: 3,
+      command: hostileOf("command"),
+      kind: hostileOf("kind"),
+      asked_of: hostileOf("asked-of"),
+      role: hostileOf("role"),
+      since: 1,
+      deadline: 2,
+      escalates_to: hostileOf("escalates-to"),
+      on_no_answer: "escalates",
+      stage: hostileOf("stage"),
+      subject: hostileOf("subject"),
+      shown: [
+        { name: hostileOf("shown-name"), value: hostileOf("shown-value"), class: hostileOf("value-class"), known: hostileOf("value-known") },
+        { name: hostileOf("masked-name"), masked: true, class: hostileOf("masked-class"), known: hostileOf("masked-known") },
+      ],
+      ...over,
+    }) as unknown as WaitItem;
+
+  it("escapes each text of a wait the commands print, whichever its source", () => {
+    const lines = [...waitLines(item(), 1), waitListLine(item(), 1), ...waitLines(item({ on_no_answer: hostileOf("no-answer"), stage: null, asked_of: null }), undefined, false)];
+    for (const l of lines) flat(l);
+    const text = lines.join("\n");
+    for (const s of sources) expect(text, s).toContain(s);
+    // The markup a source holds is text there, not a tag.
+    for (const s of sources) expect(text).not.toContain(`${s}<b>`.replace("<b>", "<b>\u001b"));
+    // The whole list, as `waits` prints it.
+    const list = waitsText({ member: hostileOf("member") }, [item()]);
+    noRaw(list);
+    expect(list).toContain("member");
+  });
+
+  it("escapes what a request holds: an amendment's workflow, lead and changes, a decision's contract and criterion, an option, a review item's criterion, description and waivers", () => {
+    const h = hostileOf;
+    const lines = [
+      ...requestLines("amendment", { workflow: h("amend-workflow"), lead: h("amend-lead"), changes: [{ text: h("amend-change") }, { text: h("amend-reason") }] }),
+      ...requestLines("decision", { contract: h("contract"), criterion: h("criterion") }),
+      ...requestLines("decision", { effect: h("effect") }),
+      ...requestLines("input", { options: [h("option-a"), h("option-b")] }),
+      ...openItemLines(item(), { index: 2, unmet: [{ criterion: h("item-criterion"), description: h("item-description"), waive: [h("item-waiver"), h("item-waiver-2")] }] }, 0),
+    ];
+    for (const l of lines) flat(l);
+    const text = lines.join("\n");
+    for (const s of ["amend-workflow", "amend-lead", "amend-change", "amend-reason", "contract", "criterion", "effect", "option-a", "option-b", "item-criterion", "item-description", "item-waiver", "item-waiver-2"]) expect(text, s).toContain(s);
+  });
+
+  it("escapes every text of the page of a member: its index, whatever the source", () => {
+    const run = { run: hostileOf("run-id"), tenant: hostileOf("tenant"), workflow: hostileOf("workflow"), state: hostileOf("state"), revision: 1, roles: [hostileOf("role"), hostileOf("role-2")], fingerprint: "f" };
+    const html = pageHtml(indexDoc(hostileOf("member"), [item()], [run]), undefined);
+    noRaw(html);
+    for (const c of [" ", " "]) expect(html).not.toContain(c);
+    for (const s of ["run-id", "workflow", "kind", "role", "asked-of", "escalates-to", "stage", "subject", "shown-name", "shown-value", "value-class", "value-known", "masked-name", "masked-class", "masked-known", "member", "state"]) expect(html, s).toContain(s);
+    // No source's markup is a tag: the `<b>` after each marker is text.
+    expect(html).not.toMatch(/[a-z-]<b>/);
+    for (const t of tags(html)) expect(t.name, t.text).not.toMatch(/^\/?(script|iframe|object|embed|link|img|a|form|input|base)$/);
+  });
+});
+
+// A second program, for what the first one cannot say: two roles whose names differ in case, a `par` that leaves two
+// waits open, a run that moves between what is shown and what is signed, and a run id that is a terminal attack.
+const PROGRAM2 = `mandate @ 0.7
+
+module cli.person.two @ 0.1
+
+use std.{fs, human}
+
+role reviewer "Reviewer"
+role Lead     "Upper lead"
+role lead     "Lower lead"
+
+type Secret = Text classified confidential
+
+workflow AskUp(secret: Secret) -> Untrusted<Text>
+  caps   []
+  budget { time: 5m, steps: 4 }
+{
+  let a = human.ask("Is {secret} right?", role: Lead)
+  a
+}
+
+workflow AskLow(secret: Secret) -> Untrusted<Text>
+  caps   []
+  budget { time: 5m, steps: 4 }
+{
+  let a = human.ask("Is {secret} right?", role: lead)
+  a
+}
+
+workflow Both(secret: Secret) -> Untrusted<Text>
+  caps   []
+  budget { time: 5m, steps: 8 }
+{
+  par {
+    a = human.ask("First: is {secret} right?", role: reviewer)
+    b = human.ask("Second: is {secret} right?", role: reviewer)
+  }
+  a
+}
+`;
+const MARK2 = "second-made-up-marker";
+const LOCK2 = join(dir, "second.lock.json");
+writeFileSync(join(dir, "p2.mdt"), PROGRAM2);
+
+describe("the second program: names, moving runs, two waits, the error path", () => {
+  let zed: Person;
+  const run2 = (workflow: string, id: string) => mandate(["run", join(dir, "p2.mdt"), "--workflow", workflow, "--input", JSON.stringify({ secret: MARK2 }), "--lock", LOCK2, "--run-id", id]);
+  /** The number `decide` gives the wait whose line holds `part`, as it lists them for zed's key. */
+  const numbers = async (part: string): Promise<string[]> => (await mandate(["decide", "--key", zed.key], [])).out.split("\n").filter((l) => /^\d+\. run /.test(l) && l.includes(part)).map((l) => l.match(/^(\d+)\./)![1]!);
+  const decisionLines = (statusOut: string): string[] => statusOut.split("\n").filter((l) => l.startsWith("decision "));
+
+  beforeAll(async () => {
+    zed = await person("zed");
+    writeFileSync(LOCK2, JSON.stringify({ lock: "mandate/lock/0.7", modules: {}, members: { zed: { keys: [zed.id] } }, roles: { reviewer: ["zed"], Lead: ["zed"], lead: ["zed"] }, role_classes: { reviewer: "confidential", Lead: "confidential" } }));
+  }, 120_000);
+
+  it("gives names that differ in case, a trailing dot, a long id or a device name each a page of its own, as the role is shown it", { timeout: 240_000 }, async () => {
+    const ids = ["Run1", "run1", "trail.", "n".repeat(200), "nul", "Aux.txt"];
+    for (const id of ids) {
+      const r = await run2(id === "run1" ? "AskLow" : "AskUp", id);
+      expect(r.code, `${id}: ${r.err}`).toBe(0);
+    }
+    const pages = join(dir, "pages-zed");
+    const r = await mandate(["watch", "--member", "zed", "--out", pages]);
+    expect([r.code, r.err]).toEqual([0, ""]);
+    const files = readdirSync(pages).sort();
+    const roles = ["reviewer", "Lead", "lead"];
+    expect(files).toEqual(["index.html", ...ids.flatMap((id) => roles.map((role) => pageName(id, role)))].sort());
+    expect(r.out).toMatch(/^watch: wrote 19 files in /);
+    // No file system that folds case sees two files of one name, and none sees a name it refuses: every part is lowercase, dotless and short.
+    expect(new Set(files.map((f) => f.toLowerCase())).size).toBe(files.length);
+    for (const f of files) expect(f, f).toMatch(/^(index|(?:[a-z0-9_-]{1,40}|_h-[0-9a-f]{16})\.(?:[a-z0-9_-]{1,40}|_h-[0-9a-f]{16}))\.html$/);
+    const page = (id: string, role: string): string => readFileSync(join(pages, pageName(id, role)), "utf8");
+    // Each page is the projection of its own run and role: the upper lead is shown the secret, the lower lead is not.
+    for (const id of ["Run1", "run1"]) {
+      expect(page(id, "lead"), id).not.toContain(MARK2);
+      expect(page(id, "lead")).toContain(`Run ${id}`);
+      expect(page(id, "Lead")).toContain(`Run ${id}`);
+    }
+    expect(page("Run1", "Lead")).toContain(MARK2);
+    expect(page("Run1", "Lead")).not.toBe(page("Run1", "lead"));
+    expect(page("Run1", "Lead")).not.toContain("Run run1");
+    expect(page("run1", "lead")).not.toContain("Run Run1");
+    expect(page("Run1", "lead")).not.toContain("Run run1");
+    expect(page("trail.", "Lead")).toContain("Run trail.");
+    // Nothing remains of a write that was refused.
+    expect(files.filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("refuses to sign for a revision other than the one it showed, whatever the run is by the time it is signed", { timeout: 240_000 }, async () => {
+    // The run id is a terminal attack, which an error path must not carry out either.
+    const id = "moved\u001b[31m‮-1";
+    expect((await run2("AskUp", id)).code).toBe(0);
+    const [n] = await numbers("moved\\u001B[31m\\u202E-1");
+    expect(n).toBeDefined();
+    // The run moves on, as another process's step would move it, after the person was shown it and before the signature.
+    let reader: Runtime | undefined;
+    const real = Runtime.prototype.shown;
+    const spy = vi.spyOn(Runtime.prototype, "shown").mockImplementation(function (this: Runtime, ...args: Parameters<Runtime["shown"]>) {
+      reader = this;
+      return real.apply(this, args);
+    });
+    try {
+      const moved = await mandate(["decide", "--key", zed.key], [
+        n!,
+        "an answer",
+        async () => {
+          await reader!.db.query("update runs set revision = revision + 1 where run_id = $1", [id]);
+        },
+        "y",
+      ]);
+      expect([moved.code, moved.err]).toEqual([1, expect.stringContaining("stale_revision")]);
+      expect(moved.err).toContain("The run moved on after the list was shown; nothing was decided");
+      // What a refusal prints is escaped as well, the run id in it too.
+      noRaw(moved.err);
+      expect(moved.err).toContain("moved\\u001B[31m\\u202E-1");
+      noRaw(moved.out);
+    } finally {
+      spy.mockRestore();
+    }
+    // Nothing was signed, and the run still waits.
+    const status = await mandate(["status", id]);
+    expect(decisionLines(status.out)).toEqual([]);
+    expect(status.out).toContain("waiting for");
+  });
+
+  it("signs only the wait it showed: with two open, the one the run does not take first is refused, and nothing is signed for it", { timeout: 240_000 }, async () => {
+    expect((await run2("Both", "par1")).code).toBe(0);
+    const nums = await numbers("par1");
+    expect(nums).toHaveLength(2);
+    // The person is shown one wait of the two and answers it, but declines at the confirmation: one of the two is the run's current wait, the other is not.
+    const tried = [];
+    for (const n of nums) tried.push(await mandate(["decide", "--key", zed.key], [n, "an answer", "n"]));
+    const refused = tried.map((t, i) => (t.out.includes("has more than one wait open and takes a decision on") ? i : -1)).filter((i) => i >= 0);
+    expect(refused, tried.map((t) => t.out).join("\n---\n")).toHaveLength(1);
+    expect(tried[refused[0]!]!.code).toBe(1);
+    expect(tried[refused[0]!]!.out).toContain("nothing was signed");
+    expect(tried[1 - refused[0]!]!.out).toContain("not confirmed; nothing was signed");
+    // Even where the person goes on to confirm it, the refused wait is not signed for: the signature would be on the other one's digest.
+    const confirmed = await mandate(["decide", "--key", zed.key], [nums[refused[0]!]!, "an answer for the wrong wait", "y"]);
+    expect([confirmed.code, confirmed.out]).toEqual([1, expect.stringContaining("has more than one wait open")]);
+    const status = await mandate(["status", "par1"]);
+    expect(decisionLines(status.out)).toEqual([]);
+    expect(status.out).toContain("waiting for");
+  });
+
+  it("checks the key is bound to the member given, before a wait is listed or anything is asked", { timeout: 240_000 }, async () => {
+    for (const member of ["ben", "nobody", "zed\u001b[2J‮"]) {
+      let asked = 0;
+      const r = await mandate(["decide", "--key", zed.key, "--member", member], [async () => void (asked += 1), "1"]);
+      expect([r.code, r.err], member).toEqual([1, expect.stringContaining("unknown_key")]);
+      expect(r.out, member).not.toContain("Which one?");
+      expect(r.out).toBe("");
+      expect(asked).toBe(0);
+      noRaw(r.err);
+    }
+    // The member the key is bound to is as it was.
+    const own = await mandate(["decide", "--key", zed.key, "--member", "zed"], []);
+    expect(own.code, own.err).toBe(1);
+    expect(own.out).toContain("open decision");
+    expect(own.out).toContain("for member zed");
+  });
+
+  it("escapes what the commands print on their error path: a run id, a role, a member, in a usage error and in a refusal", { timeout: 240_000 }, async () => {
+    const bad = "ghost\u001b[2J‮\u0085x";
+    for (const args of [["watch", bad, "--role", "reviewer", "--jsonl"], ["watch", bad, "--role", "reviewer"], ["watch", "--member", bad, "--out", join(dir, "pages-bad-member")], ["waits", bad], ["decide", bad, "--key", zed.key], ["waits", "--role", "r", "--member", bad]]) {
+      const r = await mandate(args);
+      if (args[0] !== "watch" || args[1] !== "--member") expect(r.code, args.join(" ")).not.toBe(0);
+      noRaw(r.err);
+      noRaw(r.out);
+    }
+    const unknown = await mandate(["watch", bad, "--role", "reviewer", "--jsonl"]);
+    expect(unknown.err).toContain("ghost\\u001B[2J\\u202E\\u0085x");
+    // The commands of 0.6 print what they printed: the shared handler is not touched for them.
+    const old = await mandate(["status", "no-such-run"]);
+    expect([old.code, old.err]).toEqual([1, "mandate: unknown_run: No run no-such-run.\n"]);
   });
 });

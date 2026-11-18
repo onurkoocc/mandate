@@ -55,7 +55,7 @@ const when = (t: number | null): string => (t === null || t <= 0 ? "unknown" : n
 /** The label of a value: its class and how it is known, or that nothing labels it (a run before 0.7). */
 export function labelText(s: { class: string | null; known: string | null }): string {
   if (s.class === null || s.known === null) return "not labelled: a run before 0.7";
-  return `class ${s.class}; known ${s.known}: ${KNOWN_TEXT[s.known] ?? "unknown"}`;
+  return `class ${terminalText(s.class)}; known ${terminalText(s.known)}: ${Object.hasOwn(KNOWN_TEXT, s.known) ? KNOWN_TEXT[s.known]! : "unknown"}`;
 }
 
 /** Whether a wait shows a value its role is not shown (a listed subject is masked with them). */
@@ -66,13 +66,13 @@ export function hidesFromRole(item: WaitItem): boolean {
 /** The subject as a line prints it: the digest, or that it is masked with its class. */
 function subjectText(item: WaitItem): string {
   const s = item.subject;
-  return typeof s === "string" ? terminalText(s) : `masked (class ${s.class}; known ${s.known}), it is computed over values this role is not shown`;
+  return typeof s === "string" ? terminalText(s) : `masked (class ${terminalText(String(s.class))}; known ${terminalText(String(s.known))}), it is computed over values this role is not shown`;
 }
 
 /** One value a wait shows, as a line: masked, its class and how it is known, never the value; or the value, quoted and escaped, with its label. */
 function shownLine(s: NamedShown | UnlabelledValue, role: string): string {
   const name = terminalText(s.name);
-  if ("masked" in s && s.masked) return `    ${name}: masked; its class is ${s.class}, above what ${terminalText(role)} may be shown; known ${s.known}: ${KNOWN_TEXT[s.known] ?? "unknown"}`;
+  if ("masked" in s && s.masked) return `    ${name}: masked; its class is ${terminalText(String(s.class))}, above what ${terminalText(role)} may be shown; known ${terminalText(String(s.known))}: ${Object.hasOwn(KNOWN_TEXT, s.known) ? KNOWN_TEXT[s.known]! : "unknown"}`;
   return `    ${name}: ${shownSafe((s as { value: Value }).value)}  [${labelText(s)}]`;
 }
 
@@ -177,23 +177,33 @@ export function openItemLines(item: WaitItem, open: OpenItem, position: number):
 
 // ── the pages ───────────────────────────────────────────────────────────
 
-/** What a name in a page's file name may be made of: the page is `<run>.<role>.html`, and nothing run data says steers where it is written. */
-const SAFE = /^[A-Za-z0-9._-]+$/;
+/**
+ * The readable form of a name in a page's file name: lowercase letters, digits, underscore and hyphen only, at most 40
+ * long. No dot (the dot separates the parts, so two pairs never make one name), no capital (two names that differ only in
+ * case are one file on NTFS and on the default macOS), no leading or trailing dot or space, no separator, no device
+ * name (`con`, `nul`, `com1`: no dot is left to follow it), and none that starts like a digest name.
+ */
+const READABLE = /^[a-z0-9_-]{1,40}$/;
 
-/** Windows' device names, which a file of that name followed by a dot and anything is as well. */
-const DEVICE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
+/** Windows' device names, which no readable name may be (with no dot in a readable name, no extension follows one either). */
+const DEVICE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
 
-/** Whether `s` may be part of a page's file name: letters, digits, dot, underscore and hyphen; never `..`, a separator, or a device name. */
+/** Whether `s` may stand in a file name as it is. */
 export function safeName(s: string): boolean {
-  return SAFE.test(s) && s !== "." && !s.includes("..") && !DEVICE.test(s.split(".")[0]!);
+  return READABLE.test(s) && !DEVICE.test(s) && !s.startsWith("_h-");
 }
 
-/** What names a run or a role in a file name: itself when it is a safe name, else a digest of it that is one (`_h-` and 16 hexadecimal digits, which no safe name may start with), so run data never steers where a page is written. */
+/**
+ * What names a run or a role in a file name: itself when it is readable (`safeName`), else `_h-` and 16 lowercase
+ * hexadecimal digits of its SHA-256. Two different names are two different parts: a readable one is its own, a digest one
+ * is a digest of what is not readable, and no readable name starts `_h-`. So nothing run data says steers where a page is
+ * written, or makes two runs or two roles share one.
+ */
 export function partName(s: string): string {
-  return safeName(s) && !s.startsWith("_h-") ? s : `_h-${createHash("sha256").update(s, "utf8").digest("hex").slice(0, 16)}`;
+  return safeName(s) ? s : `_h-${createHash("sha256").update(s, "utf8").digest("hex").slice(0, 16)}`;
 }
 
-/** The page of a run and a role: `<run>.<role>.html`, each part by `partName`. */
+/** The page of a run and a role: `<run>.<role>.html`, each part by `partName`; the parts hold no dot, so the name is made of them in one way only. */
 export function pageName(run: string, role: string): string {
   return `${partName(run)}.${partName(role)}.html`;
 }
@@ -205,13 +215,16 @@ export function withRefresh(html: string, seconds: number): string {
   return html.replace(charset, `${charset}<meta http-equiv="refresh" content="${seconds}">`);
 }
 
+/** A page's name as `pageName` makes it: two parts of `[a-z0-9_-]` or a digest, and `.html`. */
+const PAGE = /^(?:[a-z0-9_-]{1,40}|_h-[0-9a-f]{16})\.(?:[a-z0-9_-]{1,40}|_h-[0-9a-f]{16})\.html$/;
+
 /**
  * A file written to a temporary name in `dir` and renamed, so a reader never sees half a page, and no temporary file
  * remains. `name` is one of this module's page names (`index.html`, or `pageName`'s), checked once more: the file
  * lands in `dir` itself.
  */
 export function writeAtomic(dir: string, name: string, content: string): void {
-  if (name !== "index.html" && !(safeName(name.replace(/\.html$/, "")) && name.endsWith(".html"))) throw new Violation("bad_page", `${JSON.stringify(name)} is not a name of a page.`);
+  if (name !== "index.html" && !PAGE.test(name)) throw new Violation("bad_page", `${JSON.stringify(name)} is not a name of a page.`);
   const target = join(dir, name);
   if (resolve(target, "..") !== resolve(dir)) throw new Violation("bad_page", `${JSON.stringify(name)} is not inside ${dir}.`);
   const tmp = join(dir, `.${randomBytes(8).toString("hex")}.tmp`);
