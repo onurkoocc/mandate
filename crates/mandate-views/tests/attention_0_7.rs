@@ -229,7 +229,7 @@ fn a_question_that_asks_no_role_notifies_the_owner() {
     let text = md(VIEW, "Notify", Some(VIEW_LOCK));
     assert!(
         line(&text, "| no role |")
-            .contains("no role is asked; the owner, finance\\_lead (ben), is notified"),
+            .contains("no role is asked; the owner, finance\\_lead (ben), is notified where the runtime's configuration names a channel for the role"),
         "{text}"
     );
     // Without an owner nobody is notified, and the lock's roles can list it.
@@ -458,7 +458,13 @@ fn effects_the_total_leaves_out_are_listed_beside_the_configuration() {
         meta: Vec::new(),
         blocks,
     });
-    assert!(text.contains("which the runtime's configuration may hand to a person as well: erp.post\\_draft (60 times)."));
+    // The effect's name is a name of the program: shown as code, in a table.
+    assert!(
+        text.contains("which the runtime's configuration may hand to a person as well:\n"),
+        "{text}"
+    );
+    assert!(text.contains("| Effect | Sites |"), "{text}");
+    assert!(text.contains("| ` erp.post_draft ` | 60 times |"), "{text}");
 }
 
 #[test]

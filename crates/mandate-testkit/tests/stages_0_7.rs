@@ -21,8 +21,7 @@
 //! besides, each by name:
 //!
 //! - The JSON outputs (`check`, `check --module`, `check --lock`, `load`,
-//!   `view --format json`, `view --against itself`, `sandbox`, `view --card
-//!   --format json`) as values, member by member in their order, every
+//!   `view --format json`, `view --against itself`, `sandbox`) as values, member by member in their order, every
 //!   value of the unmarked program mapped to the marked one: a path
 //!   `/defs/D/body/i` of a marked body (and of a workflow that applies a
 //!   marked pattern of the program, whose expansion has its stages) at the
@@ -33,11 +32,16 @@
 //!   the unmarked IR, and it has one stage per marker.
 //! - `fmt`: the marked text printed, with its marker lines and the blank
 //!   line the printer puts before each taken out, is the unmarked one's.
-//! - `hash`, the documents (`view --format md`, `html`, the card's) and the
+//! - `hash`, the documents (`view --format md`, `html`) and the
 //!   sub-programs' checks as text, paths mapped as above.
 //! - The static nodes of each workflow (`workflow_nodes`, of the expansion
 //!   when there is one), the places the program names a role
 //!   (`role_sites_of`, paths mapped) and the roles it names.
+//!
+//! **Left out, by name: the card** (`view --card`, as JSON, md and html).
+//! A card of 0.7 lists the stages in "What it does" and shows the reports
+//! and the owner (RP2), so a marked program's differs from the unmarked
+//! one's by what the markers add; `card_0_7.rs` holds that.
 //!
 //! **What may differ.** Only the hashes, each as a renaming (a hash of the
 //! unmarked program is one hash of the marked one wherever it stands, and
@@ -85,7 +89,7 @@ use mandate_ir::{
 use mandate_syntax::{SourceKind, kind_of, load};
 use mandate_testkit::read_json;
 use mandate_testkit::rust_vectors::programs_0_6;
-use mandate_views::{architecture_with_lock, authority_with, card, cost_with, envelope_workflows};
+use mandate_views::{architecture_with_lock, authority_with, cost_with};
 
 /// `text` with its one header `mandate @ 0.6` written as 0.7.
 fn as_0_7(text: &str) -> Result<String, String> {
@@ -582,10 +586,6 @@ fn json_outputs(program: &str, text: &str) -> Result<JsonOutputs, String> {
             .with("program", hashes.program.as_str())
             .with("requirements", requirements_to_js(&requirements));
         out.push(("sandbox".to_owned(), JsValue::Object(sandbox)));
-        if let [name] = envelope_workflows(p).as_slice() {
-            let view = card(p, name, lock.as_ref(), Some(&modules)).ok_or("no card")?;
-            out.push(("view --card --format json".to_owned(), view.to_js()));
-        }
     }
     Ok(JsonOutputs {
         values: out,
@@ -704,8 +704,12 @@ fn compare_with(program: &str, t: &mut Tally, marker: Marker) -> Result<Marks, S
     let op = marker.op();
     // The attention view shows the stages and the reports themselves: what
     // is compared is every other output, and the document without it.
-    let outs_a = outputs::without_attention(outputs::outputs_of_relabelled(program, &unmarked)?);
-    let outs_b = outputs::without_attention(outputs::outputs_of_relabelled(program, &marked)?);
+    let outs_a = outputs::card_unchanged(outputs::without_attention(
+        outputs::outputs_of_relabelled(program, &unmarked)?,
+    ));
+    let outs_b = outputs::card_unchanged(outputs::without_attention(
+        outputs::outputs_of_relabelled(program, &marked)?,
+    ));
     let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
     if names(&outs_a) != names(&outs_b) {
         return Err(format!(

@@ -486,6 +486,58 @@ fn check_takes_the_libraries_a_lock_pins_and_finds_std_patterns_itself() {
 }
 
 #[test]
+fn project_gives_the_card_of_a_program_of_0_7_with_its_attention_part() {
+    // The card of the invoice flow of 0.7: `mandate view --card` reads the
+    // libraries from the directory, the tool is given them, and the
+    // attention part of both is made by a check that has them: the same
+    // JSON and the same document.
+    let mut io = invoices_io();
+    for f in [
+        "fixtures/attention/invoices.mdt",
+        "fixtures/attention/invoices.lock.json",
+    ] {
+        io.files.insert(f.to_owned(), read_bytes(f).unwrap());
+    }
+    let code = serve_io(
+        &mut io,
+        &[
+            "view",
+            "fixtures/attention/invoices.mdt",
+            "--card",
+            "--format",
+            "json",
+            "--workflow",
+            "MatchInvoices",
+            "--lock",
+            "fixtures/attention/invoices.lock.json",
+            "--libraries",
+            "libs",
+        ],
+        b"",
+    );
+    assert_eq!(code, 0, "{}{}", io.out, io.err);
+    let cli = io.out.trim_end().to_owned();
+    assert!(cli.contains(r#""kind": "attention""#), "{cli}");
+    assert!(!cli.contains(r#""attention": null"#));
+    let lock = mandate_ir::parse(&read_text("fixtures/attention/invoices.lock.json").unwrap())
+        .unwrap()
+        .value;
+    let args = format!(
+        r#"{{"source":{},"lock":{},"libraries":{},"view":"card","workflow":"MatchInvoices"}}"#,
+        quoted(&read_text("fixtures/attention/invoices.mdt").unwrap()),
+        mandate_ir::stringify(&mandate_ir::JsValue::from(&lock)).unwrap(),
+        acme_connectors(),
+    );
+    let out = serve(&[call(1, "mandate.project", &args)]);
+    let text = format!(r#""content":[{{"type":"text","text":{}}}]"#, quoted(&cli));
+    assert!(
+        out[0].contains(&text),
+        "{}",
+        &out[0][..600.min(out[0].len())]
+    );
+}
+
+#[test]
 fn project_gives_the_card_of_a_workflow_as_mandate_view_does() {
     // The card `mandate view --card --format json` prints, with the
     // libraries read from the directory, is the tool's.
