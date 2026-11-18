@@ -314,9 +314,11 @@ export interface Shape06 {
 
 /**
  * A lead's sub-program as `check_subprogram` takes it, and (0.7) `std_patterns`: the version of `std.patterns` the
- * parent's lock pins, which the check, given no lock, reads (one the compiler embeds, else the door refuses it).
+ * parent's lock pins, which the check, given no lock, reads (one the compiler embeds, else the door refuses it); and
+ * `role_classes`: the parent's lock's (`{}` for a lock without them), to which the check holds what the sub-program
+ * shows each role (E1909; without them, no E1909).
  */
-export type SubprogramInput07 = SubprogramInput & { std_patterns?: string };
+export type SubprogramInput07 = SubprogramInput & { std_patterns?: string; role_classes?: Record<string, DataClass> };
 
 /** `checkSubprogram` as the bridge exports it: the reference's, which a parent of 0.6 reaches only in the Rust. */
 export type CheckSubprogram06 = (i: SubprogramInput07) => SubprogramCheck06;

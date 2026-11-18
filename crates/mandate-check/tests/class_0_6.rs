@@ -423,6 +423,7 @@ fn admit(body: &str) -> SubprogramCheck {
         lead: DataClass::Public,
         room: &room,
         std_patterns: None,
+        role_classes: None,
     })
     .unwrap()
 }

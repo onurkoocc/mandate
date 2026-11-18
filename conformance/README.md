@@ -638,6 +638,9 @@ is skipped and counted by the TypeScript runners with the cases of 0.6
 | `E1910` | An owner on a workflow that has an envelope (a mutation: the owner added) | E1910 |
 | `E1910a`, `E1910b` | With `promotion: "required"`, a workflow written out and an application with neither an owner nor an envelope (a mutation each: the owner line removed) | E1910 |
 | `E1911`, `E1911a` | A 0.7 lock's `role_classes`, and its `promotion`, with a program of 0.6 (a mutation each: the program relabelled 0.6) | E1911 |
+| `A05` | A 0.7 program that shows confidential data to two roles in a review and its escalation, an approval, a question and a report checks with a lock that gives both of them `confidential` (`A05/program.mdt`) | — |
+| `E1909` to `E1909d` | With a lock, a `human.ask`, a `verify`'s approval, a report's fields, a review and a review's escalation that show confidential data to a role the lock leaves at `internal` (a mutation each: the site's role) | E1909 |
+| `E1909e` | The plan's mutation: the lock lowers the accountant to `internal`, and every site that shows it confidential data is refused | E1909 |
 | `E1705d` | An owner a lead writes in its sub-program | E1705 |
 | `E1501e` | A workflow's owner that no role definition has (a mutation: the owner) | E1501 |
 | `E1502b` | With a lock, a workflow's owner that the lock binds to nobody (a mutation: a role added and named) | E1502 |
@@ -689,13 +692,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 535, passed 535, pending 0
+conformance cases: ran 542, passed 542, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 410 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
+  of them 417 of language mandate/0.6, mandate/0.7, which only the Rust reads, each expectation written by hand
 ```
 
-(551 cases: 535 `compile`, 267 of them of language 0.6 and 143 of 0.7, and 16 `journal`; no case
+(558 cases: 542 `compile`, 267 of them of language 0.6 and 150 of 0.7, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

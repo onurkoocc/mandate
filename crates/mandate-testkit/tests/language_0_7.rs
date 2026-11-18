@@ -28,8 +28,14 @@
 //! of 0.6 that imports `std.patterns` pins 1.0.0, its faithful translation:
 //! its checks, and the checks of its sub-programs, are given the module of
 //! 1.0.0 (`common::relabelled_modules`, the one helper of the Rust gates
-//! that says so), and both gates print what it touched. E1909 with a lock is
-//! not in the language yet; its slice adds its rule here. E1509 is, and
+//! that says so), and both gates print what it touched. E1909 with a lock
+//! is (RL5b): a program of 0.7 with a lock of an older format leaves every
+//! role at `internal`, where a run of 0.6 masks nothing, so the faithful
+//! translation of a fixture's lock is of format 0.7 and gives every role of
+//! its `roles` the class `restricted` (`common::relabelled_lock`, the one
+//! helper that says so; the views are given the lock they were given). No
+//! case of 0.6 above shows a role data above `internal`, so its lock is as
+//! it was. E1509 is, and
 //! no program or case of 0.6 above has a criterion it refuses, so none is
 //! left out for it (`crates/mandate-check/tests/reserved_methods.rs` holds
 //! the 0.6 program that has one, clean).

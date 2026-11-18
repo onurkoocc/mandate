@@ -145,12 +145,47 @@ pub fn check_with_libraries(
     revoked: Option<&std::collections::BTreeSet<mandate_check::library::Digest>>,
 ) -> Result<CheckResult, String> {
     let lock: Option<Value> = lock.map(read_json).transpose()?;
+    check_with_lock_value(text, kind, modules, lock.as_ref(), libraries, revoked)
+}
+
+/// The lock a program of 0.6 relabelled `mandate @ 0.7` is checked with
+/// (slice RL5b, spec/attention.md "Lock 0.7"): a run of 0.6 masks nothing,
+/// and its check refuses no role any data, where a program of 0.7 checked
+/// with a lock of an older format leaves every role at `internal` (E1909).
+/// The faithful translation of its lock is the same lock of format 0.7
+/// that gives every role of `roles` the class `restricted`. A lock without
+/// `roles`, or of format 0.7 already, is given as it is.
+pub fn relabelled_lock(lock: &Value) -> Value {
+    let Some(map) = lock.as_object() else {
+        return lock.clone();
+    };
+    let roles = map.get("roles").and_then(Value::as_object);
+    let older = map.get("lock").and_then(Value::as_str) != Some("mandate/lock/0.7");
+    let (Some(roles), true) = (roles, older) else {
+        return lock.clone();
+    };
+    let classes: mandate_ir::Map = roles.keys().map(|r| (r, "restricted")).collect();
+    let mut map = map.clone();
+    map.insert("lock", "mandate/lock/0.7");
+    map.insert("role_classes", classes);
+    Value::Object(map)
+}
+
+/// [`check_with_libraries`] with the lock as a value, not a file.
+pub fn check_with_lock_value(
+    text: &str,
+    kind: SourceKind,
+    modules: Option<&Modules>,
+    lock: Option<&Value>,
+    libraries: &[String],
+    revoked: Option<&std::collections::BTreeSet<mandate_check::library::Digest>>,
+) -> Result<CheckResult, String> {
     let libraries = libraries_of(libraries)?;
     Ok(check(
         text,
         kind,
         &CheckOptions {
-            lock: lock.as_ref(),
+            lock,
             modules,
             claim: None,
             libraries: (!libraries.is_empty()).then_some(libraries.as_slice()),
@@ -568,6 +603,7 @@ pub fn run_subprogram(
         lead: case.lead,
         room: &case.room,
         std_patterns: None,
+        role_classes: None,
     })?;
     Ok(DoorResult {
         observed: Observed {

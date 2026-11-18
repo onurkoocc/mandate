@@ -84,7 +84,9 @@ fn facts(d: &Diagnostic) -> String {
     stringify(&JsValue::Object(d.facts.clone().unwrap_or_default())).unwrap_or_default()
 }
 
-/// `lock` with `std.patterns` pinned at the embedded `v`, and of `format`.
+/// `lock` with `std.patterns` pinned at the embedded `v`, and of `format`:
+/// one older than 0.7 without the two fields 0.7 adds (`role_classes`,
+/// `promotion`), which its schema does not have.
 fn pinning(lock: &Value, v: &str, format: &str) -> Value {
     let l = std_patterns_for(None, Some(&version(v))).unwrap();
     let pin = stringify(&JsValue::Object(l.pin().to_js())).unwrap();
@@ -92,6 +94,10 @@ fn pinning(lock: &Value, v: &str, format: &str) -> Value {
     let mut lock = lock.clone();
     if let Value::Object(m) = &mut lock {
         m.insert("lock", format);
+        if format != "mandate/lock/0.7" {
+            m.remove("role_classes");
+            m.remove("promotion");
+        }
         if let Some(Value::Object(libs)) = m.get_mut("libraries") {
             libs.insert("std.patterns", pin);
         }
@@ -754,6 +760,7 @@ fn the_facts_of_a_sub_program_of_a_parent_that_pins_2_0_0() {
         lead: DataClass::Public,
         room: &room,
         std_patterns: None,
+        role_classes: None,
     };
     let sub = check_subprogram(&input).unwrap();
     assert!(
@@ -1255,5 +1262,86 @@ fn a_pin_the_compiler_does_not_embed_is_refused_by_every_door_that_takes_one() {
             .unwrap_err()
             .message
             .starts_with("`std_patterns`: \"2\"")
+    );
+}
+
+/// The admission of the lead's sub-program of a parent that pins 2.0.0 is
+/// held to the classes of the parent's lock when its caller passes them
+/// (RL5b, spec/attention.md "What a sub-program may show"): the pattern's
+/// review, its escalation and its reports show the accountant and the
+/// finance lead confidential invoices, which the lock lets them see and
+/// `{}` (every role `internal`) does not. Without them, no E1909, as before.
+#[test]
+fn a_sub_program_is_held_to_the_role_classes_its_caller_passes() {
+    let text = parent_text();
+    let mut lock = read_json(BATCH_LOCK).unwrap();
+    if let Value::Object(m) = &mut lock
+        && let Some(Value::Object(c)) = m.get_mut("connectors")
+        && let Some(entry) = c.remove("example.attention.batch.erp")
+    {
+        c.insert("example.attention.shaped.erp", entry);
+    }
+    let parent_check = checked(&text, Some(&lock), None);
+    assert!(parent_check.ok, "{:#?}", errors(&parent_check.diagnostics));
+    let parent = parent_check.program.unwrap();
+    let base = hash_program(&skeleton(
+        "example.attention.shaped",
+        1.0,
+        mandate_check::language_of(&parent),
+    ))
+    .program;
+    let ops = sub_ops();
+    let room = room();
+    let none = Value::Object(Map::new());
+    let admit = |role_classes: Option<&Value>| {
+        check_subprogram(&SubprogramInput {
+            parent: &parent,
+            modules: None,
+            workflow: "Run",
+            number: 1.0,
+            base: &base,
+            ops: &ops,
+            lead: DataClass::Public,
+            room: &room,
+            std_patterns: None,
+            role_classes,
+        })
+        .unwrap()
+    };
+    for given in [None, lock.get("role_classes")] {
+        let sub = admit(given);
+        assert!(sub.ok, "{:#?}", errors(&sub.diagnostics));
+    }
+    let sub = admit(Some(&none));
+    assert!(!sub.ok);
+    let got: Vec<String> = sub
+        .diagnostics
+        .iter()
+        .map(|d| {
+            format!(
+                "{} at {}: {}",
+                d.code,
+                d.at.path.as_deref().unwrap_or(""),
+                facts(d)
+            )
+        })
+        .collect();
+    assert!(
+        got.iter()
+            .all(|d| d.starts_with("MDT-E1909 at /defs/Invoices")
+                && d.contains(r#""class":"internal""#)
+                && d.contains(r#""shown":"confidential""#)),
+        "{got:#?}"
+    );
+    for site in ["review", "report"] {
+        let want = format!(r#""site":"{site}""#);
+        assert!(
+            got.iter().any(|d| d.contains(want.as_str())),
+            "{site}: {got:#?}"
+        );
+    }
+    assert!(
+        got.iter().any(|d| d.contains(r#""role":"finance_lead""#)),
+        "{got:#?}"
     );
 }

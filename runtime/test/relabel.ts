@@ -11,8 +11,10 @@
 // as it reads `std.patterns` 1.0.0) nor a lock, which a 0.7 program reads in every older format.
 //
 // What a later slice changes in what a relabelled 0.6 package needs is changed here, and nowhere else: `lockUnder`
-// is the lock a suite gives a relabelled package, today the lock it was given. After RL5 a 0.7 lock may need a
-// `role_classes` for a role that is shown confidential data (E1909).
+// is the lock a suite gives a relabelled package. E1909 (RL5b): a program of 0.7 checked with a lock of an older format
+// leaves every role at `internal`, where a run of 0.6 masks nothing and its check refuses no role any data; the
+// faithful translation of a relabelled package's lock gives every role of its `roles` the class `restricted`, and a
+// lock of an older format the format 0.7 (as `relabelled_lock` in crates/mandate-testkit/tests/common/mod.rs does).
 //
 // `std.patterns` (RL6, spec/attention.md "Which version"): a program of 0.7 without a pin reads 2.0.0, with its stages
 // and reports, where the same program of 0.6 read 1.0.0; the faithful translation of a program of 0.6 that imports it
@@ -70,9 +72,13 @@ export function relabelIr<P extends Pick<Program, "language">>(p: P): P {
   return relabelled() && String(p.language) === WRITTEN ? { ...p, language: under as Program["language"] } : p;
 }
 
-/** The lock a suite gives a relabelled package: the one it was given (see above for what later slices change here). */
+/** The lock a suite gives a relabelled package: the one it was given, with every role it binds `restricted` (see above). */
 export function lockUnder<L extends Lock | undefined>(lock: L): L {
-  return lock;
+  if (!relabelled() || lock === undefined || !lock.roles) return lock;
+  const format = (lock as { lock?: string }).lock;
+  if (format === "mandate/lock/0.7" || lock.role_classes) return lock;
+  const role_classes = Object.fromEntries(Object.keys(lock.roles).map((r) => [r, "restricted" as const]));
+  return { ...lock, ...(format !== undefined ? { lock: "mandate/lock/0.7" } : {}), role_classes } as L;
 }
 
 /** Whether a program's text imports `std.patterns`. */

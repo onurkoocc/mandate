@@ -529,16 +529,17 @@ struct JsonOutputs {
 /// `outputs::outputs_of` gives them, made as it makes them.
 fn json_outputs(program: &str, text: &str) -> Result<JsonOutputs, String> {
     let mut out: Vec<(String, JsValue)> = Vec::new();
+    // As `language_0_7.rs` relabels it: std.patterns 1.0.0 pinned, and its lock
+    // the one `common::relabelled_lock` makes.
     let lock_path = outputs::lock_file_of(program);
-    // As `language_0_7.rs` relabels it: std.patterns 1.0.0 pinned.
     let more =
         common::relabelled_modules(text, kind_of(program), &outputs::library_dirs_of(program));
-    let plain = outputs::checked_text_more(program, text, false, false, more.as_ref())?;
+    let plain = outputs::checked_text_relabelled(program, text, false, false, more.as_ref())?;
     out.push(("check".to_owned(), plain.to_js()));
-    let linked = outputs::checked_text_more(program, text, true, false, more.as_ref())?;
+    let linked = outputs::checked_text_relabelled(program, text, true, false, more.as_ref())?;
     out.push(("check --module".to_owned(), linked.to_js()));
     let with_lock = match lock_path {
-        Some(_) => Some(outputs::checked_text_more(
+        Some(_) => Some(outputs::checked_text_relabelled(
             program,
             text,
             true,

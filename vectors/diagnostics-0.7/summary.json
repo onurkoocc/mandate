@@ -1,15 +1,15 @@
 {
   "format": "mandate/vectors/diagnostics/summary/0.1",
-  "conformance_cases": 143,
+  "conformance_cases": 150,
   "conformance_by_door": {
-    "check": 26,
+    "check": 28,
     "check_amendment": 3,
-    "check_patched": 99,
+    "check_patched": 104,
     "check_subprogram": 7,
     "library": 8
   },
   "golden_results": 39,
-  "diagnostics": 194,
+  "diagnostics": 205,
   "by_code": {
     "MDT-E0101": 2,
     "MDT-E0104": 9,
@@ -37,6 +37,7 @@
     "MDT-E1906": 17,
     "MDT-E1907": 4,
     "MDT-E1908": 6,
+    "MDT-E1909": 11,
     "MDT-E1910": 3,
     "MDT-E1911": 2,
     "MDT-W0310": 3,

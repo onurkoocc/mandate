@@ -19,7 +19,7 @@ best-effort basis.
 | `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3 (E1705 for `owner` since RL5); the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`), and run since B3 |
 | The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
-| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | the compiler's part implemented but for E1909, which follows: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication. The runtime runs all three: `role_classes` since B4 (the caps of the masking), `owner` and `promotion` since B6 (card approval and the ladder); nothing of them is refused at load any more |
+| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5, RL5b | the compiler's part implemented: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication; E1909 (RL5b, `crates/mandate-check/src/role_shown.rs`), with a lock and, at a sub-program's admission, with its parent's `role_classes`. The runtime runs all three: `role_classes` since B4 (the caps of the masking), `owner` and `promotion` since B6 (card approval and the ladder); nothing of them is refused at load any more |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented but for the acceptance fixture: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program` (RL6); the acceptance fixture not written yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | not implemented yet |
@@ -321,7 +321,7 @@ release ("Attention").
 | E1906 | Attention above `asks` | The static attention total of the workflow is above its declared `asks` |
 | E1907 | Attention without a bound | The workflow declares `asks` and a question stands where the bound cannot count it (a loop without `max_iter`, recursion) |
 | E1908 | `asks` out of place | `asks` in any budget but a workflow's or an envelope's |
-| E1909 | Role shown data above its class | With a lock: a question asked of a role, the role a review escalates to, or a report to a role shows data above that role's class in `role_classes` |
+| E1909 | Role shown data above its class | With a lock: a question asked of a role, the role a review escalates to, or a report to a role shows data above that role's class in `role_classes` ([Lock 0.7](#lock-07) says which sites) |
 | E1910 | Owner misplaced or missing | `owner` on a workflow with an envelope; or a lock with `promotion: "required"` and a workflow with neither an `owner` nor an envelope |
 | E1911 | Lock field of a newer language | A lock's `role_classes` or `promotion` checked with a program older than 0.7 |
 | E1609 | Module of a newer language | A program of 0.6 or later imports a module, or pins a library, whose language is newer than its own (a 0.6 program's lock that pins `std.patterns` 2.0.0); a program of 0.1 to 0.5 stays E1603 |
@@ -572,8 +572,14 @@ change.
   events carry `program`; their reports go to the role the application binds
   to the pattern's role slot, masked as everywhere. The check of a
   sub-program is not given the lock (`SubprogramInput`,
-  `crates/mandate-check/src/doors.rs`), so E1909 is not raised at admission:
-  what such a report shows is held by the runtime's masking alone.
+  `crates/mandate-check/src/doors.rs`), but it is given the lock's
+  `role_classes` (`role_classes`, `{}` for a lock without them), and holds
+  what the sub-program shows each role to them as E1909 does a program's:
+  the runtime passes them at every admission of a sub-program of a parent of
+  0.7, so a lead's sub-program whose question or report would show a role
+  data above its class is refused (`check_failed`), and the mask is the
+  second line, as everywhere. A caller that does not pass them gets no
+  E1909, as before.
 - **Amendments (E1709).** In 0.7 an amendment's envelope that drops `asks`,
   adds it where there was none, or lowers it, narrows the envelope (E1709,
   dimension `asks`), as for every other dimension.
@@ -712,7 +718,37 @@ reported at the lock's root, since the older schemas close their objects.
   nobody can decide on what they may not see. Raising the role's class in the
   lock, or taking the field away, mends it. The runtime masks as well
   ([below](#masking-and-how-a-value-is-known)): the mask is a second line, not
-  the first.
+  the first. The check computes no class of its own: it reads the facts
+  ([The facts](#the-facts)), the very classes the mask reads, and compares
+  every row that names a role:
+  - every question site ([What each question records](#what-each-question-records))
+    and every row of the `on budget_exceeded` handler: an approval a `verify`
+    asks (refused at the `verify`, which shows the contract's arguments),
+    `human.ask`, `escalate`, the escalations of `supervise escalate`, a
+    review and the row of the role it escalates to, the authorization of an
+    effect the program hands to a person (the envelope's `approve E by r`, a
+    tier `by human`, an irreversible action's role `owner`: the authorizer
+    is shown the action's parameters, which the mask labels with the row's
+    `shown`), a change set's member and approver, and the owner's gate of a
+    governance-class file;
+  - every `plan`'s amendment request, which the envelope's owner decides: it
+    is made of what the lead is handed (the row's `shown`);
+  - every field of every report, against the role it is addressed to (in an
+    application, the role the application binds to the pattern's slot).
+
+  A row that names no role caps no one and is not compared: a `pause`, and
+  the pause of a workflow without an `on budget_exceeded` handler, which is
+  asked of no role (a role's view shows that the run waits and nothing
+  else), and whose notification to the owner carries ids, kinds, roles,
+  deadlines and a link, never content ([Notifications](#notifications)).
+  Nor is an effect site that only the runtime's configuration hands to a
+  person: the program does not name its role, its row has no class, and the
+  mask hides its values from every role. The diagnostic is at the place
+  (the `verify`, the question, the field's value; at the application for a
+  site its expansion brings), with the facts `workflow`, `role`, `class`
+  (the role's), `shown`, `site` (the row's kind, `plan` or `report`),
+  `only` (`on_escalation`, `governance_file`, `budget_exceeded`) and
+  `field`. A program of 0.1 to 0.6 is not compared, lock or not.
 - **Why in the lock.** A role's class is part of the deployment, as who holds
   the role is, and the lock is part of the package hash: raising a role's
   class is a new package, which a card approval of the old one does not

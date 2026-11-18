@@ -1,0 +1,60 @@
+// A program of 0.7 whose one workflow shows confidential data (an `Item` is
+// classified confidential) to people every way a workflow written out can:
+// a review that escalates, an approval a contract asks, a question and a
+// report. Its lock (mandate.lock.json) gives the accountant and the finance
+// lead `confidential` and says nothing of the observer, who may then be
+// shown `internal`. It checks (A05); the cases of E1909 are one change of it,
+// or of its lock (E1909e), each:
+// one site that shows the data to the observer instead.
+
+mandate @ 0.7
+
+module example.attention.shown @ 0.1
+
+use std.{human, model}
+
+role accountant   "Accountant"
+role finance_lead "Finance lead"
+role observer     "Observer"
+
+type Item = { key: Text, total: Int } classified confidential
+
+capability ModelStd = model.infer(tier: standard, max_class: confidential)
+
+agent Matcher {
+  role   "Matches one item to what is on file. Writes nothing."
+  caps   ModelStd
+  budget { tokens: 40k, steps: 4 }
+  skill match(it: Item) -> Inferred<Item> ! {Model}
+}
+
+/// An item is matched; any of the three may waive it.
+contract Fits(it: Item, out: Item) {
+  accept same "The item is matched"
+    by static true
+    waive by accountant, finance_lead, observer
+}
+
+/// The accountant approves an item.
+contract Approved(it: Item) {
+  accept seen "The accountant approves the item"
+    by human.approve(role: accountant)
+}
+
+/// Matches every item and has the accountant, then the finance lead,
+/// decide on those that failed; has the accountant approve one item and
+/// confirm its key; and tells the accountant what became of them.
+workflow Settle(items: List<Item>, it: Item) -> Int
+  caps    ModelStd
+  budget  { spend: 5 USD, time: 2h }
+{
+  let checked = map x in items max 4 par 2 {
+    let out = delegate Matcher.match(x)
+    verify out against Fits(x, out)
+  }
+  let reviewed = human.review(checked, role: accountant, deadline: 1d, escalate_to: finance_lead)
+  let ok = verify it against Approved(it)
+  let answer = human.ask("Is {it.key} right?", role: accountant)
+  report to accountant "Settled" { accepted: len(reviewed.accepted), key: it.key }
+  len(reviewed.accepted)
+}

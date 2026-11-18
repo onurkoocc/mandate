@@ -369,6 +369,7 @@ fn run_subprogram(inputs: &Inputs, c: &Value) -> Got {
         lead: DataClass::from_name(lead).unwrap(),
         room: &room,
         std_patterns: None,
+        role_classes: None,
     }) {
         Ok(r) => Got::Text(with_digest(r.to_js())),
         Err(message) => Got::Throws(format!("Error: {message}")),

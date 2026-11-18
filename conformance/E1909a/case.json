@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1909a",
+  "kind": "compile",
+  "title": "With a lock, the approval a contract's criterion asks of a role shows that role the contract's arguments, a confidential item, above its class: refused at the verify (a mutation: the approval asked of the observer).",
+  "spec": [
+    "spec/attention.md#lock-07",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../A05/program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "../A05/mandate.lock.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Approved/accept/seen/by/call/args/0/value/name",
+      "value": "observer"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1909",
+        "path": "/defs/Settle/body/2/value",
+        "facts": {
+          "workflow": "Settle",
+          "role": "observer",
+          "class": "internal",
+          "shown": "confidential",
+          "site": "verify"
+        }
+      }
+    ]
+  }
+}

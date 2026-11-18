@@ -24,7 +24,7 @@ use mandate_views::{
 };
 
 use crate::common::{
-    check_text, check_with_libraries, modules_of, read_source, run_subprogram, subprogram_case,
+    check_text, check_with_lock_value, modules_of, read_source, run_subprogram, subprogram_case,
 };
 
 /// `MODULE_FILES` in `compiler/test/golden-outputs.ts`, and `MODULE_FILES_OF`
@@ -150,6 +150,33 @@ pub fn checked_text_more(
     with_lock: bool,
     more: Option<&mandate_check::Modules>,
 ) -> Result<CheckResult, String> {
+    checked_text_given(program, text, with_modules, with_lock, more, false)
+}
+
+/// [`checked_text_more`] of a program of 0.6 relabelled 0.7: besides
+/// `more`, its lock is the one [`crate::common::relabelled_lock`] makes.
+///
+/// # Errors
+///
+/// As [`checked_text`].
+pub fn checked_text_relabelled(
+    program: &str,
+    text: &str,
+    with_modules: bool,
+    with_lock: bool,
+    more: Option<&mandate_check::Modules>,
+) -> Result<CheckResult, String> {
+    checked_text_given(program, text, with_modules, with_lock, more, true)
+}
+
+fn checked_text_given(
+    program: &str,
+    text: &str,
+    with_modules: bool,
+    with_lock: bool,
+    more: Option<&mandate_check::Modules>,
+    relabelled: bool,
+) -> Result<CheckResult, String> {
     let files = module_files_of(program);
     let modules = if with_modules {
         Some(modules_of(&files, &files)?)
@@ -158,7 +185,12 @@ pub fn checked_text_more(
     };
     let modules = crate::common::with_more(modules.as_ref(), more).or(modules);
     let lock = if with_lock {
-        Some(lock_file_of(program).ok_or("the program has no lock")?)
+        let lock = read_json(&lock_file_of(program).ok_or("the program has no lock")?)?;
+        Some(if relabelled {
+            crate::common::relabelled_lock(&lock)
+        } else {
+            lock
+        })
     } else {
         None
     };
@@ -167,11 +199,11 @@ pub fn checked_text_more(
     } else {
         Vec::new()
     };
-    check_with_libraries(
+    check_with_lock_value(
         text,
         kind_of(program),
         modules.as_ref(),
-        lock.as_deref(),
+        lock.as_ref(),
         &libraries,
         None,
     )
@@ -204,7 +236,7 @@ pub fn outputs_of(program: &str) -> Result<Vec<(String, String)>, String> {
 ///
 /// As [`outputs_of`].
 pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)>, String> {
-    outputs_of_text_more(program, text, None)
+    outputs_of_text_more(program, text, None, false)
 }
 
 /// [`outputs_of_text`] of a program of 0.6 relabelled 0.7: its checks and
@@ -217,22 +249,25 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
 /// As [`outputs_of`].
 pub fn outputs_of_relabelled(program: &str, text: &str) -> Result<Vec<(String, String)>, String> {
     let more = crate::common::relabelled_modules(text, kind_of(program), &library_dirs_of(program));
-    outputs_of_text_more(program, text, more.as_ref())
+    outputs_of_text_more(program, text, more.as_ref(), true)
 }
 
 fn outputs_of_text_more(
     program: &str,
     text: &str,
     more: Option<&mandate_check::Modules>,
+    relabelled: bool,
 ) -> Result<Vec<(String, String)>, String> {
     let mut out: Vec<(String, String)> = Vec::new();
     let lock_path = lock_file_of(program);
-    let plain = checked_text_more(program, text, false, false, more)?;
+    let plain = checked_text_given(program, text, false, false, more, relabelled)?;
     out.push(("check".to_owned(), check_text(&plain)));
-    let linked = checked_text_more(program, text, true, false, more)?;
+    let linked = checked_text_given(program, text, true, false, more, relabelled)?;
     out.push(("check --module".to_owned(), check_text(&linked)));
     let with_lock = match lock_path {
-        Some(_) => Some(checked_text_more(program, text, true, true, more)?),
+        Some(_) => Some(checked_text_given(
+            program, text, true, true, more, relabelled,
+        )?),
         None => None,
     };
     if let Some(r) = &with_lock {
@@ -260,6 +295,13 @@ fn outputs_of_text_more(
             modules.insert(m, ir.clone());
         }
         let lock = lock_path.as_deref().map(read_json).transpose()?;
+        // The attention view checks the program, with the lock its check was
+        // given (a relabelled program's, `common::relabelled_lock`); every
+        // other view is given the lock as it is.
+        let checked_lock = match (&lock, relabelled) {
+            (Some(l), true) => Some(crate::common::relabelled_lock(l)),
+            _ => lock.clone(),
+        };
         // The views as `mandate view --module …` gives them: with the
         // modules, so that a workflow that applies a pattern of one of them
         // is shown as its expansion (the same as without them for a program
@@ -294,7 +336,7 @@ fn outputs_of_text_more(
         // of all of them).
         if has_attention(p) && !workflow_names(p).is_empty() {
             let opts = CheckOptions {
-                lock: lock.as_ref(),
+                lock: checked_lock.as_ref(),
                 ..check_with
             };
             let mut views = Vec::new();

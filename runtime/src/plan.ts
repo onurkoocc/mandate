@@ -594,9 +594,12 @@ export class Planner {
       const room = await this.room();
       const told = { number, base, room: { left: room.left, ...(room.time_left_ms !== undefined ? { time_left_ms: room.time_left_ms } : {}), writes_in_flight: room.writes.map(showCap) } };
       const over = overLimit(input["ops"]);
-      // 0.7: the check, given no lock, reads std.patterns at the version the package's lock pins.
-      const pin = isProgram07OrLater(h.parent) ? h.lock.libraries?.["std.patterns"]?.version : undefined;
-      const asked: SubprogramInput07 = { parent: h.parent, modules: h.modules, workflow: h.workflow, number, base: String(input["base"]), ops: input["ops"] as SubprogramInput["ops"], lead: h.leadClass, room, ...(pin !== undefined ? { std_patterns: pin } : {}) };
+      // 0.7: the check, given no lock, reads std.patterns at the version the package's lock pins, and holds what the
+      // sub-program shows each role to the lock's role_classes (E1909; a role it does not name, internal).
+      const from07 = isProgram07OrLater(h.parent);
+      const pin = from07 ? h.lock.libraries?.["std.patterns"]?.version : undefined;
+      const classes = from07 ? { role_classes: h.lock.role_classes ?? {} } : {};
+      const asked: SubprogramInput07 = { parent: h.parent, modules: h.modules, workflow: h.workflow, number, base: String(input["base"]), ops: input["ops"] as SubprogramInput["ops"], lead: h.leadClass, room, ...(pin !== undefined ? { std_patterns: pin } : {}), ...classes };
       const checked = over ?? (await h.checker.check(asked, h.checkMs));
       // A check that was stopped, or that failed, is no check: it admits nothing, and the lead is told which.
       // So is one of a sub-program that holds what this runtime does not run in a sub-program yet (0.6): it is refused

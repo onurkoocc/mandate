@@ -466,6 +466,16 @@ fn parent(file: &str) -> Value {
 /// A sub-program of `parent` (number 1) whose definitions are those of the
 /// file `file`, checked as `check_subprogram` checks it with `room`.
 fn admit(parent: &Value, file: &str, room: &str) -> mandate_check::doors::SubprogramCheck {
+    admit_capped(parent, file, room, None)
+}
+
+/// [`admit`] with the parent's lock's `role_classes` given (RL5b).
+fn admit_capped(
+    parent: &Value,
+    file: &str,
+    room: &str,
+    role_classes: Option<&Value>,
+) -> mandate_check::doors::SubprogramCheck {
     let text = read_text(file).unwrap();
     let defs = load(&text, SourceKind::Mdt).program.unwrap();
     let ops: Vec<PatchOp> = defs
@@ -492,8 +502,93 @@ fn admit(parent: &Value, file: &str, room: &str) -> mandate_check::doors::Subpro
         lead: mandate_check::stdlib::DataClass::Public,
         room: &room,
         std_patterns: None,
+        role_classes,
     })
     .unwrap()
+}
+
+#[test]
+fn a_sub_program_that_shows_public_data_is_admitted_whatever_the_role_classes() {
+    // What Noted shows the accountant (its question and its report) is
+    // public: the topic is a literal, and a model's `max_class` does not
+    // classify what it writes. No cap refuses it (RL5b); the refusal of a
+    // sub-program that shows more is in `patterns_0_7.rs`.
+    let p = parent(SHAPES);
+    let room = r#"{"left":{"steps":40,"agents":4,"asks":1}}"#;
+    for classes in [
+        None,
+        Some("{}"),
+        Some(r#"{"accountant":"internal"}"#),
+        Some(r#"{"accountant":"public"}"#),
+    ] {
+        let classes = classes.map(|t| parse(t).unwrap().value);
+        let r = admit_capped(&p, NOTED, room, classes.as_ref());
+        let codes: Vec<&str> = r.diagnostics.iter().map(|d| d.code.as_str()).collect();
+        assert!(r.ok, "{classes:?}: {codes:?}");
+    }
+}
+
+#[test]
+fn the_sub_program_door_reads_role_classes_and_refuses_what_is_no_class() {
+    let p = parent(SHAPES);
+    let defs = load(&read_text(NOTED).unwrap(), SourceKind::Mdt)
+        .program
+        .unwrap();
+    let ops: Vec<Value> = defs
+        .get("defs")
+        .and_then(Value::as_object)
+        .unwrap()
+        .iter()
+        .map(|(n, d)| {
+            let mut op = mandate_ir::Map::new();
+            op.insert("op", "add");
+            op.insert("path", format!("/defs/{n}"));
+            op.insert("value", d.clone());
+            Value::Object(op)
+        })
+        .collect();
+    let module = p.get("module").and_then(Value::as_str).unwrap();
+    let base = mandate_ir::hash_program(&skeleton(module, 1.0, Some(Language::V0_7))).program;
+    let door = mandate_check::json_doors::door("check_subprogram").unwrap();
+    let call = |classes: Option<&str>| {
+        let mut i = mandate_ir::Map::new();
+        i.insert("parent", p.clone());
+        i.insert("workflow", "Planning");
+        i.insert("number", mandate_ir::Int::new(1).unwrap());
+        i.insert("base", base.clone());
+        i.insert("ops", ops.clone());
+        i.insert("lead", "public");
+        i.insert(
+            "room",
+            parse(r#"{"left":{"steps":40,"agents":4,"asks":1}}"#)
+                .unwrap()
+                .value,
+        );
+        if let Some(t) = classes {
+            i.insert("role_classes", parse(t).unwrap().value);
+        }
+        let mut input = mandate_ir::Map::new();
+        input.insert("i", i);
+        (door.call)(&Value::Object(input))
+    };
+    let ok = |classes: Option<&str>| {
+        let r = call(classes).unwrap();
+        stringify(&r).unwrap().contains("\"ok\":true")
+    };
+    assert!(ok(None));
+    assert!(ok(Some("{}")));
+    assert!(ok(Some(
+        r#"{"accountant":"public","platform_lead":"restricted"}"#
+    )));
+    for bad in [
+        r#"{"accountant":3}"#,
+        r#"{"accountant":"secret"}"#,
+        "[]",
+        "1",
+    ] {
+        let e = call(Some(bad)).unwrap_err();
+        assert_eq!(e.kind.as_str(), "bad_input", "{bad}");
+    }
 }
 
 #[test]

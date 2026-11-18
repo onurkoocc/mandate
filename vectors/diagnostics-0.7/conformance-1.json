@@ -969,6 +969,36 @@
       }
     },
     {
+      "name": "A05",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:f8fa77dd1d94285a8546f7501e48329bc8e28aa5d0e3dd36ad460acd997d119f",
+          "defs": {
+            "Approved": "sha256:68c71767238914b6f3a65121ca7f06d6f54d0515eb6a78444d8704157b4c696e",
+            "Fits": "sha256:29a83624e84180044f0380fb9c8ca9cc420e2bce54631217d1f917ff34ce9a52",
+            "Item": "sha256:73971114d13f6c49c343bc75e73e706c905760e1365b17d72b815d4150f9da8f",
+            "Matcher": "sha256:3fb4aed45ffdf3678e90a069508c6451cbca58eae6469abc7084a1ed205a0822",
+            "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+            "Settle": "sha256:97694e892da81453590eb54f92fc64e9aa8ffefefc6c130145c17d9d26179180",
+            "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+            "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+            "observer": "sha256:bcc6f447dad0ace4a2316d6ef04605b56aa30b1464b4128f5854e7dfc1b1904b"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
       "name": "E0101h",
       "kind": "compile",
       "door": "check",
@@ -5445,6 +5475,310 @@
             "facts": {
               "def": "confirm",
               "place": "fn"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1909",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../A05/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "../A05/mandate.lock.json",
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role observer may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and human.ask, with its question and what it is given, shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of observer in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/3/value",
+              "span": [1, 2781, 1, 3067]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "observer",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "ask"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1909a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../A05/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "../A05/mandate.lock.json",
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role observer may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and the approval of Approved.seen a verify asks of it, with the contract's arguments, shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of observer in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/2/value",
+              "span": [1, 2627, 1, 2741]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "observer",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "verify"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1909b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../A05/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "../A05/mandate.lock.json",
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role observer may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and field accepted of the report \"Settled\" shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of observer in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/4/fields/0/value",
+              "span": [1, 3159, 1, 3295]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "observer",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "report",
+              "field": "accepted"
+            }
+          },
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role observer may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and field key of the report \"Settled\" shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of observer in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/4/fields/1/value",
+              "span": [1, 3319, 1, 3376]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "observer",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "report",
+              "field": "key"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1909c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../A05/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "../A05/mandate.lock.json",
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role observer may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and human.review, with the items, their failed criteria and values, shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of observer in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/1/value",
+              "span": [1, 2277, 1, 2593]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "observer",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "review"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1909d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../A05/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "../A05/mandate.lock.json",
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role observer may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and the review escalated to it, with the items, their failed criteria and values, shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of observer in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/1/value",
+              "span": [1, 2277, 1, 2591]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "observer",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "review",
+              "only": "on_escalation"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1909e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../A05/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role accountant may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and human.review, with the items, their failed criteria and values, shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of accountant in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/1/value",
+              "span": [55, 18, 55, 98]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "accountant",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "review"
+            }
+          },
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role accountant may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and the approval of Approved.seen a verify asks of it, with the contract's arguments, shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of accountant in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/2/value",
+              "span": [56, 12, 56, 42]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "accountant",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "verify"
+            }
+          },
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role accountant may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and human.ask, with its question and what it is given, shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of accountant in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/3/value",
+              "span": [57, 16, 57, 65]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "accountant",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "ask"
+            }
+          },
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role accountant may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and field accepted of the report \"Settled\" shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of accountant in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/4/fields/0/value",
+              "span": [58, 46, 58, 68]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "accountant",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "report",
+              "field": "accepted"
+            }
+          },
+          {
+            "code": "MDT-E1909",
+            "severity": "error",
+            "message": "Role accountant may be shown data up to internal (its class in the lock's role_classes, internal when the lock does not name it), and field key of the report \"Settled\" shows it confidential data in workflow Settle: nobody can decide on, or be told, what they may not see. Raise the class of accountant in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\").",
+            "at": {
+              "path": "/defs/Settle/body/4/fields/1/value",
+              "span": [58, 75, 58, 81]
+            },
+            "docs": "mandate explain MDT-E1909",
+            "facts": {
+              "workflow": "Settle",
+              "role": "accountant",
+              "class": "internal",
+              "shown": "confidential",
+              "site": "report",
+              "field": "key"
             }
           }
         ]

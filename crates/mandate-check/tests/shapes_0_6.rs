@@ -116,6 +116,7 @@ fn sub_check(parent: &Value, workflow: &str, number: f64, text: &str) -> Subprog
         lead: DataClass::Public,
         room: &room(),
         std_patterns: None,
+        role_classes: None,
     })
     .unwrap()
 }
