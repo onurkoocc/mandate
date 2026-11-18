@@ -37,7 +37,7 @@ import { Runtime } from "../src/runtime.js";
 import { Crash, Suspend, Violation } from "../src/signals.js";
 import { toolUse } from "../src/sim.js";
 import { tickPass } from "../src/tick.js";
-import { closeAll, planChecker, world, type World } from "./helpers.js";
+import { closeAll, planChecker, rawRun, world, type World } from "./helpers.js";
 import { CAPS, finish, ITEMS, MODULE, planned, program, refusals, type Planned } from "./planning.js";
 import { BATCH, DAY, fileChannels, lines, nworld, REVIEW, REVIEW_AT, scratch, type NWorld } from "./notify-world.js";
 
@@ -849,7 +849,7 @@ describe("the role an approval asks is the one the program names (D2)", () => {
    */
   const directly = async (w: World, program: Program, runId: string, modules: Record<string, Program> = {}): Promise<unknown> => {
     await w.db.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict do nothing", [`sha256:${"5".repeat(64)}`, JSON.stringify(program), JSON.stringify({ modules: {} }), "{}"]);
-    await w.db.tx((tx) => w.rt.journal.createRun(tx, { runId, tenant: "default", packageHash: `sha256:${"5".repeat(64)}`, workflow: "W", input: {}, policy: { tenant: "default" }, limits: {}, manifest: {}, manifestHash: `sha256:${"6".repeat(64)}` }));
+    await w.db.tx((tx) => rawRun(w.rt.journal, tx, { runId, tenant: "default", packageHash: `sha256:${"5".repeat(64)}`, workflow: "W", input: {}, policy: { tenant: "default" }, limits: {}, manifest: {}, manifestHash: `sha256:${"6".repeat(64)}` }));
     const { fence } = await w.rt.journal.acquire(runId);
     const interp = new Interpreter({ journal: w.rt.journal, adapters: w.adapters, program: linkedProgram(program, modules as never), packageHash: `sha256:${"5".repeat(64)}`, runId, fence, policy: { tenant: "default" }, faults: w.faults, artifacts: w.rt.artifacts, signer: w.rt.signer, trusted: w.rt.trusted, replay: false });
     try {

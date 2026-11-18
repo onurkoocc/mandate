@@ -247,7 +247,7 @@ function typeKeys(t: string, all: Array<{ file: string; text: string }>): string
   const picked = /^Partial<Pick<\w+, ([^>]+)>>$/.exec(t);
   if (picked) return literals(picked[1]!);
   if (!/^\w+$/.test(t)) return undefined;
-  const decl = all.map((s) => new RegExp(`export interface ${t} \\{([\\s\\S]*?)\\n\\}`).exec(s.text)).find(Boolean);
+  const decl = all.map((s) => new RegExp(`(?:^|\\n)(?:export )?interface ${t} \\{([\\s\\S]*?)\\n\\}`).exec(s.text)).find(Boolean);
   return decl ? keysOf(typeAsLiteral(decl[1]!)) : undefined;
 }
 
@@ -292,6 +292,13 @@ function resolver(file: string, text: string, at: number, all: Array<{ file: str
     // A name the method builds itself: `const x = c ? { … } : …`, or `let x: Decider["signed"]` given a signed decision's fields.
     const own = before.slice([...before.matchAll(/\n {2}(?:private |static )*(?:async )?\w+\(/g)].at(-1)?.index ?? 0);
     if (new RegExp(`let ${name}: Decider\\["signed"\\]`).test(own)) return signed();
+    // A name the method gets from another method of its class, `const x = await this.m(…)`: the type `m` returns.
+    const got = new RegExp(`const ${name} = (?:await )?this\\.(\\w+)\\(`).exec(own);
+    if (got) {
+      const ret = new RegExp(`\\n {2}(?:private |static )*(?:async )?${got[1]}\\([^)]*\\): (?:Promise<)?(\\w+)(?: \\| (?:undefined|null))*>? \\{`).exec(text);
+      const keys = ret ? typeKeys(ret[1]!, all) : undefined;
+      return keys ? `{ ${keys.join(", ")} }` : undefined;
+    }
     return firstLiteral(new RegExp(`const ${name}(?::[^=]+)? = [^{;]*\\{`), own);
   };
 }

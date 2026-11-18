@@ -317,6 +317,10 @@ export const PROJECTIONS: Readonly<Record<string, readonly string[] | typeof NOT
   governance_denied: ["command", "digest", "by", "member", "role", "decision"],
   action_authorized: ["authorization", "digest", "by", "member", "role", "decision"],
   envelope_approved: ["package", "member", "role", "decision"],
+  // 0.7 (B6): the promotion a run started under, to the owner role that signed it. Its decision is no wait's: its
+  // record is over the package, the workflow, the from-run's id, mode and manifest, and, to `live`, the digest of the
+  // shadow comparison, whose fingerprints no role is given (`actions` is S3); so it is given as `envelope_approved`'s is.
+  promotion_accepted: ["decision", "member", "role", "from", "to"],
   amendment_requested: ["plan", "step", "lead", "from", "package", "diff"],
   package_amended: ["from", "to", "diff", "plan", "command", "limits", "superseded", "by", "member", "role", "decision", "attention"],
   limits_raised: ["by", "from", "to", "member", "role", "decision"],
@@ -393,6 +397,7 @@ export const WITHHELD: Readonly<Record<string, readonly string[]>> = {
   governance_denied: ["key"],
   action_authorized: ["key"],
   envelope_approved: ["key"],
+  promotion_accepted: ["key"],
   package_amended: ["key"],
   limits_raised: ["sender", "message", "key"],
   reconcile_requested: ["key"],

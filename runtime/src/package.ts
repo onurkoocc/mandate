@@ -320,15 +320,12 @@ const has = (o: unknown, k: string): boolean => isObj(o) && o[k] !== undefined;
  * adds", "The IR", "Lock 0.7"; "Refusals", `unsupported_language`). A package of 0.7 that holds one is refused at load,
  * `unsupported_language`, naming each it holds in the table's order, so that a half-built 0.7 never runs; a lead's
  * sub-program of a 0.7 parent that holds one is refused at its check. The slice that implements a construct takes its
- * line out, and nothing else (runtime/test/attention.test.ts holds the list). `stage` and `report` run (B2: interp.ts,
- * attention.ts), and so does `asks` (B3: asks.ts, journal.ts `openWait`): they are no longer in it.
- *
- * - `lock.role_classes`, `lock.promotion`: the members of a lock of format 0.7 ("Lock 0.7").
- * - `owner`: the member of a workflow definition ("The IR", `Def(workflow).owner`), not an envelope's, which is 0.4's.
+ * line out, and nothing else (runtime/test/attention.test.ts holds the list). It is empty: every construct 0.7 adds
+ * runs. `stage` and `report` (B2: interp.ts, attention.ts), `asks` (B3: asks.ts, journal.ts `openWait`), the lock's
+ * `role_classes` (B4: mask.ts, projection.ts), and a workflow's `owner` and the lock's `promotion` (B6: ladder.ts).
+ * The table and its check stay, so that a construct a later version adds before it runs is refused the same way.
  */
 export const NOT_RUN_YET_07: readonly NotRunYet07[] = [
-  { name: "owner", slice: "B6", def: (d) => d["kind"] === "workflow" && has(d, "owner") },
-  { name: "lock.promotion", slice: "B6", lock: (l) => has(l, "promotion") },
 ];
 
 /**
@@ -543,7 +540,7 @@ function verified(pkg: Package, o: LoadOptions): Verified {
   // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
   // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
   // So must a lock that names members and roles: a key under two members, or a role held by nobody the lock lists, binds nothing.
-  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings || pkg.lock.members || pkg.lock.roles || LOCK_FIELDS_0_5.some((f) => pkg.lock[f]) || pkg.lock.libraries || pkg.lock.connectors || (from07 && pkg.lock.role_classes)) {
+  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings || pkg.lock.members || pkg.lock.roles || LOCK_FIELDS_0_5.some((f) => pkg.lock[f]) || pkg.lock.libraries || pkg.lock.connectors || (from07 && (pkg.lock.role_classes || pkg.lock.promotion))) {
     const bad = validateLock(formatted(pkg.lock, format));
     if (bad.length) throw new Violation("malformed_lock", `The package's lock is malformed: ${bad.map((d) => d.message).join(" ")}`);
   }

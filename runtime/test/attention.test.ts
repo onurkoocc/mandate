@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { check, hashProgram, LANGUAGE_07, type Json, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { describe, expect, it } from "vitest";
-import { isPackage06OrLater, isPackage07OrLater, NOT_RUN_YET_07, notRunYet07, refusal07, subprogramNotRunYet } from "../src/package.js";
+import { isPackage06OrLater, isPackage07OrLater, NOT_RUN_YET_07, notRunYet07, subprogramNotRunYet } from "../src/package.js";
 import { buildPackage, RUNTIME_LANGUAGES, verifyPackage, type Package } from "../src/runtime.js";
 import { Violation } from "../src/signals.js";
 
@@ -53,15 +53,9 @@ function refusal(pkg: Package): Violation | undefined {
   }
 }
 
-/** The constructs a refusal of the 0.7 table names, each with its slice, in the refusal's order. */
-const namedIn = (message: string): string[] => /The package uses (.*) of mandate\/0\.7, which this runtime does not run yet \(spec\/attention\.md\)\.$/.exec(message)?.[1]?.split(", ") ?? [`not a refusal by the table: ${message}`];
-
 describe("the table of what 0.7 adds that this runtime does not run yet", () => {
-  it("holds a line for each construct, with the slice that releases it: a slice that runs one takes its line out, and this list with it", () => {
-    expect(NOT_RUN_YET_07.map((r) => [r.name, r.slice])).toEqual([
-      ["owner", "B6"],
-      ["lock.promotion", "B6"],
-    ]);
+  it("is empty: each slice took out the line of what it runs (B2 to B6), and this list with it", () => {
+    expect(NOT_RUN_YET_07.map((r) => [r.name, r.slice])).toEqual([]);
   });
 
   it("no longer names a stage or a report, which run (B2, test/stages.test.ts), wherever they stand", () => {
@@ -80,26 +74,23 @@ describe("the table of what 0.7 adds that this runtime does not run yet", () => 
     expect(notRunYet07([withGreet(p, (d) => ({ ...d, caps: [], budget: undefined, envelope: { owner: "reviewer", budget: { steps: 4, asks: 1 } } }))])).toEqual([]);
   });
 
-  it("finds owner on a workflow, and not an envelope's owner, which is 0.4's", () => {
+  it("no longer names owner, which runs (B6, test/ladder.test.ts), on a workflow or an envelope", () => {
     const p = minimal();
-    expect(notRunYet07([withGreet(p, (d) => ({ ...d, owner: "reviewer" }))])).toEqual(["owner"]);
+    expect(notRunYet07([withGreet(p, (d) => ({ ...d, owner: "reviewer" }))])).toEqual([]);
     expect(notRunYet07([withGreet(p, (d) => ({ ...d, caps: [], budget: undefined, envelope: { owner: "reviewer", budget: { steps: 4 } } }))])).toEqual([]);
   });
 
-  it("finds promotion in the lock, and no longer role_classes, which runs (B4, test/projection.test.ts)", () => {
+  it("no longer names role_classes (B4, test/projection.test.ts) or promotion (B6, test/ladder.test.ts) in the lock", () => {
     const p = minimal();
     expect(notRunYet07([p], { modules: {} })).toEqual([]);
     expect(notRunYet07([p], { modules: {}, roles: { reviewer: ["ana"] }, role_classes: { reviewer: "confidential" } })).toEqual([]);
-    expect(notRunYet07([p], { modules: {}, promotion: "required" })).toEqual(["lock.promotion"]);
+    expect(notRunYet07([p], { modules: {}, promotion: "required" })).toEqual([]);
   });
 
-  it("names what it finds in the table's order, whatever order it is found in, each once", () => {
+  it("names nothing in a package that holds every construct 0.7 adds at once", () => {
     const p = withGreet(minimal(), (d) => ({ ...d, owner: "reviewer", budget: { ...(d["budget"] as Obj), asks: 1 }, body: [REPORT, STAGE, REPORT, STAGE, ...(d["body"] as unknown[])] }));
     const all = notRunYet07([p, p], { modules: {}, promotion: "required", role_classes: {} });
-    expect(all).toEqual(["owner", "lock.promotion"]);
-    expect(refusal07(all)).toMatchObject({ code: "unsupported_language" });
-    expect(refusal07(all).message).toBe("unsupported_language: The package uses owner (B6), lock.promotion (B6) of mandate/0.7, which this runtime does not run yet (spec/attention.md).");
-    expect(namedIn(refusal07(all).message)).toEqual(NOT_RUN_YET_07.map((r) => `${r.name} (${r.slice})`));
+    expect(all).toEqual([]);
   });
 });
 
@@ -111,40 +102,33 @@ describe("a package of 0.7 at load", () => {
     expect(refusal(pkg)).toBeUndefined();
   });
 
-  it("is refused by name for each construct its program holds, before the compiler's check is asked", () => {
+  it("is not refused by the table for an owner its program holds, which runs (B6)", () => {
     const p = minimal();
-    const cases: Array<[Program, string[]]> = [
-      [withGreet(p, (d) => ({ ...d, owner: "reviewer" })), ["owner (B6)"]],
-      [withGreet(p, (d) => ({ ...d, owner: "reviewer", budget: { ...(d["budget"] as Obj), asks: 1 }, body: [STAGE, ...(d["body"] as unknown[]), REPORT] })), ["owner (B6)"]],
-    ];
-    for (const [program, names] of cases) {
-      const e = refusal(buildPackage(program));
-      expect(e, names.join(", ")).toMatchObject({ code: "unsupported_language" });
-      expect(namedIn(e!.message)).toEqual(names);
+    for (const program of [withGreet(p, (d) => ({ ...d, owner: "reviewer" })), withGreet(p, (d) => ({ ...d, owner: "reviewer", budget: { ...(d["budget"] as Obj), asks: 1 }, body: [STAGE, ...(d["body"] as unknown[]), REPORT] }))]) {
+      expect(refusal(buildPackage(program))?.code).not.toBe("unsupported_language");
     }
   });
 
-  it("is refused by name for promotion in its lock, before the lock is read by its schema; role_classes loads, and is read by it (B4)", () => {
+  it("is not refused by the table for role_classes (B4) or promotion (B6) in its lock, and reads role_classes by the lock's schema", () => {
     const p = minimal();
     const roles = { members: { ana: { keys: [`sha256:${"6".repeat(64)}`] } }, roles: { reviewer: ["ana"] } };
     expect(refusal(buildPackage(p, { modules: {}, ...roles, role_classes: { reviewer: "confidential" } } as Lock))).toBeUndefined();
-    expect(namedIn(refusal(buildPackage(p, { modules: {}, promotion: "required" } as Lock))!.message)).toEqual(["lock.promotion (B6)"]);
-    expect(namedIn(refusal(buildPackage(p, { modules: {}, ...roles, promotion: "required", role_classes: { reviewer: "internal" } } as Lock))!.message)).toEqual(["lock.promotion (B6)"]);
-    // A lock with role_classes alone is read by validateLock (open question 4 of B4): one that names a role `roles` does
-    // not, or a class the language does not know, is refused as malformed, and never read as a cap.
+    expect(refusal(buildPackage(p, { modules: {}, promotion: "required" } as Lock))?.code).not.toBe("unsupported_language");
+    expect(refusal(buildPackage(p, { modules: {}, ...roles, promotion: "required", role_classes: { reviewer: "internal" } } as Lock))?.code).not.toBe("unsupported_language");
+    // A lock with role_classes is read by validateLock (open question 4 of B4): one that names a role `roles` does not
+    // (E0140), or a class the language does not know, is refused as malformed, and never read as a cap.
     expect(refusal(buildPackage(p, { modules: {}, ...roles, role_classes: { nobody: "public" } } as unknown as Lock))).toMatchObject({ code: "malformed_lock", message: expect.stringContaining("gives a class to role nobody, which is not in roles") });
     expect(refusal(buildPackage(p, { modules: {}, role_classes: { reviewer: "public" } } as unknown as Lock))).toMatchObject({ code: "malformed_lock" });
     expect(refusal(buildPackage(p, { modules: {}, ...roles, role_classes: { reviewer: "secret" } } as unknown as Lock))).toMatchObject({ code: "malformed_lock", message: expect.stringContaining("/role_classes/reviewer") });
   });
 
-  it("is refused by name for what a module it carries holds, before the module's check is asked", () => {
+  it("is not refused by the table for an owner a module it carries holds, which runs (B6)", () => {
     const p = minimal();
     const module: Program = { language: LANGUAGE_07, module: "example.attention.parts", version: "0.1", defs: { One: { kind: "workflow", params: [], returns: { ref: "Int" }, caps: [], owner: "reviewer", body: [STAGE, { op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
     const modules: Modules = { [module.module]: module };
     const lock = { modules: { [module.module]: hashProgram(module as unknown as Json).program } } as Lock;
     const e = refusal(buildPackage({ ...p, uses: [...(p.uses ?? []), { module: module.module, names: ["One"] }] } as Program, lock, modules));
-    expect(e).toMatchObject({ code: "unsupported_language" });
-    expect(namedIn(e!.message)).toEqual(["owner (B6)"]);
+    expect(e?.code).not.toBe("unsupported_language");
   });
 
   it("a package of 0.6 is not read by the table: a lock of 0.6 with role_classes is refused by its schema, as before (E0140)", () => {
@@ -158,7 +142,8 @@ describe("a package of 0.7 at load", () => {
   it("a lead's sub-program of a 0.7 parent that holds a construct of the table is not run in a sub-program yet", () => {
     const parent = minimal();
     const sub = { language: LANGUAGE_07, module: "example.attention.minimal.plan_1", version: "0.1", defs: { Sub: { kind: "workflow", params: [], returns: { ref: "Int" }, caps: [], owner: "reviewer", budget: { steps: 1, asks: 1 }, body: [STAGE, { op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
-    expect(subprogramNotRunYet(sub, parent, {})).toEqual(["owner"]);
+    // An owner in a lead's sub-program is the compiler's to refuse (E1705), and no longer the table's (B6).
+    expect(subprogramNotRunYet(sub, parent, {})).toEqual([]);
     const plain = { ...sub, defs: { Sub: { kind: "workflow", params: [], returns: { ref: "Int" }, caps: [], body: [{ op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
     expect(subprogramNotRunYet(plain, parent, {})).toEqual([]);
   });

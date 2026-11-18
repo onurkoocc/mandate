@@ -1117,7 +1117,7 @@ fails on a type without a class, and on a class of a type nothing writes.
 
 | Class | Event types |
 |---|---|
-| S0 | `wait_opened`, `wait_expired`, `decision_received`, `input_received`, `decision_refused`, `criterion_approved`, `criterion_denied`, `governance_approved`, `governance_denied`, `action_authorized`, `envelope_approved`, `amendment_requested`, `package_amended`, `limits_raised`, `reconcile_requested`, `review_requested`, `review_decided`, `review_escalated`, `review_expired`, `criterion_waived` |
+| S0 | `wait_opened`, `wait_expired`, `decision_received`, `input_received`, `decision_refused`, `criterion_approved`, `criterion_denied`, `governance_approved`, `governance_denied`, `action_authorized`, `envelope_approved`, `amendment_requested`, `package_amended`, `limits_raised`, `reconcile_requested`, `review_requested`, `review_decided`, `review_escalated`, `review_expired`, `criterion_waived`, `promotion_accepted` |
 | S1 | `run_succeeded`, `run_failed`, `run_cancelled`, `run_cancelling`, `run_attention_required`, `cancel_requested`, `lease_revoked`, `violation`, `budget_exceeded`, `guarantee_lowered`, `asks_exhausted` |
 | S2 | `run_accepted`, `run_running`, `run_waiting`, `lease_acquired`, `command_dispatched`, `command_completed`, `command_throttled`, `charge_pending`, `charge_settled`, `map_started`, `map_ended`, `stage_started`, `stage_ended`, `report`, `program_started`, `program_ended` |
 | S3 | `action_prepared`, `action_committed`, `action_confirmed`, `action_rejected`, `action_unknown_outcome`, `action_cancelled`, `action_would_apply`, `changeset_prepared`, `changeset_would_apply`, `changeset_simulated`, `changeset_committed`, `changeset_partial`, `changeset_failed` |
@@ -1183,6 +1183,7 @@ runtime's own words, and the titles above; none holds a value of the run.
 | `governance_denied` | `command`, `digest` (digest), `by`, `member`, `role`, `decision` (digest) | `key` |
 | `action_authorized` | `authorization`, `digest` (digest), `by`, `member`, `role`, `decision` (digest) | `key` |
 | `envelope_approved` | `package`, `member`, `role`, `decision` | `key` |
+| `promotion_accepted` | `decision`, `member`, `role`, `from`, `to` | `key` |
 | `amendment_requested` | `plan`, `step`, `lead`, `from`, `package`, `diff` |  |
 | `package_amended` | `from`, `to`, `diff`, `plan`, `command`, `limits`, `superseded`, `by`, `member`, `role`, `decision` (digest), `attention` | `key` |
 | `limits_raised` | `by`, `from`, `to`, `member`, `role`, `decision` | `sender`, `message`, `key` |

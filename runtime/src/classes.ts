@@ -49,6 +49,8 @@ export const EVENT_CLASSES: Readonly<Record<string, ViewClass>> = {
   review_escalated: "S0",
   review_expired: "S0",
   criterion_waived: "S0",
+  // S0 of 0.7: the promotion a run started under, asked of the owner role (spec/attention.md "Events").
+  promotion_accepted: "S0",
   // S1: how the run ended, and what stopped or bent it.
   run_succeeded: "S1",
   run_failed: "S1",

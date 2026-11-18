@@ -19,7 +19,7 @@ best-effort basis.
 | `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3 (E1705 for `owner` since RL5); the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`), and run since B3 |
 | The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
-| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | the compiler's part implemented but for E1909, which follows: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication. The runtime refuses `owner`, `role_classes` and `promotion` at load (`unsupported_language`) until its slices B4 and B6 |
+| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | the compiler's part implemented but for E1909, which follows: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication. The runtime runs all three: `role_classes` since B4 (the caps of the masking), `owner` and `promotion` since B6 (card approval and the ladder); nothing of them is refused at load any more |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented but for the acceptance fixture: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program` (RL6); the acceptance fixture not written yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | not implemented yet |
@@ -29,7 +29,7 @@ best-effort basis.
 | `asks` at run time; the bound under the runtime's configuration and `attention_above_asks`; `asks_exhausted` | B3 | implemented (`runtime/src/asks.ts`, the count in `Journal.openWait`; the hook `runtime/test/asks-hook.ts` and the test of the sources in `runtime/test/asks.test.ts`) |
 | Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | implemented (`runtime/src/mask.ts`, `runtime/src/projection.ts`, `runtime/src/watch.ts`; the allow-list of `WatchRun` in [`boundary.md`](boundary.md#classes), held to the runtime by `runtime/test/classes.test.ts`) |
 | `mandate watch`, `mandate waits`, `mandate decide` | B5 | not implemented yet |
-| Card approval of a workflow with an `owner`; the `promote` decision and the ladder; `mandate promote` | B6 | not implemented yet |
+| Card approval of a workflow with an `owner`; the `promote` decision and the ladder; `mandate promote` | B6 | implemented (`Runtime.promote`, the ladder in `startRun`, `mandate promote`; `runtime/test/ladder.test.ts`, `runtime/test/cli-promote.test.ts`) |
 | The driver loop `mandate tick`; notifications | B7 | not implemented yet |
 | The acceptance rehearsal | B10 | not implemented yet |
 | The live session: its kit (B11), and the session the project's owner conducts | B11 | not implemented yet |
@@ -1261,6 +1261,34 @@ of the workflow's `owner` role, or of its envelope's `owner` role:
   role: <owner>, member, key, payload: digest("request", { to }) }
 ```
 
+What the subject does not bind, a stated limit (the owner decides whether it
+stays). A promotion, like a card approval, is evidence about a package: it
+holds wherever that package hash and the keys that signed it are trusted, and
+it does not bind a store. Nothing in it names the database it was made in. So
+an operator of a second store that trusts the same decision keys can take it
+there. The operator replays the package's card approval (an approval has been
+replayable this way since 0.4). Then they start a `design` run with the
+from-run's id and input. Its manifest names no store, so the manifest hash is
+the same. Then they submit the owner's `promote` record, and start
+`read_only` runs with other inputs. A promotion to `live` can be taken there
+the same way: the operator also starts the `read_only` from-run again with its
+id and input, under the replayed promotion, and where its actions come out the
+same the shadow diff, which holds run ids, modes and the actions'
+fingerprints, has the same digest. In one store this cannot happen: a run id
+is the key of its run, and no run is deleted. Nor does the subject bind:
+
+- anything of a `design` run's outcome beyond its success and its manifest
+  (its result, its steps and its simulated effects);
+- the runtime's configuration that a later run is held to (`authorize`,
+  connectors, egress).
+
+A promotion cannot be withdrawn as such. It stops holding only:
+
+- with a new package hash (any change of the program, the lock or a module),
+  which is also how a member leaves the lock;
+- when its signer's key is removed from the runtime's trusted decision keys;
+- when the evidence it was made on changes (see below).
+
 `to` is `read_only` or `live`; `shadow` is `null` for a promotion to
 `read_only`. `Runtime.promote(pkg, signed)` checks the record as every
 decision is checked, in that order: who signed, what it is for, the role. A
@@ -1278,6 +1306,35 @@ and its journal `promotion_accepted`.
 shows the run, and for a promotion to `live` the shadow diff as counts of the
 actions that would apply, per effect, never their parameters; it asks to
 confirm unless `--yes`, signs and submits.
+
+How the runtime holds this (B6):
+
+- `shadow` is `digest("request", shadowDiff(D, A))` of the whole value
+  `shadowDiff` returns (`runtime/src/views.ts`), and `startRun` computes the
+  subject again, the shadow with it: a promotion whose from-run, design run
+  or their actions changed after it was signed is not taken. So is one whose
+  key the runtime no longer knows, or whose member the lock no longer lists
+  in the owner role.
+- A from-run must also be a run of P as it stands (`runs.package_hash`, which
+  an amendment changes) and as its manifest says, and its manifest must hash
+  to its manifest hash. A promotion to `live` from a `read_only` run whose
+  manifest has no `promotion`, or whose design run is not stored, is
+  `bad_promotion`.
+- `Runtime.promote` takes `to` from the payload: a payload that is the
+  digest of neither `{to: "read_only"}` nor `{to: "live"}` is
+  `subject_mismatch`. The from-run's facts are checked before the subject,
+  since for a `design` run no subject to `live` can be computed.
+- A refused promotion stores nothing and writes no event: its from-run has
+  ended. A promotion is stored under its from-run (`decisions.run_id` = A),
+  so A's decisions list it too.
+- Without `promotion: "required"`, and for a package older than 0.7, no
+  promotion is looked for. A workflow with neither an `owner` nor an
+  envelope under such a lock, which E1910 refuses at load, is refused
+  `unpromoted` at a start as well.
+- `mandate promote` signs as `--member`, or as the member the lock lists
+  the key under. `mandate test` climbs no ladder: its runs are in a
+  database of its own, under a lock without `promotion`, whose roles are
+  its own people's; `role_classes` keeps the class of each role it binds.
 
 ### The driver loop
 
@@ -1394,7 +1451,7 @@ webhook whose URL is not `https` among them, is refused by name,
 | `packages.is_07` | Whether the package holds anything of 0.7 or later, written when the package is kept; it gates what is of 0.7 alone, among it the order of a `par`'s faults. A package stored before the column has it null: the runtime reads its program instead, and the first pass of each process fills the column |
 | index `commands_waiting` on `commands (run_id) where state = 'waiting'` | `ListWaits` |
 | manifest `attention` | The stored facts |
-| manifest `promotion` | The promotion the run started under |
+| manifest `promotion` | The promotion the run started under: `{decision, from: {run, mode}, to}` |
 | `budgets` row `asks` | A run's `asks` limit (`limit_value`) and the questions it asked (`settled`); none without a limit |
 | `reservations` rows of dimension `asks` | The run's own reservation, under `/defs/<workflow>`, and each sub-program's, under its command: what each may still ask |
 | `wait_opened.site` | A wait's static site, `{kind, path, wait, only?}` (0.7 runs only) |
@@ -1412,10 +1469,10 @@ PGlite and on PostgreSQL.
 | `attention_above_asks` | At a start, when an `asks` limit applies: the bound under the runtime's configuration (the static total plus the effect sites its configuration hands to a person) is above it, or unbounded. Also a diagnostic to a lead whose amendment request would raise the run's bound above its limit, or beyond what is left; and the reason an approved amendment ends refused (`Rejected(attention_above_asks)`) when its growth no longer fits what is left at the approval |
 | `unsupported_limit` | At a start: a caller's `asks` limit for a package of 0.1 to 0.6, whose runs count no questions |
 | `unknown_role` | In a run of 0.7, an approval whose `role:` or `distinct_from:` names no role definition (a value of the run would choose who decides); the run stops for a person, and nobody is asked |
-| `bad_promotion` | `promote`: the from-run did not succeed, is not of the same package and workflow, or is not in the mode directly below `to` |
+| `bad_promotion` | `promote`: the from-run is not stored, did not succeed, is not of the same package and workflow, is not in the mode directly below `to`, or its manifest does not hash to its manifest hash; for `live`, it started under no promotion, or its design run is not stored |
 | `Rejected(asks_exhausted)` | A question past the run's `asks`, or past a sub-program's reservation; with the event `asks_exhausted` |
 | `unapproved_envelope` | At a start: a workflow with an `owner` whose package no member of the owner role has approved |
-| `unpromoted` | At a start, with `promotion: "required"`: a `read_only` or `live` run without a promotion that holds |
+| `unpromoted` | At a start, with `promotion: "required"`: a `read_only` or `live` run without a promotion that holds, or of a workflow with neither an `owner` nor an envelope; asked after the card |
 | `bad_notification_channel` | A `notifications` configuration that cannot be used |
 | `unsupported_language` | At load, until its slice lands: a 0.7 package that uses a construct this runtime does not run yet |
 

@@ -282,6 +282,37 @@ async function stagesIn(tx: Tx, runId: string): Promise<{ started: Set<string>; 
  */
 export type Limits = Cost & { agents?: number; asks?: number };
 
+declare const STARTED: unique symbol;
+
+/**
+ * What `createRun` takes: a start that passed `Runtime.startRun`'s checks, the card and the ladder among them, for one
+ * run id and one manifest hash. No object written out is one: the type has a member no code can name, and `createRun`
+ * takes only a start the one minter made, once.
+ */
+export interface RunStart {
+  readonly [STARTED]: true;
+  readonly runId: string;
+  readonly manifestHash: string;
+}
+
+/** The starts the minter made and `createRun` has not taken yet. */
+const STARTS = new WeakSet<RunStart>();
+let startsClaimed = false;
+
+/**
+ * Hands out the one function that makes a `RunStart`, once in a process: `runtime.ts` claims it when it loads, and
+ * keeps it to itself, so that only `startRun` can create a run. A second claim throws.
+ */
+export function claimRunStarts(): (runId: string, manifestHash: string) => RunStart {
+  if (startsClaimed) throw new Error("The starts of runs are claimed already: only Runtime.startRun creates a run.");
+  startsClaimed = true;
+  return (runId, manifestHash) => {
+    const start = Object.freeze({ runId, manifestHash }) as unknown as RunStart;
+    STARTS.add(start);
+    return start;
+  };
+}
+
 export class Journal {
   constructor(
     readonly db: Db,
@@ -449,10 +480,18 @@ export class Journal {
     return before;
   }
 
+  /**
+   * Creates a run. It takes a `RunStart` for that run id and manifest hash, which only `Runtime.startRun` makes, after
+   * the card and the ladder (spec/attention.md "Card approval", "Promotion"), and takes each once: no other code can
+   * create a run, so none starts above its rung.
+   */
   async createRun(
     tx: Tx,
+    start: RunStart,
     r: { runId: string; tenant: string; packageHash: string; workflow: string; input: Value; policy: Value; limits: Record<string, number>; manifest: Value; manifestHash: string; asksReserved?: number },
   ): Promise<void> {
+    if (!STARTS.has(start) || start.runId !== r.runId || start.manifestHash !== r.manifestHash) throw new Error(`createRun takes only the start Runtime.startRun made for run ${r.runId} and its manifest`);
+    STARTS.delete(start);
     const at = this.now();
     await tx.query(
       "insert into runs (run_id, tenant, package_hash, workflow, input, policy, state, created_at, updated_at, manifest, manifest_hash) values ($1, $2, $3, $4, $5, $6, 'accepted', $7, $7, $8, $9)",
@@ -1324,6 +1363,19 @@ export class Journal {
    */
   async envelopeApprovals(packageHash: string): Promise<StoredDecision[]> {
     const rows = await this.db.query<Row>("select decision_id, record, signature from decisions where package_hash = $1 and kind = 'envelope' and run_id is null order by accepted_at, decision_id", [packageHash]);
+    return rows.map((r) => ({ decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) }));
+  }
+
+  /**
+   * The stored promotions of a package's workflow, oldest first (spec/attention.md "Promotion"): decisions of kind
+   * `promote` for the package hash whose from-run is a run of that package and workflow. As with an approval, whoever
+   * reads them checks each one again.
+   */
+  async promotions(packageHash: string, workflow: string): Promise<StoredDecision[]> {
+    const rows = await this.db.query<Row>(
+      "select d.decision_id, d.record, d.signature from decisions d join runs r on r.run_id = d.run_id where d.package_hash = $1 and d.kind = 'promote' and r.package_hash = $1 and r.workflow = $2 order by d.accepted_at, d.decision_id",
+      [packageHash, workflow],
+    );
     return rows.map((r) => ({ decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) }));
   }
 

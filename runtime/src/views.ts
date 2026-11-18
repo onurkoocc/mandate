@@ -109,7 +109,7 @@ export interface ReviewView {
 /** A decision a person made on a run (spec/envelope.md "Views"): who, in which role, and whether its signature holds. */
 export interface DecisionView {
   /**
-   * `envelope`, `approve`, `decline`, `answer`, `amend`, `raise_limits`, `reconcile` or `cancel`. `decision` where
+   * `envelope`, `approve`, `decline`, `answer`, `amend`, `raise_limits`, `reconcile`, `cancel` or (0.7) `promote`. `decision` where
    * the journal does not say: for an unsigned one that came after its wait's deadline, and for one whose record
    * is not stored any more.
    */
