@@ -17,7 +17,9 @@
 //   `mandate add`, `upgrade` and `publish` (`library_add`, `library_upgrade`, `library_publish`), the authority
 //   signature, and the reading of the configuration's `libraries` member; and, of 0.7, `callable_connectors` (which
 //   connectors a program can call), `tool_schema_digest` (a tool's schema digest) and `attention_facts` (the
-//   attention facts of a workflow, which a run of 0.7 stores at its start), which the runtime asks;
+//   attention facts of a workflow, which a run of 0.7 stores at its start), which the runtime asks; `attention` (the
+//   attention view of a workflow) and `mcp_tools` (the tools of the MCP servers of a language), which the command line
+//   and the MCP server ask;
 // - the shapes 0.7 adds to the IR (spec/ir-0.7.schema.json) and to the lock (spec/lock-0.7.schema.json), as types
 //   alone: the `stage` and `report` statements, `asks` in a budget, `owner` on a workflow; the lock's `role_classes`
 //   and `promotion`. The compiler gives none of them yet (its slices add them one by one), and the runtime refuses a
@@ -617,6 +619,45 @@ export interface AttentionFactsInput {
  */
 export function attentionFacts(input: AttentionFactsInput): AttentionFacts | null {
   return rustOnly("attention_facts", { ...input }) as AttentionFacts | null;
+}
+
+/** What `attention` takes: the input of `attention_facts`, with the view's format; the workflow is left out for every workflow of the program. */
+export interface AttentionViewInput {
+  text: string;
+  kind: SourceKind;
+  opts?: AttentionFactsInput["opts"];
+  /** The workflow's name; left out, the answer is of every workflow of the program, as `mandate view --attention` prints it with no `--workflow`. */
+  workflow?: string;
+  /** `json` (the default): the view as an object; `md` or `html`: its document as text. */
+  format?: "json" | "md" | "html";
+}
+
+/**
+ * `attention` (language 0.7, spec/attention.md "The attention view"): the attention view of a workflow of a program of
+ * 0.7, made from its attention facts and the lock. Null when the program does not check, is older than 0.7, or
+ * defines no such workflow (or, with no workflow named, none at all). The view is the object the spec gives, or, for
+ * `md` and `html`, a string. A refusal of the door is thrown as an `Error`.
+ */
+export function attentionView(input: AttentionViewInput): Record<string, unknown> | string | null {
+  return rustOnly("attention", { ...input }) as Record<string, unknown> | string | null;
+}
+
+/** What `mcp_tools` gives: the tools of the MCP servers of a language, and what the modern protocol era adds to `tools/list`. */
+export interface McpToolList {
+  language: string;
+  /** The `tools` member of the result of `tools/list`, unchanged: each tool is `{ name, title, description, inputSchema }`. */
+  tools: Array<{ name: string; title: string; description: string; inputSchema: Record<string, unknown> }>;
+  /** What the modern era adds beside `tools`: `{ ttlMs, cacheScope }`. */
+  modern: { ttlMs: number; cacheScope: string };
+}
+
+/**
+ * `mcp_tools` (language 0.7, spec/attention.md "The MCP server"): the tools an MCP server of `language` serves, from the
+ * one door both servers (this package's and `mandate mcp`) take their list from. `mandate/0.1` to `mandate/0.6` give the
+ * frozen list; a language the door does not know is thrown as an `Error`.
+ */
+export function mcpTools(language: string): McpToolList {
+  return rustOnly("mcp_tools", { language }) as McpToolList;
 }
 
 /** What a door says of a `config` it does not read, before the identifiers of its problems. */

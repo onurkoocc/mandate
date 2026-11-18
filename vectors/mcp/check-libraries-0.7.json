@@ -1,0 +1,589 @@
+{
+ "format": "mandate/vectors/mcp/0.1",
+ "name": "check-libraries-0.7",
+ "about": "language 0.7: check takes the libraries a lock pins, and finds std.patterns itself; without them the pin is E1605; what is not a list of libraries is a tool error",
+ "language": "mandate/0.7",
+ "args": [
+  "mcp"
+ ],
+ "input": [
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.7\\n\\nmodule acme.finance.invoices @ 2.0\\n\\nuse std.{model, tool}\\nuse std.patterns.{BatchWithExceptions}\\nuse acme.connectors.{erp, mailbox}\\nuse acme.connectors.types.{Invoice, Match, DraftId, near}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ncapability Inbox    = tool.call(mailbox, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_open_orders)\\ncapability ErpDraft = tool.call(erp, post_draft_invoice)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// An invoice is matched when the match is for it, names its vendor's order,\\n/// and its total is within 2% of the order's; a larger gap may be accepted.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept same_invoice \\\"The match is for this invoice\\\"\\n    by static m.invoice_no == inv.invoice_no\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\n/// Matches the invoices in the mailbox to open orders and posts each match to\\n/// the ERP as a draft. Asks the accountant once about the rest.\\nworkflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft_invoice, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  owner  accountant\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h, asks: 2 }\\n\",\"lock\":{\"lock\":\"mandate/lock/0.7\",\"modules\":{},\"libraries\":{\"acme.connectors\":{\"version\":\"2.3.0\",\"digest\":\"sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220\",\"modules\":{\"acme.connectors\":\"sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f\",\"acme.connectors.types\":\"sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e\"}},\"std.patterns\":{\"version\":\"2.0.0\",\"digest\":\"sha256:7a690cb097e22b999be322ff02b2c145dc7292a968b01bd9cadd4bc7c7ee33b7\",\"modules\":{\"std.patterns\":\"sha256:6318fc65ec6213dfbe1d3f390a1b3d8020608ffe7cc8e4b9006a86dd1140d755\"}}},\"connectors\":{\"acme.connectors.erp\":{\"credential\":\"acme_erp\",\"url\":\"https://erp.acme.example/mcp\",\"tools\":{\"list_open_orders\":\"sha256:"
+  },
+  {
+   "repeat": "1",
+   "count": 64
+  },
+  {
+   "text": "\",\"find_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "2",
+   "count": 64
+  },
+  {
+   "text": "\",\"post_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "3",
+   "count": 64
+  },
+  {
+   "text": "\",\"delete_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "4",
+   "count": 64
+  },
+  {
+   "text": "\"}},\"acme.connectors.mailbox\":{\"credential\":\"acme_mail\",\"url\":\"https://mail.acme.example/mcp\",\"header\":\"x-api-key\",\"template\":\"{secret}\",\"tools\":{\"list_invoices\":\"sha256:"
+  },
+  {
+   "repeat": "5",
+   "count": 64
+  },
+  {
+   "text": "\"}}},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":8000,\"max_output_tokens\":1500}},\"members\":{\"ana\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "6",
+   "count": 64
+  },
+  {
+   "text": "\"]},\"ben\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "7",
+   "count": 64
+  },
+  {
+   "text": "\"]}},\"roles\":{\"accountant\":[\"ana\"],\"finance_lead\":[\"ben\"]},\"role_classes\":{\"accountant\":\"confidential\",\"finance_lead\":\"confidential\"},\"promotion\":\"required\",\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}},\"libraries\":[{\"manifest\":\"{\\n  \\\"library\\\": \\\"mandate/library/0.6\\\",\\n  \\\"name\\\": \\\"acme.connectors\\\",\\n  \\\"version\\\": \\\"2.3.0\\\",\\n  \\\"modules\\\": [\\\"connectors.mdt\\\", \\\"types.mdt\\\"]\\n}\\n\",\"files\":{\"connectors.mdt\":\"// The connectors of the acme.connectors library, as spec/library.md\\n// \\\"Declaration\\\" declares them: the ERP, which reads open orders and posts\\n// draft invoices, and the mailbox, which lists invoices. Its types are in\\n// types.mdt beside it. A later slice makes the library of these two files,\\n// unchanged, with its manifest. Only the Rust compiler reads them.\\n\\nmandate @ 0.6\\n\\nmodule acme.connectors @ 2.3\\n\\nuse acme.connectors.types.{Invoice, Order, Match, DraftId}\\n\\n/// The ERP. Reads open orders; posts draft invoices, which a person still\\n/// finalizes in the ERP.\\npub connector erp = mcp(\\\"https://erp.acme.example/mcp\\\")\\n  version \\\"2.3\\\"\\n  class   confidential\\n{\\n  tool list_open_orders(vendor_id: Text) -> Untrusted<List<Order>>\\n    read_only\\n\\n  tool find_draft_invoice(key: Text) -> Untrusted<Option<DraftId>>\\n    read_only\\n\\n  tool post_draft_invoice(m: Verified<Match>, key: Text) -> Receipt<DraftId>\\n    critical\\n    idempotency key key\\n    retry_class reconcilable\\n    reconcile by find_draft_invoice\\n    compensation delete_draft_invoice\\n\\n  tool delete_draft_invoice(id: DraftId, key: Text) -> Receipt<DraftId>\\n    critical\\n    idempotency key key\\n    retry_class idempotent\\n}\\n\\npub connector mailbox = mcp(\\\"https://mail.acme.example/mcp\\\")\\n  version \\\"1.4\\\"\\n  class   confidential\\n{\\n  tool list_invoices() -> Untrusted<List<Invoice>>\\n    read_only\\n}\\n\",\"types.mdt\":\"// The types of the acme.connectors library (spec/library.md \\\"Connectors\\\"\\n// and \\\"The acceptance program\\\"): what the mailbox and the ERP give and take,\\n// and `near`, which the acceptance program's contract calls. Its sibling\\n// connectors.mdt declares the two connectors over them. A later slice makes\\n// the library of these two files, unchanged, with its manifest. Only the\\n// Rust compiler reads them.\\n\\nmandate @ 0.6\\n\\nmodule acme.connectors.types @ 2.3\\n\\n/// An invoice as the mailbox holds it. Its total is in cents.\\npub type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }\\n\\n/// An open order of a vendor, as the ERP lists it.\\npub type Order = { order_no: Text, vendor_id: Text, total_cents: Int }\\n\\n/// An invoice matched to an open order of its vendor.\\npub type Match = { invoice_no: Text, order: Order }\\n\\n/// A draft invoice in the ERP, which a person still finalizes there.\\npub type DraftId = { draft_id: Text }\\n\\n/// Whether `a` is within `pct` percent of `b`.\\npub fn near(a: Int, b: Int, pct: Int) -> Bool ! {} {\\n  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)\\n}\\n\"}}]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.7\\n\\nmodule acme.finance.invoices @ 2.0\\n\\nuse std.{model, tool}\\nuse std.patterns.{BatchWithExceptions}\\nuse acme.connectors.{erp, mailbox}\\nuse acme.connectors.types.{Invoice, Match, DraftId, near}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ncapability Inbox    = tool.call(mailbox, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_open_orders)\\ncapability ErpDraft = tool.call(erp, post_draft_invoice)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// An invoice is matched when the match is for it, names its vendor's order,\\n/// and its total is within 2% of the order's; a larger gap may be accepted.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept same_invoice \\\"The match is for this invoice\\\"\\n    by static m.invoice_no == inv.invoice_no\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\n/// Matches the invoices in the mailbox to open orders and posts each match to\\n/// the ERP as a draft. Asks the accountant once about the rest.\\nworkflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft_invoice, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  owner  accountant\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h, asks: 2 }\\n\",\"lock\":{\"lock\":\"mandate/lock/0.7\",\"modules\":{},\"libraries\":{\"acme.connectors\":{\"version\":\"2.3.0\",\"digest\":\"sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220\",\"modules\":{\"acme.connectors\":\"sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f\",\"acme.connectors.types\":\"sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e\"}},\"std.patterns\":{\"version\":\"2.0.0\",\"digest\":\"sha256:7a690cb097e22b999be322ff02b2c145dc7292a968b01bd9cadd4bc7c7ee33b7\",\"modules\":{\"std.patterns\":\"sha256:6318fc65ec6213dfbe1d3f390a1b3d8020608ffe7cc8e4b9006a86dd1140d755\"}}},\"connectors\":{\"acme.connectors.erp\":{\"credential\":\"acme_erp\",\"url\":\"https://erp.acme.example/mcp\",\"tools\":{\"list_open_orders\":\"sha256:"
+  },
+  {
+   "repeat": "1",
+   "count": 64
+  },
+  {
+   "text": "\",\"find_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "2",
+   "count": 64
+  },
+  {
+   "text": "\",\"post_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "3",
+   "count": 64
+  },
+  {
+   "text": "\",\"delete_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "4",
+   "count": 64
+  },
+  {
+   "text": "\"}},\"acme.connectors.mailbox\":{\"credential\":\"acme_mail\",\"url\":\"https://mail.acme.example/mcp\",\"header\":\"x-api-key\",\"template\":\"{secret}\",\"tools\":{\"list_invoices\":\"sha256:"
+  },
+  {
+   "repeat": "5",
+   "count": 64
+  },
+  {
+   "text": "\"}}},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":8000,\"max_output_tokens\":1500}},\"members\":{\"ana\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "6",
+   "count": 64
+  },
+  {
+   "text": "\"]},\"ben\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "7",
+   "count": 64
+  },
+  {
+   "text": "\"]}},\"roles\":{\"accountant\":[\"ana\"],\"finance_lead\":[\"ben\"]},\"role_classes\":{\"accountant\":\"confidential\",\"finance_lead\":\"confidential\"},\"promotion\":\"required\",\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}}},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.7\\n\\nmodule acme.finance.invoices @ 2.0\\n\\nuse std.{model, tool}\\nuse std.patterns.{BatchWithExceptions}\\nuse acme.connectors.{erp, mailbox}\\nuse acme.connectors.types.{Invoice, Match, DraftId, near}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ncapability Inbox    = tool.call(mailbox, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_open_orders)\\ncapability ErpDraft = tool.call(erp, post_draft_invoice)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// An invoice is matched when the match is for it, names its vendor's order,\\n/// and its total is within 2% of the order's; a larger gap may be accepted.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept same_invoice \\\"The match is for this invoice\\\"\\n    by static m.invoice_no == inv.invoice_no\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\n/// Matches the invoices in the mailbox to open orders and posts each match to\\n/// the ERP as a draft. Asks the accountant once about the rest.\\nworkflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft_invoice, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  owner  accountant\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h, asks: 2 }\\n\",\"lock\":{\"lock\":\"mandate/lock/0.7\",\"modules\":{},\"libraries\":{\"acme.connectors\":{\"version\":\"2.3.0\",\"digest\":\"sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220\",\"modules\":{\"acme.connectors\":\"sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f\",\"acme.connectors.types\":\"sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e\"}},\"std.patterns\":{\"version\":\"2.0.0\",\"digest\":\"sha256:7a690cb097e22b999be322ff02b2c145dc7292a968b01bd9cadd4bc7c7ee33b7\",\"modules\":{\"std.patterns\":\"sha256:6318fc65ec6213dfbe1d3f390a1b3d8020608ffe7cc8e4b9006a86dd1140d755\"}}},\"connectors\":{\"acme.connectors.erp\":{\"credential\":\"acme_erp\",\"url\":\"https://erp.acme.example/mcp\",\"tools\":{\"list_open_orders\":\"sha256:"
+  },
+  {
+   "repeat": "1",
+   "count": 64
+  },
+  {
+   "text": "\",\"find_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "2",
+   "count": 64
+  },
+  {
+   "text": "\",\"post_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "3",
+   "count": 64
+  },
+  {
+   "text": "\",\"delete_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "4",
+   "count": 64
+  },
+  {
+   "text": "\"}},\"acme.connectors.mailbox\":{\"credential\":\"acme_mail\",\"url\":\"https://mail.acme.example/mcp\",\"header\":\"x-api-key\",\"template\":\"{secret}\",\"tools\":{\"list_invoices\":\"sha256:"
+  },
+  {
+   "repeat": "5",
+   "count": 64
+  },
+  {
+   "text": "\"}}},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":8000,\"max_output_tokens\":1500}},\"members\":{\"ana\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "6",
+   "count": 64
+  },
+  {
+   "text": "\"]},\"ben\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "7",
+   "count": 64
+  },
+  {
+   "text": "\"]}},\"roles\":{\"accountant\":[\"ana\"],\"finance_lead\":[\"ben\"]},\"role_classes\":{\"accountant\":\"confidential\",\"finance_lead\":\"confidential\"},\"promotion\":\"required\",\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}},\"libraries\":[]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.7\\n\\nmodule acme.finance.invoices @ 2.0\\n\\nuse std.{model, tool}\\nuse std.patterns.{BatchWithExceptions}\\nuse acme.connectors.{erp, mailbox}\\nuse acme.connectors.types.{Invoice, Match, DraftId, near}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ncapability Inbox    = tool.call(mailbox, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_open_orders)\\ncapability ErpDraft = tool.call(erp, post_draft_invoice)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// An invoice is matched when the match is for it, names its vendor's order,\\n/// and its total is within 2% of the order's; a larger gap may be accepted.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept same_invoice \\\"The match is for this invoice\\\"\\n    by static m.invoice_no == inv.invoice_no\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\n/// Matches the invoices in the mailbox to open orders and posts each match to\\n/// the ERP as a draft. Asks the accountant once about the rest.\\nworkflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft_invoice, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  owner  accountant\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h, asks: 2 }\\n\",\"lock\":{\"lock\":\"mandate/lock/0.7\",\"modules\":{},\"libraries\":{\"acme.connectors\":{\"version\":\"2.3.0\",\"digest\":\"sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220\",\"modules\":{\"acme.connectors\":\"sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f\",\"acme.connectors.types\":\"sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e\"}},\"std.patterns\":{\"version\":\"2.0.0\",\"digest\":\"sha256:7a690cb097e22b999be322ff02b2c145dc7292a968b01bd9cadd4bc7c7ee33b7\",\"modules\":{\"std.patterns\":\"sha256:6318fc65ec6213dfbe1d3f390a1b3d8020608ffe7cc8e4b9006a86dd1140d755\"}}},\"connectors\":{\"acme.connectors.erp\":{\"credential\":\"acme_erp\",\"url\":\"https://erp.acme.example/mcp\",\"tools\":{\"list_open_orders\":\"sha256:"
+  },
+  {
+   "repeat": "1",
+   "count": 64
+  },
+  {
+   "text": "\",\"find_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "2",
+   "count": 64
+  },
+  {
+   "text": "\",\"post_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "3",
+   "count": 64
+  },
+  {
+   "text": "\",\"delete_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "4",
+   "count": 64
+  },
+  {
+   "text": "\"}},\"acme.connectors.mailbox\":{\"credential\":\"acme_mail\",\"url\":\"https://mail.acme.example/mcp\",\"header\":\"x-api-key\",\"template\":\"{secret}\",\"tools\":{\"list_invoices\":\"sha256:"
+  },
+  {
+   "repeat": "5",
+   "count": 64
+  },
+  {
+   "text": "\"}}},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":8000,\"max_output_tokens\":1500}},\"members\":{\"ana\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "6",
+   "count": 64
+  },
+  {
+   "text": "\"]},\"ben\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "7",
+   "count": 64
+  },
+  {
+   "text": "\"]}},\"roles\":{\"accountant\":[\"ana\"],\"finance_lead\":[\"ben\"]},\"role_classes\":{\"accountant\":\"confidential\",\"finance_lead\":\"confidential\"},\"promotion\":\"required\",\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}},\"libraries\":\"none\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.7\\n\\nmodule acme.finance.invoices @ 2.0\\n\\nuse std.{model, tool}\\nuse std.patterns.{BatchWithExceptions}\\nuse acme.connectors.{erp, mailbox}\\nuse acme.connectors.types.{Invoice, Match, DraftId, near}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ncapability Inbox    = tool.call(mailbox, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_open_orders)\\ncapability ErpDraft = tool.call(erp, post_draft_invoice)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// An invoice is matched when the match is for it, names its vendor's order,\\n/// and its total is within 2% of the order's; a larger gap may be accepted.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept same_invoice \\\"The match is for this invoice\\\"\\n    by static m.invoice_no == inv.invoice_no\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\n/// Matches the invoices in the mailbox to open orders and posts each match to\\n/// the ERP as a draft. Asks the accountant once about the rest.\\nworkflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft_invoice, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  owner  accountant\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h, asks: 2 }\\n\",\"lock\":{\"lock\":\"mandate/lock/0.7\",\"modules\":{},\"libraries\":{\"acme.connectors\":{\"version\":\"2.3.0\",\"digest\":\"sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220\",\"modules\":{\"acme.connectors\":\"sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f\",\"acme.connectors.types\":\"sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e\"}},\"std.patterns\":{\"version\":\"2.0.0\",\"digest\":\"sha256:7a690cb097e22b999be322ff02b2c145dc7292a968b01bd9cadd4bc7c7ee33b7\",\"modules\":{\"std.patterns\":\"sha256:6318fc65ec6213dfbe1d3f390a1b3d8020608ffe7cc8e4b9006a86dd1140d755\"}}},\"connectors\":{\"acme.connectors.erp\":{\"credential\":\"acme_erp\",\"url\":\"https://erp.acme.example/mcp\",\"tools\":{\"list_open_orders\":\"sha256:"
+  },
+  {
+   "repeat": "1",
+   "count": 64
+  },
+  {
+   "text": "\",\"find_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "2",
+   "count": 64
+  },
+  {
+   "text": "\",\"post_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "3",
+   "count": 64
+  },
+  {
+   "text": "\",\"delete_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "4",
+   "count": 64
+  },
+  {
+   "text": "\"}},\"acme.connectors.mailbox\":{\"credential\":\"acme_mail\",\"url\":\"https://mail.acme.example/mcp\",\"header\":\"x-api-key\",\"template\":\"{secret}\",\"tools\":{\"list_invoices\":\"sha256:"
+  },
+  {
+   "repeat": "5",
+   "count": 64
+  },
+  {
+   "text": "\"}}},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":8000,\"max_output_tokens\":1500}},\"members\":{\"ana\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "6",
+   "count": 64
+  },
+  {
+   "text": "\"]},\"ben\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "7",
+   "count": 64
+  },
+  {
+   "text": "\"]}},\"roles\":{\"accountant\":[\"ana\"],\"finance_lead\":[\"ben\"]},\"role_classes\":{\"accountant\":\"confidential\",\"finance_lead\":\"confidential\"},\"promotion\":\"required\",\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}},\"libraries\":[{\"manifest\":1,\"files\":{}}]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.7\\n\\nmodule acme.finance.invoices @ 2.0\\n\\nuse std.{model, tool}\\nuse std.patterns.{BatchWithExceptions}\\nuse acme.connectors.{erp, mailbox}\\nuse acme.connectors.types.{Invoice, Match, DraftId, near}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ncapability Inbox    = tool.call(mailbox, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_open_orders)\\ncapability ErpDraft = tool.call(erp, post_draft_invoice)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// An invoice is matched when the match is for it, names its vendor's order,\\n/// and its total is within 2% of the order's; a larger gap may be accepted.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept same_invoice \\\"The match is for this invoice\\\"\\n    by static m.invoice_no == inv.invoice_no\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\n/// Matches the invoices in the mailbox to open orders and posts each match to\\n/// the ERP as a draft. Asks the accountant once about the rest.\\nworkflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft_invoice, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  owner  accountant\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h, asks: 2 }\\n\",\"lock\":{\"lock\":\"mandate/lock/0.7\",\"modules\":{},\"libraries\":{\"acme.connectors\":{\"version\":\"2.3.0\",\"digest\":\"sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220\",\"modules\":{\"acme.connectors\":\"sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f\",\"acme.connectors.types\":\"sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e\"}},\"std.patterns\":{\"version\":\"2.0.0\",\"digest\":\"sha256:7a690cb097e22b999be322ff02b2c145dc7292a968b01bd9cadd4bc7c7ee33b7\",\"modules\":{\"std.patterns\":\"sha256:6318fc65ec6213dfbe1d3f390a1b3d8020608ffe7cc8e4b9006a86dd1140d755\"}}},\"connectors\":{\"acme.connectors.erp\":{\"credential\":\"acme_erp\",\"url\":\"https://erp.acme.example/mcp\",\"tools\":{\"list_open_orders\":\"sha256:"
+  },
+  {
+   "repeat": "1",
+   "count": 64
+  },
+  {
+   "text": "\",\"find_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "2",
+   "count": 64
+  },
+  {
+   "text": "\",\"post_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "3",
+   "count": 64
+  },
+  {
+   "text": "\",\"delete_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "4",
+   "count": 64
+  },
+  {
+   "text": "\"}},\"acme.connectors.mailbox\":{\"credential\":\"acme_mail\",\"url\":\"https://mail.acme.example/mcp\",\"header\":\"x-api-key\",\"template\":\"{secret}\",\"tools\":{\"list_invoices\":\"sha256:"
+  },
+  {
+   "repeat": "5",
+   "count": 64
+  },
+  {
+   "text": "\"}}},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":8000,\"max_output_tokens\":1500}},\"members\":{\"ana\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "6",
+   "count": 64
+  },
+  {
+   "text": "\"]},\"ben\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "7",
+   "count": 64
+  },
+  {
+   "text": "\"]}},\"roles\":{\"accountant\":[\"ana\"],\"finance_lead\":[\"ben\"]},\"role_classes\":{\"accountant\":\"confidential\",\"finance_lead\":\"confidential\"},\"promotion\":\"required\",\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}},\"libraries\":[{\"manifest\":\"{}\",\"files\":{\"a.mdt\":1}}]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.7\\n\\nmodule acme.finance.invoices @ 2.0\\n\\nuse std.{model, tool}\\nuse std.patterns.{BatchWithExceptions}\\nuse acme.connectors.{erp, mailbox}\\nuse acme.connectors.types.{Invoice, Match, DraftId, near}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ncapability Inbox    = tool.call(mailbox, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_open_orders)\\ncapability ErpDraft = tool.call(erp, post_draft_invoice)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// An invoice is matched when the match is for it, names its vendor's order,\\n/// and its total is within 2% of the order's; a larger gap may be accepted.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept same_invoice \\\"The match is for this invoice\\\"\\n    by static m.invoice_no == inv.invoice_no\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\n/// Matches the invoices in the mailbox to open orders and posts each match to\\n/// the ERP as a draft. Asks the accountant once about the rest.\\nworkflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft_invoice, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  owner  accountant\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h, asks: 2 }\\n\",\"lock\":{\"lock\":\"mandate/lock/0.7\",\"modules\":{},\"libraries\":{\"acme.connectors\":{\"version\":\"2.3.0\",\"digest\":\"sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220\",\"modules\":{\"acme.connectors\":\"sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f\",\"acme.connectors.types\":\"sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e\"}},\"std.patterns\":{\"version\":\"2.0.0\",\"digest\":\"sha256:7a690cb097e22b999be322ff02b2c145dc7292a968b01bd9cadd4bc7c7ee33b7\",\"modules\":{\"std.patterns\":\"sha256:6318fc65ec6213dfbe1d3f390a1b3d8020608ffe7cc8e4b9006a86dd1140d755\"}}},\"connectors\":{\"acme.connectors.erp\":{\"credential\":\"acme_erp\",\"url\":\"https://erp.acme.example/mcp\",\"tools\":{\"list_open_orders\":\"sha256:"
+  },
+  {
+   "repeat": "1",
+   "count": 64
+  },
+  {
+   "text": "\",\"find_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "2",
+   "count": 64
+  },
+  {
+   "text": "\",\"post_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "3",
+   "count": 64
+  },
+  {
+   "text": "\",\"delete_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "4",
+   "count": 64
+  },
+  {
+   "text": "\"}},\"acme.connectors.mailbox\":{\"credential\":\"acme_mail\",\"url\":\"https://mail.acme.example/mcp\",\"header\":\"x-api-key\",\"template\":\"{secret}\",\"tools\":{\"list_invoices\":\"sha256:"
+  },
+  {
+   "repeat": "5",
+   "count": 64
+  },
+  {
+   "text": "\"}}},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":8000,\"max_output_tokens\":1500}},\"members\":{\"ana\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "6",
+   "count": 64
+  },
+  {
+   "text": "\"]},\"ben\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "7",
+   "count": 64
+  },
+  {
+   "text": "\"]}},\"roles\":{\"accountant\":[\"ana\"],\"finance_lead\":[\"ben\"]},\"role_classes\":{\"accountant\":\"confidential\",\"finance_lead\":\"confidential\"},\"promotion\":\"required\",\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}},\"libraries\":[{\"manifest\":\"{\\n  \\\"library\\\": \\\"mandate/library/0.6\\\",\\n  \\\"name\\\": \\\"acme.connectors\\\",\\n  \\\"version\\\": \\\"2.3.0\\\",\\n  \\\"modules\\\": [\\\"connectors.mdt\\\", \\\"types.mdt\\\"]\\n}\\n\",\"files\":{\"connectors.mdt\":\"// The connectors of the acme.connectors library, as spec/library.md\\n// \\\"Declaration\\\" declares them: the ERP, which reads open orders and posts\\n// draft invoices, and the mailbox, which lists invoices. Its types are in\\n// types.mdt beside it. A later slice makes the library of these two files,\\n// unchanged, with its manifest. Only the Rust compiler reads them.\\n\\nmandate @ 0.6\\n\\nmodule acme.connectors @ 2.3\\n\\nuse acme.connectors.types.{Invoice, Order, Match, DraftId}\\n\\n/// The ERP. Reads open orders; posts draft invoices, which a person still\\n/// finalizes in the ERP.\\npub connector erp = mcp(\\\"https://erp.acme.example/mcp\\\")\\n  version \\\"2.3\\\"\\n  class   confidential\\n{\\n  tool list_open_orders(vendor_id: Text) -> Untrusted<List<Order>>\\n    read_only\\n\\n  tool find_draft_invoice(key: Text) -> Untrusted<Option<DraftId>>\\n    read_only\\n\\n  tool post_draft_invoice(m: Verified<Match>, key: Text) -> Receipt<DraftId>\\n    critical\\n    idempotency key key\\n    retry_class reconcilable\\n    reconcile by find_draft_invoice\\n    compensation delete_draft_invoice\\n\\n  tool delete_draft_invoice(id: DraftId, key: Text) -> Receipt<DraftId>\\n    critical\\n    idempotency key key\\n    retry_class idempotent\\n}\\n\\npub connector mailbox = mcp(\\\"https://mail.acme.example/mcp\\\")\\n  version \\\"1.4\\\"\\n  class   confidential\\n{\\n  tool list_invoices() -> Untrusted<List<Invoice>>\\n    read_only\\n}\\n\",\"types.mdt\":\"// The types of the acme.connectors library (spec/library.md \\\"Connectors\\\"\\n// and \\\"The acceptance program\\\"): what the mailbox and the ERP give and take,\\n// and `near`, which the acceptance program's contract calls. Its sibling\\n// connectors.mdt declares the two connectors over them. A later slice makes\\n// the library of these two files, unchanged, with its manifest. Only the\\n// Rust compiler reads them.\\n\\nmandate @ 0.6\\n\\nmodule acme.connectors.types @ 2.3\\n\\n/// An invoice as the mailbox holds it. Its total is in cents.\\npub type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }\\n\\n/// An open order of a vendor, as the ERP lists it.\\npub type Order = { order_no: Text, vendor_id: Text, total_cents: Int }\\n\\n/// An invoice matched to an open order of its vendor.\\npub type Match = { invoice_no: Text, order: Order }\\n\\n/// A draft invoice in the ERP, which a person still finalizes there.\\npub type DraftId = { draft_id: Text }\\n\\n/// Whether `a` is within `pct` percent of `b`.\\npub fn near(a: Int, b: Int, pct: Int) -> Bool ! {} {\\n  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)\\n}\\n\"}},null]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.7\\n\\nmodule acme.finance.invoices @ 2.0\\n\\nuse std.{model, tool}\\nuse std.patterns.{BatchWithExceptions}\\nuse acme.connectors.{erp, mailbox}\\nuse acme.connectors.types.{Invoice, Match, DraftId, near}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ncapability Inbox    = tool.call(mailbox, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_open_orders)\\ncapability ErpDraft = tool.call(erp, post_draft_invoice)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// An invoice is matched when the match is for it, names its vendor's order,\\n/// and its total is within 2% of the order's; a larger gap may be accepted.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept same_invoice \\\"The match is for this invoice\\\"\\n    by static m.invoice_no == inv.invoice_no\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\n/// Matches the invoices in the mailbox to open orders and posts each match to\\n/// the ERP as a draft. Asks the accountant once about the rest.\\nworkflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft_invoice, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  owner  accountant\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h, asks: 2 }\\n\",\"lock\":{\"lock\":\"mandate/lock/0.7\",\"modules\":{},\"libraries\":{\"acme.connectors\":{\"version\":\"2.3.0\",\"digest\":\"sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220\",\"modules\":{\"acme.connectors\":\"sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f\",\"acme.connectors.types\":\"sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e\"}},\"std.patterns\":{\"version\":\"2.0.0\",\"digest\":\"sha256:7a690cb097e22b999be322ff02b2c145dc7292a968b01bd9cadd4bc7c7ee33b7\",\"modules\":{\"std.patterns\":\"sha256:6318fc65ec6213dfbe1d3f390a1b3d8020608ffe7cc8e4b9006a86dd1140d755\"}}},\"connectors\":{\"acme.connectors.erp\":{\"credential\":\"acme_erp\",\"url\":\"https://erp.acme.example/mcp\",\"tools\":{\"list_open_orders\":\"sha256:"
+  },
+  {
+   "repeat": "1",
+   "count": 64
+  },
+  {
+   "text": "\",\"find_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "2",
+   "count": 64
+  },
+  {
+   "text": "\",\"post_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "3",
+   "count": 64
+  },
+  {
+   "text": "\",\"delete_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "4",
+   "count": 64
+  },
+  {
+   "text": "\"}},\"acme.connectors.mailbox\":{\"credential\":\"acme_mail\",\"url\":\"https://mail.acme.example/mcp\",\"header\":\"x-api-key\",\"template\":\"{secret}\",\"tools\":{\"list_invoices\":\"sha256:"
+  },
+  {
+   "repeat": "5",
+   "count": 64
+  },
+  {
+   "text": "\"}}},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":8000,\"max_output_tokens\":1500}},\"members\":{\"ana\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "6",
+   "count": 64
+  },
+  {
+   "text": "\"]},\"ben\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "7",
+   "count": 64
+  },
+  {
+   "text": "\"]}},\"roles\":{\"accountant\":[\"ana\"],\"finance_lead\":[\"ben\"]},\"role_classes\":{\"accountant\":\"confidential\",\"finance_lead\":\"confidential\"},\"promotion\":\"required\",\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}},\"libraries\":[{\"manifest\":\"not a manifest\",\"files\":{}}]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.6\\n\\nmodule acme.finance.invoices @ 1.0\\n\\nuse std.{model, tool}\\nuse std.patterns.{BatchWithExceptions}\\nuse acme.connectors.{erp, mailbox}\\nuse acme.connectors.types.{Invoice, Match, DraftId, near}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ncapability Inbox    = tool.call(mailbox, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_open_orders)\\ncapability ErpDraft = tool.call(erp, post_draft_invoice)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// An invoice is matched when the match is for it, names its vendor's order,\\n/// and its total is within 2% of the order's; a larger gap may be accepted.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept same_invoice \\\"The match is for this invoice\\\"\\n    by static m.invoice_no == inv.invoice_no\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\n/// Matches the invoices in the mailbox to open orders and posts each match to\\n/// the ERP as a draft. Asks the accountant once about the rest.\\nworkflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft_invoice, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h }\\n\",\"lock\":{\"lock\":\"mandate/lock/0.6\",\"modules\":{},\"libraries\":{\"acme.connectors\":{\"version\":\"2.3.0\",\"digest\":\"sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220\",\"modules\":{\"acme.connectors\":\"sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f\",\"acme.connectors.types\":\"sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e\"}},\"std.patterns\":{\"version\":\"1.0.0\",\"digest\":\"sha256:cea6319dba99a4e2790b07038eba90a87a4cb9b036f3c7d87e4b26d68fbacd26\",\"modules\":{\"std.patterns\":\"sha256:092932757be73f0b172d1638d5ab62cdf400cc5273682714633c95dc3864c941\"}}},\"connectors\":{\"acme.connectors.erp\":{\"credential\":\"acme_erp\",\"url\":\"https://erp.acme.example/mcp\",\"tools\":{\"list_open_orders\":\"sha256:"
+  },
+  {
+   "repeat": "1",
+   "count": 64
+  },
+  {
+   "text": "\",\"find_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "2",
+   "count": 64
+  },
+  {
+   "text": "\",\"post_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "3",
+   "count": 64
+  },
+  {
+   "text": "\",\"delete_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "4",
+   "count": 64
+  },
+  {
+   "text": "\"}},\"acme.connectors.mailbox\":{\"credential\":\"acme_mail\",\"url\":\"https://mail.acme.example/mcp\",\"header\":\"x-api-key\",\"template\":\"{secret}\",\"tools\":{\"list_invoices\":\"sha256:"
+  },
+  {
+   "repeat": "5",
+   "count": 64
+  },
+  {
+   "text": "\"}}},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":8000,\"max_output_tokens\":1500}},\"members\":{\"ana\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "6",
+   "count": 64
+  },
+  {
+   "text": "\"]},\"ben\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "7",
+   "count": 64
+  },
+  {
+   "text": "\"]}},\"roles\":{\"accountant\":[\"ana\"],\"finance_lead\":[\"ben\"]},\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}},\"libraries\":[{\"manifest\":\"{\\n  \\\"library\\\": \\\"mandate/library/0.6\\\",\\n  \\\"name\\\": \\\"acme.connectors\\\",\\n  \\\"version\\\": \\\"2.3.0\\\",\\n  \\\"modules\\\": [\\\"connectors.mdt\\\", \\\"types.mdt\\\"]\\n}\\n\",\"files\":{\"connectors.mdt\":\"// The connectors of the acme.connectors library, as spec/library.md\\n// \\\"Declaration\\\" declares them: the ERP, which reads open orders and posts\\n// draft invoices, and the mailbox, which lists invoices. Its types are in\\n// types.mdt beside it. A later slice makes the library of these two files,\\n// unchanged, with its manifest. Only the Rust compiler reads them.\\n\\nmandate @ 0.6\\n\\nmodule acme.connectors @ 2.3\\n\\nuse acme.connectors.types.{Invoice, Order, Match, DraftId}\\n\\n/// The ERP. Reads open orders; posts draft invoices, which a person still\\n/// finalizes in the ERP.\\npub connector erp = mcp(\\\"https://erp.acme.example/mcp\\\")\\n  version \\\"2.3\\\"\\n  class   confidential\\n{\\n  tool list_open_orders(vendor_id: Text) -> Untrusted<List<Order>>\\n    read_only\\n\\n  tool find_draft_invoice(key: Text) -> Untrusted<Option<DraftId>>\\n    read_only\\n\\n  tool post_draft_invoice(m: Verified<Match>, key: Text) -> Receipt<DraftId>\\n    critical\\n    idempotency key key\\n    retry_class reconcilable\\n    reconcile by find_draft_invoice\\n    compensation delete_draft_invoice\\n\\n  tool delete_draft_invoice(id: DraftId, key: Text) -> Receipt<DraftId>\\n    critical\\n    idempotency key key\\n    retry_class idempotent\\n}\\n\\npub connector mailbox = mcp(\\\"https://mail.acme.example/mcp\\\")\\n  version \\\"1.4\\\"\\n  class   confidential\\n{\\n  tool list_invoices() -> Untrusted<List<Invoice>>\\n    read_only\\n}\\n\",\"types.mdt\":\"// The types of the acme.connectors library (spec/library.md \\\"Connectors\\\"\\n// and \\\"The acceptance program\\\"): what the mailbox and the ERP give and take,\\n// and `near`, which the acceptance program's contract calls. Its sibling\\n// connectors.mdt declares the two connectors over them. A later slice makes\\n// the library of these two files, unchanged, with its manifest. Only the\\n// Rust compiler reads them.\\n\\nmandate @ 0.6\\n\\nmodule acme.connectors.types @ 2.3\\n\\n/// An invoice as the mailbox holds it. Its total is in cents.\\npub type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }\\n\\n/// An open order of a vendor, as the ERP lists it.\\npub type Order = { order_no: Text, vendor_id: Text, total_cents: Int }\\n\\n/// An invoice matched to an open order of its vendor.\\npub type Match = { invoice_no: Text, order: Order }\\n\\n/// A draft invoice in the ERP, which a person still finalizes there.\\npub type DraftId = { draft_id: Text }\\n\\n/// Whether `a` is within `pct` percent of `b`.\\npub fn near(a: Int, b: Int, pct: Int) -> Bool ! {} {\\n  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)\\n}\\n\"}}]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"// The smallest program of language 0.7 (spec/attention.md): an agent that\\n// writes a greeting, and a workflow that asks it for one. Nothing here is\\n// new in 0.7; the later slices of 0.7 add the constructs, and the program\\n// stays as it is so that the 0.7 gates keep one that checks with none of\\n// them. Only the Rust compiler reads it.\\n\\nmandate @ 0.7\\n\\nmodule example.attention.minimal @ 0.1\\n\\nuse std.{model}\\n\\ncapability ModelStd = model.infer(tier: standard, max_class: internal)\\n\\nagent Greeter {\\n  role   \\\"Writes one line of greeting.\\\"\\n  caps   ModelStd\\n  budget { time: 2m, steps: 2 }\\n  skill greet(name: Text) -> Inferred<Text> ! {Model}\\n}\\n\\nworkflow Greet(name: Text) -> Inferred<Text>\\n  caps   ModelStd\\n  budget { time: 5m, steps: 4 }\\n{\\n  delegate Greeter.greet(name)\\n}\\n\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"// A program of language 0.7 with stages (spec/attention.md \\\"`stage`\\\"): a\\n// workflow written out in two stages, and a pattern in four, applied by a\\n// workflow whose expansion has the pattern's stages. A stage names the\\n// statements after it, up to the next one; it changes nothing the program\\n// computes, costs or may do. It checks (A01); the cases of the rules of\\n// stages (E1901 to E1902f, E0104i, E0104j) are one change of it each. Only\\n// the Rust compiler reads it.\\n\\nmandate @ 0.7\\n\\nmodule example.attention.stages @ 0.1\\n\\nuse std.{human, model, tool}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ntype Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }\\ntype Order   = { order_no: Text, vendor_id: Text, total_cents: Int }\\ntype Match   = { invoice_no: Text, order: Order }\\ntype DraftId = { draft_id: Text }\\n\\n/// The result of a batch: each commit's outcome, what was declined, and the\\n/// indices of the items whose work failed.\\ntype Batch<Out, R> = {\\n  posted:   List<Outcome<Receipt<R>>>,\\n  declined: List<Declined<Out>>,\\n  failed:   List<Int>\\n}\\n\\n/// The ERP: lists the invoices and the open orders, posts draft invoices.\\nconnector erp = mcp(\\\"https://erp.example.com/mcp\\\")\\n  version \\\"1.0\\\"\\n  class   confidential\\n{\\n  tool list_invoices() -> Untrusted<List<Invoice>>\\n    read_only\\n\\n  tool list_orders(vendor_id: Text) -> Untrusted<List<Order>>\\n    read_only\\n\\n  tool find_draft(key: Text) -> Untrusted<Option<DraftId>>\\n    read_only\\n\\n  tool post_draft(m: Verified<Match>, key: Text) -> Receipt<DraftId>\\n    critical\\n    idempotency key key\\n    retry_class reconcilable\\n    reconcile by find_draft\\n}\\n\\ncapability Inbox    = tool.call(erp, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_orders)\\ncapability ErpDraft = tool.call(erp, post_draft)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// Whether `a` is within `pct` percent of `b`.\\nfn near(a: Int, b: Int, pct: Int) -> Bool ! {} {\\n  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)\\n}\\n\\n/// A match names its invoice's vendor; its total may be off by more than 2%\\n/// when the accountant or the finance lead waives it.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\nagent Greeter {\\n  role   \\\"Writes one line of greeting.\\\"\\n  caps   ModelStd\\n  budget { time: 2m, steps: 2 }\\n  skill greet(name: Text) -> Inferred<Text> ! {Model}\\n}\\n\\n/// Works on every item of a list. What passes goes on; what does not is\\n/// asked about once, as one list.\\npattern BatchWithExceptions<Item, Out, R>(\\n  source:      tool() -> Untrusted<List<Item>>,\\n  work:        skill(Untrusted<Item>) -> Inferred<Out>,\\n  accepted:    contract(Item, Out),\\n  reviewer:    role,\\n  escalate_to: role,\\n  commit:      effect(Verified<Out, accepted>) -> Receipt<R>,\\n  key:         field(Out),\\n  max_items:   const Int,\\n  concurrency: const Int,\\n  deadline:    const Duration\\n) -> Batch<Out, R>\\n{\\n  stage collect \\\"Collect the items\\\"\\n  let items    = source()\\n\\n  stage work \\\"Work on each item and check it\\\"\\n  let checked  = map it in items max max_items par concurrency {\\n    let out = delegate work(it)\\n    verify out against accepted(it, out)\\n  }\\n\\n  stage review \\\"Ask once about what failed\\\"\\n  let reviewed = human.review(checked, role: reviewer, deadline: deadline, escalate_to: escalate_to)\\n\\n  stage post \\\"Post what was accepted\\\"\\n  let posted   = map v in reviewed.accepted max max_items {\\n    effect commit(v) idempotent_by v.key\\n  }\\n  Batch { posted, declined: reviewed.declined, failed: reviewed.failed }\\n}\\n\\n/// Matches every invoice, asks the accountant once about those that failed\\n/// only what may be waived, and posts each accepted match as a draft. Its\\n/// expansion has the four stages of the pattern.\\nworkflow MatchAll = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: erp.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h }\\n\\n/// Writes a greeting, then gives it back: two stages.\\nworkflow Greet(name: Text) -> Inferred<Text>\\n  caps   ModelStd\\n  budget { time: 5m, steps: 4 }\\n{\\n  stage draft \\\"Write the greeting\\\"\\n  let line = delegate Greeter.greet(name)\\n\\n  stage give \\\"Give it back\\\"\\n  line\\n}\\n\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "text": "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"mandate @ 0.7\\n\\nmodule acme.finance.invoices @ 2.0\\n\\nuse std.{model, tool}\\nuse std.patterns.{BatchWithExceptions}\\nuse acme.connectors.{erp, mailbox}\\nuse acme.connectors.types.{Invoice, Match, DraftId, near}\\n\\nrole accountant   \\\"Accountant\\\"\\nrole finance_lead \\\"Finance lead\\\"\\n\\ncapability Inbox    = tool.call(mailbox, list_invoices)\\ncapability ErpRead  = tool.call(erp, list_open_orders)\\ncapability ErpDraft = tool.call(erp, post_draft_invoice)\\ncapability ModelStd = model.infer(tier: standard, max_class: confidential)\\n\\n/// An invoice is matched when the match is for it, names its vendor's order,\\n/// and its total is within 2% of the order's; a larger gap may be accepted.\\ncontract Matched(inv: Invoice, m: Match) {\\n  accept same_invoice \\\"The match is for this invoice\\\"\\n    by static m.invoice_no == inv.invoice_no\\n  accept vendor \\\"The invoice's vendor is the order's vendor\\\"\\n    by static inv.vendor_id == m.order.vendor_id\\n  accept totals \\\"The total is within 2% of the order's\\\"\\n    by static near(inv.total_cents, m.order.total_cents, 2)\\n    waive by accountant, finance_lead\\n}\\n\\nagent Matcher {\\n  role   \\\"Matches one invoice to an open order of its vendor. Writes nothing.\\\"\\n  caps   ErpRead, ModelStd\\n  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }\\n  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}\\n}\\n\\n/// Matches the invoices in the mailbox to open orders and posts each match to\\n/// the ERP as a draft. Asks the accountant once about the rest.\\nworkflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(\\n    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,\\n    reviewer: accountant, escalate_to: finance_lead,\\n    commit: erp.post_draft_invoice, key: invoice_no,\\n    max_items: 60, concurrency: 6, deadline: 1d)\\n  owner  accountant\\n  caps   Inbox, ErpRead, ErpDraft, ModelStd\\n  budget { spend: 20 USD, time: 2h, asks: 1 }\\n\",\"lock\":{\"lock\":\"mandate/lock/0.7\",\"modules\":{},\"libraries\":{\"acme.connectors\":{\"version\":\"2.3.0\",\"digest\":\"sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220\",\"modules\":{\"acme.connectors\":\"sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f\",\"acme.connectors.types\":\"sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e\"}},\"std.patterns\":{\"version\":\"2.0.0\",\"digest\":\"sha256:7a690cb097e22b999be322ff02b2c145dc7292a968b01bd9cadd4bc7c7ee33b7\",\"modules\":{\"std.patterns\":\"sha256:6318fc65ec6213dfbe1d3f390a1b3d8020608ffe7cc8e4b9006a86dd1140d755\"}}},\"connectors\":{\"acme.connectors.erp\":{\"credential\":\"acme_erp\",\"url\":\"https://erp.acme.example/mcp\",\"tools\":{\"list_open_orders\":\"sha256:"
+  },
+  {
+   "repeat": "1",
+   "count": 64
+  },
+  {
+   "text": "\",\"find_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "2",
+   "count": 64
+  },
+  {
+   "text": "\",\"post_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "3",
+   "count": 64
+  },
+  {
+   "text": "\",\"delete_draft_invoice\":\"sha256:"
+  },
+  {
+   "repeat": "4",
+   "count": 64
+  },
+  {
+   "text": "\"}},\"acme.connectors.mailbox\":{\"credential\":\"acme_mail\",\"url\":\"https://mail.acme.example/mcp\",\"header\":\"x-api-key\",\"template\":\"{secret}\",\"tools\":{\"list_invoices\":\"sha256:"
+  },
+  {
+   "repeat": "5",
+   "count": 64
+  },
+  {
+   "text": "\"}}},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":8000,\"max_output_tokens\":1500}},\"members\":{\"ana\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "6",
+   "count": 64
+  },
+  {
+   "text": "\"]},\"ben\":{\"keys\":[\"sha256:"
+  },
+  {
+   "repeat": "7",
+   "count": 64
+  },
+  {
+   "text": "\"]}},\"roles\":{\"accountant\":[\"ana\"],\"finance_lead\":[\"ben\"]},\"role_classes\":{\"accountant\":\"confidential\",\"finance_lead\":\"confidential\"},\"promotion\":\"required\",\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}},\"libraries\":[{\"manifest\":\"{\\n  \\\"library\\\": \\\"mandate/library/0.6\\\",\\n  \\\"name\\\": \\\"acme.connectors\\\",\\n  \\\"version\\\": \\\"2.3.0\\\",\\n  \\\"modules\\\": [\\\"connectors.mdt\\\", \\\"types.mdt\\\"]\\n}\\n\",\"files\":{\"connectors.mdt\":\"// The connectors of the acme.connectors library, as spec/library.md\\n// \\\"Declaration\\\" declares them: the ERP, which reads open orders and posts\\n// draft invoices, and the mailbox, which lists invoices. Its types are in\\n// types.mdt beside it. A later slice makes the library of these two files,\\n// unchanged, with its manifest. Only the Rust compiler reads them.\\n\\nmandate @ 0.6\\n\\nmodule acme.connectors @ 2.3\\n\\nuse acme.connectors.types.{Invoice, Order, Match, DraftId}\\n\\n/// The ERP. Reads open orders; posts draft invoices, which a person still\\n/// finalizes in the ERP.\\npub connector erp = mcp(\\\"https://erp.acme.example/mcp\\\")\\n  version \\\"2.3\\\"\\n  class   confidential\\n{\\n  tool list_open_orders(vendor_id: Text) -> Untrusted<List<Order>>\\n    read_only\\n\\n  tool find_draft_invoice(key: Text) -> Untrusted<Option<DraftId>>\\n    read_only\\n\\n  tool post_draft_invoice(m: Verified<Match>, key: Text) -> Receipt<DraftId>\\n    critical\\n    idempotency key key\\n    retry_class reconcilable\\n    reconcile by find_draft_invoice\\n    compensation delete_draft_invoice\\n\\n  tool delete_draft_invoice(id: DraftId, key: Text) -> Receipt<DraftId>\\n    critical\\n    idempotency key key\\n    retry_class idempotent\\n}\\n\\npub connector mailbox = mcp(\\\"https://mail.acme.example/mcp\\\")\\n  version \\\"1.4\\\"\\n  class   confidential\\n{\\n  tool list_invoices() -> Untrusted<List<Invoice>>\\n    read_only\\n}\\n\",\"types.mdt\":\"// The types of the acme.connectors library (spec/library.md \\\"Connectors\\\"\\n// and \\\"The acceptance program\\\"): what the mailbox and the ERP give and take,\\n// and `near`, which the acceptance program's contract calls. Its sibling\\n// connectors.mdt declares the two connectors over them. A later slice makes\\n// the library of these two files, unchanged, with its manifest. Only the\\n// Rust compiler reads them.\\n\\nmandate @ 0.6\\n\\nmodule acme.connectors.types @ 2.3\\n\\n/// An invoice as the mailbox holds it. Its total is in cents.\\npub type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }\\n\\n/// An open order of a vendor, as the ERP lists it.\\npub type Order = { order_no: Text, vendor_id: Text, total_cents: Int }\\n\\n/// An invoice matched to an open order of its vendor.\\npub type Match = { invoice_no: Text, order: Order }\\n\\n/// A draft invoice in the ERP, which a person still finalizes there.\\npub type DraftId = { draft_id: Text }\\n\\n/// Whether `a` is within `pct` percent of `b`.\\npub fn near(a: Int, b: Int, pct: Int) -> Bool ! {} {\\n  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)\\n}\\n\"}}]},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+   "text": "\n"
+  },
+  {
+   "line": "{\"jsonrpc\":\"2.0\",\"id\":13,\"method\":\"tools/call\",\"params\":{\"name\":\"mandate.check\",\"arguments\":{\"source\":\"// The migration of fixtures/envelope/migrate-all.mdt in language 0.6, its\\n// envelope naming the shapes its lead's sub-programs may apply\\n// (spec/library.md \\\"shapes\\\"): FanOutMerge and MakerChecker of the built-in\\n// std.patterns. A sub-program the lead writes is then an application of one\\n// of them, held to the envelope by its expansion; a workflow written out is\\n// refused (E1710). The sub-programs of migrate-all.plans/ are two the lead\\n// might write. migrate-all.lock.json pins std.patterns and binds the roles.\\n// Its types are its own, so it checks alone.\\n\\nmandate @ 0.6\\n\\nmodule company.migrations @ 0.1\\n\\nuse std.{fs, exec, model, git, human}\\nuse std.patterns.{FanOutMerge, MakerChecker}\\n\\nrole platform_lead   \\\"Platform lead\\\"\\nrole release_manager \\\"Release manager\\\"\\n\\ntype Repo    = { name: Text, root: Path }\\ntype Summary = { migrated: List<Text>, left: List<Text>, notes: Text }\\n\\ncapability RepoRead = fs.read(\\\"/work/repos\\\")\\ncapability SrcWrite = fs.write(\\\"/work/repos\\\")\\ncapability Build    = exec(commands: [\\\"npm\\\"], args_prefix: [[\\\"ci\\\"], [\\\"test\\\"]])\\ncapability ModelStd = model.infer(tier: standard)\\ncapability Merge    = git.pr(\\\"company/backend\\\", \\\"company/frontend\\\")\\n\\ncontract Moved(repo: Repo, s: Summary) {\\n  accept moved \\\"The migrator reports what it moved\\\"\\n    by static len(s.migrated) >= 1\\n  accept nothing_left \\\"Nothing of the repository is left to move\\\"\\n    by static len(s.left) == 0\\n  accept release_approved \\\"The release manager accepts the change\\\"\\n    by human.approve(role: release_manager)\\n}\\n\\nagent Migrator {\\n  role   \\\"Moves one repository to the new logging API.\\\"\\n  caps   RepoRead, SrcWrite, Build, ModelStd\\n  budget { tokens: 400k, time: 20m, spend: 0.5 USD, steps: 12 }\\n  skill migrate(repo: Repo) -> Inferred<Summary> ! {Fs.Read, Fs.Write, Exec, Model}\\n}\\n\\nagent Lead {\\n  role   \\\"Plans what is left after the bulk migration and writes sub-programs for it.\\\"\\n  caps   RepoRead, ModelStd\\n  budget { tokens: 2000k, spend: 10 USD, steps: 40 }\\n  skill finish(repos: List<Repo>, done: List<Outcome<Inferred<Summary>>>) -> Inferred<Summary> ! {Fs.Read, Model}\\n}\\n\\nworkflow MigrateAll(repos: List<Repo>) -> Inferred<Summary>\\n  envelope {\\n    owner   platform_lead\\n    caps    RepoRead, SrcWrite, Build, ModelStd, Merge\\n    budget  { tokens: 80000k, time: 6h, spend: 120 USD, steps: 2000, agents: 200 }\\n    spawn   { max_concurrent: 16, max_class: internal }\\n    approve git.merge by release_manager\\n    shapes  [FanOutMerge, MakerChecker]\\n  }\\n{\\n  let done = map repo in repos max 150 par 16 with caps SrcWrite.narrow(repo.root) {\\n    delegate Migrator.migrate(repo)\\n  }\\n  plan Lead.finish(repos, done) within envelope\\n}\\n\",\"lock\":{\"lock\":\"mandate/lock/0.6\",\"modules\":{},\"libraries\":{\"std.patterns\":{\"version\":\"1.0.0\",\"digest\":\"sha256:cea6319dba99a4e2790b07038eba90a87a4cb9b036f3c7d87e4b26d68fbacd26\",\"modules\":{\"std.patterns\":\"sha256:092932757be73f0b172d1638d5ab62cdf400cc5273682714633c95dc3864c941\"}}},\"connectors\":{},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":128000,\"max_output_tokens\":12000}},\"members\":{\"ana\":{\"keys\":[\"sha256:6666666666666666666666666666666666666666666666666666666666666666\"]},\"ben\":{\"keys\":[\"sha256:7777777777777777777777777777777777777777777777777777777777777777\"]}},\"roles\":{\"platform_lead\":[\"ana\"],\"release_manager\":[\"ben\"]},\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}}}},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"test\",\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  }
+ ],
+ "output": [
+  "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": true,\\n  \\\"hashes\\\": {\\n    \\\"program\\\": \\\"sha256:ca800dff12f11f79bcf93c7f1c457ecbae477435cf5e3092b6bcdff896a03ef8\\\",\\n    \\\"defs\\\": {\\n      \\\"ErpDraft\\\": \\\"sha256:0de2899b877390d44d26dd70d8e745087455d27902fdafab6c936b4b584966d5\\\",\\n      \\\"ErpRead\\\": \\\"sha256:0b878f8c74be569cab94cb764c89f161be33ea0dc23904af8f115144e2e23f0a\\\",\\n      \\\"Inbox\\\": \\\"sha256:201dc872ff04f3cc6b72b745bb9f603dc58e3a25c03150693008c4d26fa2d872\\\",\\n      \\\"MatchInvoices\\\": \\\"sha256:f96e198a2b448157cf2d7a1200f6e50ce53e1d52a6fee9e0c7697a6ee2737d17\\\",\\n      \\\"Matched\\\": \\\"sha256:83d4f3a9fc3d12ba8a7e6aedb7f014186f483355bfde3bafe8a9e98d09c60148\\\",\\n      \\\"Matcher\\\": \\\"sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27\\\",\\n      \\\"ModelStd\\\": \\\"sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f\\\",\\n      \\\"accountant\\\": \\\"sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0\\\",\\n      \\\"finance_lead\\\": \\\"sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c\\\"\\n    }\\n  },\\n  \\\"diagnostics\\\": [\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/same_invoice/by/static\\\",\\n        \\\"span\\\": [\\n          22,\\n          15,\\n          22,\\n          45\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/totals/by/static\\\",\\n        \\\"span\\\": [\\n          26,\\n          15,\\n          26,\\n          60\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/vendor/by/static\\\",\\n        \\\"span\\\": [\\n          24,\\n          15,\\n          24,\\n          49\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    }\\n  ]\\n}\"}],\"structuredContent\":{\"ok\":true,\"hashes\":{\"program\":\"sha256:ca800dff12f11f79bcf93c7f1c457ecbae477435cf5e3092b6bcdff896a03ef8\",\"defs\":{\"ErpDraft\":\"sha256:0de2899b877390d44d26dd70d8e745087455d27902fdafab6c936b4b584966d5\",\"ErpRead\":\"sha256:0b878f8c74be569cab94cb764c89f161be33ea0dc23904af8f115144e2e23f0a\",\"Inbox\":\"sha256:201dc872ff04f3cc6b72b745bb9f603dc58e3a25c03150693008c4d26fa2d872\",\"MatchInvoices\":\"sha256:f96e198a2b448157cf2d7a1200f6e50ce53e1d52a6fee9e0c7697a6ee2737d17\",\"Matched\":\"sha256:83d4f3a9fc3d12ba8a7e6aedb7f014186f483355bfde3bafe8a9e98d09c60148\",\"Matcher\":\"sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27\",\"ModelStd\":\"sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f\",\"accountant\":\"sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0\",\"finance_lead\":\"sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c\"}},\"diagnostics\":[{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/same_invoice/by/static\",\"span\":[22,15,22,45]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/totals/by/static\",\"span\":[26,15,26,60]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/vendor/by/static\",\"span\":[24,15,24,49]},\"docs\":\"mandate explain MDT-W0601\"}]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": false,\\n  \\\"diagnostics\\\": [\\n    {\\n      \\\"code\\\": \\\"MDT-E1605\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"The lock pins the library acme.connectors, and it was not handed to the check: a package carries every library its lock pins.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/libraries/acme.connectors\\\"\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1605\\\",\\n      \\\"facts\\\": {\\n        \\\"problem\\\": \\\"not_found\\\",\\n        \\\"library\\\": \\\"acme.connectors\\\"\\n      }\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-E1604\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"Module acme.connectors is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/uses/0\\\",\\n        \\\"span\\\": [\\n          7,\\n          1,\\n          7,\\n          35\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1604\\\",\\n      \\\"facts\\\": {\\n        \\\"module\\\": \\\"acme.connectors\\\"\\n      }\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-E1604\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"Module acme.connectors.types is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/uses/1\\\",\\n        \\\"span\\\": [\\n          8,\\n          1,\\n          8,\\n          58\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1604\\\",\\n      \\\"facts\\\": {\\n        \\\"module\\\": \\\"acme.connectors.types\\\"\\n      }\\n    }\\n  ]\\n}\"}],\"structuredContent\":{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E1605\",\"severity\":\"error\",\"message\":\"The lock pins the library acme.connectors, and it was not handed to the check: a package carries every library its lock pins.\",\"at\":{\"path\":\"/libraries/acme.connectors\"},\"docs\":\"mandate explain MDT-E1605\",\"facts\":{\"problem\":\"not_found\",\"library\":\"acme.connectors\"}},{\"code\":\"MDT-E1604\",\"severity\":\"error\",\"message\":\"Module acme.connectors is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\",\"at\":{\"path\":\"/uses/0\",\"span\":[7,1,7,35]},\"docs\":\"mandate explain MDT-E1604\",\"facts\":{\"module\":\"acme.connectors\"}},{\"code\":\"MDT-E1604\",\"severity\":\"error\",\"message\":\"Module acme.connectors.types is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\",\"at\":{\"path\":\"/uses/1\",\"span\":[8,1,8,58]},\"docs\":\"mandate explain MDT-E1604\",\"facts\":{\"module\":\"acme.connectors.types\"}}]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": false,\\n  \\\"diagnostics\\\": [\\n    {\\n      \\\"code\\\": \\\"MDT-E1605\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"The lock pins the library acme.connectors, and it was not handed to the check: a package carries every library its lock pins.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/libraries/acme.connectors\\\"\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1605\\\",\\n      \\\"facts\\\": {\\n        \\\"problem\\\": \\\"not_found\\\",\\n        \\\"library\\\": \\\"acme.connectors\\\"\\n      }\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-E1604\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"Module acme.connectors is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/uses/0\\\",\\n        \\\"span\\\": [\\n          7,\\n          1,\\n          7,\\n          35\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1604\\\",\\n      \\\"facts\\\": {\\n        \\\"module\\\": \\\"acme.connectors\\\"\\n      }\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-E1604\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"Module acme.connectors.types is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/uses/1\\\",\\n        \\\"span\\\": [\\n          8,\\n          1,\\n          8,\\n          58\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1604\\\",\\n      \\\"facts\\\": {\\n        \\\"module\\\": \\\"acme.connectors.types\\\"\\n      }\\n    }\\n  ]\\n}\"}],\"structuredContent\":{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E1605\",\"severity\":\"error\",\"message\":\"The lock pins the library acme.connectors, and it was not handed to the check: a package carries every library its lock pins.\",\"at\":{\"path\":\"/libraries/acme.connectors\"},\"docs\":\"mandate explain MDT-E1605\",\"facts\":{\"problem\":\"not_found\",\"library\":\"acme.connectors\"}},{\"code\":\"MDT-E1604\",\"severity\":\"error\",\"message\":\"Module acme.connectors is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\",\"at\":{\"path\":\"/uses/0\",\"span\":[7,1,7,35]},\"docs\":\"mandate explain MDT-E1604\",\"facts\":{\"module\":\"acme.connectors\"}},{\"code\":\"MDT-E1604\",\"severity\":\"error\",\"message\":\"Module acme.connectors.types is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\",\"at\":{\"path\":\"/uses/1\",\"span\":[8,1,8,58]},\"docs\":\"mandate explain MDT-E1604\",\"facts\":{\"module\":\"acme.connectors.types\"}}]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"libraries must be a list of libraries, each { manifest, files }\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"libraries must be a list of libraries, each { manifest, files }\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":6,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"libraries must be a list of libraries, each { manifest, files }\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"libraries must be a list of libraries, each { manifest, files }\"}],\"isError\":true,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": false,\\n  \\\"diagnostics\\\": [\\n    {\\n      \\\"code\\\": \\\"MDT-E1601\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"Library #0 is malformed: its manifest has the problem invalid_json.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/libraries/#0\\\"\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1601\\\",\\n      \\\"facts\\\": {\\n        \\\"library\\\": \\\"#0\\\",\\n        \\\"problem\\\": \\\"manifest\\\",\\n        \\\"manifest\\\": {\\n          \\\"problem\\\": \\\"invalid_json\\\",\\n          \\\"fault\\\": \\\"syntax\\\",\\n          \\\"at\\\": \\\"\\\"\\n        }\\n      }\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-E1605\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"The lock pins the library acme.connectors, and it was not handed to the check: a package carries every library its lock pins.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/libraries/acme.connectors\\\"\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1605\\\",\\n      \\\"facts\\\": {\\n        \\\"problem\\\": \\\"not_found\\\",\\n        \\\"library\\\": \\\"acme.connectors\\\"\\n      }\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-E1604\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"Module acme.connectors is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/uses/0\\\",\\n        \\\"span\\\": [\\n          7,\\n          1,\\n          7,\\n          35\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1604\\\",\\n      \\\"facts\\\": {\\n        \\\"module\\\": \\\"acme.connectors\\\"\\n      }\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-E1604\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"Module acme.connectors.types is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/uses/1\\\",\\n        \\\"span\\\": [\\n          8,\\n          1,\\n          8,\\n          58\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1604\\\",\\n      \\\"facts\\\": {\\n        \\\"module\\\": \\\"acme.connectors.types\\\"\\n      }\\n    }\\n  ]\\n}\"}],\"structuredContent\":{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E1601\",\"severity\":\"error\",\"message\":\"Library #0 is malformed: its manifest has the problem invalid_json.\",\"at\":{\"path\":\"/libraries/#0\"},\"docs\":\"mandate explain MDT-E1601\",\"facts\":{\"library\":\"#0\",\"problem\":\"manifest\",\"manifest\":{\"problem\":\"invalid_json\",\"fault\":\"syntax\",\"at\":\"\"}}},{\"code\":\"MDT-E1605\",\"severity\":\"error\",\"message\":\"The lock pins the library acme.connectors, and it was not handed to the check: a package carries every library its lock pins.\",\"at\":{\"path\":\"/libraries/acme.connectors\"},\"docs\":\"mandate explain MDT-E1605\",\"facts\":{\"problem\":\"not_found\",\"library\":\"acme.connectors\"}},{\"code\":\"MDT-E1604\",\"severity\":\"error\",\"message\":\"Module acme.connectors is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\",\"at\":{\"path\":\"/uses/0\",\"span\":[7,1,7,35]},\"docs\":\"mandate explain MDT-E1604\",\"facts\":{\"module\":\"acme.connectors\"}},{\"code\":\"MDT-E1604\",\"severity\":\"error\",\"message\":\"Module acme.connectors.types is not known to this check: a program of mandate/0.7 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.\",\"at\":{\"path\":\"/uses/1\",\"span\":[8,1,8,58]},\"docs\":\"mandate explain MDT-E1604\",\"facts\":{\"module\":\"acme.connectors.types\"}}]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": true,\\n  \\\"hashes\\\": {\\n    \\\"program\\\": \\\"sha256:039e215a0a371ef0fbf54f0ae5719e5a1e591b305206c5000dc94b883701167a\\\",\\n    \\\"defs\\\": {\\n      \\\"ErpDraft\\\": \\\"sha256:91f4779de7c6cd75cafd362ea2a38edc91030ae222e19de9d7a34ba8c8235d84\\\",\\n      \\\"ErpRead\\\": \\\"sha256:ea23f2faae2ed8a24ad065393490218cec83654e7a8109ba2b733902b32fcc06\\\",\\n      \\\"Inbox\\\": \\\"sha256:6ac1491e2d922fa7ff8b3365859fc654a4947a71ed71721ac1aaa9cd2e9776aa\\\",\\n      \\\"MatchInvoices\\\": \\\"sha256:ea5cd261a4f2f867395cd243b792e33094ce24ef0088ec78085c961ac4cef823\\\",\\n      \\\"Matched\\\": \\\"sha256:89b17f9b9893ed16eec807fcdabd5fa04e43fa862659a5f63a7a91a38185c4cf\\\",\\n      \\\"Matcher\\\": \\\"sha256:f6533579488273206115ad039adf88f9ca28038ce2adc5250b0324ac16c7fe21\\\",\\n      \\\"ModelStd\\\": \\\"sha256:3d1b9c3435bb5678e33db8e60c2299ed4f109ecb5cc2693d02df6f8d03cc3c3f\\\",\\n      \\\"accountant\\\": \\\"sha256:c723ad4bef6416c9aef9d0acb9b974c44449bc1ae759c31cd148b9e7dd57f197\\\",\\n      \\\"finance_lead\\\": \\\"sha256:7a2d35f89fff50f998d449eb454627f0a50b2dc7905e38ae3da3cc65fabe8de6\\\"\\n    }\\n  },\\n  \\\"diagnostics\\\": [\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/same_invoice/by/static\\\",\\n        \\\"span\\\": [\\n          22,\\n          15,\\n          22,\\n          45\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/totals/by/static\\\",\\n        \\\"span\\\": [\\n          26,\\n          15,\\n          26,\\n          60\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/vendor/by/static\\\",\\n        \\\"span\\\": [\\n          24,\\n          15,\\n          24,\\n          49\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    }\\n  ]\\n}\"}],\"structuredContent\":{\"ok\":true,\"hashes\":{\"program\":\"sha256:039e215a0a371ef0fbf54f0ae5719e5a1e591b305206c5000dc94b883701167a\",\"defs\":{\"ErpDraft\":\"sha256:91f4779de7c6cd75cafd362ea2a38edc91030ae222e19de9d7a34ba8c8235d84\",\"ErpRead\":\"sha256:ea23f2faae2ed8a24ad065393490218cec83654e7a8109ba2b733902b32fcc06\",\"Inbox\":\"sha256:6ac1491e2d922fa7ff8b3365859fc654a4947a71ed71721ac1aaa9cd2e9776aa\",\"MatchInvoices\":\"sha256:ea5cd261a4f2f867395cd243b792e33094ce24ef0088ec78085c961ac4cef823\",\"Matched\":\"sha256:89b17f9b9893ed16eec807fcdabd5fa04e43fa862659a5f63a7a91a38185c4cf\",\"Matcher\":\"sha256:f6533579488273206115ad039adf88f9ca28038ce2adc5250b0324ac16c7fe21\",\"ModelStd\":\"sha256:3d1b9c3435bb5678e33db8e60c2299ed4f109ecb5cc2693d02df6f8d03cc3c3f\",\"accountant\":\"sha256:c723ad4bef6416c9aef9d0acb9b974c44449bc1ae759c31cd148b9e7dd57f197\",\"finance_lead\":\"sha256:7a2d35f89fff50f998d449eb454627f0a50b2dc7905e38ae3da3cc65fabe8de6\"}},\"diagnostics\":[{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/same_invoice/by/static\",\"span\":[22,15,22,45]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/totals/by/static\",\"span\":[26,15,26,60]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/vendor/by/static\",\"span\":[24,15,24,49]},\"docs\":\"mandate explain MDT-W0601\"}]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":10,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": true,\\n  \\\"hashes\\\": {\\n    \\\"program\\\": \\\"sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e\\\",\\n    \\\"defs\\\": {\\n      \\\"Greet\\\": \\\"sha256:596801da78e127a180ea98dea4826019f3f908e38a6276721660d634fd24f7d2\\\",\\n      \\\"Greeter\\\": \\\"sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21\\\",\\n      \\\"ModelStd\\\": \\\"sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329\\\"\\n    }\\n  },\\n  \\\"diagnostics\\\": []\\n}\"}],\"structuredContent\":{\"ok\":true,\"hashes\":{\"program\":\"sha256:49c37e67c64fd57edb38fd02eaa2078023b7ba99afb559c530b50b97d610a29e\",\"defs\":{\"Greet\":\"sha256:596801da78e127a180ea98dea4826019f3f908e38a6276721660d634fd24f7d2\",\"Greeter\":\"sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21\",\"ModelStd\":\"sha256:5ff0be86457ac682b85d09a93d0c0503b5d4337914fca3263d34e3348cc99329\"}},\"diagnostics\":[]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":11,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": true,\\n  \\\"hashes\\\": {\\n    \\\"program\\\": \\\"sha256:e128e710b149a13805d73a0d31b798ef78d86d9871868ceff1a88c8583d43e9f\\\",\\n    \\\"defs\\\": {\\n      \\\"Batch\\\": \\\"sha256:efe9cf7981843738936cff8f323c6f910bdab62aa81f88fdbd0cf640a25a9173\\\",\\n      \\\"BatchWithExceptions\\\": \\\"sha256:af9139346703b557a2ea2450a461dbadba0a9eae688f8d2193856d20642f6eee\\\",\\n      \\\"DraftId\\\": \\\"sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c\\\",\\n      \\\"ErpDraft\\\": \\\"sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79\\\",\\n      \\\"ErpRead\\\": \\\"sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d\\\",\\n      \\\"Greet\\\": \\\"sha256:1442d0ed0f3a3c5c697828ed7c4c46ec8a1fabfc872a7e055245b91504ab8ee5\\\",\\n      \\\"Greeter\\\": \\\"sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21\\\",\\n      \\\"Inbox\\\": \\\"sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6\\\",\\n      \\\"Invoice\\\": \\\"sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75\\\",\\n      \\\"Match\\\": \\\"sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56\\\",\\n      \\\"MatchAll\\\": \\\"sha256:12f40742b3982125bfaaf1740c89c3c0acee536932b66f160e58a03f1fe05824\\\",\\n      \\\"Matched\\\": \\\"sha256:06c260687ff67cade4bb6131eceae313721f8d637c69737bccd220b8cd07d0db\\\",\\n      \\\"Matcher\\\": \\\"sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27\\\",\\n      \\\"ModelStd\\\": \\\"sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f\\\",\\n      \\\"Order\\\": \\\"sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555\\\",\\n      \\\"accountant\\\": \\\"sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0\\\",\\n      \\\"erp\\\": \\\"sha256:ccb2a6a1b83d2ea55454144a444c5976c4be2541d7526dcbe1453b95a74130fd\\\",\\n      \\\"finance_lead\\\": \\\"sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c\\\",\\n      \\\"near\\\": \\\"sha256:86f822ac6b931c08609cd06ac1c5ea71f98095b7184b563c2b257bfc18195026\\\"\\n    }\\n  },\\n  \\\"diagnostics\\\": [\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/totals/by/static\\\",\\n        \\\"span\\\": [\\n          68,\\n          15,\\n          68,\\n          60\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/vendor/by/static\\\",\\n        \\\"span\\\": [\\n          66,\\n          15,\\n          66,\\n          49\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    }\\n  ]\\n}\"}],\"structuredContent\":{\"ok\":true,\"hashes\":{\"program\":\"sha256:e128e710b149a13805d73a0d31b798ef78d86d9871868ceff1a88c8583d43e9f\",\"defs\":{\"Batch\":\"sha256:efe9cf7981843738936cff8f323c6f910bdab62aa81f88fdbd0cf640a25a9173\",\"BatchWithExceptions\":\"sha256:af9139346703b557a2ea2450a461dbadba0a9eae688f8d2193856d20642f6eee\",\"DraftId\":\"sha256:cbb618a96d86f6125f1d97370ae729b8dcd575f660c3346002da1259a431b14c\",\"ErpDraft\":\"sha256:7e0f44fb6d784586334a75ef7da1901d78ed8159404bf21cc69f769adf00ad79\",\"ErpRead\":\"sha256:eeb6dcf755403d72ef3b3deaf305d7ae64acd5d24d68420addb0f1f47be86d6d\",\"Greet\":\"sha256:1442d0ed0f3a3c5c697828ed7c4c46ec8a1fabfc872a7e055245b91504ab8ee5\",\"Greeter\":\"sha256:98bb4105f3aef6af081df4bdf90a1144b266726d14930785c0dd516b52a3ce21\",\"Inbox\":\"sha256:5cfe3eff4ace7842525888080ad2d663612cb945ac2f3f32b0b25426a7855ac6\",\"Invoice\":\"sha256:6441576017b614e9cdbd51e892ad95ecc6868bd39822d54705a2e63935dbcf75\",\"Match\":\"sha256:ce06eaffcd256d7f79257d5b282d8ee40ba770dbd047fdfb55a95e922a049c56\",\"MatchAll\":\"sha256:12f40742b3982125bfaaf1740c89c3c0acee536932b66f160e58a03f1fe05824\",\"Matched\":\"sha256:06c260687ff67cade4bb6131eceae313721f8d637c69737bccd220b8cd07d0db\",\"Matcher\":\"sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27\",\"ModelStd\":\"sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f\",\"Order\":\"sha256:e2f2b5bdd40fd01590d16345503e3e9d7133c2d2d9f49aac9b277d5cf0a14555\",\"accountant\":\"sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0\",\"erp\":\"sha256:ccb2a6a1b83d2ea55454144a444c5976c4be2541d7526dcbe1453b95a74130fd\",\"finance_lead\":\"sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c\",\"near\":\"sha256:86f822ac6b931c08609cd06ac1c5ea71f98095b7184b563c2b257bfc18195026\"}},\"diagnostics\":[{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/totals/by/static\",\"span\":[68,15,68,60]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/vendor/by/static\",\"span\":[66,15,66,49]},\"docs\":\"mandate explain MDT-W0601\"}]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":12,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": false,\\n  \\\"diagnostics\\\": [\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/same_invoice/by/static\\\",\\n        \\\"span\\\": [\\n          22,\\n          15,\\n          22,\\n          45\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/totals/by/static\\\",\\n        \\\"span\\\": [\\n          26,\\n          15,\\n          26,\\n          60\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Matched/accept/vendor/by/static\\\",\\n        \\\"span\\\": [\\n          24,\\n          15,\\n          24,\\n          49\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-E1906\\\",\\n      \\\"severity\\\": \\\"error\\\",\\n      \\\"message\\\": \\\"MatchInvoices can put 2 questions to people in one run, and its budget allows 1 (asks: 1). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \\\\\\\"The attention bound\\\\\\\").\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/MatchInvoices/budget/asks\\\",\\n        \\\"span\\\": [\\n          46,\\n          3,\\n          46,\\n          46\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-E1906\\\",\\n      \\\"facts\\\": {\\n        \\\"workflow\\\": \\\"MatchInvoices\\\",\\n        \\\"asks\\\": 1,\\n        \\\"total\\\": 2,\\n        \\\"roles\\\": [\\n          {\\n            \\\"role\\\": \\\"accountant\\\",\\n            \\\"questions\\\": 1\\n          },\\n          {\\n            \\\"role\\\": \\\"finance_lead\\\",\\n            \\\"questions\\\": 1\\n          }\\n        ]\\n      }\\n    }\\n  ]\\n}\"}],\"structuredContent\":{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/same_invoice/by/static\",\"span\":[22,15,22,45]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/totals/by/static\",\"span\":[26,15,26,60]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Matched/accept/vendor/by/static\",\"span\":[24,15,24,49]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-E1906\",\"severity\":\"error\",\"message\":\"MatchInvoices can put 2 questions to people in one run, and its budget allows 1 (asks: 1). Raise asks, or ask fewer: every question counts, a review's escalation and an owner's gate of a governance-class file among them (spec/attention.md \\\"The attention bound\\\").\",\"at\":{\"path\":\"/defs/MatchInvoices/budget/asks\",\"span\":[46,3,46,46]},\"docs\":\"mandate explain MDT-E1906\",\"facts\":{\"workflow\":\"MatchInvoices\",\"asks\":1,\"total\":2,\"roles\":[{\"role\":\"accountant\",\"questions\":1},{\"role\":\"finance_lead\",\"questions\":1}]}}]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}",
+  "{\"jsonrpc\":\"2.0\",\"id\":13,\"result\":{\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ok\\\": true,\\n  \\\"hashes\\\": {\\n    \\\"program\\\": \\\"sha256:1262e97f493e9dc682c9b6ffd88aaec1003f9bc0dc40bd84fa9272b6921bb207\\\",\\n    \\\"defs\\\": {\\n      \\\"Build\\\": \\\"sha256:2d5f858676bb96b3558ce39b6f44c95869bf082ad07aba5d86d5317f559daa81\\\",\\n      \\\"Lead\\\": \\\"sha256:2a49247edb055ff7be9b09e1a94a6c6849358a865e7629494ead7a9adc23571b\\\",\\n      \\\"Merge\\\": \\\"sha256:ad5a68aacafa46c1ca65bbccb777b987529deea6abcc4996f8656b23dc0658bb\\\",\\n      \\\"MigrateAll\\\": \\\"sha256:9448a1982db93c6d7e9df392dee0f509c01a115f35e9ecd5dbd55d6e72a01c27\\\",\\n      \\\"Migrator\\\": \\\"sha256:ca2d7ecaa9f8d4ca0e426a3d88d0e09562989e292caae877133f21c4dae1a430\\\",\\n      \\\"ModelStd\\\": \\\"sha256:b70f22435c1e9ee9c17c9f654331b55d0a375c93637c25ef00f5b06414cf24c5\\\",\\n      \\\"Moved\\\": \\\"sha256:1067ff58bafb63815b551a360a9c3cd9ec40c720df3fc5dfdafea952614643cb\\\",\\n      \\\"Repo\\\": \\\"sha256:21fe3c8a0a95d7ff86b5df5991b4eb2f268c0ac5e21034d0bcfcf1600844e29f\\\",\\n      \\\"RepoRead\\\": \\\"sha256:5fa5d8559f4c6c02344894b6dc100af21e3b5c1d2bfc7d12618984779efa3f08\\\",\\n      \\\"SrcWrite\\\": \\\"sha256:0073ab4ff134a9439e32bcef2d055e49ac42a0d04e6d8bec04cc45ecd81bb487\\\",\\n      \\\"Summary\\\": \\\"sha256:65f6177638770cc7a66539c58f4cdebfabbb85305fc16165f58f44b35635dcd8\\\",\\n      \\\"platform_lead\\\": \\\"sha256:27b44372873d1f0f198bedcb10d17b0a87a9f3d7f7b5d19cdfc826aa467d14be\\\",\\n      \\\"release_manager\\\": \\\"sha256:a5ca9c23e1a9a752ab8e633fcaf0f12f2e5b7e15ca7957149bd9578cf88193b3\\\"\\n    }\\n  },\\n  \\\"diagnostics\\\": [\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Moved/accept/moved/by/static\\\",\\n        \\\"span\\\": [\\n          31,\\n          15,\\n          31,\\n          35\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-W0601\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Moved/accept/nothing_left/by/static\\\",\\n        \\\"span\\\": [\\n          33,\\n          15,\\n          33,\\n          31\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0601\\\"\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-W0504\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Lead.finish declares less than its loop can use: tokens 2000000 < 5600000, spend:USD 10000000 < 35200000 (40 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Lead/budget\\\",\\n        \\\"span\\\": [\\n          48,\\n          3,\\n          48,\\n          53\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0504\\\",\\n      \\\"facts\\\": {\\n        \\\"agent\\\": \\\"Lead\\\",\\n        \\\"skill\\\": \\\"finish\\\",\\n        \\\"steps\\\": 40,\\n        \\\"per_call\\\": {\\n          \\\"tokens\\\": 140000,\\n          \\\"spend_micros\\\": 880000,\\n          \\\"currency\\\": \\\"USD\\\"\\n        },\\n        \\\"short\\\": {\\n          \\\"tokens\\\": {\\n            \\\"declared\\\": 2000000,\\n            \\\"bound\\\": 5600000\\n          },\\n          \\\"spend:USD\\\": {\\n            \\\"declared\\\": 10000000,\\n            \\\"bound\\\": 35200000\\n          }\\n        }\\n      }\\n    },\\n    {\\n      \\\"code\\\": \\\"MDT-W0504\\\",\\n      \\\"severity\\\": \\\"warning\\\",\\n      \\\"message\\\": \\\"Migrator.migrate declares less than its loop can use: tokens 400000 < 1680000, spend:USD 500000 < 10560000 (12 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.\\\",\\n      \\\"at\\\": {\\n        \\\"path\\\": \\\"/defs/Migrator/budget\\\",\\n        \\\"span\\\": [\\n          41,\\n          3,\\n          41,\\n          64\\n        ]\\n      },\\n      \\\"docs\\\": \\\"mandate explain MDT-W0504\\\",\\n      \\\"facts\\\": {\\n        \\\"agent\\\": \\\"Migrator\\\",\\n        \\\"skill\\\": \\\"migrate\\\",\\n        \\\"steps\\\": 12,\\n        \\\"per_call\\\": {\\n          \\\"tokens\\\": 140000,\\n          \\\"spend_micros\\\": 880000,\\n          \\\"currency\\\": \\\"USD\\\"\\n        },\\n        \\\"short\\\": {\\n          \\\"tokens\\\": {\\n            \\\"declared\\\": 400000,\\n            \\\"bound\\\": 1680000\\n          },\\n          \\\"spend:USD\\\": {\\n            \\\"declared\\\": 500000,\\n            \\\"bound\\\": 10560000\\n          }\\n        }\\n      }\\n    }\\n  ]\\n}\"}],\"structuredContent\":{\"ok\":true,\"hashes\":{\"program\":\"sha256:1262e97f493e9dc682c9b6ffd88aaec1003f9bc0dc40bd84fa9272b6921bb207\",\"defs\":{\"Build\":\"sha256:2d5f858676bb96b3558ce39b6f44c95869bf082ad07aba5d86d5317f559daa81\",\"Lead\":\"sha256:2a49247edb055ff7be9b09e1a94a6c6849358a865e7629494ead7a9adc23571b\",\"Merge\":\"sha256:ad5a68aacafa46c1ca65bbccb777b987529deea6abcc4996f8656b23dc0658bb\",\"MigrateAll\":\"sha256:9448a1982db93c6d7e9df392dee0f509c01a115f35e9ecd5dbd55d6e72a01c27\",\"Migrator\":\"sha256:ca2d7ecaa9f8d4ca0e426a3d88d0e09562989e292caae877133f21c4dae1a430\",\"ModelStd\":\"sha256:b70f22435c1e9ee9c17c9f654331b55d0a375c93637c25ef00f5b06414cf24c5\",\"Moved\":\"sha256:1067ff58bafb63815b551a360a9c3cd9ec40c720df3fc5dfdafea952614643cb\",\"Repo\":\"sha256:21fe3c8a0a95d7ff86b5df5991b4eb2f268c0ac5e21034d0bcfcf1600844e29f\",\"RepoRead\":\"sha256:5fa5d8559f4c6c02344894b6dc100af21e3b5c1d2bfc7d12618984779efa3f08\",\"SrcWrite\":\"sha256:0073ab4ff134a9439e32bcef2d055e49ac42a0d04e6d8bec04cc45ecd81bb487\",\"Summary\":\"sha256:65f6177638770cc7a66539c58f4cdebfabbb85305fc16165f58f44b35635dcd8\",\"platform_lead\":\"sha256:27b44372873d1f0f198bedcb10d17b0a87a9f3d7f7b5d19cdfc826aa467d14be\",\"release_manager\":\"sha256:a5ca9c23e1a9a752ab8e633fcaf0f12f2e5b7e15ca7957149bd9578cf88193b3\"}},\"diagnostics\":[{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Moved/accept/moved/by/static\",\"span\":[31,15,31,35]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/Moved/accept/nothing_left/by/static\",\"span\":[33,15,33,31]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0504\",\"severity\":\"warning\",\"message\":\"Lead.finish declares less than its loop can use: tokens 2000000 < 5600000, spend:USD 10000000 < 35200000 (40 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.\",\"at\":{\"path\":\"/defs/Lead/budget\",\"span\":[48,3,48,53]},\"docs\":\"mandate explain MDT-W0504\",\"facts\":{\"agent\":\"Lead\",\"skill\":\"finish\",\"steps\":40,\"per_call\":{\"tokens\":140000,\"spend_micros\":880000,\"currency\":\"USD\"},\"short\":{\"tokens\":{\"declared\":2000000,\"bound\":5600000},\"spend:USD\":{\"declared\":10000000,\"bound\":35200000}}}},{\"code\":\"MDT-W0504\",\"severity\":\"warning\",\"message\":\"Migrator.migrate declares less than its loop can use: tokens 400000 < 1680000, spend:USD 500000 < 10560000 (12 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.\",\"at\":{\"path\":\"/defs/Migrator/budget\",\"span\":[41,3,41,64]},\"docs\":\"mandate explain MDT-W0504\",\"facts\":{\"agent\":\"Migrator\",\"skill\":\"migrate\",\"steps\":12,\"per_call\":{\"tokens\":140000,\"spend_micros\":880000,\"currency\":\"USD\"},\"short\":{\"tokens\":{\"declared\":400000,\"bound\":1680000},\"spend:USD\":{\"declared\":500000,\"bound\":10560000}}}}]},\"isError\":false,\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mandate-compiler\",\"version\":\"0.2.0\"}}}}"
+ ],
+ "tools_list": []
+}

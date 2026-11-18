@@ -56,7 +56,7 @@
     "view --card --format html": "sha256:9669c7c06eee635de411e0651f007f4389810d4aa9121db9b5ab64453b468b15"
   },
   "fixtures/attention/invoices.mdt": {
-    "check": "sha256:cf79a3d21965992ef51ad635030ab5c79a583f1c9460f0dafa368b57a5976788",
+    "check": "sha256:7b5cf4a37b3a22b1bb83065a98efcd50675bd2f716f6b2a3f5651cff0d70b23a",
     "check --module": "sha256:cc50da65fc11ab361efd12cf25a10add0e6da7fd008ba91e2cb7834da0963dc9",
     "check --lock": "sha256:cc50da65fc11ab361efd12cf25a10add0e6da7fd008ba91e2cb7834da0963dc9",
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",

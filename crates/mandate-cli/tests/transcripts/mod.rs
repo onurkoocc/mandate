@@ -1,11 +1,17 @@
 //! The recorded conversations of `vectors/mcp/`, which
 //! `scripts/mcp-vectors.mjs` writes from the Node MCP server (the bytes it
 //! wrote for each), and how what the native server writes is compared with
-//! them: line by line, byte for byte, but for the lines that answer
-//! `tools/list`, where the Node server serves the frozen tool list and the
-//! native one the list of 0.7 (until slice B9 moves the Node server to the
-//! door `mcp_tools`): there the native line must be the Node line with the
-//! list of 0.7 in the place of the frozen list, both as the door writes them.
+//! them: line by line, byte for byte.
+//!
+//! A conversation of 0.7 (its file says `language: "mandate/0.7"`) was
+//! recorded from the Node server serving 0.7, whose tool list is the door
+//! `mcp_tools`'s, as the native server's is: every line is compared as it is.
+//! A conversation of 0.1 to 0.6 (no `language`; its file is what it was before
+//! 0.7) was recorded from the Node server serving the frozen tool list, which
+//! the native server, that serves 0.7 alone, does not: for the lines that
+//! answer `tools/list` the native line must be the Node line with the list of
+//! 0.7 in the place of the frozen list, both as the door writes them. Every
+//! other answer of such a conversation is the same in both languages.
 
 #![allow(dead_code)]
 
@@ -31,6 +37,8 @@ pub struct Conversation {
     pub args: Vec<String>,
     /// Standard input.
     pub input: Vec<u8>,
+    /// The language the Node server served when it was recorded, when the file names it (0.7).
+    pub language: Option<String>,
     output: Vec<Expected>,
     tools_list: Vec<usize>,
 }
@@ -116,6 +124,7 @@ pub fn conversations() -> Vec<Conversation> {
                 .and_then(Value::as_str)
                 .expect("name")
                 .to_owned(),
+            language: v.get("language").and_then(Value::as_str).map(str::to_owned),
             args: strings("args"),
             input: input_of(v.get("input").and_then(Value::as_array).expect("input")),
             output,
@@ -178,14 +187,27 @@ impl Conversation {
             };
             match want {
                 Expected::Line(want) => {
-                    let want = if self.tools_list.contains(&i) {
+                    let want = if self.tools_list.contains(&i) && self.language.is_none() {
                         assert!(
                             want.contains(frozen),
                             "{}: line {i} holds the frozen list",
                             self.name
                         );
-                        // B9: until the Node server serves the list of 0.7 too.
+                        // Recorded from the Node server of 0.1 to 0.6: the list of 0.7 in its place.
                         want.replacen(frozen, of_0_7, 1)
+                    } else if self.tools_list.contains(&i) {
+                        assert_eq!(
+                            self.language.as_deref(),
+                            Some("mandate/0.7"),
+                            "{}: the language the native server serves",
+                            self.name
+                        );
+                        assert!(
+                            want.contains(of_0_7),
+                            "{}: line {i} holds the list of 0.7",
+                            self.name
+                        );
+                        want.clone()
                     } else {
                         want.clone()
                     };

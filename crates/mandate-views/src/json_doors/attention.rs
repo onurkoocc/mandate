@@ -6,8 +6,11 @@ use mandate_check::CheckOptions;
 use mandate_check::json_doors::input::args;
 use mandate_check::json_doors::{DoorError, config_of, sources_of};
 use mandate_ir::{JsValue, Value};
+use mandate_syntax::SourceKind;
 
-use crate::attention::{attention_doc, attention_view};
+use crate::attention::{
+    attention_doc, attention_program_doc, attention_view, attention_views_js, workflow_names,
+};
 use crate::doc::{to_html, to_markdown};
 
 /// The parameters of [`attention`].
@@ -17,7 +20,7 @@ pub(super) const ATTENTION: &[&str] = &["text", "kind", "opts", "workflow", "for
 /// ([`crate::attention`]), the fourth view of a program, made from the
 /// attention facts and the lock only.
 ///
-/// Input: `{ text, kind, opts?, workflow, format? }`: `text`, `kind`, `opts`
+/// Input: `{ text, kind, opts?, workflow?, format? }`: `text`, `kind`, `opts`
 /// and `workflow` as the door `attention_facts` takes them (`opts`: `lock`,
 /// `modules`, `claim`, `libraries`, `config`, `linked`, which is read and
 /// does not matter, and `std_patterns`, a version of `std.patterns` the compiler
@@ -46,11 +49,20 @@ pub(super) const ATTENTION: &[&str] = &["text", "kind", "opts", "workflow", "for
 /// and for `md` or `html` a string, the document of the view
 /// ([`crate::attention::attention_doc`]) as Markdown or as one script-free
 /// HTML page. The same input gives the same answer on every run.
+///
+/// Without `workflow` the door answers for every workflow of the program, in
+/// the order of its definitions, as `mandate view --attention` prints it with
+/// no `--workflow`: for `json` one object `{ format, kind: "attention",
+/// program, workflows: [view] }` (also for a program of one workflow); for
+/// `md` or `html` the document of the one workflow, or, for several, one
+/// document with the program's name and version and a section for each
+/// ([`crate::attention::attention_program_doc`]). `null` when the program
+/// does not check, is older than 0.7, or defines no workflow.
 pub(super) fn attention(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, ATTENTION)?;
     let text = a.str("text")?;
     let kind = a.kind("kind")?;
-    let workflow = a.str("workflow")?;
+    let workflow = a.opt_str("workflow")?;
     let format = a.opt_str("format")?.unwrap_or("json");
     if !["json", "md", "html"].contains(&format) {
         return Err(DoorError::bad_input(format!(
@@ -79,6 +91,9 @@ pub(super) fn attention(input: &Value) -> Result<JsValue, DoorError> {
         opts.libraries = Some(&libraries);
     }
     opts.revoked = config.as_ref().map(|c| c.revoked());
+    let Some(workflow) = workflow else {
+        return Ok(every_workflow(text, kind, &opts, format));
+    };
     Ok(match attention_view(text, kind, &opts, workflow) {
         None => JsValue::Null,
         Some(v) => match format {
@@ -86,5 +101,38 @@ pub(super) fn attention(input: &Value) -> Result<JsValue, DoorError> {
             "html" => JsValue::from(to_html(&attention_doc(&v)).as_str()),
             _ => v.to_js(),
         },
+    })
+}
+
+/// The answer for no `workflow`: the views of every workflow of the program,
+/// as the command prints them.
+fn every_workflow(text: &str, kind: SourceKind, opts: &CheckOptions<'_>, format: &str) -> JsValue {
+    let Some(program) = mandate_check::check(text, kind, opts).program else {
+        return JsValue::Null;
+    };
+    let mut views = Vec::new();
+    for name in workflow_names(&program) {
+        match attention_view(text, kind, opts, &name) {
+            Some(v) => views.push(v),
+            None => return JsValue::Null,
+        }
+    }
+    let Some(first) = views.first() else {
+        return JsValue::Null;
+    };
+    if format == "json" {
+        return attention_views_js(&first.program, &views);
+    }
+    let doc = match views.as_slice() {
+        [only] => Some(attention_doc(only)),
+        all => attention_program_doc(all),
+    };
+    doc.map_or(JsValue::Null, |d| {
+        let text = if format == "html" {
+            to_html(&d)
+        } else {
+            to_markdown(&d)
+        };
+        JsValue::from(text.as_str())
     })
 }

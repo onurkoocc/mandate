@@ -26,8 +26,9 @@ use mandate_testkit::json_doors::{Answer, JsonDoor, check_table, resolve};
 use mandate_testkit::{read_json, read_text};
 use mandate_views::json_doors::{RUST_DOORS, rust_door};
 use mandate_views::{
-    AttentionView, attention_blocks, attention_doc, attention_view, if_no_answer, known_text,
-    program_doc, to_html, to_markdown, what_is_asked,
+    AttentionView, attention_blocks, attention_doc, attention_program_doc, attention_view,
+    attention_views_js, if_no_answer, known_text, program_doc, to_html, to_markdown, what_is_asked,
+    workflow_names,
 };
 
 const VIEW: &str = "fixtures/attention/view.mdt";
@@ -36,6 +37,7 @@ const OWNER: &str = "fixtures/attention/owner.mdt";
 const OWNER_LOCK: &str = "fixtures/attention/owner.lock.json";
 const REPORTS: &str = "fixtures/attention/reports.mdt";
 const ASKS: &str = "fixtures/attention/asks.mdt";
+const MINIMAL: &str = "fixtures/attention/minimal.mdt";
 const DIR: &str = "crates/mandate-views/tests/rust_doors";
 
 fn view_of_text(text: &str, workflow: &str, lock: Option<&Value>) -> AttentionView {
@@ -664,6 +666,93 @@ fn the_door_gives_the_view_in_each_format_and_the_same_every_time() {
 }
 
 #[test]
+fn the_door_without_a_workflow_gives_every_workflow_as_the_command_prints_them() {
+    // A program of two workflows, with its lock.
+    let lock = r#""lock":{"$json":"fixtures/attention/view.lock.json"}"#;
+    let input = |file: &str, opts: &str, format: &str| {
+        format!(
+            r#"{{"text":{{"$text":"{file}"}},"kind":"mdt","opts":{{{opts}}},"format":"{format}"}}"#
+        )
+    };
+    let source = read_text(VIEW).unwrap();
+    let names = workflow_names(&load(&source, kind_of(VIEW)).program.unwrap());
+    assert!(names.len() > 1, "{names:?}");
+    let views: Vec<AttentionView> = names
+        .iter()
+        .map(|n| view(VIEW, n, Some(VIEW_LOCK)))
+        .collect();
+    let json = call(&input(VIEW, lock, "json")).unwrap();
+    assert_eq!(
+        stringify(&json).unwrap(),
+        stringify(&attention_views_js(&views[0].program, &views)).unwrap()
+    );
+    assert_eq!(
+        stringify(&call(&input(VIEW, lock, "json")).unwrap()).unwrap(),
+        stringify(&json).unwrap(),
+        "twice"
+    );
+    // The same views the door gives for each workflow by name.
+    let JsValue::Object(object) = &json else {
+        panic!("not an object")
+    };
+    assert_eq!(object.get("kind"), Some(&JsValue::from("attention")));
+    let each: Vec<String> = names
+        .iter()
+        .map(|n| {
+            let one = format!(
+                r#"{{"text":{{"$text":"{VIEW}"}},"kind":"mdt","workflow":"{n}","opts":{{{lock}}}}}"#
+            );
+            stringify(&call(&one).unwrap()).unwrap()
+        })
+        .collect();
+    let Some(JsValue::Array(all)) = object.get("workflows") else {
+        panic!("no workflows")
+    };
+    let all: Vec<String> = all.iter().map(|v| stringify(v).unwrap()).collect();
+    assert_eq!(all, each);
+    // The document of all of them: the program's name and a section for each.
+    let doc = attention_program_doc(&views).unwrap();
+    assert_eq!(
+        call(&input(VIEW, lock, "md")).unwrap(),
+        JsValue::from(to_markdown(&doc).as_str())
+    );
+    assert_eq!(
+        call(&input(VIEW, lock, "html")).unwrap(),
+        JsValue::from(to_html(&doc).as_str())
+    );
+    // A program of one workflow: the document of that workflow, and a list of one in the JSON.
+    let alone = read_text(MINIMAL).unwrap();
+    let names = workflow_names(&load(&alone, kind_of(MINIMAL)).program.unwrap());
+    assert_eq!(names.len(), 1, "{names:?}");
+    let one = view(MINIMAL, &names[0], None);
+    assert_eq!(
+        call(&input(MINIMAL, "", "md")).unwrap(),
+        JsValue::from(to_markdown(&attention_doc(&one)).as_str())
+    );
+    assert_eq!(
+        stringify(&call(&input(MINIMAL, "", "json")).unwrap()).unwrap(),
+        stringify(&attention_views_js(
+            &one.program,
+            std::slice::from_ref(&one)
+        ))
+        .unwrap()
+    );
+    // No view: a program before 0.7, one that is not a program, one that does not check as given.
+    for text in [
+        r#"{"$text":"fixtures/system/land.mdt"}"#,
+        r#""this is not a program""#,
+    ] {
+        let none = format!(r#"{{"text":{text},"kind":"mdt"}}"#);
+        assert_eq!(call(&none).unwrap(), JsValue::Null, "{text}");
+    }
+    let bad_lock = r#""lock":{"lock":"mandate/lock/0.7","modules":{},"roles":{"nobody":["x"]}}"#;
+    assert_eq!(
+        call(&input(OWNER, bad_lock, "json")).unwrap(),
+        JsValue::Null
+    );
+}
+
+#[test]
 fn the_door_gives_null_where_there_is_no_view_and_refuses_what_it_does_not_take() {
     for (name, text, workflow) in [
         (
@@ -689,7 +778,6 @@ fn the_door_gives_null_where_there_is_no_view_and_refuses_what_it_does_not_take(
         bad(r#"{"text":"x","kind":"mdt","workflow":"W","format":"pdf"}"#).starts_with("bad_input")
     );
     assert!(bad(r#"{"text":"x","kind":"txt","workflow":"W"}"#).starts_with("bad_input"));
-    assert!(bad(r#"{"text":"x","kind":"mdt"}"#).starts_with("bad_input"));
     assert!(bad(r#"{"kind":"mdt","workflow":"W"}"#).starts_with("bad_input"));
     assert!(bad(r#"{"text":1,"kind":"mdt","workflow":"W"}"#).starts_with("bad_input"));
     assert!(

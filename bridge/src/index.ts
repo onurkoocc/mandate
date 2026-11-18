@@ -26,13 +26,13 @@ export * from "@mandate/compiler";
 export type { AuthorityContext, GrantDelegation, GrantInput, GrantOutput, InFlightOverlapInput, InFlightOverlapOutput, ItemScopes, MapScopesInput, MapScopesOutput, NarrowInput, NarrowOutput, Refusal } from "./authority.js";
 // Languages 0.6 and 0.7 (library.ts): their versions, `atLeast` over them, their shapes, their locks, and the
 // Rust-only doors. The reference compiler's LanguageVersion and Lock, which know nothing of 0.6, are these in the bridge.
-export { atLeast, attentionFacts, authoritySignature, BRIDGE_LANGUAGE_VERSIONS, callableConnectors, isProgram06OrLater, isProgram07OrLater, LANGUAGE_06, LANGUAGE_07, librariesConfigProblems, LIBRARY_FORMAT, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, LOCK_FORMAT_06, LOCK_FORMAT_07, toolSchemaDigest } from "./library.js";
+export { atLeast, attentionFacts, attentionView, authoritySignature, BRIDGE_LANGUAGE_VERSIONS, callableConnectors, isProgram06OrLater, isProgram07OrLater, LANGUAGE_06, LANGUAGE_07, librariesConfigProblems, LIBRARY_FORMAT, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, LOCK_FORMAT_06, LOCK_FORMAT_07, mcpTools, toolSchemaDigest } from "./library.js";
 // The file-system side of the libraries (libraries.ts) gives the entry point one name: the libraries a lock pins.
 export { pinnedLibraries } from "./libraries.js";
 export type { CallableConnector, LibraryChange, LibraryPublished, LibraryRequest, LibraryResolved, PublishedAgainst, PublishedVersion } from "./library.js";
 export type { Apply, Check06, CheckOptions06, CheckResult06, CheckSubprogram06, SubprogramCheck06, SubprogramInput07, ConnectorBinding, ConnectorDef, ConnectorTool, Criterion06, Def06, Documented, Envelope06, LanguageVersion, LibrariesConfig, LibraryPin, LibrarySource, LibraryVerified, Lock, PatternDef, Program06, Shape06, Slot, SlotArg, WorkflowDef06 } from "./library.js";
 export type { Budget07, Envelope07, Lock07, Promotion, ReportField, ReportStmt, StageStmt, Stmt07, WorkflowDef07 } from "./library.js";
-export type { AttentionCount, AttentionEffect, AttentionFacts, AttentionFactsInput, AttentionField, AttentionPlan, AttentionQuestion, AttentionReport, AttentionSiteKind, AttentionStage, AttentionTotals, Known } from "./library.js";
+export type { AttentionCount, AttentionEffect, AttentionFacts, AttentionFactsInput, AttentionField, AttentionPlan, AttentionQuestion, AttentionReport, AttentionSiteKind, AttentionStage, AttentionTotals, AttentionViewInput, Known, McpToolList } from "./library.js";
 
 /**
  * A view or a diff of a program that takes the modules besides, last (doors.ts): the Rust's alone, for a program of
