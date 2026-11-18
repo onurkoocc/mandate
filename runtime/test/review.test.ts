@@ -18,10 +18,11 @@ import { buildPackage, verifyPackage } from "../src/runtime.js";
 import { classify, givenValueProblem, listsRefusal, outcomeProblem, RESERVED_MEMBERS, questionOf as askOf, waiverFacts, waiverProblem, waiveRoleRefusal, waiversOf, type Question, type Verdict, type WaiverFacts } from "../src/review.js";
 import { Crash } from "../src/signals.js";
 import { SimAgents, SimTool } from "../src/sim.js";
+import { STALE_DRIVE_MS } from "../src/tick.js";
 import { digest, isObj, plain, type Obj, type Value } from "../src/values.js";
 import { roleDoc, runDoc, runView } from "../src/views.js";
 import { closeAll, world, type World } from "./helpers.js";
-import { lockUnder, relabel } from "./relabel.js";
+import { lockUnder, relabel, relabelled } from "./relabel.js";
 
 afterAll(closeAll);
 
@@ -538,6 +539,9 @@ describe("escalation and expiry (H08)", () => {
     const stuck = await w.rt.getRun("e5");
     expect(stuck.state).toBe("waiting");
     expect(await w.db.query("select state from commands where run_id = 'e5' and kind = 'review'")).toEqual([{ state: "succeeded" }]);
+    // From 0.7 a tick drives such a run once it has been still for a while, so as not to take the lease from the
+    // decider's own drive (tick.ts `STALE_DRIVE_MS`); a run of 0.6 is driven at once, as before, and this shows it.
+    if (relabelled()) w.clock.advance(STALE_DRIVE_MS);
     const done = await w.rt.tick("e5");
     expect(state(done)).toBe("succeeded null");
     expect(posted(w.tool)).toEqual(["I0", "I1"]);

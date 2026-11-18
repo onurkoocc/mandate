@@ -3,7 +3,7 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { deferred, SimAgents } from "../src/sim.js";
-import { closeAll, commandIds, start, until, world, UNSIGNED } from "./helpers.js";
+import { closeAll, commandIds, dispatchOrder, start, until, world, UNSIGNED } from "./helpers.js";
 import { BOTH, FIX, ISSUE, RETRY } from "./programs.js";
 import { Runtime } from "../src/runtime.js";
 
@@ -140,5 +140,66 @@ describe("Supervision: restart with backoff and journaled jitter (§8.7)", () =>
     const w = await world(RETRY, { agents });
     expect((await start(w, "Retry", "s3")).state).toBe("failed");
     expect(agents.count()).toBe(1);
+  });
+});
+
+describe("the fault of a par whose branches fail in one round (spec/runtime.md, fail_fast)", () => {
+  // Two delegations that start together, each refused by the run's limit of 3 steps: the Patcher's reserves 4, the
+  // Tester's 6. Written in 0.6, and relabelled 0.7 as the suites relabel a program (relabel.ts: the header alone).
+  const PAR = `mandate @ 0.6
+
+module test.parallel.faults @ 0.1
+
+use std.{model}
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+agent Patcher {
+  role   "Writes the patch."
+  caps   ModelStd
+  budget { steps: 4 }
+  skill patch(task: Text) -> Inferred<Text> ! {Model}
+}
+
+agent Tester {
+  role   "Writes the test."
+  caps   ModelStd
+  budget { steps: 6 }
+  skill test(task: Text) -> Inferred<Text> ! {Model}
+}
+
+workflow Both(task: Text) -> Inferred<Text>
+  caps   ModelStd
+  budget { steps: 20, time: 1h }
+{
+  par {
+    patch = delegate Patcher.patch(task)
+    tests = delegate Tester.test(task)
+  }
+  patch
+}
+`;
+  const PATCH = "/defs/Both/body/0/branches/patch";
+  const TESTS = "/defs/Both/body/0/branches/tests";
+  const ok = () => ({ ok: "done", cost: { steps: 1 } });
+
+  // A package of 0.6 runs as it always did: the fault that stopped the others, that of whichever reservation was
+  // refused first. A package of 0.7: the first failed branch's in the branches' order, `patch`, whatever the timing.
+  it.each([
+    ["0.6", "patch", [PATCH, TESTS], 4],
+    ["0.6", "tests", [TESTS, PATCH], 6],
+    ["0.7", "patch", [PATCH, TESTS], 4],
+    ["0.7", "tests", [TESTS, PATCH], 4],
+  ])("of a package of %s, with %s refused first, stops with the fault of the reservation of %j[0]'s order: %i steps", async (language, _first, order, requested) => {
+    const src = language === "0.6" ? PAR : PAR.replace("mandate @ 0.6\n", "mandate @ 0.7\n");
+    const w = await world(src, { agents: new SimAgents().on("Patcher.patch", ok).on("Tester.test", ok), decisions: { mode: "signed" }, lock: { modules: {} } });
+    dispatchOrder(w, order as string[]);
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Both", input: { task: "fix it" }, runId: `pf-${language}-${_first}`, limits: { steps: 3 } });
+    // Both were refused: nothing was sent, and the run waits for a person with the one fault.
+    expect(w.agents.count()).toBe(0);
+    expect(run.state).toBe("waiting");
+    expect(run.waiting).toMatchObject({ kind: "budget_exceeded", detail: { $tag: "BudgetExceeded", $args: [{ dimension: "steps", requested }] } });
+    const recorded = (await w.rt.journal.events(run.run_id)).filter((e) => e.type === "budget_exceeded");
+    expect(recorded).toMatchObject([{ data: { episode: 0, detail: { $args: [{ requested }] } } }]);
   });
 });

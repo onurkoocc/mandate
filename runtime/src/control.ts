@@ -39,6 +39,10 @@
 //                 // gateway sends: with a gateway on, its adapters send through the proxy with a placeholder, and
 //                 // its secret (CLAUDE_API_KEY, ANTHROPIC_API_KEY; MANDATE_GITHUB_TOKEN) may not be in the environment.
 //                 // With "admin", a sandbox on Linux reaches its agent's hosts through it ("Sandbox egress")
+//     "notifications": { "channels": { "acct": { "webhook": { "url": "https://…", "credential": "acct_hook", "format": "mandate" } },
+//                                      "local": { "file": ".mandate/notifications.jsonl" } },
+//                        "roles": { "accountant": { "channels": ["acct", "local"], "outcomes": false } }, "link": "https://…/runs/{run}" }
+//                 // who is told of a 0.7 run (spec/attention.md "Notifications"; notify.ts); a webhook needs egress.admin
 //   }
 
 import { execFileSync } from "node:child_process";
@@ -74,6 +78,7 @@ import { GitWorkspace, type ComponentSource } from "./workspace.js";
 import { ProcessVerifier, type ChildEnvSource } from "./verifier-service.js";
 import { CREDENTIAL_NAME, isPipe } from "./egress/config.js";
 import { EgressLink, Gateway, gatewaySpec, givenGateway, refuseCredentials, type EgressScope, type GatewayName, type GatewaySpec } from "./gateway.js";
+import { readNotifications, type NotificationsConfig } from "./notify.js";
 
 export interface RuntimeConfig {
   database: string;
@@ -137,12 +142,14 @@ export interface RuntimeConfig {
    * and a run of one stops at its next resume (`library_revoked`).
    */
   libraries?: { dir?: string; wait_days?: number; revoked?: string[] };
+  /** Who is told of a run of 0.7, and through which channels (spec/attention.md "Notifications"; notify.ts). */
+  notifications?: NotificationsConfig;
   /** The configuration file itself, so a verifier process can read it too. */
   file?: string;
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "plan", "violations", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard", "egress", "libraries"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "plan", "violations", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard", "egress", "libraries", "notifications"],
   libraries: ["dir", "wait_days", "revoked"],
   egress: ["admin", "gateways"],
   "egress.gateways": ["model", "github"],
@@ -248,6 +255,8 @@ export function readConfig(file: string): RuntimeConfig {
     }
     if (typeof lb.dir === "string") config.libraries!.dir = at(lb.dir);
   }
+  // Refused by name, bad_notification_channel, when it cannot be used; a webhook only with an egress proxy.
+  if (c["notifications"] !== undefined) config.notifications = readNotifications(c["notifications"], { file, at, egress: typeof config.egress?.admin === "string" });
   config.file = resolve(file);
   return config;
 }

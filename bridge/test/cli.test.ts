@@ -189,6 +189,8 @@ const LINES_06 = [
   // The control commands of 0.6, which the runtime answers: the compiler's own command line hands on none.
   "  connector pin <program> [--lock FILE] [--module FILE]… [--libraries DIR] [--config FILE]\n",
   "  review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]\n",
+  // The driver loop of 0.7, which the runtime answers too.
+  "  tick [--follow] [--interval 10s] [--no-notify]\n",
 ];
 function before06(s: string): string {
   if (!s.startsWith("usage: mandate <command> [options]\n")) return s;
@@ -240,9 +242,10 @@ describe("the mandate command line equals the compiler's own", () => {
   it("keeps the control list on one line, as runtime/test/cli.test.ts reads it", () => {
     const text = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
     expect(text).toMatch(/^const CONTROL = new Set\(\[[^\]]*\]\);$/m);
-    // The compiler's own, frozen at 0.5, and after it the control commands of 0.6: `connector` (pin) and `review`.
+    // The compiler's own, frozen at 0.5, and after it the control commands of 0.6, `connector` (pin) and `review`, and
+    // of 0.7, `tick`.
     expect(text.match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m)![1]).toBe(
-      readFileSync(new URL("../../compiler/src/cli.ts", import.meta.url), "utf8").match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m)![1]!.replace(/\]$/, ', "connector", "review"]'),
+      readFileSync(new URL("../../compiler/src/cli.ts", import.meta.url), "utf8").match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m)![1]!.replace(/\]$/, ', "connector", "review", "tick"]'),
     );
   });
 

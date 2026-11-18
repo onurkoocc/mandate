@@ -623,7 +623,12 @@ The loop stops with `SkillFailed(kind, detail, partial)` (§8.7):
 When a parallel branch fails (fail_fast), a loop stops before its next
 step, and leaves its delegation in flight, as after a crash. If the run goes
 on, for example after a person raised its budget, the loop resumes from
-the journal. The block fails with the fault that stopped the others.
+the journal. In a run of a package of 0.7 or later, when several branches
+fail in one round, the block fails with the fault of the first of them in
+the order of the branches' names; in a run of an older package, it fails
+with the fault that stopped the others. A replay takes the rule from the
+package, not from the journal, so the journal of a package of 0.7 written
+by a build before this rule may replay with the other fault.
 
 `partial` lists the files the loop wrote. A turn observed something new
 when one of its tool calls returned something the loop had not seen from
