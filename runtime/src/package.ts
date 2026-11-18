@@ -542,7 +542,7 @@ function verified(pkg: Package, o: LoadOptions): Verified {
   // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
   // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
   // So must a lock that names members and roles: a key under two members, or a role held by nobody the lock lists, binds nothing.
-  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings || pkg.lock.members || pkg.lock.roles || LOCK_FIELDS_0_5.some((f) => pkg.lock[f]) || pkg.lock.libraries || pkg.lock.connectors || pkg.lock.promotion) {
+  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings || pkg.lock.members || pkg.lock.roles || LOCK_FIELDS_0_5.some((f) => pkg.lock[f]) || pkg.lock.libraries || pkg.lock.connectors || (pkg.lock.promotion && isPackage07OrLater(pkg))) {
     const bad = validateLock(formatted(pkg.lock, format));
     if (bad.length) throw new Violation("malformed_lock", `The package's lock is malformed: ${bad.map((d) => d.message).join(" ")}`);
   }

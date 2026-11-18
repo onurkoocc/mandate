@@ -567,7 +567,7 @@ async function promote(rt: Runtime, runId: string, to: PromotedMode, key: Eviden
  * with the design run's, and how many only the design run had; the effects in order. Never a parameter, a fingerprint
  * or a command: the counts only.
  */
-function shadowCounts(d: Awaited<ReturnType<typeof shadowDiff>>): string[] {
+export function shadowCounts(d: Awaited<ReturnType<typeof shadowDiff>>): string[] {
   const by = new Map<string, Record<"would" | ShadowRow["state"], number>>();
   for (const r of d.rows) {
     const c = by.get(r.effect) ?? { would: 0, same: 0, differs: 0, only_a: 0, only_b: 0 };

@@ -640,7 +640,9 @@ export class Runtime {
    * does not start (`unpromoted`), before anything is written.
    */
   private async promotionAtStart(pkg: Package, workflow: string, mode: RunMode, owner: string | undefined): Promise<Promoted | undefined> {
-    if (pkg.lock.promotion !== "required" || mode === "design") return undefined;
+    // A package older than 0.7 is refused with a `promotion` in its lock at load (E0140); asked here too, so that no
+    // lock of an older package can bring the ladder to it.
+    if (pkg.lock.promotion !== "required" || mode === "design" || !isPackage07OrLater(pkg)) return undefined;
     const to: PromotedMode = mode;
     if (owner === undefined) {
       throw new Violation("unpromoted", `${workflow} has no owner role, nor an envelope with one, to sign a promotion, so it does not run ${to} under package ${pkg.hash}, whose lock requires one (spec/attention.md "Promotion").`);
