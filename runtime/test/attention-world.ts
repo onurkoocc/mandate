@@ -71,6 +71,15 @@ const orderTotal = (i: number): number => 10_000 + i * 100;
 export const invoice = (i: number): Obj => ({ invoice_no: invoiceNo(i), vendor_id: vendorOf(i), total_cents: TOTALS.includes(i) ? Math.round(orderTotal(i) * 1.05) : orderTotal(i) });
 export const order = (i: number): Obj => ({ order_no: orderNo(i), vendor_id: VENDOR.includes(i) ? "VENDOR-B10-99" : vendorOf(i), total_cents: orderTotal(i) });
 
+/** Every value of the book: each text (invoice and order numbers, vendors) and each total, of the invoices and of the orders. */
+export function book(): { texts: string[]; numbers: number[] } {
+  const rows = ALL.flatMap((i) => [invoice(i), order(i)]);
+  return {
+    texts: [...new Set(rows.flatMap((r) => Object.values(r).filter((v): v is string => typeof v === "string")))],
+    numbers: [...new Set(rows.flatMap((r) => Object.values(r).filter((v): v is number => typeof v === "number")))],
+  };
+}
+
 // ── the simulators ──────────────────────────────────────────────────────
 
 export interface Simulators {
@@ -121,7 +130,14 @@ export function simulators(): Simulators {
       };
       for (const a of answered) {
         const r = (JSON.parse(a) as Obj)["result"];
-        if (isObj(r ?? null)) walk((r as Obj)["structuredContent"]);
+        if (!isObj(r ?? null)) continue;
+        walk((r as Obj)["structuredContent"]);
+        // The text content: each text whole, and each of its words.
+        for (const c of ((r as Obj)["content"] ?? []) as Obj[]) {
+          if (typeof c["text"] !== "string") continue;
+          walk(c["text"]);
+          for (const word of c["text"].split(/\s+/)) if (word.length >= 6) walk(word);
+        }
       }
       return { texts: [...texts], numbers: [...numbers] };
     },
@@ -152,15 +168,18 @@ export function matcher(): SimAgents {
 /**
  * The fixture's lock as a deployment writes it: every member, role, class and pin as the repository has them, the
  * members' key ids made at run time, and the digests of the tools the simulators list. With `observer`, the lock also
- * binds the role `observer` (of OBSERVER_SOURCE) to the member cy, capped at `public`.
+ * binds the role `observer` (of OBSERVER_SOURCE) to the member cy, capped at `public`. `classes` replaces caps of the
+ * fixture's roles.
  */
-export async function deploymentLock(s: Simulators, keys: Record<string, string>, o: { observer?: boolean } = {}): Promise<Lock> {
+export async function deploymentLock(s: Simulators, keys: Record<string, string>, o: { observer?: boolean; classes?: Record<string, string> } = {}): Promise<Lock> {
   const connectors = FIXTURE_LOCK["connectors"] as Record<string, Obj>;
+  const classes = { ...(FIXTURE_LOCK["role_classes"] as Obj), ...(o.classes ?? {}), ...(o.observer ? { observer: "public" } : {}) };
   return {
     ...FIXTURE_LOCK,
     connectors: { [ERP]: { ...connectors[ERP], tools: await digests(s.erp) }, [MAIL]: { ...connectors[MAIL], tools: await digests(s.mailbox) } },
     members: Object.fromEntries(Object.entries(keys).map(([m, id]) => [m, { keys: [id] }])),
-    ...(o.observer ? { roles: { ...(FIXTURE_LOCK["roles"] as Obj), observer: ["cy"] }, role_classes: { ...(FIXTURE_LOCK["role_classes"] as Obj), observer: "public" } } : {}),
+    ...(o.observer ? { roles: { ...(FIXTURE_LOCK["roles"] as Obj), observer: ["cy"] } } : {}),
+    role_classes: classes,
   } as unknown as Lock;
 }
 
@@ -174,15 +193,19 @@ export interface Said {
 
 /**
  * One call of the control CLI in this process (`main` of src/cli.ts), with `--config config`: what it prints, what it
- * writes on standard error, and its exit status. `input` is what a person types, a line per prompt.
+ * writes on standard error, and its exit status. `input` is what a person types, a line per prompt: a line as it is,
+ * or the answer a person gives to what the command has printed so far, when the prompt is shown.
+ *
+ * The environment the command is given is empty: no secret is in it, as a deployment with an egress proxy needs. A
+ * live kit that reaches real servers passes the real one.
  */
-export async function mandate(config: string, args: string[], input?: string[]): Promise<Said> {
+export async function mandate(config: string, args: string[], input?: Array<string | ((printed: string) => string)>): Promise<Said> {
   let out = "";
   let err = "";
   const write = process.stderr.write.bind(process.stderr);
   process.stderr.write = ((s: string) => ((err += s), true)) as typeof process.stderr.write;
   const lines = input === undefined ? undefined : (async function* (): AsyncGenerator<string> {
-    for (const l of input) yield l;
+    for (const l of input) yield typeof l === "string" ? l : l(out);
   })();
   try {
     const code = await main([...args, "--config", config], (s) => (out += s), {}, async () => "", lines);

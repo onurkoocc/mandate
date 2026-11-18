@@ -26,15 +26,13 @@ import { join } from "node:path";
 import { attentionFacts, classRank, hashProgram, load, type AttentionFacts, type AttentionFactsInput, type DataClass, type Json } from "@mandate/bridge";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import type { Adapters } from "../src/adapters.js";
-import { eventClass } from "../src/classes.js";
 import { readConfig, runtimeOptions } from "../src/control.js";
 import type { Db } from "../src/db.js";
 import { promotionSubject, readDecisionKey, signDecision } from "../src/decisions.js";
-import { NOTIFICATION_FORMAT, NOTIFICATION_MEMBERS, NOTIFIED } from "../src/notify.js";
 import { Runtime } from "../src/runtime.js";
 import { digest, isObj, type Obj, type Value } from "../src/values.js";
 import { runView, shadowDiff } from "../src/views.js";
-import { ACME, ALL, DAY, deploymentLock, FIXTURE_LOCK, invoiceNo, libraryDir, mandate, McpSession, matcher, OBSERVER_SOURCE, PASSED, personKey, samples, simulators, SOURCE, TOTALS, VENDOR, type PersonKey, type Said, type Simulators } from "./attention-world.js";
+import { ACME, ALL, book, DAY, deploymentLock, FIXTURE_LOCK, invoice, invoiceNo, libraryDir, mandate, McpSession, matcher, OBSERVER_SOURCE, order, PASSED, personKey, samples, simulators, SOURCE, TOTALS, VENDOR, type PersonKey, type Said, type Simulators } from "./attention-world.js";
 import { closeAll, world, type World } from "./helpers.js";
 
 // Every command's database and adapters are the world's (see the header); the rest of src/control.js is its own.
@@ -58,9 +56,28 @@ const read = (path: string): string => readFileSync(new URL(`../../${path}`, imp
 const AUTHORING = JSON.parse(read("vectors/mcp/authoring-0.7.json")) as { input: Part[]; output: Array<string | { sha256: string; bytes: number }>; language: string };
 const hashOf = (text: string): string => hashProgram(load(text, "mdt").program as unknown as Json).program;
 const WORKFLOW = "MatchInvoices";
-/** The data class each role of the fixture's lock may be shown; `observer`, of the variant, `public`. */
-const CAPS: Record<string, DataClass> = { ...(FIXTURE_LOCK["role_classes"] as Record<string, DataClass>), observer: "public" };
+/** The data class each role may be shown: the fixture's lock (fixtures/attention/invoices.lock.json) and `observer`, of the variant. */
+const CAPS: Record<string, DataClass> = { accountant: "confidential", finance_lead: "confidential", observer: "public" };
 const keep = process.env["B10_ARTIFACTS"];
+
+// What the spec says, copied here as literals so that no check below compares the runtime with itself; the first case
+// reads the three tables out of the spec and finds them equal to these.
+/** The class of every event type: spec/boundary.md "Events", the table after "The class of every event type the runtime writes". */
+const SPEC_CLASSES: Record<string, string[]> = {
+  S0: ["wait_opened", "wait_expired", "decision_received", "input_received", "decision_refused", "criterion_approved", "criterion_denied", "governance_approved", "governance_denied", "action_authorized", "envelope_approved", "amendment_requested", "package_amended", "limits_raised", "reconcile_requested", "review_requested", "review_decided", "review_escalated", "review_expired", "criterion_waived", "promotion_accepted"],
+  S1: ["run_succeeded", "run_failed", "run_cancelled", "run_cancelling", "run_attention_required", "cancel_requested", "lease_revoked", "violation", "budget_exceeded", "guarantee_lowered", "asks_exhausted"],
+  S2: ["run_accepted", "run_running", "run_waiting", "lease_acquired", "command_dispatched", "command_completed", "command_throttled", "charge_pending", "charge_settled", "map_started", "map_ended", "stage_started", "stage_ended", "report", "program_started", "program_ended"],
+  S3: ["action_prepared", "action_committed", "action_confirmed", "action_rejected", "action_unknown_outcome", "action_cancelled", "action_would_apply", "changeset_prepared", "changeset_would_apply", "changeset_simulated", "changeset_committed", "changeset_partial", "changeset_failed"],
+  S4: ["program_submitted", "program_refused", "program_admitted", "sandbox_stopped"],
+};
+const CLASS_OF: Record<string, string> = Object.fromEntries(Object.entries(SPEC_CLASSES).flatMap(([c, types]) => types.map((t) => [t, c])));
+/** The events notified, by class: spec/attention.md "Notifications", "What is sent". Nothing of S2 to S4. */
+const SPEC_NOTIFIED: Record<string, string[]> = {
+  S0: ["wait_opened", "review_requested", "review_escalated", "amendment_requested"],
+  S1: ["run_succeeded", "run_failed", "run_cancelled", "run_attention_required", "budget_exceeded", "asks_exhausted"],
+};
+/** A notification's members, in order: spec/attention.md "Notifications", the payload's `interface Notification`. */
+const SPEC_MEMBERS = ["format", "id", "kind", "event", "class", "tenant", "run", "workflow", "package", "seq", "at", "role", "command", "deadline", "as_of", "link"];
 const LONG = { timeout: 240_000 };
 
 /** A deployment: its directory, its configuration, the persons' keys, the world it runs over, and a runtime of the configuration's own stores. */
@@ -75,7 +92,7 @@ interface Deployment {
   rt: Runtime;
   sink: string;
   /** One command, with `--config`; `input` is what the person types. */
-  cli(args: string[], input?: string[]): Promise<Said>;
+  cli(args: string[], input?: Typed): Promise<Said>;
   /** `mandate run` of the deployment's program. */
   run(runId: string, mode: string, extra?: string[]): Promise<Said>;
   /** `mandate tick`, its `Date.now` the SimClock's. */
@@ -130,7 +147,7 @@ async function deploy(o: { observer?: boolean } = {}): Promise<Deployment> {
   held.db = w.db;
   held.adapters = w.adapters;
   const rt = new Runtime(w.db, w.adapters, undefined, undefined, runtimeOptions(readConfig(config), w.db));
-  const cli = (args: string[], input?: string[]): Promise<Said> => mandate(config, args, input);
+  const cli = (args: string[], input?: Typed): Promise<Said> => mandate(config, args, input);
   return {
     dir,
     config,
@@ -165,9 +182,58 @@ function stateIn(said: Said, runId: string): string {
   return m![1]!;
 }
 
-/** `mandate decide` by `member`: the only open decision, its items waived and declined as `line` says, then signed. */
-async function decide(d: Deployment, member: string, line: string): Promise<Said> {
-  return d.cli(["decide", "--key", d.keys[member]!.file], ["1", line, "y"]);
+/** What a person types, a line per prompt (`mandate` in attention-world.ts). */
+type Typed = Array<string | ((printed: string) => string)>;
+
+/** An open item of a review as `mandate decide` printed it: its index, what it failed, and the invoice and order total its value shows. */
+interface Read {
+  index: number;
+  unmet: string;
+  invoice: string | undefined;
+  order: number | undefined;
+}
+
+/** The open items `mandate decide` printed (person.ts `openItemLines`): each `item N: unmet …` line and its value line. */
+function itemsIn(printed: string): Read[] {
+  const out: Read[] = [];
+  const lines = printed.split("\n");
+  lines.forEach((l, k) => {
+    const m = /^ {2}item (\d+): unmet (.*)$/.exec(l);
+    if (!m) return;
+    const value = /^ {4}value: (.*) {2}\[class /.exec(lines[k + 1] ?? "")?.[1] ?? "";
+    out.push({ index: Number(m[1]), unmet: m[2]!, invoice: /"invoice_no":"([^"]+)"/.exec(value)?.[1], order: Number(/"total_cents":(\d+)/.exec(value)?.[1] ?? Number.NaN) || undefined });
+  });
+  return out;
+}
+
+/**
+ * The scripted person's answer to a review: they read the open items `mandate decide` shows, each a match of an
+ * invoice to an order, and hold each against the invoice in their mailbox. They waive the first item that failed
+ * `totals` and whose order total shown differs from the invoice's (the gap they know of), and decline every other
+ * open item. `chosen` gets what they read.
+ */
+function person(chosen: Read[]): (printed: string) => string {
+  const mailbox = new Map(ALL.map(invoice).map((v) => [v["invoice_no"], v["total_cents"]]));
+  return (printed) => {
+    const items = itemsIn(printed);
+    chosen.push(...items);
+    const differ = items.filter((i) => i.unmet.startsWith("totals ") && i.order !== undefined && mailbox.get(i.invoice) !== undefined && mailbox.get(i.invoice) !== i.order);
+    const waived = differ[0]?.index;
+    const declined = items.map((i) => i.index).filter((i) => i !== waived);
+    return `waive ${String(waived)}${declined.length ? ` decline ${declined.join(" ")}` : ""}`;
+  };
+}
+
+/**
+ * `mandate decide` by `member`: the only open decision, answered by the scripted person from what the command showed,
+ * then signed. What they read gives them TOTALS, each with its invoice and its order's total; they waive TOTALS[0].
+ */
+async function decide(d: Deployment, member: string): Promise<Said> {
+  const chosen: Read[] = [];
+  const said = await d.cli(["decide", "--key", d.keys[member]!.file], ["1", person(chosen), "y"]);
+  expect(chosen.map((i) => [i.index, i.invoice, i.order]), said.out).toEqual(TOTALS.map((i) => [i, invoiceNo(i), order(i)["total_cents"]]));
+  expect(said.out).toContain(`waive ${TOTALS[0]!} decline ${TOTALS[1]!}`);
+  return said;
 }
 
 /** The events of a run as `mandate watch <run> --role R --jsonl` prints them. */
@@ -208,12 +274,64 @@ function heldToRole(events: Obj[], role: string): number {
   expect(events.length).toBeGreaterThan(0);
   for (const e of events) {
     const type = String(e["type"]);
-    expect(["S0", "S1", "S2"], type).toContain(e["class"]);
-    expect(["S0", "S1", "S2"], type).toContain(eventClass(type));
+    // The spec's class of the type, not the runtime's: a type of S3 or S4 given the class S2 is still refused here.
+    expect(["S0", "S1", "S2"], `${type} in ${role}'s stream`).toContain(CLASS_OF[type]);
+    expect(e["class"], type).toBe(CLASS_OF[type]);
   }
+  for (const r of events.filter((e) => e["type"] === "report")) {
+    // A report's fields: each one a labelled value, never a raw one.
+    const fields = ((r["data"] as Obj | undefined)?.["fields"] ?? []) as Obj[];
+    expect(fields.length, `report ${String(r["seq"])}`).toBeGreaterThan(0);
+    for (const f of fields) {
+      expect(typeof f["masked"], `report ${String(r["seq"])} field ${String(f["name"])}`).toBe("boolean");
+      expect(typeof f["class"], `report ${String(r["seq"])} field ${String(f["name"])}`).toBe("string");
+      expect(typeof f["known"], `report ${String(r["seq"])} field ${String(f["name"])}`).toBe("string");
+    }
+  }
+  bare(events, `${role}'s stream`);
   const values = events.filter((e) => e["type"] === "wait_opened" || e["type"] === "report").flatMap((e) => labelled((e["data"] as Obj | undefined) ?? {}, `${String(e["seq"])}:${String(e["type"])}`));
   capped(values, role);
   return values.length;
+}
+
+/** Every text and number in `v` that no labelled value (`{ masked, class, known }`) wraps. */
+function unwrapped(v: unknown, out: { texts: string[]; numbers: number[] } = { texts: [], numbers: [] }): { texts: string[]; numbers: number[] } {
+  if (typeof v === "string") out.texts.push(v);
+  else if (typeof v === "number") out.numbers.push(v);
+  else if (Array.isArray(v)) v.forEach((x) => unwrapped(x, out));
+  else if (isObj(v as Value) && typeof (v as Obj)["masked"] !== "boolean") Object.values(v as Obj).forEach((x) => unwrapped(x, out));
+  return out;
+}
+
+/** No value of the book stands in `v` outside a labelled value: no invoice or order number, vendor, or total. */
+function bare(v: unknown, where: string): void {
+  const b = book();
+  const { texts, numbers } = unwrapped(v);
+  for (const t of texts) for (const x of b.texts) expect(t.includes(x), `${x} bare in ${where}: ${t.slice(0, 200)}`).toBe(false);
+  for (const n of numbers) expect(b.numbers, `${n} bare in ${where}`).not.toContain(n);
+}
+
+/**
+ * The notification sink, held to the spec: at least `min` lines, each with the payload's members in order, of an
+ * event the spec notifies and of that event's class, and nothing of the book nor anything a server returned.
+ */
+function notifiedOnly(d: Deployment, min: number): Obj[] {
+  const sent = notifications(d);
+  expect(sent.length, JSON.stringify(sent)).toBeGreaterThanOrEqual(min);
+  const returned = d.sims.returned();
+  const b = book();
+  for (const n of sent) {
+    const line = JSON.stringify(n);
+    expect(Object.keys(n), line).toEqual(SPEC_MEMBERS);
+    expect(n["format"]).toBe("mandate/notification/0.1");
+    const cls = Object.keys(SPEC_NOTIFIED).find((c) => SPEC_NOTIFIED[c]!.includes(String(n["event"])));
+    expect(cls, `${String(n["event"])} notified`).toBeDefined();
+    expect(n["class"], line).toBe(cls);
+    expect(n["kind"], line).toBe(cls === "S0" ? "decision" : "outcome");
+    for (const t of [...returned.texts, ...b.texts]) expect(line.includes(t), `${t} in ${line}`).toBe(false);
+    for (const x of numbersIn(n)) expect([...returned.numbers, ...b.numbers], `${x} in ${line}`).not.toContain(x);
+  }
+  return sent;
 }
 
 /** Each value carries its class and how it is known, and is shown only when its class is at most the role's cap. */
@@ -245,11 +363,16 @@ function understated(total: number): (i: AttentionFactsInput) => AttentionFacts 
   };
 }
 
-/** The accountant's card approval, by the command line. */
+/**
+ * The accountant's card approval, by the command line; then a pass of `mandate tick`, so that the notification sink
+ * is in use before the first run, and is told each run from its first event (a channel that is new is told no
+ * history, src/notify.ts).
+ */
 async function approved(d: Deployment): Promise<string> {
   const said = await d.cli(["approve-envelope", d.program, "--key", d.keys["ana"]!.file, "--lock", d.lock]);
   expect(said.code, said.err).toBe(0);
   expect(said.out).toContain("approved by ana as accountant");
+  expect((await d.tick()).code).toBe(0);
   return /^package {2}(sha256:[0-9a-f]{64})$/m.exec(said.out)![1]!;
 }
 
@@ -301,7 +424,11 @@ describe("the acceptance of 0.7, row by row", () => {
     await mcp.close();
     expect(deployed.result["package"]).toBe(d.w.pkg.hash);
 
-    // ── The person approves the card: without it, no run starts.
+    // ── The person approves the card: without it, no run starts. The finance lead's signature is not the owner role's:
+    // it is refused, and the run is still not started.
+    const byBen = await d.cli(["approve-envelope", d.program, "--key", d.keys["ben"]!.file, "--lock", d.lock]);
+    expect(byBen.code, byBen.out).toBe(1);
+    expect(byBen.err).toContain("not_in_role");
     const unapproved = await d.run("d0", "design");
     expect(unapproved.code).toBe(1);
     expect(unapproved.err).toContain("unapproved_envelope");
@@ -309,8 +436,13 @@ describe("the acceptance of 0.7, row by row", () => {
 
     // ── design → read_only → live.
     expect(stateIn(await d.run("d1", "design"), "d1")).toBe("waiting");
-    expect(stateIn(await decide(d, "ana", `waive ${TOTALS[0]} decline ${TOTALS[1]}`), "d1")).toBe("succeeded");
+    expect(stateIn(await decide(d, "ana"), "d1")).toBe("succeeded");
     expect(d.sims.erp.drafts.size, "a design run writes nothing").toBe(0);
+    // A promotion is the owner role's: the finance lead's is refused, and stores nothing.
+    const promotedByBen = await d.cli(["promote", "d1", "--to", "read_only", "--key", d.keys["ben"]!.file, "--yes"]);
+    expect(promotedByBen.code, promotedByBen.out).toBe(1);
+    expect(promotedByBen.err).toContain("not_in_role");
+    expect(Number((await d.w.db.query<{ n: unknown }>("select count(*) as n from decisions where kind = 'promote'"))[0]!.n)).toBe(0);
     for (const mode of ["read_only", "live"]) {
       const refused = await d.run(`u-${mode}`, mode);
       expect(refused.code, mode).toBe(1);
@@ -319,7 +451,7 @@ describe("the acceptance of 0.7, row by row", () => {
     const toReadOnly = await d.cli(["promote", "d1", "--to", "read_only", "--key", d.keys["ana"]!.file, "--yes"]);
     expect(toReadOnly.code, toReadOnly.err).toBe(0);
     expect(stateIn(await d.run("r1", "read_only"), "r1")).toBe("waiting");
-    expect(stateIn(await decide(d, "ana", `waive ${TOTALS[0]} decline ${TOTALS[1]}`), "r1")).toBe("succeeded");
+    expect(stateIn(await decide(d, "ana"), "r1")).toBe("succeeded");
     expect(d.sims.erp.drafts.size, "a read_only run writes nothing").toBe(0);
     const liveRefused = await d.run("u-live2", "live");
     expect(liveRefused.err).toContain("unpromoted");
@@ -350,7 +482,8 @@ describe("the acceptance of 0.7, row by row", () => {
     const page = readFileSync(join(pages, "l1.accountant.html"), "utf8");
     expect(page).not.toMatch(/<script|\son[a-z]+\s*=|javascript:|href=|src=/i);
     expect(page).toContain(invoiceNo(TOTALS[0]!));
-    expect(stateIn(await decide(d, "ana", `waive ${TOTALS[0]} decline ${TOTALS[1]}`), "l1")).toBe("succeeded");
+    const answered = await decide(d, "ana");
+    expect(stateIn(answered, "l1")).toBe("succeeded");
     expect((await d.tick()).code).toBe(0);
     // What was written: each invoice that passed, and the one the accountant waived; not the declined one, nor the other vendor's.
     expect([...d.sims.erp.drafts.keys()].sort()).toEqual([...PASSED, TOTALS[0]!].sort().map(invoiceNo));
@@ -371,31 +504,23 @@ describe("the acceptance of 0.7, row by row", () => {
       if (role === "accountant") expect(values).toBeGreaterThan(0);
       // The command prints the role's projection as the runtime gives it, every event of it.
       expect((await d.rt.watchRun("l1", { role }, { limit: 500 })).events.map((e) => e.seq)).toEqual(events.map((e) => e["seq"]));
-      capped(labelled((await runView(d.rt, "l1", { role })).view), role);
+      const roleView = (await runView(d.rt, "l1", { role })).view;
+      capped(labelled(roleView), role);
+      bare(roleView, `${role}'s view`);
     }
     const reports = (await watched(d, "l1", "accountant")).filter((e) => e["type"] === "report");
     expect(reports).toHaveLength(2);
 
-    // ── Notifications only S0/S1: their types, their fields, and nothing a server returned.
-    const sent = notifications(d);
-    expect(sent.length).toBeGreaterThan(0);
+    // ── Notifications only S0/S1: their types, their fields, and nothing a server returned. The sink was in use before
+    // the first run, so it was told every run from its first event: the outcome of each, and the live run's review
+    // (the design and read_only runs' were answered before the pump reached them, and are passed over).
     const returned = d.sims.returned();
     expect(returned.texts).toEqual(expect.arrayContaining(ALL.map(invoiceNo)));
-    for (const n of sent) {
-      expect(Object.keys(n)).toEqual([...NOTIFICATION_MEMBERS]);
-      expect(n["format"]).toBe(NOTIFICATION_FORMAT);
-      expect(Object.keys(NOTIFIED)).toContain(n["event"]);
-      expect(["S0", "S1"]).toContain(n["class"]);
-      const line = JSON.stringify(n);
-      for (const t of returned.texts) expect(line.includes(t), `${t} in ${line}`).toBe(false);
-      for (const x of numbersIn(n)) expect(returned.numbers, `${x} in ${line}`).not.toContain(x);
-    }
+    const sent = notifiedOnly(d, 4);
     const events = new Set(sent.map((n) => `${String(n["run"])} ${String(n["event"])}`));
-    expect(events).toContain("l1 review_requested");
-    expect(events).toContain("l1 run_succeeded");
+    for (const e of ["d1 run_succeeded", "r1 run_succeeded", "l1 review_requested", "l1 run_succeeded"]) expect(events).toContain(e);
 
-    // ── Replay gives the same result: the live run's, and the design run's. (A read_only run's replay stops at its
-    // first write, which would apply and was never confirmed: interp.ts `prepareAction` replays a confirmed action only.)
+    // ── Replay gives the same result: the live run's, and the design run's.
     for (const runId of ["d1", "l1"]) {
       const run = await d.rt.getRun(runId);
       const said = await d.cli(["replay", runId, "--json"]);
@@ -403,6 +528,20 @@ describe("the acceptance of 0.7, row by row", () => {
       expect(JSON.parse(said.out), runId).toEqual({ status: "complete", value: run.result });
       expect(await d.rt.replayRun(runId), runId).toEqual({ status: "complete", value: run.result });
     }
+    // A known limit, awaiting the owner's decision (pr-b10.md "Not in this slice"): the replay of a read_only run is
+    // partial. Its writes would have applied and were never confirmed; in replay, interp.ts `prepareAction` takes only
+    // a confirmed action, a changeset's members included, so the replay stops at the first one. Pinned as it is today.
+    const r1Replay = await d.rt.replayRun("r1");
+    expect(r1Replay).toEqual({ status: "partial", stoppedAt: "/defs/MatchInvoices/body/8/value[0]/body/0/value" });
+
+    // ── The live promotion holds while its evidence does: once the read_only run's actions change, the shadow diff
+    // the start computes again is another, and no live run starts (spec/attention.md "Promotion", "How the runtime
+    // holds this").
+    await d.w.db.query(`update actions set params = '{"changed": true}'::jsonb where run_id = $1`, ["r1"]);
+    const l2 = await d.run("l2", "live");
+    expect(l2.code, l2.out).toBe(1);
+    expect(l2.err).toContain("unpromoted");
+    expect(Number((await d.w.db.query<{ n: unknown }>("select count(*) as n from runs where run_id = $1", ["l2"]))[0]!.n)).toBe(0);
 
     if (keep) {
       mkdirSync(keep, { recursive: true });
@@ -411,24 +550,88 @@ describe("the acceptance of 0.7, row by row", () => {
     }
   });
 
-  it("a role that is bound and never asked sees no value above its class, and no wait or report", LONG, async () => {
+  it("masking: a lock that caps an asked role below what it is shown is refused at load; a role that is bound and never asked is given nothing of the book; an asked role nothing above its cap", LONG, async () => {
     const d = await deploy({ observer: true });
+
+    // The accountant capped at `internal`, below the confidential totals the review shows it: the package is refused
+    // at load (E1909), before any run, command or call of a tool.
+    const low = join(d.dir, "invoices.low.lock.json");
+    const keyIds = Object.fromEntries(Object.entries(d.keys).map(([m, k]) => [m, k.id]));
+    writeFileSync(low, JSON.stringify(await deploymentLock(d.sims, keyIds, { observer: true, classes: { accountant: "internal" } }), null, 2));
+    for (const args of [["approve-envelope", d.program, "--key", d.keys["ana"]!.file, "--lock", low], ["run", d.program, "--workflow", WORKFLOW, "--input", "{}", "--run-id", "m0", "--lock", low, "--mode", "design"]]) {
+      const refused = await d.cli(args);
+      expect(refused.code, refused.out).toBe(1);
+      expect(refused.err).toContain("load_verification_failed");
+      expect(refused.err).toContain("MDT-E1909");
+    }
+    expect(await d.w.db.query("select run_id from runs where run_id = $1", ["m0"])).toEqual([]);
+    expect(await d.w.db.query("select command_id from commands where run_id = $1", ["m0"])).toEqual([]);
+    expect([d.sims.answered.length, d.sims.calls(d.sims.erp).length, d.sims.calls(d.sims.mailbox).length]).toEqual([0, 0, 0]);
+
+    // The observer is bound and never asked: of the book, nothing reaches it on any path, while the run waits on the
+    // accountant and once it has reported and ended.
     await approved(d);
     expect(stateIn(await d.run("o1", "design"), "o1")).toBe("waiting");
-    expect(await waitsOf(d, "cy")).toEqual([]);
-    const events = await watched(d, "o1", "observer");
-    heldToRole(events, "observer");
-    for (const e of events) {
-      expect(e["class"], String(e["type"])).not.toBe("S0");
-      expect(e["type"]).not.toBe("report");
+    const b = book();
+    expect(b.texts.length).toBeGreaterThanOrEqual(3 * ALL.length);
+    expect(b.numbers.length).toBeGreaterThanOrEqual(ALL.length);
+    const observed = async (when: string): Promise<void> => {
+      const events = await watched(d, "o1", "observer");
+      heldToRole(events, "observer");
+      for (const e of events) {
+        expect(e["class"], String(e["type"])).not.toBe("S0");
+        expect(e["type"]).not.toBe("report");
+      }
+      expect(await waitsOf(d, "cy")).toEqual([]);
+      const view = (await runView(d.rt, "o1", { role: "observer" })).view as unknown as Obj;
+      expect(view["waiting"]).toBeNull();
+      capped(labelled(view), "observer");
+      const pages = join(d.dir, `pages-cy-${when}`);
+      expect((await d.cli(["watch", "--member", "cy", "--out", pages])).code).toBe(0);
+      const got = [
+        JSON.stringify(events),
+        JSON.stringify(await d.rt.watchRun("o1", { role: "observer" }, { limit: 500 })),
+        (await d.cli(["watch", "o1", "--role", "observer"])).out,
+        (await d.cli(["waits", "--member", "cy"])).out,
+        (await d.cli(["waits", "--member", "cy", "--json"])).out,
+        JSON.stringify(view),
+        ...(existsSync(pages) ? readdirSync(pages).map((f) => readFileSync(join(pages, f), "utf8")) : []),
+      ];
+      for (const t of got) {
+        for (const x of b.texts) expect(t.includes(x), `${x} given to the observer (${when})`).toBe(false);
+        for (const n of b.numbers) expect(new RegExp(`\\b${n}\\b`).test(t), `${n} given to the observer (${when})`).toBe(false);
+      }
+    };
+    await observed("waiting");
+    expect(stateIn(await decide(d, "ana"), "o1")).toBe("succeeded");
+    await observed("ended");
+    // The accountant, asked and reported to: every value it was shown labelled, none above its cap.
+    expect(heldToRole(await watched(d, "o1", "accountant"), "accountant")).toBeGreaterThan(0);
+
+    // What E1909 cannot see: the stored facts of a run say its review shows `restricted` data, above the accountant's
+    // cap (B3's facts door, as the asks case below uses it). The accountant is asked and shown every value masked,
+    // labelled `restricted`, on its waits, its view and its stream; nothing of the book reaches it there.
+    d.rt.attentionFacts = (i) => {
+      const f = attentionFacts(i)!;
+      return { ...f, questions: (f.questions ?? []).map((q) => ({ ...q, shown: "restricted" as DataClass })) };
+    };
+    expect((await d.rt.startRun({ pkg: d.w.pkg, workflow: WORKFLOW, input: {}, runId: "m1", mode: "design" })).state).toBe("waiting");
+    const asked = (await waitsOf(d, "ana")).filter((w) => JSON.stringify(w).includes('"m1"'));
+    expect(asked).toHaveLength(1);
+    const streamed = await watched(d, "m1", "accountant");
+    // (The run's reports keep their own fields' classes: only what the review shows is said to be restricted.)
+    const anaView = (await runView(d.rt, "m1", { role: "accountant" })).view as unknown as Obj;
+    capped(labelled(anaView), "accountant");
+    const shownAna = [...labelled(asked), ...labelled(anaView["waiting"]), ...labelled(streamed.filter((e) => e["type"] === "wait_opened"))];
+    expect(shownAna.length).toBeGreaterThan(0);
+    capped(shownAna, "accountant");
+    for (const { at, shown } of shownAna) expect([shown["masked"], shown["class"]], at).toEqual([true, "restricted"]);
+    heldToRole(streamed, "accountant");
+    for (const t of [JSON.stringify(asked), (await d.cli(["waits", "--member", "ana"])).out, JSON.stringify(streamed)]) {
+      for (const x of b.texts) expect(t.includes(x), `${x} shown to the accountant above its cap`).toBe(false);
+      for (const n of b.numbers) expect(new RegExp(`\\b${n}\\b`).test(t), `${n} shown to the accountant above its cap`).toBe(false);
     }
-    const view = (await runView(d.rt, "o1", { role: "observer" })).view as unknown as Obj;
-    expect(view["waiting"]).toBeNull();
-    capped(labelled(view), "observer");
-    const pages = join(d.dir, "pages-cy");
-    expect((await d.cli(["watch", "--member", "cy", "--out", pages])).code).toBe(0);
-    const texts = [JSON.stringify(events), JSON.stringify(view), ...(existsSync(pages) ? readdirSync(pages).map((f) => readFileSync(join(pages, f), "utf8")) : [])];
-    for (const t of texts) for (const i of ALL) expect(t.includes(invoiceNo(i)), `invoice ${i}`).toBe(false);
+    await d.rt.cancelRun("m1");
   });
 
   it("asks bound: a run whose limit is below the program's questions is refused at its start", LONG, async () => {
@@ -438,6 +641,8 @@ describe("the acceptance of 0.7, row by row", () => {
     expect(said.code).toBe(1);
     expect(said.err).toMatch(/attention_above_asks: The run can ask 2 questions under the runtime's configuration \(2 in the program, and 0 the configuration hands to a person\), above its asks limit of 1/);
     expect(Number((await d.w.db.query<{ n: unknown }>("select count(*) as n from runs where run_id = $1", ["a1"]))[0]!.n)).toBe(0);
+    expect((await d.tick()).code).toBe(0);
+    expect(notifications(d).filter((n) => n["run"] === "a1")).toEqual([]);
   });
 
   it("asks bound: a question past the run's bound is not asked, and asks_exhausted is shown", LONG, async () => {
@@ -446,7 +651,6 @@ describe("the acceptance of 0.7, row by row", () => {
     d.rt.attentionFacts = understated(1);
     const run = await d.rt.startRun({ pkg: d.w.pkg, workflow: WORKFLOW, input: {}, runId: "x1", mode: "design" });
     expect(run.state).toBe("waiting");
-    // The sink is in use from the first pass on: a channel that is new is told no history (src/notify.ts).
     expect((await d.tick()).code).toBe(0);
     d.w.clock.advance(DAY + 1);
     const after = await d.rt.tick("x1");
@@ -455,10 +659,17 @@ describe("the acceptance of 0.7, row by row", () => {
     expect(types).not.toContain("review_escalated");
     expect(types).toContain("review_expired");
     expect(after.state).toBe("succeeded");
+    // Expired, not escalated: every open item declined by nobody.
+    const expired = (await d.rt.journal.events("x1")).find((e) => e.type === "review_expired")!;
+    expect(expired.data).toMatchObject({ role: "accountant", declined: TOTALS });
+    const outcome = (await d.w.db.query<{ result: Obj }>("select result from commands where run_id = $1 and command_id = $2", ["x1", (expired.data as Obj)["command"]]))[0]!.result;
+    expect(outcome).toMatchObject({ waive: [], decline: TOTALS, by: null, role: "accountant", expired: true });
     const seen = await watched(d, "x1", "accountant");
     expect(seen.map((e) => e["type"]), JSON.stringify(seen)).toContain("asks_exhausted");
+    heldToRole(seen, "accountant");
     expect((await d.tick()).code).toBe(0);
-    expect(notifications(d).map((n) => n["event"])).toContain("asks_exhausted");
+    const sent = notifiedOnly(d, 3).filter((n) => n["run"] === "x1").map((n) => `${String(n["event"])} ${String(n["role"])}`);
+    expect(sent).toEqual(expect.arrayContaining(["review_requested accountant", "asks_exhausted accountant", "run_succeeded accountant"]));
   });
 
   it("missed deadline escalates: a day passes, mandate tick escalates the review, and the finance lead decides", LONG, async () => {
@@ -471,10 +682,22 @@ describe("the acceptance of 0.7, row by row", () => {
     const types = (await d.rt.journal.events("e1")).map((e) => e.type);
     expect(types).toContain("review_escalated");
     expect(await waitsOf(d, "ana")).toEqual([]);
-    expect(await waitsOf(d, "ben")).toHaveLength(1);
-    expect(stateIn(await decide(d, "ben", `waive ${TOTALS[0]} decline ${TOTALS[1]}`), "e1")).toBe("succeeded");
+    // The finance lead, asked once the review escalated: every value its wait and its view show labelled, none above
+    // its cap; its stream holds none (the review was opened for the accountant, and the reports are the accountant's).
+    const asked = await waitsOf(d, "ben");
+    expect(asked).toHaveLength(1);
+    const shownBen = [...labelled(asked), ...labelled((await runView(d.rt, "e1", { role: "finance_lead" })).view)];
+    expect(shownBen.length).toBeGreaterThan(0);
+    capped(shownBen, "finance_lead");
+    bare(asked, "the finance lead's waits");
+    expect(stateIn(await decide(d, "ben"), "e1")).toBe("succeeded");
+    heldToRole(await watched(d, "e1", "finance_lead"), "finance_lead");
     expect((await d.tick()).code).toBe(0);
-    expect(notifications(d).map((n) => `${String(n["event"])} ${String(n["role"])}`)).toContain("review_escalated finance_lead");
+    // The accountant's request was replaced by the escalation before the pump reached it: it is passed over.
+    const sent = notifiedOnly(d, 2).filter((n) => n["run"] === "e1").map((n) => `${String(n["event"])} ${String(n["role"])}`);
+    expect(sent).toContain("review_escalated finance_lead");
+    expect(sent).toContain("run_succeeded accountant");
+    expect(sent).not.toContain("review_requested accountant");
   });
 
   it("missed deadline escalates: when both deadlines pass, nobody's open items are declined and the run goes on with what was accepted", LONG, async () => {
@@ -487,8 +710,38 @@ describe("the acceptance of 0.7, row by row", () => {
     expect((await d.tick()).code).toBe(0);
     const run = await d.rt.getRun("e2");
     expect(run.state).toBe("succeeded");
-    const types = (await d.rt.journal.events("e2")).map((e) => e.type);
-    expect(types).toEqual(expect.arrayContaining(["review_escalated", "review_expired"]));
+    const events = await d.rt.journal.events("e2");
+    expect(events.map((e) => e.type)).toEqual(expect.arrayContaining(["review_escalated", "review_expired"]));
+    // Every open item declined, by nobody, in the role the review last asked.
+    const expired = events.filter((e) => e.type === "review_expired");
+    expect(expired).toHaveLength(1);
+    expect(expired[0]!.data).toMatchObject({ role: "finance_lead", declined: TOTALS });
+    const outcome = (await d.w.db.query<{ result: Obj }>("select result from commands where run_id = $1 and command_id = $2", ["e2", (expired[0]!.data as Obj)["command"]]))[0]!.result;
+    expect(outcome).toMatchObject({ waive: [], decline: TOTALS, by: null, role: "finance_lead", expired: true });
+    expect(events.filter((e) => e.type === "review_decided" || e.type === "criterion_waived")).toEqual([]);
+    // The result: what passed is written (simulated, a design run), and each open item is declined by nobody, beside
+    // the other vendor's match, which no one may waive.
+    expect(run.result).toEqual({
+      failed: [],
+      posted: PASSED.map(() => ({ $tag: "Ok", $args: [{ effect: "erp.post_draft_invoice", simulated: true, params_digest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) }] })),
+      declined: [...TOTALS, ...VENDOR].sort().map((i) => ({ by: null, index: i, unmet: [VENDOR.includes(i) ? "vendor" : "totals"], value: { invoice_no: invoiceNo(i), order: order(i) } })),
+    });
     expect(await d.rt.replayRun("e2")).toEqual({ status: "complete", value: run.result });
+    const sent = notifiedOnly(d, 2).filter((n) => n["run"] === "e2").map((n) => `${String(n["event"])} ${String(n["role"])}`);
+    expect(sent).toEqual(expect.arrayContaining(["review_escalated finance_lead", "run_succeeded accountant"]));
+  });
+
+  it("the literals the cases hold the runtime to are the spec's tables", () => {
+    const boundary = read("spec/boundary.md");
+    const table = boundary.slice(boundary.indexOf("**Events.** The class of every event type"), boundary.indexOf("An event's class says which projections"));
+    const classes = Object.fromEntries([...table.matchAll(/^\| (S[0-4]) \| (.*) \|$/gm)].map((m) => [m[1]!, [...m[2]!.matchAll(/`(\w+)`/g)].map((x) => x[1]!)]));
+    expect(classes).toEqual(SPEC_CLASSES);
+    const attention = read("spec/attention.md");
+    const what = attention.slice(attention.indexOf("- **What is sent.**"), attention.indexOf("- **The id**"));
+    const named = (re: RegExp): string[] => [...re.exec(what)![1]!.matchAll(/`(\w+)`/g)].map((x) => x[1]!);
+    expect({ S0: named(/S0 events \(([^)]*)\)/), S1: named(/S1\s+events \(([^)]*)\)/) }).toEqual(SPEC_NOTIFIED);
+    const payload = attention.slice(attention.indexOf("interface Notification {"), attention.indexOf("interface Notifier"));
+    const body = payload.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^interface Notification \{/, "").replace(/\}\s*$/, "").replace(/\{[^{}]*\}/g, "X");
+    expect(body.split(";").map((m) => /^\s*(\w+)/.exec(m)?.[1]).filter((m) => m !== undefined)).toEqual(SPEC_MEMBERS);
   });
 });
