@@ -2039,11 +2039,12 @@ arguments' class alone, so a 0.6 function that reads classified data and
 returns it as an unclassified type no longer hands it to a public model, a
 delegation or a sub-program unrefused: the check refuses it (E0220, and
 E1706 in a sub-program), and the door `lead_classes` gives a `plan` handed
-such a result that class. A run journaled before the change replays and
-resumes as it did (the lead's class is not journaled and a replay checks no
-sub-program again; `crates/mandate-check/tests/class_0_6.rs` holds the
-`lead_classes` value, and no test replays a journal written before the
-change). The rule and the security note are in
+such a result that class. A run journaled before the change replays as it
+did, and a resumed run does not check again a sub-program it admitted; a
+sub-program a lead submits after the resume is checked with the new class
+(by reading `runtime.ts` `loaded()` and `interp.ts` `plan`, not by a test:
+`crates/mandate-check/tests/class_0_6.rs` holds the `lead_classes` value,
+and no test replays a journal written before the change). The rule and the security note are in
 [`attention.md`](attention.md#static-rules), "The class of a function's
 result".
 

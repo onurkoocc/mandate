@@ -376,9 +376,11 @@ the same hole was open there: a sub-program could hand the data on as if the
 lead had received less. These two, a diagnostic and a door's value, both
 from this one rule, are the only outputs of a 0.6 program that changed after
 its release; every other output of a program of 0.1 to 0.6 stays byte for
-byte as it was. A run journaled before the change replays and resumes as
-it did: the lead's class is not journaled, a replay checks no sub-program
-again, and a resumed run does not check again one it admitted.
+byte as it was. A run journaled before the change replays as it did, and
+a resumed run does not check again a sub-program it admitted; a sub-program
+a lead submits after the resume is checked with the new class (by reading
+the code, not by a test: no test replays a journal written before the
+change).
 
 Every new code has at least one conformance case of language `mandate/0.7`,
 a passing program, one patch and the one code expected, and a test fails on a
@@ -1992,5 +1994,5 @@ Candidates for a fix, from the limits above, without a promise:
 - releasing the `asks` reservation when a run ends;
 - naming the value that raises the class in E1909;
 - the data class of a function's result in languages 0.3 to 0.5, which
-  means changing the TypeScript reference compiler;
+  means changing both compilers, the TypeScript reference among them;
 - over-masking of a shape's stage and report titles.
