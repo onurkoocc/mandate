@@ -11,13 +11,16 @@
 
 #![allow(dead_code)]
 
-use mandate_check::{CheckResult, requirements_to_js, sandbox_requirements, semantic_diff_with};
+use mandate_check::{
+    CheckOptions, CheckResult, requirements_to_js, sandbox_requirements, semantic_diff_with,
+};
 use mandate_ir::{Diagnostic, JsObject, JsValue, canonicalize, stringify_pretty};
 use mandate_syntax::{kind_of, load};
 use mandate_testkit::read_json;
 use mandate_views::{
-    architecture_with_lock, authority_with, card, card_doc, cost_with, envelope_workflows,
-    program_doc, to_html, to_markdown,
+    architecture_with_lock, attention_doc, attention_program_doc, attention_view,
+    attention_views_js, authority_with, card, card_doc, cost_with, envelope_workflows,
+    has_attention, program_doc_given, to_html, to_markdown, workflow_names,
 };
 
 use crate::common::{
@@ -252,9 +255,56 @@ fn outputs_of_text_more(
             "view --format json".to_owned(),
             pretty(&JsValue::Object(views)),
         ));
-        let doc = program_doc(p, lock.as_ref(), Some(&modules));
+        // A program of 0.7 has its attention view in the document; the check
+        // that makes it is given the program's own modules and libraries.
+        let own_modules = modules_of(&files, &files)?;
+        let own_modules = crate::common::with_more(Some(&own_modules), more).unwrap_or(own_modules);
+        let libraries = crate::common::libraries_of(&library_dirs_of(program))?;
+        let check_with = CheckOptions {
+            modules: Some(&own_modules),
+            libraries: (!libraries.is_empty()).then_some(libraries.as_slice()),
+            ..CheckOptions::default()
+        };
+        let doc = program_doc_given(p, lock.as_ref(), Some(&modules), None, &check_with);
         out.push(("view --format md".to_owned(), to_markdown(&doc)));
         out.push(("view --format html".to_owned(), to_html(&doc)));
+        // 0.7: `view --attention --format json|md|html`: the attention view
+        // of each workflow, as `mandate view` writes it (the JSON: one object
+        // with every workflow; the text: the document of the one workflow, or
+        // of all of them).
+        if has_attention(p) && !workflow_names(p).is_empty() {
+            let opts = CheckOptions {
+                lock: lock.as_ref(),
+                ..check_with
+            };
+            let mut views = Vec::new();
+            for name in workflow_names(p) {
+                views.push(
+                    attention_view(text, kind_of(program), &opts, &name)
+                        .ok_or_else(|| format!("{program}: {name} has no attention view"))?,
+                );
+            }
+            let first = views
+                .first()
+                .ok_or_else(|| format!("{program}: no workflow has an attention view"))?;
+            let json = attention_views_js(&first.program, &views);
+            let (md, html) = match views.as_slice() {
+                [only] => (
+                    to_markdown(&attention_doc(only)),
+                    to_html(&attention_doc(only)),
+                ),
+                all => {
+                    let doc = attention_program_doc(all);
+                    (
+                        doc.as_ref().map(to_markdown).unwrap_or_default(),
+                        doc.as_ref().map(to_html).unwrap_or_default(),
+                    )
+                }
+            };
+            out.push(("view --attention --format json".to_owned(), pretty(&json)));
+            out.push(("view --attention --format md".to_owned(), md));
+            out.push(("view --attention --format html".to_owned(), html));
+        }
         out.push((
             "view --against itself".to_owned(),
             pretty(&semantic_diff_with(p, p, None, Some(&modules)).to_js()),
@@ -295,6 +345,38 @@ fn outputs_of_text_more(
         }
     }
     Ok(out)
+}
+
+/// The outputs of a program without what its attention view adds: the
+/// outputs `view --attention …`, and the attention section of its document
+/// (the last blocks of `view --format md` and `html`). A gate that holds
+/// the views of a program relabelled 0.7, or given stages and reports, to
+/// those it had compares the old views; the attention view shows exactly
+/// what the program's stages, reports and questions are.
+pub fn without_attention(outs: Vec<(String, String)>) -> Vec<(String, String)> {
+    outs.into_iter()
+        .filter(|(n, _)| !n.starts_with("view --attention"))
+        .map(|(n, t)| {
+            let t = match n.as_str() {
+                "view --format md" => match t.find("\n\n## Attention: ") {
+                    Some(at) => format!("{}\n", t.get(..at).unwrap_or_default()),
+                    None => t,
+                },
+                "view --format html" => {
+                    match (t.find("\n<h2>Attention: "), t.find("\n</body></html>")) {
+                        (Some(from), Some(to)) if from < to => format!(
+                            "{}{}",
+                            t.get(..from).unwrap_or_default(),
+                            t.get(to..).unwrap_or_default()
+                        ),
+                        _ => t,
+                    }
+                }
+                _ => t,
+            };
+            (n, t)
+        })
+        .collect()
 }
 
 /// The sub-programs of a program of 0.6 whose outputs are pinned with it:

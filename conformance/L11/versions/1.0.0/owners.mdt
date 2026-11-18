@@ -1,0 +1,24 @@
+// acme.owners 1.0.0, a library of 0.7 (L11): a workflow whose card the
+// accountant approves, and which asks the clerk. 1.1.0 makes the clerk its
+// owner: a role the workflow already asks, so its authority signature does
+// not widen, but who approves it changed.
+
+mandate @ 0.7
+
+module acme.owners @ 1.0
+
+use std.{human, model}
+
+pub role accountant "Accountant"
+pub role clerk      "Clerk"
+
+pub capability M = model.infer(tier: standard)
+
+/// Asks the clerk whether a note is right.
+pub workflow Confirm(note: Text) -> Untrusted<Text>
+  owner  accountant
+  caps   M
+  budget { time: 10m }
+{
+  human.ask("Is {note} right?", role: clerk)
+}

@@ -1960,6 +1960,9 @@
             },
             "apply": {
               "$ref": "#/$defs/Apply"
+            },
+            "owner": {
+              "$ref": "#/$defs/Name"
             }
           },
           "additionalProperties": false,

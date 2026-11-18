@@ -1218,6 +1218,151 @@
       "plans": []
     }
   },
+  "fixtures/attention/owner.mdt": {
+    "Describe": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Describe",
+      "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+      "stages": [
+        {
+          "path": "/defs/Describe/body/0",
+          "name": "write",
+          "title": "Write the line",
+          "index": 0
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Describe/body/2",
+          "role": "accountant",
+          "title": "Line written",
+          "stage": "write",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "effects": [],
+      "totals": {
+        "questions": 0,
+        "by_role": [],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Describe",
+          "wait": "/defs/Describe/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Check": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Check",
+      "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+      "stages": [
+        {
+          "path": "/defs/Check/body/0",
+          "name": "write",
+          "title": "Write the line",
+          "index": 0
+        },
+        {
+          "path": "/defs/Check/body/3",
+          "name": "check",
+          "title": "Check the line",
+          "index": 1
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Check/body/2",
+          "role": "accountant",
+          "title": "Line written",
+          "stage": "write",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/Check/body/4/value",
+          "wait": "/defs/Check/body/4/value",
+          "kind": "ask",
+          "role": "accountant",
+          "shown": "public",
+          "known": "model",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "check",
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 1,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Check",
+          "wait": "/defs/Check/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
   "fixtures/attention/reports.mdt": {
     "MatchAll": {
       "format": "mandate/attention/0.1",
@@ -1724,6 +1869,240 @@
         {
           "path": "/defs/Greet",
           "wait": "/defs/Greet/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    }
+  },
+  "fixtures/attention/view.mdt": {
+    "Settle": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Settle",
+      "program": "sha256:45b63b874e1a92fa0a184755f477c1f985abacab9c21a4ee2620428984f498e9",
+      "stages": [
+        {
+          "path": "/defs/Settle/body/0",
+          "name": "work",
+          "title": "Work on each item",
+          "index": 0
+        },
+        {
+          "path": "/defs/Settle/body/2",
+          "name": "exceptions",
+          "title": "Decide on the exceptions",
+          "index": 1
+        },
+        {
+          "path": "/defs/Settle/body/4",
+          "name": "done",
+          "title": "Settled",
+          "index": 2
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Settle/body/5",
+          "role": "accountant",
+          "title": "Settled",
+          "stage": "done",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "accepted",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            },
+            {
+              "name": "declined",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            },
+            {
+              "name": "failed",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/Settle/body/3/value",
+          "wait": "/defs/Settle/body/3/value",
+          "kind": "review",
+          "role": "accountant",
+          "shown": "public",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "escalates",
+          "escalates": {
+            "to": "finance_lead",
+            "deadline_ms": 86400000
+          },
+          "stage": "exceptions",
+          "multiplicity": 1,
+          "only": null,
+          "items": 20,
+          "waivable": [
+            "Fits.same"
+          ]
+        },
+        {
+          "path": "/defs/Settle/body/3/value",
+          "wait": "/defs/Settle/body/3/value",
+          "kind": "review",
+          "role": "finance_lead",
+          "shown": "public",
+          "known": "model",
+          "deadline_ms": 86400000,
+          "on_no_answer": "declined",
+          "stage": "exceptions",
+          "multiplicity": 1,
+          "only": "on_escalation",
+          "items": 20,
+          "waivable": [
+            "Fits.same"
+          ]
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 2,
+        "by_role": [
+          {
+            "role": "accountant",
+            "questions": 1
+          },
+          {
+            "role": "finance_lead",
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": 2,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Settle",
+          "wait": "/defs/Settle/on/budget_exceeded",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": null,
+          "multiplicity": 1,
+          "only": "budget_exceeded"
+        }
+      ],
+      "plans": []
+    },
+    "Notify": {
+      "format": "mandate/attention/0.1",
+      "workflow": "Notify",
+      "program": "sha256:45b63b874e1a92fa0a184755f477c1f985abacab9c21a4ee2620428984f498e9",
+      "stages": [
+        {
+          "path": "/defs/Notify/body/0",
+          "name": "ask",
+          "title": "Ask <b>first</b> | \"quote\" & more",
+          "index": 0
+        },
+        {
+          "path": "/defs/Notify/body/3",
+          "name": "tell",
+          "title": "Tell",
+          "index": 1
+        }
+      ],
+      "reports": [
+        {
+          "path": "/defs/Notify/body/4",
+          "role": "accountant",
+          "title": "Told",
+          "stage": "tell",
+          "multiplicity": 1,
+          "fields": [
+            {
+              "name": "words",
+              "type": "Int",
+              "class": "public",
+              "known": "plain"
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "path": "/defs/Notify/body/1/value",
+          "wait": "/defs/Notify/body/1/value",
+          "kind": "ask",
+          "role": "observer",
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "ask",
+          "multiplicity": 1,
+          "only": null
+        },
+        {
+          "path": "/defs/Notify/body/2/value",
+          "wait": "/defs/Notify/body/2/value",
+          "kind": "pause",
+          "role": null,
+          "shown": "public",
+          "known": "plain",
+          "deadline_ms": null,
+          "on_no_answer": "waits",
+          "stage": "ask",
+          "multiplicity": 1,
+          "only": null
+        }
+      ],
+      "effects": [],
+      "totals": {
+        "questions": 2,
+        "by_role": [
+          {
+            "role": "observer",
+            "questions": 1
+          },
+          {
+            "role": null,
+            "questions": 1
+          }
+        ],
+        "reports": [
+          {
+            "role": "accountant",
+            "reports": 1
+          }
+        ]
+      },
+      "asks": null,
+      "budget_exceeded": [
+        {
+          "path": "/defs/Notify",
+          "wait": "/defs/Notify/on/budget_exceeded",
           "kind": "pause",
           "role": null,
           "shown": "public",

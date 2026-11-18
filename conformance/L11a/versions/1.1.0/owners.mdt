@@ -1,0 +1,24 @@
+// acme.owners 1.1.0 (L11a): 1.0.0 with the clerk as the workflow's owner
+// and one report more, to the clerk: both reasons for a major version,
+// which a minor version's refusal names both.
+
+mandate @ 0.7
+
+module acme.owners @ 1.0
+
+use std.{human, model}
+
+pub role accountant "Accountant"
+pub role clerk      "Clerk"
+
+pub capability M = model.infer(tier: standard)
+
+/// Asks the clerk whether a note is right.
+pub workflow Confirm(note: Text) -> Untrusted<Text>
+  owner  clerk
+  caps   M
+  budget { time: 10m }
+{
+  report to clerk "Note received" { words: len(note) }
+  human.ask("Is {note} right?", role: clerk)
+}

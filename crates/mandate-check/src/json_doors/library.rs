@@ -52,7 +52,7 @@ fn source_value(v: &Value, name: &str) -> Result<LibrarySource, DoorError> {
 }
 
 /// The libraries of the member `name` (an array), or none.
-pub(super) fn sources_of(m: Members<'_>, name: &str) -> Result<Vec<LibrarySource>, DoorError> {
+pub fn sources_of(m: Members<'_>, name: &str) -> Result<Vec<LibrarySource>, DoorError> {
     if m.opt_value(name).is_none_or(|v| matches!(v, Value::Null)) {
         return Ok(Vec::new());
     }
@@ -82,7 +82,7 @@ fn versions_of(m: Members<'_>, name: &str) -> Result<Vec<Published>, DoorError> 
 }
 
 /// The member `config`, read.
-pub(super) fn config_of(m: Members<'_>) -> Result<Option<LibrariesConfig>, DoorError> {
+pub fn config_of(m: Members<'_>) -> Result<Option<LibrariesConfig>, DoorError> {
     match m.opt_value("config") {
         None | Some(Value::Null) => Ok(None),
         Some(v) => read_libraries_config(v).map(Some).map_err(|problems| {

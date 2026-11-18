@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1911a",
+  "kind": "compile",
+  "title": "A lock of 0.7 that asks for the promotion ladder is refused with a program of 0.6, whose runs climb no ladder, rather than dropped silently; the same program of 0.7 takes it (a mutation: the program relabelled 0.6).",
+  "spec": [
+    "spec/attention.md#lock-07",
+    "spec/attention.md#promotion"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../E1910/program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/language",
+      "value": "mandate/0.6"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1911",
+        "path": "/promotion",
+        "facts": {
+          "field": "promotion",
+          "language": "mandate/0.6"
+        }
+      }
+    ]
+  }
+}

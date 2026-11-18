@@ -1272,7 +1272,7 @@ held by what a person writes and by what the Rust writes:
   `diagnostic-vectors.test.ts`, `diff-vectors.test.ts`) skip them, and each checks
   that what it skipped is exactly the directories whose `case.json` names 0.6, read
   as plain JSON, and that there are `RUST_ONLY_CASES` of them
-  (`compiler/test/cases-runner.ts`, 394 today, of 0.6 and 0.7): a case of 0.6 added or taken away
+  (`compiler/test/cases-runner.ts`, 410 today, of 0.6 and 0.7): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
   version, `mandate/0.8`, E0103, whose list has 0.6 and 0.7), `E0140` (a 0.5 lock that carries `libraries`),
@@ -1333,31 +1333,57 @@ same way, by gates of its own beside those of 0.6:
 - **Conformance cases of 0.7**, `"language": "mandate/0.7"`, written by hand and
   skipped and counted by the TypeScript runners as those of 0.6 are
   (`RUST_ONLY_LANGUAGES` is `mandate/0.6` and `mandate/0.7`, and `RUST_ONLY_CASES`
-  counts both, 394 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
+  counts both, 410 today). The cases today: `S02i` (a 0.7 program checks), `S02j` (an
   unknown field of a 0.7 program, E0104), `S02k` and `S02l` (a 0.7 program with a lock
   of format 0.6, and of 0.7), `E0140d` (an unknown field of a 0.7 lock, E0140), `E1509` to `E1509b`
   (slice RL7), the stages (slice RL2): `A01` to `A01b`, `E0101h`, `E0104h` to `E0104j`, `E1901` to
   `E1901b` and `E1902` to `E1902g`, and the reports (slice RL3): `A02` to `A02b`, `A03`, `E0101i`,
   `E0104k` to `E0104o`, `E0121g`, `E1501b`, `E1502a`, `E1705b`, `E1705c`, `E1903` to `E1903e`, `E1904`
   to `E1904v` and `E1905` to `E1905g`, `std.patterns` 2.0.0 (slice RL6): `E1609` to `E1609c`,
-  `E1603b` and `L10` to `L10e`, and the attention bound (slice RL4): `E1906` to `E1906p`,
-  `E1907` to `E1907b`, `E1908` to `E1908e`, `E1706c` to `E1706e`, `E1709e` to `E1709g`, `E1501c`, `E1501d`, `S04b`, `S04c`, `E1907c` and `E0220h`
+  `E1603b` and `L10` to `L10e`, the attention bound (slice RL4): `E1906` to `E1906p`,
+  `E1907` to `E1907c`, `E1908` to `E1908e`, `E1706c` to `E1706e`, `E1709e` to `E1709g`, `E1501c`, `E1501d`, `S04b`, `S04c` and `E0220h`,
+  and the owner and the lock of 0.7 (slice RL5): `A04`, `E1910` to `E1910b`, `E1911`, `E1911a`, `E1705d`,
+  `E1501e`, `E1502b`, `E0140e` to `E0140h`, `E1307f`, `L11` and `L11a`
   (`conformance/README.md`, "Cases of 0.7").
-- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (eight today,
-  `asks.mdt`, `minimal.mdt`, `reports.mdt`, `shapes.mdt`, `stages.mdt`, and `batch.mdt`, `fan-out.mdt` and `maker-checker.mdt`,
-  which apply the patterns of `std.patterns` 2.0.0 with their locks; 106 outputs), the digest of each output text, made
+- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (ten today,
+  `asks.mdt`, `minimal.mdt`, `owner.mdt` (with its lock of 0.7, which gives role classes and asks for the
+  promotion ladder), `reports.mdt`, `shapes.mdt`, `stages.mdt`, `view.mdt` (with its lock), and `batch.mdt`, `fan-out.mdt` and `maker-checker.mdt`,
+  which apply the patterns of `std.patterns` 2.0.0 with their locks; 160 outputs), the digest of each output text, made
   by the code of `golden/0.6.json` (`crates/mandate-testkit/tests/golden_0_7.rs`).
 - **`diagnostics-0.7/`**: the whole result of every compile case of 0.7 and of the
   checks and `load` of every 0.7 program, in the layout of `diagnostics-0.6/`
   (`crates/mandate-testkit/tests/diagnostics_0_7.rs`; the code is shared with
   `diagnostics_0_6.rs`, `tests/rust_diagnostics/`).
 - **`attention-0.7/facts.json`**: the attention facts of every workflow of every 0.7
-  program of `fixtures/attention/` (18 workflows today), and of a sub-program, as the door `attention_facts`
+  program of `fixtures/attention/` (22 workflows today), and of a sub-program, as the door `attention_facts`
   gives them with the program's modules, `{ "<program>": { "<workflow>": <facts> } }`
   (`crates/mandate-testkit/tests/attention_0_7.rs`, which also holds the door to the
   function, `mandate_check::attention_facts`). Their shape is below ("The attention facts").
 
-The three are written by the Rust with `MANDATE_UPDATE_0_7=1` (passed on by
+- **`attention-0.7/view.json`**: the attention view of every workflow of every 0.7
+  program of `fixtures/attention/`, as the door `attention` (a Rust-only door of
+  `mandate-views`, `RUST_DOORS`) gives it with the program's modules and its lock (the
+  `<name>.lock.json` beside it), `{ "<program>": { "<workflow>": { "json", "md", "html" } } }`
+  (`crates/mandate-testkit/tests/attention_view_0_7.rs`). **What the Node server must match
+  (slice B9):**
+  - the command `view <program> --attention --workflow W --format json|md|html` gives these
+    texts for that workflow (the JSON as the door gives it, pretty-printed; the Markdown and the
+    HTML are the document `# Attention: W`);
+  - without `--workflow`, the JSON is one object `{ format, kind, program, workflows: [view] }`
+    (also for a program of one workflow), and the Markdown and the HTML are one document, the
+    program's title and a `## Attention: W` heading for each workflow (for a program of one
+    workflow, the document of that workflow); the digests of these are in `golden/0.7.json`
+    (`view --attention --format json|md|html`);
+  - the MCP `project` tool with `view: "attention"` answers in JSON, as the other views of
+    `project` do (the content text is the view pretty-printed): with `workflow` the view of
+    that workflow (`"<w> is not a workflow of this program"` for another name), without it the
+    object of every workflow, the very text the command prints with `--format json`; it takes
+    `lock` and `libraries` (the lock's `std.patterns` pin is read) and answers a program
+    before 0.7 with `"view attention is of a program of language 0.7 or later"`. No stored
+    conversation of `mcp/` asks for this view (the Node server has none until B9), so none
+    changed; `crates/mandate-cli/tests/mcp.rs` holds the native answer to the command's output.
+
+The four are written by the Rust with `MANDATE_UPDATE_0_7=1` (passed on by
 `scripts/wasi-test.mjs`) and compared on every other run. Beside them,
 `crates/mandate-testkit/tests/language_0_7.rs` checks that a 0.6 program relabelled
 `mandate @ 0.7` checks as it did: every 0.6 program of `fixtures/library/` (10, every

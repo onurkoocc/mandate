@@ -610,6 +610,11 @@ pub struct Typing {
 /// 0.7: what the typing of a program gave one field of a report.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShownField {
+    /// The role its report is addressed to (in a workflow that applies a
+    /// pattern, the role the application binds to the pattern's slot): who
+    /// is shown it, which E1909 compares [`ShownField::cls`] with the class
+    /// of, in the lock's `role_classes`.
+    pub role: String,
     /// Its type, [`Val::ty`].
     pub ty: Ty,
     /// Its data class, [`Val::cls`].
@@ -1869,6 +1874,7 @@ impl<'a> Checker<'a> {
             self.shown.insert(
                 at,
                 ShownField {
+                    role: role.to_owned(),
                     ty: v.ty,
                     cls: v.cls,
                     known,

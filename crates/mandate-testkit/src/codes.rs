@@ -738,6 +738,20 @@ pub const FAMILIES: &[Family] = &[
         ported: true,
         reference: Reference::Rust,
     },
+    Family {
+        glob: "*MDT-E1910*",
+        codes: "E1910",
+        stage: "Rust only: a 0.7 workflow's owner beside an envelope (owner_checks, crates/mandate-check/src/owner.rs), after asks_checks; with a lock that asks for the promotion ladder, a workflow with neither an owner nor an envelope (promotion_checks), after the lock checks, on the program as written",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
+        glob: "*MDT-E1911*",
+        codes: "E1911",
+        stage: "Rust only: a lock's role_classes or promotion with a program older than 0.7 (attention_lock_checks, crates/mandate-check/src/lock.rs), the last of the lock checks",
+        ported: true,
+        reference: Reference::Rust,
+    },
 ];
 
 /// The family of `code` (`MDT-E0120`), when the table has one.

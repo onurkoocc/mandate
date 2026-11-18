@@ -1,0 +1,15 @@
+{
+  "format": "mandate/doors-inputs/0.1",
+  "about": "Calls of the Rust-only doors of mandate-views (the views of language 0.7, which no TypeScript function stands for), held by crates/mandate-views/tests/attention_0_7.rs, and sent through the dispatcher by crates/mandate-doors/tests/doors.rs. One call a line.",
+  "calls": [
+    {"name":"attention: a review that escalates, as JSON","door":"attention","input":{"text":{"$text":"fixtures/attention/reports.mdt"},"kind":"mdt","workflow":"MatchAll","format":"json"}},
+    {"name":"attention: a review that escalates, as Markdown","door":"attention","input":{"text":{"$text":"fixtures/attention/reports.mdt"},"kind":"mdt","workflow":"MatchAll","format":"md"}},
+    {"name":"attention: a review that escalates, as HTML","door":"attention","input":{"text":{"$text":"fixtures/attention/reports.mdt"},"kind":"mdt","workflow":"MatchAll","format":"html"}},
+    {"name":"attention: an owner and a lock, as Markdown","door":"attention","input":{"text":{"$text":"fixtures/attention/owner.mdt"},"kind":"mdt","workflow":"Check","opts":{"lock":{"$json":"fixtures/attention/owner.lock.json"}},"format":"md"}},
+    {"name":"attention: an owner and a lock, as JSON (no format given)","door":"attention","input":{"text":{"$text":"fixtures/attention/owner.mdt"},"kind":"mdt","workflow":"Describe","opts":{"lock":{"$json":"fixtures/attention/owner.lock.json"}}}},
+    {"name":"attention: a plan and no asks, as Markdown","door":"attention","input":{"text":{"$text":"fixtures/attention/asks.mdt"},"kind":"mdt","workflow":"Planning","format":"md"}},
+    {"name":"attention: a question in a loop without a bound, as Markdown","door":"attention","input":{"text":{"$text":"fixtures/attention/asks.mdt"},"kind":"mdt","workflow":"Endless","format":"md"}},
+    {"name":"attention: no such workflow","door":"attention","input":{"text":{"$text":"fixtures/attention/reports.mdt"},"kind":"mdt","workflow":"Nothing","format":"json"}},
+    {"name":"attention: a program older than 0.7","door":"attention","input":{"text":{"$text":"fixtures/system/land.mdt"},"kind":"mdt","workflow":"Land","format":"md"}}
+  ]
+}
