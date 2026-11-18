@@ -83,6 +83,23 @@ export function roleCaps(lock: Lock): Record<string, DataClass> {
   return Object.fromEntries(roles.map((r) => [r, capOf(lock, r)]));
 }
 
+/**
+ * Whether `member` is one `lock` lists (its `members`) and binds to no role (its `roles`): such a member may answer a
+ * question that names no role, in no role, and is shown it at the cap of a role the lock does not name, `internal`.
+ */
+export function holdsNoRole(lock: Lock, member: string): boolean {
+  const members = isObj((lock.members ?? null) as Value) ? (lock.members as Obj) : {};
+  if (!Object.hasOwn(members, member)) return false;
+  const roles = isObj((lock.roles ?? null) as Value) ? (lock.roles as Obj) : {};
+  return !Object.values(roles).some((ms) => Array.isArray(ms) && ms.includes(member));
+}
+
+/** The first by name of the members `lock` lists who hold no role in it (`holdsNoRole`), or undefined when each holds one. */
+export function memberWithoutRole(lock: Lock): string | undefined {
+  const members = isObj((lock.members ?? null) as Value) ? Object.keys(lock.members as Obj) : [];
+  return members.filter((m) => holdsNoRole(lock, m)).sort()[0];
+}
+
 /** A label from a class and a level as given, or undefined when either is not one the runtime knows. */
 export function labelOf(cls: unknown, known: unknown): Label | undefined {
   return isClass(cls) && isKnown(known) ? { class: cls, known } : undefined;
@@ -269,6 +286,11 @@ export interface AuthorizerBelow {
   cap: DataClass;
   shown: DataClass;
   path: string;
+}
+
+/** What `authorizerBelowClass` found, as a refusal says it: the effect, the role the configuration names, its cap, and what it shows. */
+export function authorizerBelowText(b: AuthorizerBelow): string {
+  return `The runtime's configuration hands the authorization of ${b.effect} to role ${b.role}, which may be shown data up to ${b.cap} (its class in the lock's role_classes, internal when the lock does not name it), and it shows ${b.shown} data (the program names ${b.named ?? "no role"} for it)`;
 }
 
 /**

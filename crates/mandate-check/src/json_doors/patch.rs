@@ -107,7 +107,9 @@ pub(super) const CHECK_SUBPROGRAM: &[&str] = &["i"];
 /// `bad_input`), which the check reads; `role_classes` (0.7) those of the
 /// parent's lock (`{}` for a lock without them), to which the check holds
 /// what each role is shown (E1909), each a data class (anything else is
-/// `bad_input`); without it, no E1909, as before.
+/// `bad_input`); without it, no E1909, as before; `member_without_role?:
+/// string` (0.7) a member of the parent's lock who holds no role in it,
+/// read with `role_classes`.
 /// Output: `SubprogramCheck`, `{ ok, diagnostics, program?, hash?,
 /// workflow? }`, and, for a sub-program of 0.6 that applies a pattern and
 /// is admitted (the Rust's alone), `running`, the sub-program as a run runs
@@ -138,6 +140,7 @@ pub(super) fn check_subprogram(input: &Value) -> Result<JsValue, DoorError> {
         room: &room,
         std_patterns: i.opt_std_patterns("std_patterns")?,
         role_classes: i.opt_role_classes("role_classes")?,
+        member_without_role: i.opt_str("member_without_role")?,
     });
     r.as_ref()
         .map(SubprogramCheck::to_js)

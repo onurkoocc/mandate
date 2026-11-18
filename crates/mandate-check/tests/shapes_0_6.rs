@@ -117,6 +117,7 @@ fn sub_check(parent: &Value, workflow: &str, number: f64, text: &str) -> Subprog
         room: &room(),
         std_patterns: None,
         role_classes: None,
+        member_without_role: None,
     })
     .unwrap()
 }

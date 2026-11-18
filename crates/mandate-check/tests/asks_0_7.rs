@@ -493,6 +493,19 @@ fn admit_led(
     role_classes: Option<&Value>,
     lead: mandate_check::stdlib::DataClass,
 ) -> mandate_check::doors::SubprogramCheck {
+    admit_with_member(parent, file, room, role_classes, lead, None)
+}
+
+/// [`admit_led`] with a member of the parent's lock who holds no role,
+/// `member`.
+fn admit_with_member(
+    parent: &Value,
+    file: &str,
+    room: &str,
+    role_classes: Option<&Value>,
+    lead: mandate_check::stdlib::DataClass,
+    member: Option<&str>,
+) -> mandate_check::doors::SubprogramCheck {
     let text = read_text(file).unwrap();
     let defs = load(&text, SourceKind::Mdt).program.unwrap();
     let ops: Vec<PatchOp> = defs
@@ -520,6 +533,7 @@ fn admit_led(
         room: &room,
         std_patterns: None,
         role_classes,
+        member_without_role: member,
     })
     .unwrap()
 }
@@ -588,6 +602,57 @@ fn a_sub_program_question_that_names_no_role_is_held_to_every_role_its_caller_pa
 }
 
 #[test]
+fn a_sub_program_question_that_names_no_role_is_held_to_internal_for_a_member_who_holds_none() {
+    // Noted asking no role, of a lead that received confidential data (its
+    // model and its envelope may be given it): a member of the parent's lock who holds no
+    // role may answer it, and may be shown internal data, so its caller
+    // passes that member and the admission holds the question to internal
+    // too, whatever the classes of the roles.
+    let text = read_text(SHAPES)
+        .unwrap()
+        .replace(
+            r#"human.ask("Is {w} right?", role: reviewer)"#,
+            r#"human.ask("Is {w} right?")"#,
+        )
+        .replace("max_class: internal", "max_class: confidential")
+        .replace(
+            "    shapes  [Noted]",
+            "    shapes  [Noted]
+    spawn   { max_class: confidential }",
+        );
+    let p = load(&text, SourceKind::Mdt).program.unwrap();
+    let room = r#"{"left":{"steps":40,"agents":4,"asks":1}}"#;
+    let confidential = mandate_check::stdlib::DataClass::Confidential;
+    let high = parse(r#"{"accountant":"confidential","platform_lead":"confidential"}"#)
+        .unwrap()
+        .value;
+    let r = admit_with_member(&p, NOTED, room, Some(&high), confidential, None);
+    assert!(r.ok, "{:?}", r.diagnostics);
+    let r = admit_with_member(&p, NOTED, room, Some(&high), confidential, Some("zed"));
+    assert!(!r.ok);
+    let got: Vec<String> = r
+        .diagnostics
+        .iter()
+        .map(|d| {
+            format!(
+                "{} {}",
+                d.code,
+                stringify(&JsValue::Object(d.facts.clone().unwrap_or_default())).unwrap()
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            r#"MDT-E1909 {"workflow":"Rest","member":"zed","class":"internal","shown":"confidential","site":"ask","asked":"any_member","pattern":"Noted","pattern_path":"/defs/Noted/body/4/value","expanded_path":"/defs/Rest/body/4/value","module":"example.attention.shapes"}"#
+        ]
+    );
+    assert!(r.diagnostics[0].message.contains(
+        "member zed, whom the lock lists and binds to no role, may be shown data up to internal"
+    ));
+}
+
+#[test]
 fn the_sub_program_door_reads_role_classes_and_refuses_what_is_no_class() {
     let p = parent(SHAPES);
     let defs = load(&read_text(NOTED).unwrap(), SourceKind::Mdt)
@@ -609,7 +674,7 @@ fn the_sub_program_door_reads_role_classes_and_refuses_what_is_no_class() {
     let module = p.get("module").and_then(Value::as_str).unwrap();
     let base = mandate_ir::hash_program(&skeleton(module, 1.0, Some(Language::V0_7))).program;
     let door = mandate_check::json_doors::door("check_subprogram").unwrap();
-    let call = |classes: Option<&str>| {
+    let call_as = |classes: Option<&str>, member: Option<Value>| {
         let mut i = mandate_ir::Map::new();
         i.insert("parent", p.clone());
         i.insert("workflow", "Planning");
@@ -626,10 +691,14 @@ fn the_sub_program_door_reads_role_classes_and_refuses_what_is_no_class() {
         if let Some(t) = classes {
             i.insert("role_classes", parse(t).unwrap().value);
         }
+        if let Some(m) = member {
+            i.insert("member_without_role", m);
+        }
         let mut input = mandate_ir::Map::new();
         input.insert("i", i);
         (door.call)(&Value::Object(input))
     };
+    let call = |classes: Option<&str>| call_as(classes, None);
     let ok = |classes: Option<&str>| {
         let r = call(classes).unwrap();
         stringify(&r).unwrap().contains("\"ok\":true")
@@ -648,6 +717,15 @@ fn the_sub_program_door_reads_role_classes_and_refuses_what_is_no_class() {
         let e = call(Some(bad)).unwrap_err();
         assert_eq!(e.kind.as_str(), "bad_input", "{bad}");
     }
+    // A member who holds no role, a string (what Planning shows is public).
+    let r = call_as(Some("{}"), Some(Value::from("zed"))).unwrap();
+    assert!(stringify(&r).unwrap().contains("\"ok\":true"));
+    let e = call_as(
+        Some("{}"),
+        Some(Value::from(mandate_ir::Int::new(3).unwrap())),
+    )
+    .unwrap_err();
+    assert_eq!(e.kind.as_str(), "bad_input");
 }
 
 #[test]

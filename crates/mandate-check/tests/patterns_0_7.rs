@@ -761,6 +761,7 @@ fn the_facts_of_a_sub_program_of_a_parent_that_pins_2_0_0() {
         room: &room,
         std_patterns: None,
         role_classes: None,
+        member_without_role: None,
     };
     let sub = check_subprogram(&input).unwrap();
     assert!(
@@ -1305,6 +1306,7 @@ fn a_sub_program_is_held_to_the_role_classes_its_caller_passes() {
             room: &room,
             std_patterns: None,
             role_classes,
+            member_without_role: None,
         })
         .unwrap()
     };

@@ -146,3 +146,125 @@ fn a_pause_shows_nobody_content_and_is_not_compared() {
     let r = checked_with(&text, &lock_with("observer", "public"));
     assert!(r.ok, "{:?}", found(&r));
 }
+
+/// A program that asks no role about a value of `class`, naming the role
+/// `reviewer` when `with_role`.
+fn anyone(class: &str, with_role: bool) -> String {
+    format!(
+        "mandate @ 0.7\n\nmodule example.anyone @ 0.1\n\nuse std.{{human}}\n\n{}type Secret = Text classified {class}\n\nworkflow Ask(secret: Secret) -> Untrusted<Text>\n  caps   []\n  budget {{ time: 5m, steps: 4 }}\n{{\n  let a = human.ask(\"Is {{secret}} right?\")\n  a\n}}\n",
+        if with_role {
+            "role reviewer \"Reviewer\"\n\n"
+        } else {
+            ""
+        }
+    )
+}
+
+/// A lock that lists `members` (each with a key of its own), binds `roles`
+/// and gives `role_classes`, each a JSON object.
+fn lock_of(members: &[&str], roles: Option<&str>, role_classes: Option<&str>) -> Value {
+    let members: Vec<String> = members
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            format!(
+                r#""{m}":{{"keys":["sha256:{}"]}}"#,
+                i.to_string().repeat(64)
+            )
+        })
+        .collect();
+    let mut text = format!(
+        r#"{{"lock":"mandate/lock/0.7","modules":{{}},"members":{{{}}}"#,
+        members.join(",")
+    );
+    for (name, v) in [("roles", roles), ("role_classes", role_classes)] {
+        if let Some(v) = v {
+            text.push_str(&format!(r#","{name}":{v}"#));
+        }
+    }
+    text.push('}');
+    mandate_ir::parse(&text).unwrap().value
+}
+
+#[test]
+fn a_question_that_names_no_role_is_held_to_internal_when_a_member_holds_no_role() {
+    // Zed holds no role, so may answer it, and may be shown internal data
+    // (the class of a role the lock does not name), however high the
+    // reviewer's class.
+    let lock = lock_of(
+        &["ana", "zed"],
+        Some(r#"{"reviewer":["ana"]}"#),
+        Some(r#"{"reviewer":"confidential"}"#),
+    );
+    let r = checked_with(&anyone("confidential", true), &lock);
+    assert!(!r.ok);
+    assert_eq!(
+        found(&r),
+        [
+            r#"MDT-E1909 at /defs/Ask/body/0/value {"workflow":"Ask","member":"zed","class":"internal","shown":"confidential","site":"ask","asked":"any_member"}"#
+        ]
+    );
+    let m = &r.diagnostics[0].message;
+    assert!(
+        m.contains("any member the lock lists may answer it")
+            && m.contains("member zed, whom the lock lists and binds to no role, may be shown data up to internal"),
+        "{m}"
+    );
+    // Internal or public data it may be shown: accepted.
+    for class in ["internal", "public"] {
+        let r = checked_with(&anyone(class, true), &lock);
+        assert!(r.ok, "{class}: {:?}", found(&r));
+    }
+    // With every member bound to the reviewer, the reviewer's class holds.
+    let bound = lock_of(
+        &["ana", "zed"],
+        Some(r#"{"reviewer":["ana","zed"]}"#),
+        Some(r#"{"reviewer":"confidential"}"#),
+    );
+    let r = checked_with(&anyone("confidential", true), &bound);
+    assert!(r.ok, "{:?}", found(&r));
+}
+
+#[test]
+fn a_lock_that_binds_no_role_and_lists_a_member_is_compared_so_too() {
+    let lock = lock_of(&["zed"], None, None);
+    let r = checked_with(&anyone("confidential", false), &lock);
+    assert!(!r.ok);
+    assert_eq!(
+        found(&r),
+        [
+            r#"MDT-E1909 at /defs/Ask/body/0/value {"workflow":"Ask","member":"zed","class":"internal","shown":"confidential","site":"ask","asked":"any_member"}"#
+        ]
+    );
+    let r = checked_with(&anyone("internal", false), &lock);
+    assert!(r.ok, "{:?}", found(&r));
+}
+
+#[test]
+fn a_member_who_holds_no_role_is_named_only_where_internal_is_the_lower() {
+    // The reviewer public: the reviewer is the one held, not zed.
+    let lock = lock_of(
+        &["ana", "zed"],
+        Some(r#"{"reviewer":["ana"]}"#),
+        Some(r#"{"reviewer":"public"}"#),
+    );
+    let r = checked_with(&anyone("internal", true), &lock);
+    assert_eq!(
+        found(&r),
+        [
+            r#"MDT-E1909 at /defs/Ask/body/0/value {"workflow":"Ask","role":"reviewer","class":"public","shown":"internal","site":"ask","asked":"any_member"}"#
+        ]
+    );
+}
+
+#[test]
+fn a_lock_that_lists_no_member_leaves_it_uncompared() {
+    // Nobody can answer it.
+    let lock = lock_of(&[], None, None);
+    let r = checked_with(&anyone("restricted", false), &lock);
+    assert!(
+        !found(&r).iter().any(|d| d.starts_with("MDT-E1909")),
+        "{:?}",
+        found(&r)
+    );
+}

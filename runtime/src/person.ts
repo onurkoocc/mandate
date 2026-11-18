@@ -70,9 +70,9 @@ function subjectText(item: WaitItem): string {
 }
 
 /** One value a wait shows, as a line: masked, its class and how it is known, never the value; or the value, quoted and escaped, with its label. */
-function shownLine(s: NamedShown | UnlabelledValue, role: string): string {
+function shownLine(s: NamedShown | UnlabelledValue, role: string | null): string {
   const name = terminalText(s.name);
-  if ("masked" in s && s.masked) return `    ${name}: masked; its class is ${terminalText(String(s.class))}, above what ${terminalText(role)} may be shown; known ${terminalText(String(s.known))}: ${Object.hasOwn(KNOWN_TEXT, s.known) ? KNOWN_TEXT[s.known]! : "unknown"}`;
+  if ("masked" in s && s.masked) return `    ${name}: masked; its class is ${terminalText(String(s.class))}, above what ${role === null ? "a member of no role" : terminalText(role)} may be shown; known ${terminalText(String(s.known))}: ${Object.hasOwn(KNOWN_TEXT, s.known) ? KNOWN_TEXT[s.known]! : "unknown"}`;
   return `    ${name}: ${shownSafe((s as { value: Value }).value)}  [${labelText(s)}]`;
 }
 
@@ -82,11 +82,11 @@ function shownLine(s: NamedShown | UnlabelledValue, role: string): string {
  * the subject, and each value it shows (not with `values` false, for a review that `openItemLines` shows item by item). Every text is escaped; a masked value prints its class and how it is known.
  */
 export function waitLines(item: WaitItem, number?: number, values = true): string[] {
-  const asked = item.asked_of !== null ? `asked of ${terminalText(item.asked_of)}` : `asked of nobody in particular, listed to ${terminalText(item.role)}`;
+  const asked = item.asked_of !== null ? `asked of ${terminalText(item.asked_of)}` : item.role === null ? "asked of nobody in particular, listed to a member of no role" : `asked of nobody in particular, listed to ${terminalText(item.role)}`;
   const chosen = /\/program\/[0-9]+\//.test(item.command) ? " (a name in it was chosen by a model)" : "";
   return [
     `${number !== undefined ? `${number}. ` : ""}run ${terminalText(item.run)}  ${terminalText(item.workflow)}  tenant ${terminalText(item.tenant)}`,
-    `  ${terminalText(item.kind)}, ${asked}; shown as role ${terminalText(item.role)}`,
+    `  ${terminalText(item.kind)}, ${asked}; ${item.role === null ? "shown as a member of no role (internal)" : `shown as role ${terminalText(item.role)}`}`,
     `  since     ${when(item.since)}`,
     `  deadline  ${item.deadline === null ? "none" : when(item.deadline)}`,
     `  if nobody answers  ${terminalText(noAnswerText(item))}`,
@@ -109,7 +109,7 @@ export function waitsText(who: { role: string } | { member: string }, items: Wai
 
 /** A line of the list `mandate decide` starts with: number, run, workflow, kind, whom it asks, deadline. */
 export function waitListLine(item: WaitItem, number: number): string {
-  return `${number}. run ${terminalText(item.run)}  ${terminalText(item.workflow)}  ${terminalText(item.kind)} for ${terminalText(item.role)}  deadline ${item.deadline === null ? "none" : when(item.deadline)}${hidesFromRole(item) ? "  (masked for this role)" : ""}`;
+  return `${number}. run ${terminalText(item.run)}  ${terminalText(item.workflow)}  ${terminalText(item.kind)} for ${item.role === null ? "a member of no role" : terminalText(item.role)}  deadline ${item.deadline === null ? "none" : when(item.deadline)}${hidesFromRole(item) ? "  (masked for this role)" : ""}`;
 }
 
 // ── a review's open items, as the role's view gives them ────────────────
@@ -324,7 +324,7 @@ export function indexDoc(member: string, waits: WaitItem[], runs: MemberRun[]): 
                 { text: w.run, mono: true },
                 w.workflow,
                 w.kind,
-                w.role,
+                w.role ?? "no role (internal)",
                 w.asked_of ?? "nobody in particular",
                 when(w.since),
                 w.deadline === null ? "none" : when(w.deadline),
@@ -332,7 +332,7 @@ export function indexDoc(member: string, waits: WaitItem[], runs: MemberRun[]): 
                 w.stage === null ? "none" : text(w.stage, true),
                 typeof w.subject === "string" ? { text: w.subject, mono: true } : `masked (class ${w.subject.class}; known ${w.subject.known})`,
                 valuesCell(w),
-                page(w.run, w.role),
+                w.role === null ? "none (a member of no role has no page of the run)" : page(w.run, w.role),
               ]),
             },
           }

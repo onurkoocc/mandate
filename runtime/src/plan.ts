@@ -79,7 +79,7 @@ import type { AuthorizePolicy } from "./interp.js";
 import type { Admission, CommandRow, Journal } from "./journal.js";
 import { applications, linkedSubprogram, subprogramNotRunYet, type AmendedCheck, type AmendedInput } from "./package.js";
 import { Fault, Suspend, Violation } from "./signals.js";
-import { roleCaps } from "./mask.js";
+import { authorizerBelowClass, authorizerBelowText, memberWithoutRole, roleCaps } from "./mask.js";
 import { canonical, digest, isObj, type Value } from "./values.js";
 
 export const CHECK_PROGRAM = "check_program";
@@ -504,6 +504,15 @@ export class Planner {
       if (amended) {
         const why = await this.aboveAsks(amended, now, to.envelope);
         if (why) return refuse([{ code: "attention_above_asks", severity: "error", message: why, facts: { dimension: ASKS } }]);
+        // An amendment may change `approve` (spec/envelope.md "Amendments"): one that no longer names an effect hands
+        // its authorization to the run's configuration from then on, which the start held to the cap of the role it
+        // names only where `approve` did not override it. It is held so now, under the run's configuration and lock,
+        // and refused to the lead as a start would be (`authorizer_below_class`): nobody is asked, nothing changes.
+        const below = authorizerBelowClass(amended, h.authorize, h.lock, to.envelope.approve);
+        if (below) {
+          const message = `${authorizerBelowText(below)}: the amendment is not asked for, as a run under it would not start (spec/attention.md "Effects and the runtime's configuration").`;
+          return refuse([{ code: "authorizer_below_class", severity: "error", message, facts: { effect: below.effect, role: below.role, class: below.cap, shown: below.shown } }]);
+        }
       }
       const diff = digest("request", checked.diff as unknown as Value);
       const request = {
@@ -597,10 +606,12 @@ export class Planner {
       const over = overLimit(input["ops"]);
       // 0.7: the check, given no lock, reads std.patterns at the version the package's lock pins, and holds what the
       // sub-program shows each role to the cap of every role the lock binds (E1909; internal for one its role_classes
-      // does not name), a question that names no role to the lowest of them.
+      // does not name), a question that names no role to the lowest of them, and to internal when a member the lock
+      // lists holds no role (the first such member is passed; any of them may answer it).
       const from07 = isProgram07OrLater(h.parent);
       const pin = from07 ? h.lock.libraries?.["std.patterns"]?.version : undefined;
-      const classes = from07 ? { role_classes: roleCaps(h.lock) } : {};
+      const unroled = from07 ? memberWithoutRole(h.lock) : undefined;
+      const classes = from07 ? { role_classes: roleCaps(h.lock), ...(unroled !== undefined ? { member_without_role: unroled } : {}) } : {};
       const asked: SubprogramInput07 = { parent: h.parent, modules: h.modules, workflow: h.workflow, number, base: String(input["base"]), ops: input["ops"] as SubprogramInput["ops"], lead: h.leadClass, room, ...(pin !== undefined ? { std_patterns: pin } : {}), ...classes };
       const checked = over ?? (await h.checker.check(asked, h.checkMs));
       // A check that was stopped, or that failed, is no check: it admits nothing, and the lead is told which.
@@ -676,6 +687,23 @@ export class Planner {
       // amendments"; D4 of slice B3): the sub-program's declared `asks`, else its static total, plus the effect sites
       // the run's configuration hands to a person and its total does not count. One whose count is unbounded fits in
       // no room (E1706, dimension `asks`); one that does not fit what is left is refused by the admission below.
+      // 0.7: a sub-program may hold an effect that asks a person for its authorization: the envelope's `approve E by r`
+      // (the parent's, under which it runs), an irreversible action's `owner`, or the run's configuration (N05). E1909
+      // held the role its row names to that role's cap; the configuration may hand it to another role where the
+      // envelope's `approve` does not name it, which is held so here, as a start holds the run's own
+      // (`authorizer_below_class`): the sub-program is refused to the lead, and nothing of it runs.
+      const below = facts ? authorizerBelowClass(facts, h.authorize, h.lock, parentWf?.kind === "workflow" ? parentWf.envelope?.approve : undefined) : undefined;
+      if (below) {
+        return refuse([
+          {
+            code: "authorizer_below_class",
+            severity: "error",
+            message: `${authorizerBelowText(below)}: the sub-program is not admitted, as a run that held it would not start (spec/attention.md "Effects and the runtime's configuration").`,
+            path: below.path,
+            facts: { effect: below.effect, role: below.role, class: below.cap, shown: below.shown },
+          },
+        ]);
+      }
       const claim = facts ? reservationOf(facts, h.authorize) : undefined;
       if (Object.hasOwn(room.left, ASKS) && typeof claim !== "number") {
         return refuse([

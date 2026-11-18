@@ -604,6 +604,7 @@ pub fn run_subprogram(
         room: &case.room,
         std_patterns: None,
         role_classes: None,
+        member_without_role: None,
     })?;
     Ok(DoorResult {
         observed: Observed {

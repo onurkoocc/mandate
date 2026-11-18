@@ -531,11 +531,24 @@ describe("mandate decide", () => {
     expect(half.out).not.toContain("alert(1)");
     expect((await mandate(["status", "masked1"])).out).toContain("waiting");
     noRaw(half.out);
-    // `yes` signs it, and the answer is the run's. The run's facts are gone, so it does not go on: it stops for a
-    // person (`facts_mismatch`), as any run whose stored facts are missing does.
+    // `yes` signs it, and the wait takes the answer. The run cannot finish on this route: `decide` submits the answer
+    // and drives the run in one call, the drive reads the run's stored facts, which are gone, and stops the run for a
+    // person (`facts_mismatch`), as any run whose stored facts are missing does; no command drives such a run again.
+    // So what is shown is that the answer was taken, as the wait's result, before the run stopped.
     const done = await mandate(["decide", "--key", ana.key], [number, "no", "yes"]);
     expect(done.code, done.out + done.err).toBe(0);
     expect(done.out).toMatch(/signed by ana: answer "no"\nrun masked1 is now attention_required, revision \d+\n$/);
+    const db = await openDb(`pglite:${join(dir, "db")}`);
+    try {
+      const waits = await db.query<{ state: string; result: unknown }>("select state, result from commands where run_id = $1 and kind = 'input'", ["masked1"]);
+      expect(waits.map((w) => w.state)).toEqual(["succeeded"]);
+      expect(JSON.stringify(waits[0]!.result)).toContain('"no"');
+      const runs = await db.query<{ state: string; attention: unknown }>("select state, attention from runs where run_id = $1", ["masked1"]);
+      expect(runs.map((r) => r.state)).toEqual(["attention_required"]);
+      expect(JSON.stringify(runs[0]!.attention)).toContain("facts_mismatch");
+    } finally {
+      await db.close();
+    }
   });
 
   it("signs an answer as `answer` would, and verifies as theirs", { timeout: 180_000 }, async () => {

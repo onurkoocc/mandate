@@ -232,6 +232,12 @@ pub struct SubprogramInput<'a> {
     /// one the lock gives no class). `None`: no E1909, as before. Read only
     /// for a sub-program of 0.7 or later.
     pub role_classes: Option<&'a Value>,
+    /// 0.7: a member the parent's lock lists who holds no role in it (the
+    /// first by name), who may answer a question that names no role and may
+    /// be shown `internal`, to which the check holds such a question too
+    /// (E1909). `None`: every member holds a role. Read only with
+    /// `role_classes`.
+    pub member_without_role: Option<&'a str>,
 }
 
 /// What [`check_subprogram`] gives: `SubprogramCheck`, `{ ok, diagnostics,
@@ -421,10 +427,15 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
     // its admission reserves of the run's `asks`.
     let mut typing = crate::statics::Typing::default();
     // 0.7: the classes of the parent's lock, as a lock that holds them
-    // alone (E1909).
+    // alone, and the member who holds no role as its one member (E1909).
     let caps = i.role_classes.map(|rc| {
         let mut m = Map::new();
         m.insert("role_classes", rc.clone());
+        if let Some(member) = i.member_without_role {
+            let mut members = Map::new();
+            members.insert(member, Value::Object(Map::new()));
+            m.insert("members", Value::Object(members));
+        }
         Value::Object(m)
     });
     let checked = crate::check::check_capped(

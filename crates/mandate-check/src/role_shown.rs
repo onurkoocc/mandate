@@ -232,17 +232,53 @@ fn bound_roles(lock: Lock<'_>) -> Vec<String> {
     out
 }
 
+/// The first by name of the members `lock` lists (its `members`) who hold
+/// no role in it (its `roles`): such a member may answer a question that
+/// names no role, and has the class of a role the lock does not name,
+/// `internal`. A lead's sub-program is checked with a lock whose `members`
+/// holds that member alone, when its caller gives one.
+fn member_without_role(lock: Lock<'_>) -> Option<String> {
+    let members = lock.members()?.as_object()?;
+    let holds = |m: &str| {
+        lock.roles()
+            .and_then(Value::as_object)
+            .is_some_and(|roles| {
+                roles.iter().any(|(_, ms)| {
+                    ms.as_array()
+                        .is_some_and(|ms| ms.iter().any(|x| x.as_str() == Some(m)))
+                })
+            })
+    };
+    let mut out: Vec<&str> = members.keys().filter(|m| !holds(m)).collect();
+    out.sort_unstable();
+    out.first().map(|m| (*m).to_owned())
+}
+
+/// Who a question that names no role is held to: a role the lock binds, or
+/// a member it lists who holds no role.
+enum Held {
+    /// The role it names, or the lowest-capped role the lock binds.
+    Role(String),
+    /// A member who holds no role, held to `internal`.
+    Member(String),
+}
+
 /// E1909: with a lock, each place `program` (the program the static checks
 /// read: an expansion, for one that applies a pattern) shows a role data
 /// above the role's class in the lock ([`Lock::role_class`]), at the place,
 /// from what the typing gave the attention facts (`typing`). A question
-/// that names no role may be answered by any member the lock binds, so it
-/// is held to the lowest class of the roles the lock binds, and the
-/// diagnostic names that role (the first by name of those with that class;
-/// one diagnostic for the site). `lock` is a lock
+/// that names no role may be answered by any member the lock lists, so it
+/// is held to the lowest class of the roles the lock binds and, when the
+/// lock lists a member who holds no role, to `internal` too (the class of a
+/// role the lock does not name), and the diagnostic names that role (the
+/// first by name of those with that class) or, where `internal` is the lower
+/// (or no role is bound), the first such member by name; one diagnostic for
+/// the site. A lock that lists no member and binds no role leaves it
+/// uncompared: nobody can answer it. `lock` is a lock
 /// [`crate::lock::validate_lock`] passed, or, for a lead's sub-program, one
 /// that holds only the `role_classes` its caller gives, for every role the
-/// parent's lock binds. Nothing for a program older than 0.7.
+/// parent's lock binds, and the member who holds no role it gives. Nothing
+/// for a program older than 0.7.
 #[must_use]
 pub fn role_class_checks(
     program: Program<'_>,
@@ -254,6 +290,8 @@ pub fn role_class_checks(
         return Vec::new();
     }
     let bound = bound_roles(lock);
+    let lowest = bound.iter().min_by_key(|r| lock.role_class(r)).cloned();
+    let unroled = member_without_role(lock);
     let mut out: Vec<Diagnostic> = Vec::new();
     for s in showings(program, typing) {
         let Showing {
@@ -267,24 +305,39 @@ pub fn role_class_checks(
             field,
         } = s;
         let anyone = role.is_none();
-        // The role held to it: the one it names, or the lowest-capped role
-        // the lock binds (none: nobody the lock binds can answer it).
-        let Some(role) = role.or_else(|| bound.iter().min_by_key(|r| lock.role_class(r)).cloned())
-        else {
-            continue;
+        // Who is held to it: the role it names; or the lowest-capped role
+        // the lock binds, or a member who holds no role where `internal` is
+        // lower (none of either: nobody the lock lists can answer it).
+        let held = match (role, &lowest, &unroled) {
+            (Some(r), _, _) => Held::Role(r),
+            (None, Some(r), Some(m)) if DataClass::Internal < lock.role_class(r) => {
+                Held::Member(m.clone())
+            }
+            (None, Some(r), _) => Held::Role(r.clone()),
+            (None, None, Some(m)) => Held::Member(m.clone()),
+            (None, None, None) => continue,
         };
-        let cap = lock.role_class(&role);
+        let cap = match &held {
+            Held::Role(r) => lock.role_class(r),
+            Held::Member(_) => DataClass::Internal,
+        };
         if shown <= cap {
             continue;
         }
-        let message = if anyone {
-            format!(
+        let message = match &held {
+            Held::Member(member) => format!(
+                "In workflow {workflow}, {what} names no role, so any member the lock lists may answer it, and it shows {shown} data; member {member}, whom the lock lists and binds to no role, may be shown data up to internal (the class of a role the lock does not name): nobody can decide on what they may not see. Ask a role whose class covers it, bind every member the lock lists to a role whose class covers it, or show it less (spec/attention.md \"Lock 0.7\")."
+            ),
+            Held::Role(role) if anyone => format!(
                 "In workflow {workflow}, {what} names no role, so any member the lock binds may answer it, and it shows {shown} data; role {role}, which the lock binds, may be shown data up to {cap} (its class in the lock's role_classes, internal when the lock does not name it): nobody can decide on what they may not see. Ask a role whose class covers it, raise the class of every role the lock binds, or show it less (spec/attention.md \"Lock 0.7\")."
-            )
-        } else {
-            format!(
+            ),
+            Held::Role(role) => format!(
                 "Role {role} may be shown data up to {cap} (its class in the lock's role_classes, internal when the lock does not name it), and {what} shows it {shown} data in workflow {workflow}: nobody can decide on, or be told, what they may not see. Raise the class of {role} in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\")."
-            )
+            ),
+        };
+        let (role, member) = match held {
+            Held::Role(r) => (Some(r), None),
+            Held::Member(m) => (None, Some(m)),
         };
         out.push(Diagnostic::new(
             "E1909",
@@ -293,7 +346,8 @@ pub fn role_class_checks(
             Some(
                 JsObject::new()
                     .with("workflow", workflow)
-                    .with("role", role)
+                    .with_some("role", role)
+                    .with_some("member", member)
                     .with("class", cap.as_str())
                     .with("shown", shown.as_str())
                     .with("site", site)

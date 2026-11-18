@@ -23,7 +23,7 @@ import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { claimRunStarts, costDims, haltedRefusal, Journal, limitDims, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { ASKS, asksLimit, boundUnder } from "./asks.js";
-import { authorizerBelowClass } from "./mask.js";
+import { authorizerBelowClass, authorizerBelowText } from "./mask.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
 import { buildPackage, isPackage06OrLater, isPackage07OrLater, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
 import { escalationRefused, tickOpenWaits } from "./tick.js";
@@ -353,7 +353,7 @@ export class Runtime {
     if (below) {
       throw new Violation(
         "authorizer_below_class",
-        `The runtime's configuration hands the authorization of ${below.effect} to role ${below.role}, which may be shown data up to ${below.cap} (its class in the lock's role_classes, internal when the lock does not name it), and it shows ${below.shown} data (the program names ${below.named ?? "no role"} for it): the run does not start. Raise the class of ${below.role} in the lock, or hand the effect to a role whose class covers it (spec/attention.md "Effects and the runtime's configuration").`,
+        `${authorizerBelowText(below)}: the run does not start. Raise the class of ${below.role} in the lock, or hand the effect to a role whose class covers it (spec/attention.md "Effects and the runtime's configuration").`,
       );
     }
     const linked = verified.running;
