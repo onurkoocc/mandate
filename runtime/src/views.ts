@@ -30,7 +30,7 @@
 // that came from a model, a tool or a person's answer is shown as untrusted
 // plain content (G09).
 
-import { atLeast, LANGUAGE_06, architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, rolesNamed, semanticDiff, VIEW_FORMAT, type Block, type Budget07, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/bridge";
+import { atLeast, isProgram07OrLater, LANGUAGE_06, architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, rolesNamed, semanticDiff, VIEW_FORMAT, type Block, type Budget07, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/bridge";
 import { addressee, eventClass, sectionClass, shows, stepClass, TRACE_KINDS, type Audience, type ViewClass } from "./classes.js";
 import { authorizationId } from "./decisions.js";
 import { ASKS } from "./asks.js";
@@ -40,6 +40,8 @@ import type { Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { covers, type ChangeKind } from "./specdiff.js";
 import { canonical, digest, isObj, show, type Obj, type Value } from "./values.js";
+import { capOf, maskValue, type Cap } from "./mask.js";
+import { attentionContext, maskedWait, programsView, reportsView, stagesView, type AttentionContext, type ProgramsView, type ReportView, type StageView } from "./projection.js";
 
 export interface AsOf {
   revision: number;
@@ -246,7 +248,10 @@ export interface RoleView {
   manifest: RunView["manifest"];
   modules: RunView["modules"];
   as_of: AsOf;
-  /** The wait the run is in, whole, when it is asked of this role; null otherwise. */
+  /**
+   * The wait the run is in, when it is asked of this role; null otherwise. Whole in a run of 0.1 to 0.6; in a run of
+   * 0.7 its request's values masked by the role's cap and labelled (spec/attention.md "A role's view").
+   */
   waiting: Value;
   /** The decisions asked of this role, oldest first. */
   decisions: DecisionView[];
@@ -258,6 +263,12 @@ export interface RoleView {
   maps: MapView[];
   /** The reviews asked of this role, first or after an escalation (0.6); none for a run that has none. */
   reviews?: ReviewView[];
+  /** 0.7: each stage, done, current or not started, with the sub-programs' under the stage they began in. */
+  stages?: StageView[];
+  /** 0.7: the reports addressed to this role, their fields masked by its cap and labelled. */
+  reports?: ReportView[];
+  /** 0.7: how many sub-programs started and ended. */
+  programs?: ProgramsView;
 }
 
 /** How the run ended, and what stopped or bent it (S1), by the fields named: no message, no fault argument. */
@@ -332,7 +343,13 @@ export async function runView(rt: Runtime, runId: string, audience?: Audience): 
     if (!named.includes(audience.role)) throw new Violation("unknown_role", `Run ${runId}'s program names no role ${audience.role}; it names ${named.length ? named.join(", ") : "none"}.`);
   }
   const events = await storedEvents(rt, runId, view.as_of.event);
-  if ("role" in audience) return { view: roleView(view, audience.role, events), program, modules };
+  if ("role" in audience) {
+    // 0.7: what a role is shown of a wait or a report is masked by its cap, from the facts the run stored.
+    const run = await rt.getRun(runId);
+    const pkg = await rt.packageOf(run.package_hash);
+    const ctx = isProgram07OrLater(pkg.program) ? await attentionContext(rt, run, events, pkg.lock) : undefined;
+    return { view: roleView(view, audience.role, events, ctx), program, modules };
+  }
   const run = await rt.getRun(runId);
   const commands = await commandViews(rt, runId);
   const halts = (await rt.halts()).filter((h) => h.tenant === null || h.tenant === view.run.tenant);
@@ -400,16 +417,17 @@ function waitingRole(waiting: Value): string | null {
  * What a role sees of a run. Each section of the run's view goes by its class (classes.ts) and nothing else: one in
  * S1 or S2 is shown whole; one in S0 shows what was asked of this role, row by row, by the role its wait or its
  * decision names; one in S3 or S4 is not shown. What the run ended with and what stopped it is `exceptions`, made of
- * the fields its section names.
+ * the fields its section names. In a run of 0.7 (`ctx`) the wait's values are masked by the role's cap and labelled,
+ * and the sections `stages`, `reports` (those addressed to the role) and `programs` are added.
  */
-function roleView(v: RunView, role: string, events: Stored[]): RoleView {
+function roleView(v: RunView, role: string, events: Stored[], ctx?: AttentionContext): RoleView {
   const audience = { role };
   const may = (section: string, askedOf?: string | null): boolean => shows(audience, sectionClass(section), askedOf);
   const asked = waitRoles(events);
   const askedOf = (d: DecisionView): string | null => (d.about !== null ? asked.get(d.about) : undefined) ?? d.role;
   const out: Record<string, unknown> = { format: v.format, kind: "run_role", role };
   for (const [section, value] of Object.entries(v)) if (section !== "format" && section !== "kind" && may(section)) out[section] = value;
-  out["waiting"] = may("waiting", waitingRole(v.waiting)) ? v.waiting : null;
+  out["waiting"] = !may("waiting", waitingRole(v.waiting)) ? null : ctx ? maskedWaiting(ctx, v.waiting, capOf(ctx.lock, role)) : v.waiting;
   out["decisions"] = v.decisions.filter((d) => may("decisions", askedOf(d)));
   // A review (0.6) is shown to each role it was asked of: the first, and the one it was escalated to.
   if (v.reviews) out["reviews"] = v.reviews.filter((r) => may("reviews", r.role) || (r.escalated !== null && may("reviews", r.escalated.to)));
@@ -418,12 +436,34 @@ function roleView(v: RunView, role: string, events: Stored[]): RoleView {
   // What stopped the run is drawn from the events of the classes the role sees, by their types; an addressed one (a
   // report, 0.7) only when it is addressed to this role.
   if (may("exceptions")) out["exceptions"] = exceptionsOf(v, events.filter((e) => shows(audience, eventClass(e.type), undefined, addressee(e.type, e.data))), may("exceptions.violations.detail"));
+  if (ctx) {
+    if (may("stages")) out["stages"] = stagesView(ctx, events);
+    if (may("reports")) out["reports"] = reportsView(audience, capOf(ctx.lock, role), events);
+    if (may("programs")) out["programs"] = programsView(events);
+  }
   const first = ROLE_ORDER.filter((k) => Object.hasOwn(out, k));
   return Object.fromEntries([...first, ...Object.keys(out).filter((k) => !first.includes(k))].map((k) => [k, out[k]])) as unknown as RoleView;
 }
 
 /** The order of a role's view's sections, as a person reads them. */
-const ROLE_ORDER = ["format", "kind", "role", "program", "package", "run", "manifest", "modules", "as_of", "waiting", "decisions", "exceptions", "budget", "envelope", "maps", "reviews"];
+const ROLE_ORDER = ["format", "kind", "role", "program", "package", "run", "manifest", "modules", "as_of", "waiting", "stages", "reports", "programs", "decisions", "exceptions", "budget", "envelope", "maps", "reviews"];
+
+/**
+ * The run's wait as `cap` is shown it (0.7): its kind and command, the handler and episode of a budget's, and its
+ * request with each value it shows masked and labelled (`maskRequest`); what the budget ran out of (`detail`) by the
+ * wait's label too. Any other member is left out.
+ */
+function maskedWaiting(ctx: AttentionContext, waiting: Value, cap: Cap): Value {
+  if (!isObj(waiting)) return waiting;
+  const command = String(waiting["command"] ?? "");
+  // A budget's handler asks as a question does (`input`).
+  const kind = waiting["kind"] === "budget_exceeded" ? "input" : String(waiting["kind"] ?? "");
+  const out: Obj = {};
+  for (const k of ["kind", "command", "handler", "episode"]) if (Object.hasOwn(waiting, k)) out[k] = waiting[k]!;
+  if (Object.hasOwn(waiting, "detail")) out["detail"] = maskValue(waiting["detail"]!, ctx.waits.get(command)?.label, cap) as unknown as Value;
+  if (Object.hasOwn(waiting, "request")) out["request"] = maskedWait(ctx, command, kind, waiting["request"]!, cap).request;
+  return out;
+}
 
 /** A fault's tag: the name of what went wrong, never its arguments. */
 const tagOf = (v: Value | undefined): string | null => (isObj(v ?? null) ? text((v as Obj)["$tag"]) : null);
@@ -965,6 +1005,25 @@ function statusBlocks(v: RunView): Block[] {
   return out;
 }
 
+/** Whether `v` is a value as a role of a run of 0.7 is shown it (mask.ts `ShownValue`): its value or mask, its class and how it is known. */
+function isShownValue(v: Value | undefined): v is Obj {
+  return isObj(v ?? null) && Object.keys(v as Obj).length === 3 && "value" in (v as Obj) && typeof (v as Obj)["class"] === "string" && typeof (v as Obj)["known"] === "string";
+}
+
+/** Whether `v` is a mask in place of a value: `{ "$masked": class }`. */
+const isMask = (v: Value | undefined): boolean => isObj(v ?? null) && Object.keys(v as Obj).length === 1 && typeof (v as Obj)["$masked"] === "string";
+
+/**
+ * A value a wait or a report shows, as a document prints it: as recorded (a run of 0.1 to 0.6, and the audit's), or a
+ * `ShownValue` (0.7), its value with its class and how it is known, or, masked, only that it is and its class.
+ */
+function valueBlocks(v: Value, render: (v: Value) => string): Block[] {
+  if (!isShownValue(v)) return [{ code: render(v), untrusted: true }];
+  const label = `class ${String(v["class"])}, known ${String(v["known"])}`;
+  if (isMask(v["value"])) return [{ note: `Masked: its class is ${String(v["class"])}, above what this role may be shown (${label}).` }];
+  return [{ code: render(v["value"]!), untrusted: true }, { note: `Its ${label}.` }];
+}
+
 /** What the run waits for, with the command that answers it at this revision. */
 function waitBlocks(v: Pick<RunView, "run" | "as_of" | "waiting">): Block[] {
   const out: Block[] = [];
@@ -974,12 +1033,12 @@ function waitBlocks(v: Pick<RunView, "run" | "as_of" | "waiting">): Block[] {
     if (w["kind"] === "decision" && "criterion" in req) {
       out.push({ p: `Waiting for ${String(req["role"] ?? "a person")} to approve ${String(req["contract"])}.${String(req["criterion"])}. The decision applies only to this subject:` });
       out.push({ table: { head: ["Subject digest", "Deadline"], rows: [[mono(String(req["subject_digest"])), typeof req["deadline"] === "number" ? new Date(req["deadline"]).toISOString() : "—"]] } });
-      out.push({ code: JSON.stringify(req["subject"] ?? null, null, 2), untrusted: true });
+      out.push(...valueBlocks(req["subject"] ?? null, (x) => JSON.stringify(x, null, 2)));
       out.push({ note: `Approve or decline at revision ${v.as_of.revision}: mandate approve ${v.run.id} --revision ${v.as_of.revision} --by <you>. A decision on an older revision is refused.` });
     } else if (w["kind"] === "decision") {
       out.push({ p: `Waiting for ${String(req["role"] ?? "a person")} to authorize ${String(req["effect"] ?? "an action")}, exactly these parameters:` });
       out.push({ table: { head: ["Action digest"], rows: [[mono(String(req["action_digest"]))]] } });
-      out.push({ code: JSON.stringify(req["params"] ?? null, null, 2), untrusted: true });
+      out.push(...valueBlocks(req["params"] ?? null, (x) => JSON.stringify(x, null, 2)));
     } else if (w["kind"] === "amendment") {
       // The owner's decision is for the hash of the package with the new envelope. The reason is the lead's own
       // text, and a model wrote it (G09).
@@ -987,7 +1046,7 @@ function waitBlocks(v: Pick<RunView, "run" | "as_of" | "waiting">): Block[] {
       out.push({ table: { head: ["Package now", "Package asked for", "Deadline"], rows: [[mono(String(req["from"])), mono(String(req["package"])), typeof req["deadline"] === "number" ? new Date(req["deadline"]).toISOString() : "—"]] } });
       const changes = (Array.isArray(req["changes"]) ? req["changes"] : []).flatMap((c) => (isObj(c) ? [String(c["text"])] : []));
       if (changes.length) out.push({ p: "What it changes in the envelope:" }, { list: changes });
-      out.push({ p: "The lead's reason:" }, { code: String(req["reason"] ?? ""), untrusted: true });
+      out.push({ p: "The lead's reason:" }, ...valueBlocks(req["reason"] ?? "", (x) => String(x)));
       out.push({ note: `Approve or decline at revision ${v.as_of.revision}: mandate amend ${v.run.id} --revision ${v.as_of.revision} --key <your key file> approve. A decision on an older revision is refused.` });
     } else if (w["kind"] === "timer") {
       out.push({ p: `Waiting until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "a timer")}); the scheduler resumes it then.` });
@@ -995,7 +1054,7 @@ function waitBlocks(v: Pick<RunView, "run" | "as_of" | "waiting">): Block[] {
       out.push(...reviewWaitBlocks(v, req));
     } else {
       out.push({ p: w["kind"] === "budget_exceeded" ? "Waiting for a person after the budget ran out. The question, as the program asks it:" : "Waiting for an answer. The question, as the program asks it:" });
-      out.push({ code: show((req["question"] ?? req["escalation"] ?? null) as Value), untrusted: true });
+      out.push(...valueBlocks((req["question"] ?? req["escalation"] ?? null) as Value, show));
     }
   }
   return out;
@@ -1018,7 +1077,7 @@ function reviewWaitBlocks(v: Pick<RunView, "run" | "as_of">, req: Obj): Block[] 
   for (const i of items) {
     const unmet = (Array.isArray(i["unmet"]) ? i["unmet"] : []).filter(isObj) as Obj[];
     out.push({ p: `Item ${String(i["index"])} did not meet ${unmet.map((u) => `${String(q["contract"])}.${String(u["criterion"])} ("${String(u["description"] ?? "")}", which ${(Array.isArray(u["waive"]) ? u["waive"] : []).join(" or ")} may waive)`).join(", ")}. Its value, as the map recorded it:` });
-    out.push({ code: JSON.stringify(i["value"] ?? null, null, 2), untrusted: true });
+    out.push(...valueBlocks(i["value"] ?? null, (x) => JSON.stringify(x, null, 2)));
   }
   out.push({ note: `Decide every open item at revision ${v.as_of.revision}: mandate review ${v.run.id} --revision ${v.as_of.revision} --key <your key file> --waive <indices> --decline <indices>. A decision on an older revision, or one that leaves an item out, is refused.` });
   return out;
@@ -1287,6 +1346,8 @@ export function roleDoc(v: RoleView, program: Program, modules?: Modules): Doc {
     meta: metaOf(v, `${VIEW_FORMAT}, the view of the role ${v.role}: what was asked of it, how the run ended and what stopped it, and its progress`),
     blocks: [
       ...status,
+      ...stageBlocks(v),
+      ...reportBlocks(v),
       ...exceptionBlocks(v.exceptions),
       ...envelopeBlocks(v),
       ...mapBlocks(v),
@@ -1297,6 +1358,37 @@ export function roleDoc(v: RoleView, program: Program, modules?: Modules): Doc {
       ...authorityBlocks(authority(program, viewModules(program, modules))),
     ],
   };
+}
+
+const when = (t: number | null): string => (t === null ? "—" : new Date(t).toISOString());
+
+/** The stages of a run of 0.7 (`RoleView.stages`), each with its state and times; a sub-program's under the stage it began in; and how many sub-programs started and ended. */
+function stageBlocks(v: Pick<RoleView, "stages" | "programs">): Block[] {
+  if (!v.stages) return [];
+  const rows: Cell[][] = [];
+  const add = (s: StageView, depth: number): void => {
+    const name = s.program ? `${s.program.plan} #${s.program.number}: ${s.stage}` : s.stage;
+    rows.push([mono(`${"  ".repeat(depth)}${name}`), untrusted(s.title), s.state.replace("_", " "), when(s.started_at), when(s.ended_at)]);
+    for (const c of s.stages ?? []) add(c, depth + 1);
+  };
+  for (const s of v.stages) add(s, 0);
+  const out: Block[] = [{ h: "Stages" }];
+  out.push(rows.length ? { table: { head: ["Stage", "Title", "State", "Started", "Ended"], rows } } : { p: "The program names no stage." });
+  if (v.programs && (v.programs.started > 0 || v.programs.ended > 0)) out.push({ p: `Sub-programs: ${v.programs.started} started, ${v.programs.ended} ended.` });
+  return out;
+}
+
+/** The reports addressed to the role (0.7): each with its title and its fields, masked by the role's cap and labelled. */
+function reportBlocks(v: Pick<RoleView, "reports" | "role">): Block[] {
+  if (!v.reports) return [];
+  const out: Block[] = [{ h: "Reports" }];
+  if (!v.reports.length) return [...out, { p: `No report is addressed to ${v.role}.` }];
+  for (const r of v.reports) {
+    out.push({ p: `${r.title} (${r.node}, ${when(r.at)}):` });
+    const rows = r.fields.map((f): Cell[] => [mono(f.name), isMask(f.value as Value) ? `masked (${f.class})` : untrusted(f.value as Value), f.class, f.known]);
+    out.push(rows.length ? { table: { head: ["Field", "Value", "Class", "Known"], rows } } : { p: "It has no field." });
+  }
+  return out;
 }
 
 /** The audit view as one document: the run's view whole, with its exceptions, halts, steps, trace, events and chain. */

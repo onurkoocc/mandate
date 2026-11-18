@@ -327,7 +327,6 @@ const has = (o: unknown, k: string): boolean => isObj(o) && o[k] !== undefined;
  * - `owner`: the member of a workflow definition ("The IR", `Def(workflow).owner`), not an envelope's, which is 0.4's.
  */
 export const NOT_RUN_YET_07: readonly NotRunYet07[] = [
-  { name: "lock.role_classes", slice: "B4", lock: (l) => has(l, "role_classes") },
   { name: "owner", slice: "B6", def: (d) => d["kind"] === "workflow" && has(d, "owner") },
   { name: "lock.promotion", slice: "B6", lock: (l) => has(l, "promotion") },
 ];
@@ -544,7 +543,7 @@ function verified(pkg: Package, o: LoadOptions): Verified {
   // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
   // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
   // So must a lock that names members and roles: a key under two members, or a role held by nobody the lock lists, binds nothing.
-  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings || pkg.lock.members || pkg.lock.roles || LOCK_FIELDS_0_5.some((f) => pkg.lock[f]) || pkg.lock.libraries || pkg.lock.connectors) {
+  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings || pkg.lock.members || pkg.lock.roles || LOCK_FIELDS_0_5.some((f) => pkg.lock[f]) || pkg.lock.libraries || pkg.lock.connectors || (from07 && pkg.lock.role_classes)) {
     const bad = validateLock(formatted(pkg.lock, format));
     if (bad.length) throw new Violation("malformed_lock", `The package's lock is malformed: ${bad.map((d) => d.message).join(" ")}`);
   }

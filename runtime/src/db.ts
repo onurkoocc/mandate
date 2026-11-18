@@ -236,6 +236,8 @@ create table if not exists notify_dead (
   primary key (channel, run_id, seq)
 );
 create index if not exists runs_tenant_state on runs (tenant, state);
+-- 0.7: ListWaits reads the waits that are open across all runs (spec/attention.md "ListWaits").
+create index if not exists commands_waiting on commands (run_id) where state = 'waiting';
 `;
 
 /** Opens PostgreSQL at `url`, or an in-process PGlite database when `url` is absent. */

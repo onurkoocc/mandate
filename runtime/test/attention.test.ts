@@ -59,7 +59,6 @@ const namedIn = (message: string): string[] => /The package uses (.*) of mandate
 describe("the table of what 0.7 adds that this runtime does not run yet", () => {
   it("holds a line for each construct, with the slice that releases it: a slice that runs one takes its line out, and this list with it", () => {
     expect(NOT_RUN_YET_07.map((r) => [r.name, r.slice])).toEqual([
-      ["lock.role_classes", "B4"],
       ["owner", "B6"],
       ["lock.promotion", "B6"],
     ]);
@@ -87,19 +86,19 @@ describe("the table of what 0.7 adds that this runtime does not run yet", () => 
     expect(notRunYet07([withGreet(p, (d) => ({ ...d, caps: [], budget: undefined, envelope: { owner: "reviewer", budget: { steps: 4 } } }))])).toEqual([]);
   });
 
-  it("finds role_classes and promotion in the lock, and nothing in a lock without them", () => {
+  it("finds promotion in the lock, and no longer role_classes, which runs (B4, test/projection.test.ts)", () => {
     const p = minimal();
     expect(notRunYet07([p], { modules: {} })).toEqual([]);
-    expect(notRunYet07([p], { modules: {}, roles: { reviewer: ["ana"] }, role_classes: { reviewer: "confidential" } })).toEqual(["lock.role_classes"]);
+    expect(notRunYet07([p], { modules: {}, roles: { reviewer: ["ana"] }, role_classes: { reviewer: "confidential" } })).toEqual([]);
     expect(notRunYet07([p], { modules: {}, promotion: "required" })).toEqual(["lock.promotion"]);
   });
 
   it("names what it finds in the table's order, whatever order it is found in, each once", () => {
     const p = withGreet(minimal(), (d) => ({ ...d, owner: "reviewer", budget: { ...(d["budget"] as Obj), asks: 1 }, body: [REPORT, STAGE, REPORT, STAGE, ...(d["body"] as unknown[])] }));
     const all = notRunYet07([p, p], { modules: {}, promotion: "required", role_classes: {} });
-    expect(all).toEqual(["lock.role_classes", "owner", "lock.promotion"]);
+    expect(all).toEqual(["owner", "lock.promotion"]);
     expect(refusal07(all)).toMatchObject({ code: "unsupported_language" });
-    expect(refusal07(all).message).toBe("unsupported_language: The package uses lock.role_classes (B4), owner (B6), lock.promotion (B6) of mandate/0.7, which this runtime does not run yet (spec/attention.md).");
+    expect(refusal07(all).message).toBe("unsupported_language: The package uses owner (B6), lock.promotion (B6) of mandate/0.7, which this runtime does not run yet (spec/attention.md).");
     expect(namedIn(refusal07(all).message)).toEqual(NOT_RUN_YET_07.map((r) => `${r.name} (${r.slice})`));
   });
 });
@@ -125,14 +124,17 @@ describe("a package of 0.7 at load", () => {
     }
   });
 
-  it("is refused by name for role_classes and promotion in its lock, before the lock is read by its schema", () => {
+  it("is refused by name for promotion in its lock, before the lock is read by its schema; role_classes loads, and is read by it (B4)", () => {
     const p = minimal();
     const roles = { members: { ana: { keys: [`sha256:${"6".repeat(64)}`] } }, roles: { reviewer: ["ana"] } };
-    expect(namedIn(refusal(buildPackage(p, { modules: {}, ...roles, role_classes: { reviewer: "confidential" } } as Lock))!.message)).toEqual(["lock.role_classes (B4)"]);
+    expect(refusal(buildPackage(p, { modules: {}, ...roles, role_classes: { reviewer: "confidential" } } as Lock))).toBeUndefined();
     expect(namedIn(refusal(buildPackage(p, { modules: {}, promotion: "required" } as Lock))!.message)).toEqual(["lock.promotion (B6)"]);
-    expect(namedIn(refusal(buildPackage(p, { modules: {}, ...roles, promotion: "required", role_classes: { reviewer: "internal" } } as Lock))!.message)).toEqual(["lock.role_classes (B4)", "lock.promotion (B6)"]);
-    // A role_classes that names a role `roles` does not, which the schema of 0.7 refuses (E0140), is named the same.
-    expect(namedIn(refusal(buildPackage(p, { modules: {}, role_classes: { nobody: "public" } } as Lock))!.message)).toEqual(["lock.role_classes (B4)"]);
+    expect(namedIn(refusal(buildPackage(p, { modules: {}, ...roles, promotion: "required", role_classes: { reviewer: "internal" } } as Lock))!.message)).toEqual(["lock.promotion (B6)"]);
+    // A lock with role_classes alone is read by validateLock (open question 4 of B4): one that names a role `roles` does
+    // not, or a class the language does not know, is refused as malformed, and never read as a cap.
+    expect(refusal(buildPackage(p, { modules: {}, ...roles, role_classes: { nobody: "public" } } as unknown as Lock))).toMatchObject({ code: "malformed_lock", message: expect.stringContaining("gives a class to role nobody, which is not in roles") });
+    expect(refusal(buildPackage(p, { modules: {}, role_classes: { reviewer: "public" } } as unknown as Lock))).toMatchObject({ code: "malformed_lock" });
+    expect(refusal(buildPackage(p, { modules: {}, ...roles, role_classes: { reviewer: "secret" } } as unknown as Lock))).toMatchObject({ code: "malformed_lock", message: expect.stringContaining("/role_classes/reviewer") });
   });
 
   it("is refused by name for what a module it carries holds, before the module's check is asked", () => {

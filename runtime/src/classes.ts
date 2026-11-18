@@ -78,6 +78,8 @@ export const EVENT_CLASSES: Readonly<Record<string, ViewClass>> = {
   stage_started: "S2",
   stage_ended: "S2",
   report: "S2",
+  program_started: "S2",
+  program_ended: "S2",
   // S3: an external action and a change set, with what they carry.
   action_prepared: "S3",
   action_committed: "S3",
@@ -138,6 +140,10 @@ export const SECTION_CLASSES: Readonly<Record<string, ViewClass>> = {
   envelope: "S2",
   "envelope.amendments": "S0",
   maps: "S2",
+  // 0.7: the stages, the reports addressed to the role, and the sub-programs that started and ended.
+  stages: "S2",
+  reports: "S2",
+  programs: "S2",
   // Whole values a step's result can be in.
   attention: "S3",
   result: "S3",

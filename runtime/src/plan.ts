@@ -745,6 +745,9 @@ export class Planner {
     const running = a.running ? await loadRunning(h, a, a.running) : undefined;
     // 0.7: its attention facts, as stored at its admission (`facts_mismatch` when they are missing or another).
     const attention = a.attention !== undefined ? await readFacts(h.artifacts, h.scope, a.attention, `Sub-program ${a.number} of ${a.plan}'s admission`) : undefined;
+    // 0.7: that it starts, once (never in a replay, which writes nothing); its end is written with its command's.
+    const is07 = isProgram07OrLater(h.parent);
+    if (is07 && !h.replay) await h.journal.programStarted(h.runId, h.fence, { plan: a.plan, number: a.number, command: a.command, workflow: a.workflow, ...(a.shape ? { shape: a.shape } : {}) });
     let outcome: { ok: Value } | { error: { tag: string; args: Value[] } };
     try {
       outcome = { ok: await h.run(a, sub, running, attention) };
@@ -761,7 +764,7 @@ export class Planner {
       }
       return told(now);
     }
-    await h.journal.closeProgram(h.runId, h.fence, a.command, "ok" in outcome ? outcome : { error: outcome.error });
+    await h.journal.closeProgram(h.runId, h.fence, a.command, "ok" in outcome ? outcome : { error: outcome.error }, is07 ? { plan: a.plan, number: a.number } : undefined);
     return told(now);
   }
 }
