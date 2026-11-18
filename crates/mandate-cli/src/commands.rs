@@ -14,7 +14,7 @@ use mandate_ir::{
 use mandate_syntax::{kind_of, load, print_program};
 use mandate_views::{
     acs_target, architecture_pinned, attention_doc, attention_program_doc, attention_view,
-    attention_views_js, authority_pinned, card, card_doc, cost_with, diff_doc_with,
+    attention_views_js, authority_pinned, card_doc_given, card_given, cost_with, diff_doc_with,
     envelope_workflows, has_attention, program_doc_given, to_html, to_markdown, workflow_names,
 };
 
@@ -722,14 +722,18 @@ impl<'a> Cli<'a> {
                 }
             };
             let text = if format == "json" {
-                card(&program, name, lock.as_ref(), Some(&all)).map(|view| pretty(&view.to_js()))
+                card_given(&program, name, lock.as_ref(), Some(&all), &attention_opts)
+                    .map(|card| card.map(|view| pretty(&view.to_js())))
             } else {
-                card_doc(&program, name, lock.as_ref(), Some(&all))
-                    .map(|doc| rendered(&doc, format))
+                card_doc_given(&program, name, lock.as_ref(), Some(&all), &attention_opts)
+                    .map(|doc| doc.map(|doc| rendered(&doc, format)))
             };
             match text {
-                Some(text) => self.out(&text),
-                None => return Err(self.fail(1, &format!("{name} of {file} has no card"))),
+                Ok(Some(text)) => self.out(&text),
+                Ok(None) => return Err(self.fail(1, &format!("{name} of {file} has no card"))),
+                Err(refused) => {
+                    return Err(self.fail(1, &format!("{file}: {}", refused.message)));
+                }
             }
         } else if let Some(against) = a.against.as_deref() {
             // The old version is checked without its lock, as cli.ts checks

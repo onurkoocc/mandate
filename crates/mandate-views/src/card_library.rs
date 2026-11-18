@@ -172,6 +172,9 @@ pub struct CardReview {
     /// The most items it asks about, when the map has a `max`.
     pub at_most: Option<f64>,
     /// The longest the wait lasts: the deadline, twice with an escalation.
+    /// In a program of 0.7 an escalation is told exactly: the first deadline
+    /// counts from when the question is asked, the second from the escalation,
+    /// which comes at the first tick after the first has passed.
     pub longest: String,
     /// The sentence the card shows.
     pub text: String,
@@ -635,7 +638,12 @@ fn named_arg<'a>(e: Expr<'a>, name: &str) -> Option<Expr<'a>> {
 }
 
 /// A review, as the card tells it.
-fn review_of(e: Expr<'_>, lets: &[(&str, Expr<'_>)], lock: Option<&Value>) -> Option<CardReview> {
+fn review_of(
+    e: Expr<'_>,
+    lets: &[(&str, Expr<'_>)],
+    lock: Option<&Value>,
+    exact: bool,
+) -> Option<CardReview> {
     let over = e
         .args()
         .find(|a| a.name().is_none())
@@ -652,7 +660,18 @@ fn review_of(e: Expr<'_>, lets: &[(&str, Expr<'_>)], lock: Option<&Value>) -> Op
         .iter()
         .find(|(n, _)| *n == over)
         .and_then(|(_, m)| limit_of(m.get("max")));
-    let longest = deadline_text(deadline_ms * if escalate_to.is_some() { 2.0 } else { 1.0 });
+    // 0.7 states the two deadlines of an escalation exactly: the second
+    // counts from the escalation, which comes at the first tick after the
+    // first has passed, so the sum is not the longest the wait lasts.
+    let longest = if exact && escalate_to.is_some() {
+        format!(
+            "{} from when it is asked, then {} from the escalation, which comes at the first tick after the first deadline has passed",
+            deadline_text(deadline_ms),
+            deadline_text(deadline_ms)
+        )
+    } else {
+        deadline_text(deadline_ms * if escalate_to.is_some() { 2.0 } else { 1.0 })
+    };
     // The stand-in of a pattern the card cannot expand asks a role, and no
     // more: its deadline and its escalation are the pattern's.
     if !deadline_ms.is_finite() {
@@ -1064,6 +1083,10 @@ pub(crate) struct Gather<'a> {
 
 /// The 0.6 part of the card of a workflow.
 pub(crate) fn gather(g: &Gather<'_>) -> CardLibrary {
+    let exact = g
+        .program
+        .language()
+        .is_some_and(|l| l.at_least(Language::V0_7));
     let mut found = Found::default();
     let mut around: Vec<Expr<'_>> = Vec::new();
     for s in Definition::of(g.wf).body() {
@@ -1099,7 +1122,7 @@ pub(crate) fn gather(g: &Gather<'_>) -> CardLibrary {
     let reviews: Vec<CardReview> = found
         .reviews
         .iter()
-        .filter_map(|r| review_of(*r, &found.lets, g.lock))
+        .filter_map(|r| review_of(*r, &found.lets, g.lock, exact))
         .collect();
     let commits: Vec<CardCommit> = found
         .effects
@@ -1286,8 +1309,28 @@ impl CardLibrary {
         ]
     }
 
-    /// How long a review waits, apart from the time budget.
-    pub(crate) fn spend_blocks(&self) -> Vec<Block> {
+    /// How long a review waits, apart from the time budget. With `exact`
+    /// (0.7) it says no total: the deadlines are in the table of questions.
+    pub(crate) fn spend_blocks(&self, exact: bool) -> Vec<Block> {
+        if exact {
+            // 0.7: the names of the program are shown as code, in a list.
+            let over: Vec<Cell> = self
+                .reviews
+                .iter()
+                .filter(|r| r.deadline_ms.is_finite())
+                .map(|r| Cell::mono(r.over.as_str()))
+                .collect();
+            if over.is_empty() {
+                return Vec::new();
+            }
+            return vec![
+                Block::Note(
+                    "The review of each of these waits apart from the time budget; its deadlines are given under \"When it asks whom\"."
+                        .to_owned(),
+                ),
+                Block::List(over),
+            ];
+        }
         self.reviews
             .iter()
             .filter(|r| r.deadline_ms.is_finite())
@@ -1307,13 +1350,17 @@ impl CardLibrary {
             .collect()
     }
 
-    /// Each review as one decision, and the criteria a person may waive.
-    pub(crate) fn ask_blocks(&self) -> Vec<Block> {
-        let mut out: Vec<Block> = self
-            .reviews
-            .iter()
-            .map(|r| Block::P(r.text.clone()))
-            .collect();
+    /// Each review as one decision (unless the table of questions says it),
+    /// and the criteria a person may waive.
+    pub(crate) fn ask_blocks(&self, reviews: bool) -> Vec<Block> {
+        let mut out: Vec<Block> = if reviews {
+            self.reviews
+                .iter()
+                .map(|r| Block::P(r.text.clone()))
+                .collect()
+        } else {
+            Vec::new()
+        };
         for c in &self.contracts {
             if let Some(doc) = &c.doc {
                 out.push(Block::P(format!("Contract {}: {doc}", c.name)));

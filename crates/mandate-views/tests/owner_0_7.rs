@@ -1,10 +1,10 @@
 //! The views of a program of 0.7 whose workflows have an `owner`
 //! (spec/attention.md "`owner`"): the architecture, authority and cost
-//! views, the document and the card of each workflow are made as for the
-//! same program without its owners, with its lock of 0.7 or without one.
-//! Showing the owner on the card is a later slice's (RP2): until then a
-//! view does not read it. No TypeScript reads 0.7, so every expectation is
-//! written by hand.
+//! views and the document of each workflow are made as for the same program
+//! without its owners, with its lock of 0.7 or without one. The attention
+//! view and the card show the owner (RP1, RP2): the card's own test is
+//! `card_0_7.rs`. No TypeScript reads 0.7, so every expectation is written
+//! by hand.
 
 #![allow(
     clippy::unwrap_used,
@@ -19,8 +19,7 @@ use mandate_ir::{Value, stringify};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::{read_json, read_text};
 use mandate_views::{
-    architecture_with_lock, authority_with, card, card_doc, cost_with, program_doc, to_html,
-    to_markdown,
+    architecture_with_lock, authority_with, cost_with, program_doc, to_html, to_markdown,
 };
 
 fn program(text: &str) -> Value {
@@ -42,10 +41,6 @@ fn views(p: &Value, lock: Option<&Value>) -> String {
     };
     out.push(cut(to_markdown(&doc), "## Attention: "));
     out.push(cut(to_html(&doc), "<h2>Attention: "));
-    for w in ["Describe", "Check"] {
-        out.push(stringify(&card(p, w, lock, None).unwrap().to_js()).unwrap());
-        out.push(to_markdown(&card_doc(p, w, lock, None).unwrap()));
-    }
     out.join("\n")
 }
 
