@@ -55,6 +55,25 @@
     "view --card --format md": "sha256:649e0cb3ce05218f97e7445e82ccbe7c4649ffd04bdcc5cdd6d44855652e4ae1",
     "view --card --format html": "sha256:f8ac04952994c6b32b9ce25318e67b9123655c508a331b2bc439137dd337954a"
   },
+  "fixtures/attention/invoices.mdt": {
+    "check": "sha256:cf79a3d21965992ef51ad635030ab5c79a583f1c9460f0dafa368b57a5976788",
+    "check --module": "sha256:cc50da65fc11ab361efd12cf25a10add0e6da7fd008ba91e2cb7834da0963dc9",
+    "check --lock": "sha256:cc50da65fc11ab361efd12cf25a10add0e6da7fd008ba91e2cb7834da0963dc9",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:d6f466fe57ea575d1e5ec1acddcb03065b5e5d7340881b6e71998321aab4db86",
+    "fmt": "sha256:97829d5935043965eeb5c3de6c5278d3539543fb1a98486a4e8a320acd52e637",
+    "view --format json": "sha256:61ce7ec5364b1b370429633ea8dcb757120f2a2b579bc17e2536680b336ff318",
+    "view --format md": "sha256:dd74ebe99c7b6b72e06b4a356ffaa9fdb4c091fef4c0ba6a86f30d806a6398f9",
+    "view --format html": "sha256:1f7e6f9e507e3376c826e64bb2799298a06f9409c122790fe5560884b313dd6d",
+    "view --attention --format json": "sha256:a3fd9e782b067015de6a27ec96fbf9d253b064aff10a3afb25760b2611e84eac",
+    "view --attention --format md": "sha256:b4b57aa758738146df896765d4b87242e8d01a98e4d9ee0239055ad1457845ad",
+    "view --attention --format html": "sha256:a3cf058d1489aa9aad0c1e4eacf7000dd734c80562caffbaca42eb7772f6c6bb",
+    "view --against itself": "sha256:1866967bdc99cdcb256759b9e9fe5cd3aef253ed00ebf4ebaa6c85bdd1cce94a",
+    "sandbox": "sha256:65fb72087e8a6e83d42f1f3a6fada732e8c9ec35135bea0c1f9d228787298b60",
+    "view --card --format json": "sha256:6b90d7d418cd66bdcbcc5c72182da82156672fa2e7cb74d27bf50ddae4b1ac0a",
+    "view --card --format md": "sha256:c76797306f701accaefd3826675e5dbbba5f0753a753285913bb3ead42716d05",
+    "view --card --format html": "sha256:f6b5bfe6302a62d54bb696c171cfe416274282268a579bcb03a70f4d4ffe4a92"
+  },
   "fixtures/attention/maker-checker.mdt": {
     "check": "sha256:5b9a8e84b7108c096eb08c9226a412c048d5ab559fa149c7e5b269a1459336e0",
     "check --module": "sha256:5b9a8e84b7108c096eb08c9226a412c048d5ab559fa149c7e5b269a1459336e0",
