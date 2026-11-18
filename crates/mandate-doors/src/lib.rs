@@ -14,8 +14,10 @@
 //! (`library_verify`, `library_add`, `library_upgrade`, `library_publish`,
 //! `authority_signature`, `tool_schema_digest`, `callable_connectors`, `mcp_tools`,
 //! `attention_facts`, which no
-//! TypeScript function stands for), then
-//! the one door of this crate, `doors`. [`tables`] gives the four, [`doors`]
+//! TypeScript function stands for), then the doors of the views' crate that
+//! no TypeScript function stands for either, `mandate_views::json_doors::RUST_DOORS`
+//! (`attention`, 0.7), then
+//! the one door of this crate, `doors`. [`tables`] gives the five, [`doors`]
 //! every door in that order, and [`door`] finds one by name. No name is in
 //! two tables; a test holds that. Each door keeps the contract that
 //! `mandate_check::json_doors` states: a pure function from a JSON object to
@@ -152,20 +154,23 @@ impl From<DoorError> for Refusal {
 }
 
 /// The note of the door `doors`.
-const DOORS_NOTE: &str = "The doors of the module, as data: { format: \"mandate/doors/0.1\", doors: [{ name, ts, params, note? }] }, every door of the checker's table, then of the views', then of the library doors of 0.6, then this one, in their order; the three tables are the doors.json files of crates/mandate-check (tests/json_doors and tests/library_doors) and crates/mandate-views. A host checks with it, when it loads the module, that the module has the doors it expects.";
+const DOORS_NOTE: &str = "The doors of the module, as data: { format: \"mandate/doors/0.1\", doors: [{ name, ts, params, note? }] }, every door of the checker's table, then of the views', then of the library doors of 0.6 and 0.7, then of the views' doors of 0.7, then this one, in their order; the four tables are the doors.json files of crates/mandate-check (tests/json_doors and tests/library_doors) and crates/mandate-views (tests/json_doors and tests/rust_doors). A host checks with it, when it loads the module, that the module has the doors it expects.";
 
 /// The doors of this crate: `doors`.
 static OWN: &[Door] = &[Door::own("doors", &[], DOORS_NOTE, doors_door)];
 
-/// The four tables, in order: the checker's, the views', the library doors
-/// of language 0.6 (`mandate_check::json_doors::LIBRARY_DOORS`, which no
-/// TypeScript function stands for), and this crate's own (`doors`).
+/// The five tables, in order: the checker's, the views', the library doors
+/// of language 0.6 and 0.7 (`mandate_check::json_doors::LIBRARY_DOORS`, which
+/// no TypeScript function stands for), the views' doors of 0.7 that no
+/// TypeScript function stands for (`mandate_views::json_doors::RUST_DOORS`),
+/// and this crate's own (`doors`).
 #[must_use]
-pub fn tables() -> [&'static [Door]; 4] {
+pub fn tables() -> [&'static [Door]; 5] {
     [
         mandate_check::json_doors::DOORS,
         mandate_views::json_doors::DOORS,
         mandate_check::json_doors::LIBRARY_DOORS,
+        mandate_views::json_doors::RUST_DOORS,
         OWN,
     ]
 }

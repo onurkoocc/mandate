@@ -921,6 +921,161 @@
         "load": []
       },
       "texts": {}
+    },
+    {
+      "program": "fixtures/attention/view.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": "fixtures/attention/view.lock.json",
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:45b63b874e1a92fa0a184755f477c1f985abacab9c21a4ee2620428984f498e9",
+            "defs": {
+              "Fits": "sha256:e7347784fa166f1ac865d4eccb2204113fa6b2b8bdf24f909e6068264111124f",
+              "Item": "sha256:d1843fbee62dd20bdf980857956498e2b15137431ac5d0489bc0e8318dd9cd89",
+              "Matcher": "sha256:63734f77a735cdb0c0994251affa527f62db46fa2d641c2bf8d14ad53a8fb035",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Notify": "sha256:583050e9abfa47a5b87094228f02f1bfe5595a6710664f3da3597dc5b8955937",
+              "Settle": "sha256:d3c5319983d16b54c1ced5f63a4d83b14fb120af607b79e4a6f4b68562a352f5",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "observer": "sha256:bcc6f447dad0ace4a2316d6ef04605b56aa30b1464b4128f5854e7dfc1b1904b"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Fits.same: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Fits/accept/same/by/static",
+                "span": [38, 15, 38, 32]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0310",
+              "severity": "warning",
+              "message": "Notify holds ModelStd = model.infer but neither its body nor its delegates use it.",
+              "at": {
+                "path": "/defs/Notify/caps/0",
+                "span": [71, 11, 71, 19]
+              },
+              "docs": "mandate explain MDT-W0310"
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:45b63b874e1a92fa0a184755f477c1f985abacab9c21a4ee2620428984f498e9",
+            "defs": {
+              "Fits": "sha256:e7347784fa166f1ac865d4eccb2204113fa6b2b8bdf24f909e6068264111124f",
+              "Item": "sha256:d1843fbee62dd20bdf980857956498e2b15137431ac5d0489bc0e8318dd9cd89",
+              "Matcher": "sha256:63734f77a735cdb0c0994251affa527f62db46fa2d641c2bf8d14ad53a8fb035",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Notify": "sha256:583050e9abfa47a5b87094228f02f1bfe5595a6710664f3da3597dc5b8955937",
+              "Settle": "sha256:d3c5319983d16b54c1ced5f63a4d83b14fb120af607b79e4a6f4b68562a352f5",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "observer": "sha256:bcc6f447dad0ace4a2316d6ef04605b56aa30b1464b4128f5854e7dfc1b1904b"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Fits.same: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Fits/accept/same/by/static",
+                "span": [38, 15, 38, 32]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0310",
+              "severity": "warning",
+              "message": "Notify holds ModelStd = model.infer but neither its body nor its delegates use it.",
+              "at": {
+                "path": "/defs/Notify/caps/0",
+                "span": [71, 11, 71, 19]
+              },
+              "docs": "mandate explain MDT-W0310"
+            }
+          ]
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:45b63b874e1a92fa0a184755f477c1f985abacab9c21a4ee2620428984f498e9",
+            "defs": {
+              "Fits": "sha256:e7347784fa166f1ac865d4eccb2204113fa6b2b8bdf24f909e6068264111124f",
+              "Item": "sha256:d1843fbee62dd20bdf980857956498e2b15137431ac5d0489bc0e8318dd9cd89",
+              "Matcher": "sha256:63734f77a735cdb0c0994251affa527f62db46fa2d641c2bf8d14ad53a8fb035",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Notify": "sha256:583050e9abfa47a5b87094228f02f1bfe5595a6710664f3da3597dc5b8955937",
+              "Settle": "sha256:d3c5319983d16b54c1ced5f63a4d83b14fb120af607b79e4a6f4b68562a352f5",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c",
+              "observer": "sha256:bcc6f447dad0ace4a2316d6ef04605b56aa30b1464b4128f5854e7dfc1b1904b"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Fits.same: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Fits/accept/same/by/static",
+                "span": [38, 15, 38, 32]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0310",
+              "severity": "warning",
+              "message": "Notify holds ModelStd = model.infer but neither its body nor its delegates use it.",
+              "at": {
+                "path": "/defs/Notify/caps/0",
+                "span": [71, 11, 71, 19]
+              },
+              "docs": "mandate explain MDT-W0310"
+            },
+            {
+              "code": "MDT-W0504",
+              "severity": "warning",
+              "message": "Matcher.match declares less than its loop can use: tokens 20000 < 38000 (4 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.",
+              "at": {
+                "path": "/defs/Matcher/budget",
+                "span": [30, 3, 30, 35]
+              },
+              "docs": "mandate explain MDT-W0504",
+              "facts": {
+                "agent": "Matcher",
+                "skill": "match",
+                "steps": 4,
+                "per_call": {
+                  "tokens": 9500,
+                  "spend_micros": 70000,
+                  "currency": "USD"
+                },
+                "short": {
+                  "tokens": {
+                    "declared": 20000,
+                    "bound": 38000
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
     }
   ]
 }

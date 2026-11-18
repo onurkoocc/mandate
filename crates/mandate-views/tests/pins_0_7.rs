@@ -21,7 +21,7 @@ use mandate_syntax::{SourceKind, load};
 use mandate_testkit::{read_json, read_text};
 use mandate_views::{
     architecture_pinned, architecture_with_lock, authority_pinned, authority_with, cost_pinned,
-    cost_with, diff_doc_pinned, program_doc, program_doc_pinned,
+    cost_with, diff_doc_pinned, program_doc, program_doc_pinned, to_markdown,
 };
 
 const BATCH: &str = "fixtures/attention/batch.mdt";
@@ -172,4 +172,69 @@ fn the_view_doors_take_std_patterns_and_refuse_a_wrong_one() {
             "{door}"
         );
     }
+}
+
+/// The door `attention` and the attention sections of the document read the
+/// same version of `std.patterns` as the other views: the lock's pin, else
+/// the version named in `opts.std_patterns`, else the version of 0.7.
+#[test]
+fn the_attention_view_reads_the_lock_s_pin_or_the_version_named() {
+    let lock = read_json(LOCK_1_0_0).unwrap();
+    let source = read_text(BATCH).unwrap();
+    let ask = |opts: JsObject, format: &str| {
+        let o = JsObject::new()
+            .with("text", source.as_str())
+            .with("kind", "mdt")
+            .with("opts", opts)
+            .with("workflow", "MatchAll")
+            .with("format", format);
+        let v = parse(&stringify(&JsValue::Object(o)).unwrap())
+            .unwrap()
+            .value;
+        (mandate_views::json_doors::rust_door("attention")
+            .unwrap()
+            .call)(&v)
+    };
+    let with_lock = |pin: Option<&str>| {
+        let mut o = JsObject::new().with("lock", JsValue::from(&lock));
+        if let Some(p) = pin {
+            o.insert("std_patterns", p);
+        }
+        o
+    };
+    let named = |pin: &str| JsObject::new().with("std_patterns", pin);
+    let md = |r: Result<JsValue, mandate_check::json_doors::DoorError>| match r.unwrap() {
+        JsValue::String(s) => s.to_string(),
+        other => panic!("not text: {other:?}"),
+    };
+    // 2.0.0, the version of 0.7: four stages. 1.0.0: none.
+    let two = md(ask(JsObject::new(), "md"));
+    assert!(
+        two.contains("Stages: Collect the items · Work on each item"),
+        "{two}"
+    );
+    let one_named = md(ask(named("1.0.0"), "md"));
+    assert!(one_named.contains("Stages: none"), "{one_named}");
+    // The lock's pin is the same as naming it, with or without the name.
+    assert_eq!(
+        md(ask(with_lock(None), "md")),
+        md(ask(with_lock(Some("1.0.0")), "md"))
+    );
+    assert!(md(ask(with_lock(None), "md")).contains("Stages: none"));
+    // A version the compiler does not embed, and one the lock contradicts.
+    let e = ask(named("4.0.0"), "md").unwrap_err();
+    assert!(e.message.contains("4.0.0"), "{}", e.message);
+    let e = ask(with_lock(Some("2.0.0")), "md").unwrap_err();
+    assert!(
+        e.message
+            .contains("the lock pins std.patterns 1.0.0, and std_patterns names 2.0.0"),
+        "{}",
+        e.message
+    );
+    // The document's attention sections read the same version.
+    let p = program();
+    let alone = to_markdown(&program_doc(&p, None, None));
+    let pinned = to_markdown(&program_doc_pinned(&p, None, None, Some(&one())));
+    assert!(alone.contains("Stages: Collect the items"));
+    assert!(pinned.contains("Stages: none") && !pinned.contains("Stages: Collect"));
 }

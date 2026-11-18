@@ -585,6 +585,10 @@ the workflow tells each role. It is made from the facts and the lock only.
   after its other views; the document of a program of 0.1 to 0.6 does not
   change.
 - **MCP.** The `project` tool offers it ([The MCP server](#the-mcp-server)).
+- **Rows.** A `verify` row says the criterion and the contract it approves, and a
+  review row the criteria that may be waived and the most items its one decision
+  is about (the facts `contract`, `criterion`, `waivable` and `items`); the JSON
+  of every row has the four members, `null` where the row has no such fact.
 - **Roles.** Each role shows the members the lock binds to it, and the class
   it may be shown (`role_classes`, `internal` when the lock does not say).
 - **The bound.** The view gives the total and the declared `asks`, or says

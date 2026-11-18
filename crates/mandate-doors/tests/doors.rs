@@ -7,10 +7,13 @@
 //!   committed expectation of the TypeScript (`expected.json` beside it), by
 //!   the test kit's `check_calls`; every door of each table has a call.
 //! - Each answer, given the same request text twice, is the same text, and is
-//!   written as `JSON.stringify` writes it.
-//! - The door `doors` gives the three committed `doors.json` files (the
-//!   checker's, the views', the library doors of 0.6), one after
-//!   the other, and its own row; no name is in two tables.
+//!   written as `JSON.stringify` writes it; so are the answers to the calls
+//!   of the views' doors of 0.7 (`crates/mandate-views/tests/rust_doors/inputs.json`),
+//!   which no TypeScript function stands for.
+//! - The door `doors` gives the four committed `doors.json` files (the
+//!   checker's, the views', the library doors of 0.6 and 0.7, the views'
+//!   doors of 0.7), one after the other, and its own row; no name is in two
+//!   tables.
 //! - Requests that are not requests: every sort of malformed text, value and
 //!   member, each answered with its kind; an unknown door; a request at the
 //!   limit of its length and one byte over; the depth of a request.
@@ -36,6 +39,7 @@ use mandate_testkit::read_json;
 const CHECK_DIR: &str = "crates/mandate-check/tests/json_doors";
 const VIEWS_DIR: &str = "crates/mandate-views/tests/json_doors";
 const LIBRARY_DIR: &str = "crates/mandate-check/tests/library_doors";
+const RUST_DIR: &str = "crates/mandate-views/tests/rust_doors";
 
 /// The directories of the two tables, with each table.
 fn tables_and_dirs() -> [(&'static str, &'static [mandate_doors::Door]); 2] {
@@ -43,6 +47,13 @@ fn tables_and_dirs() -> [(&'static str, &'static [mandate_doors::Door]); 2] {
         (CHECK_DIR, mandate_check::json_doors::DOORS),
         (VIEWS_DIR, mandate_views::json_doors::DOORS),
     ]
+}
+
+/// The directories whose calls are sent through the dispatcher and answered
+/// twice with the same text, and turned into malformed requests: the two
+/// tables held to the TypeScript, and the views' doors of 0.7.
+fn answered_dirs() -> [&'static str; 3] {
+    [CHECK_DIR, VIEWS_DIR, RUST_DIR]
 }
 
 /// Every call of `dir/inputs.json`: its name, its door and its input,
@@ -76,7 +87,7 @@ fn every_call_of_both_tables_answers_as_the_typescript() {
 #[test]
 fn the_same_request_gives_the_same_answer_text() {
     let mut n = 0;
-    for (dir, _) in tables_and_dirs() {
+    for dir in answered_dirs() {
         for (name, d, input) in calls(dir) {
             let r = request(&d, &input);
             let first = answer(&r);
@@ -92,9 +103,11 @@ fn the_same_request_gives_the_same_answer_text() {
 #[test]
 fn the_door_doors_is_both_doors_json_and_its_own_row() {
     let mut rows: Vec<JsValue> = Vec::new();
-    // The two tables held to the TypeScript, then the library doors of 0.6.
+    // The two tables held to the TypeScript, then the library doors of 0.6
+    // and 0.7, then the views' doors of 0.7.
     let library = (LIBRARY_DIR, mandate_check::json_doors::LIBRARY_DOORS);
-    for (dir, table) in tables_and_dirs().into_iter().chain([library]) {
+    let rust = (RUST_DIR, mandate_views::json_doors::RUST_DOORS);
+    for (dir, table) in tables_and_dirs().into_iter().chain([library, rust]) {
         let file = read_json(&format!("{dir}/doors.json")).expect("doors.json");
         let listed = file.get("doors").and_then(Value::as_array).expect("doors");
         assert_eq!(listed.len(), table.len(), "{dir}");
@@ -126,7 +139,7 @@ fn the_door_doors_is_both_doors_json_and_its_own_row() {
     assert_eq!(
         all,
         tables().iter().map(|t| t.len()).sum::<usize>(),
-        "doors() is the four tables"
+        "doors() is the five tables"
     );
     names.sort_unstable();
     names.dedup();
@@ -139,10 +152,11 @@ fn the_door_doors_is_both_doors_json_and_its_own_row() {
         assert_eq!(kind(&a), "bad_input", "doors with {input}");
     }
     println!(
-        "doors: {all} doors ({} of the checker, {} of the views, {} of libraries, 1 its own), each once",
+        "doors: {all} doors ({} of the checker, {} of the views, {} of libraries, {} of the views of 0.7, 1 its own), each once",
         tables()[0].len(),
         tables()[1].len(),
-        tables()[2].len()
+        tables()[2].len(),
+        tables()[3].len()
     );
 }
 
@@ -427,7 +441,7 @@ fn variants(d: &str, input: &Value) -> Vec<(String, &'static str)> {
 fn every_call_turned_into_malformed_requests() {
     let mut wrong: Vec<String> = Vec::new();
     let mut n = 0;
-    for (dir, _) in tables_and_dirs() {
+    for dir in answered_dirs() {
         for (name, d, input) in calls(dir) {
             let own = answer(&request(&d, &input));
             for (text, want) in variants(&d, &input) {

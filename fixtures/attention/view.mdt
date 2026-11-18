@@ -1,0 +1,81 @@
+// A program of language 0.7 for the attention view (spec/attention.md "The
+// attention view"): a workflow written out whose review escalates (the
+// accountant, then the finance lead, a day each), with an `owner` and a
+// `report`, and a workflow that asks one role, pauses, and tells another what
+// it did, whose stage title holds characters a page must not take for markup.
+// Its lock (view.lock.json) is of format 0.7: it gives the accountant and the
+// finance lead a class to be shown (confidential, which the escalated review
+// may need) and says nothing of the observer, who may then be shown
+// `internal`, as every role the lock does not name is; it asks for the
+// promotion ladder. It checks; the tests of the
+// view read it. Only the Rust compiler reads it.
+
+mandate @ 0.7
+
+module example.attention.view @ 0.1
+
+use std.{human, model}
+
+role accountant   "Accountant"
+role finance_lead "Finance lead"
+role observer     "Observer"
+
+type Item = { key: Text, total: Int }
+
+capability ModelStd = model.infer(tier: standard, max_class: confidential)
+
+agent Matcher {
+  role   "Matches one item to what is on file. Writes nothing."
+  caps   ModelStd
+  budget { tokens: 20k, steps: 4 }
+  skill match(it: Item) -> Inferred<Item> ! {Model}
+}
+
+/// An item is matched to what is on file; its total may differ when the
+/// accountant or the finance lead waives it.
+contract Fits(it: Item, out: Item) {
+  accept same "The key is the one asked about"
+    by static it.key == out.key
+    waive by accountant, finance_lead
+}
+
+/// Matches every item, asks the accountant once about those that failed only
+/// what may be waived, then the finance lead if a day passes, and tells the
+/// accountant what became of them.
+workflow Settle(items: List<Item>) -> Int
+  owner   accountant
+  caps    ModelStd
+  budget  { spend: 5 USD, time: 2h, asks: 2 }
+{
+  stage work "Work on each item"
+  let checked = map it in items max 20 par 4 {
+    let out = delegate Matcher.match(it)
+    verify out against Fits(it, out)
+  }
+
+  stage exceptions "Decide on the exceptions"
+  let reviewed = human.review(checked, role: accountant, deadline: 1d, escalate_to: finance_lead)
+
+  stage done "Settled"
+  report to accountant "Settled" {
+    accepted: len(reviewed.accepted), declined: len(reviewed.declined), failed: len(reviewed.failed)
+  }
+  len(reviewed.accepted)
+}
+
+/// Asks the observer whether a name is right, waits for a person to go
+/// on, and tells the accountant. Its stage titles hold characters that a page
+/// must show and not take for markup.
+workflow Notify(name: Text) -> Text
+  owner   finance_lead
+  caps    ModelStd
+  budget  { time: 5m, steps: 4 }
+{
+  stage ask "Ask <b>first</b> | \"quote\" & more"
+  let answer = human.ask("Is {name} right?", role: observer)
+  let held   = pause
+
+  stage tell "Tell"
+  report to accountant "Told" { words: len(name) }
+  name
+}
