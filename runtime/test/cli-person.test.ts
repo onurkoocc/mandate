@@ -11,7 +11,9 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { ATTENTION_MEDIA_TYPE } from "../src/attention.js";
 import { main } from "../src/cli.js";
+import { openDb } from "../src/db.js";
 import { indexDoc, openItemLines, pageHtml, pageName, partName, requestLines, safeName, waitLines, waitListLine, waitsText } from "../src/person.js";
 import { Runtime } from "../src/runtime.js";
 import type { WaitItem } from "../src/watch.js";
@@ -159,12 +161,13 @@ beforeAll(async () => {
   // Ana is a reviewer and the finance lead, Ben the accountant, Eve a member of no role.
   [ana, ben, eve] = [await person("ana"), await person("ben"), await person("eve")];
   const base = { lock: "mandate/lock/0.7", modules: {}, members: { ana: { keys: [ana.id] }, ben: { keys: [ben.id] }, eve: { keys: [eve.id] } }, roles: { reviewer: ["ana"], accountant: ["ben"], finance_lead: ["ana"] } };
-  // In one lock the reviewer may be shown what is confidential; in the other the reviewer is capped at internal, which is no entry.
+  // In one lock the reviewer may be shown what is confidential; in the other the reviewer is capped at internal, which is
+  // no entry, and which E1909 refuses at load for a program that asks the reviewer about a secret.
   writeFileSync(LOCK_SHOWN, JSON.stringify({ ...base, role_classes: { reviewer: "confidential", accountant: "confidential" } }));
   writeFileSync(LOCK_MASKED, JSON.stringify({ ...base, role_classes: { accountant: "confidential" } }));
   for (const [workflow, input, id, lock] of [
     ["Ask", ASK, "shown1", LOCK_SHOWN],
-    ["Ask", ASK, "masked1", LOCK_MASKED],
+    ["Ask", ASK, "masked1", LOCK_SHOWN],
     ["Ship", { n: { text: HOSTILE } }, "ship1", LOCK_SHOWN],
     ["Check", ITEMS, "r1", LOCK_SHOWN],
     // A run id is any text: a path, a device name, a bidirectional override must never name a file.
@@ -174,6 +177,14 @@ beforeAll(async () => {
   ] as const) {
     const r = await run(workflow, input, id, lock);
     expect(r.code, r.err).toBe(0);
+  }
+  // A role asked is shown its wait masked only where the wait's class is not known (spec/attention.md "Masking"): the
+  // facts of masked1 deleted, which is tampering or corruption, not a normal state.
+  const db = await openDb(`pglite:${join(dir, "db")}`);
+  try {
+    await db.query("delete from artifacts where run_id = $1 and media_type = $2", ["masked1", ATTENTION_MEDIA_TYPE]);
+  } finally {
+    await db.close();
   }
 }, 240_000);
 
@@ -236,8 +247,8 @@ describe("mandate waits", () => {
     expect(w.out).toContain("the criterion is unmet when the deadline passes");
     // Above the cap: no value, no digest, only the class and how it is known.
     const masked = w.out.split("\n\n").find((block) => block.includes("run masked1  Ask"))!;
-    expect(masked).toContain("subject   masked (class confidential; known plain)");
-    expect(masked).toContain("question: masked; its class is confidential, above what reviewer may be shown; known plain");
+    expect(masked).toContain("subject   masked (class restricted; known external)");
+    expect(masked).toContain("question: masked; its class is restricted, above what reviewer may be shown; known external");
     expect(masked).not.toContain(MARK);
     expect(masked).not.toContain("script");
     expect(masked).not.toMatch(/sha256:/);
@@ -253,8 +264,8 @@ describe("mandate waits", () => {
     const shown = items.find((i) => i.run === "shown1")!;
     expect(shown.shown[0]).toEqual({ name: "question", masked: false, value: `Is ${MARK} right for ${HOSTILE}?`, class: "confidential", known: "plain" });
     const masked = items.find((i) => i.run === "masked1")!;
-    expect(masked.subject).toEqual({ masked: true, class: "confidential", known: "plain" });
-    expect(masked.shown).toEqual([{ name: "question", masked: true, class: "confidential", known: "plain" }]);
+    expect(masked.subject).toEqual({ masked: true, class: "restricted", known: "external" });
+    expect(masked.shown).toEqual([{ name: "question", masked: true, class: "restricted", known: "external" }]);
     expect(JSON.stringify(masked)).not.toContain(MARK);
     expect(JSON.stringify(masked)).not.toContain("script");
     // Another tenant lists nothing; a role no package binds lists nothing, and neither is an error.
@@ -310,7 +321,7 @@ describe("mandate watch <run> --role R --jsonl", () => {
     expect(masked.code, masked.err).toBe(0);
     expect(masked.out).not.toContain(MARK);
     expect(masked.out).not.toContain("script");
-    expect(JSON.parse(masked.out.trim().split("\n").find((l) => l.includes("wait_opened"))!)).toMatchObject({ data: { request: { question: { masked: true, class: "confidential", known: "plain" } } } });
+    expect(JSON.parse(masked.out.trim().split("\n").find((l) => l.includes("wait_opened"))!)).toMatchObject({ data: { request: { question: { masked: true, class: "restricted", known: "external" } } } });
   });
 
   it("has no audit audience, no pages, and refuses a role or a run that is not there", { timeout: 120_000 }, async () => {
@@ -387,13 +398,13 @@ describe("mandate watch --member M --out DIR", () => {
       const html = readFileSync(join(out, f), "utf8");
       expect(html).not.toContain(MARK);
       expect(html).not.toContain("alert(1)");
-      expect(html).toContain("Masked: its class is confidential");
+      expect(html).toContain("Masked: its class is restricted");
     }
     // The index lists what waits with its deadline, what happens with no answer, and each value as the role is shown it.
     const index = readFileSync(join(out, "index.html"), "utf8");
     expect(index).toContain("Reading is not authenticated");
     expect(index).toContain("<th>Deadline</th><th>If nobody answers</th>");
-    expect(index).toContain("question: masked (class confidential; known plain)");
+    expect(index).toContain("question: masked (class restricted; known external)");
     const row = index.split("<tr>").find((r) => r.includes("masked1.reviewer.html") && r.includes("Ask"))!;
     expect(row).toBeDefined();
     expect(row).not.toContain(MARK);
@@ -501,7 +512,12 @@ describe("mandate decide", () => {
   });
 
   it("shows a masked wait as masked, and signs it only on the word yes", { timeout: 180_000 }, async () => {
+    // Under the lock that caps the reviewer below what it is asked, the program does not load (E1909): nobody is asked.
+    const low = await run("Ask", ASK, "masked0", LOCK_MASKED);
+    expect(low.code).not.toBe(0);
+    expect(low.err).toContain("MDT-E1909");
     const list = await mandate(["waits", "--member", "ana"]);
+    expect(list.out).not.toContain("masked0");
     expect(list.code).toBe(0);
     const number = (await mandate(["decide", "--key", ana.key], [])).out.split("\n").find((l) => l.includes("run masked1"))!.match(/^(\d+)\./)![1]!;
     // `y` is not enough: it is not the word, and nothing is signed.
@@ -515,10 +531,11 @@ describe("mandate decide", () => {
     expect(half.out).not.toContain("alert(1)");
     expect((await mandate(["status", "masked1"])).out).toContain("waiting");
     noRaw(half.out);
-    // `yes` signs it, and the answer is the run's.
+    // `yes` signs it, and the answer is the run's. The run's facts are gone, so it does not go on: it stops for a
+    // person (`facts_mismatch`), as any run whose stored facts are missing does.
     const done = await mandate(["decide", "--key", ana.key], [number, "no", "yes"]);
     expect(done.code, done.out + done.err).toBe(0);
-    expect(done.out).toMatch(/signed by ana: answer "no"\nrun masked1 is now succeeded, revision \d+\n$/);
+    expect(done.out).toMatch(/signed by ana: answer "no"\nrun masked1 is now attention_required, revision \d+\n$/);
   });
 
   it("signs an answer as `answer` would, and verifies as theirs", { timeout: 180_000 }, async () => {
@@ -739,7 +756,7 @@ describe("the second program: names, moving runs, two waits, the error path", ()
 
   beforeAll(async () => {
     zed = await person("zed");
-    writeFileSync(LOCK2, JSON.stringify({ lock: "mandate/lock/0.7", modules: {}, members: { zed: { keys: [zed.id] } }, roles: { reviewer: ["zed"], Lead: ["zed"], lead: ["zed"] }, role_classes: { reviewer: "confidential", Lead: "confidential" } }));
+    writeFileSync(LOCK2, JSON.stringify({ lock: "mandate/lock/0.7", modules: {}, members: { zed: { keys: [zed.id] } }, roles: { reviewer: ["zed"], Lead: ["zed"], lead: ["zed"] }, role_classes: { reviewer: "confidential", Lead: "confidential", lead: "confidential" } }));
   }, 120_000);
 
   it("gives names that differ in case, a trailing dot, a long id or a device name each a page of its own, as the role is shown it", { timeout: 240_000 }, async () => {
@@ -747,6 +764,14 @@ describe("the second program: names, moving runs, two waits, the error path", ()
     for (const id of ids) {
       const r = await run2(id === "run1" ? "AskLow" : "AskUp", id);
       expect(r.code, `${id}: ${r.err}`).toBe(0);
+    }
+    // Every role the lock binds may be shown the secret (else E1909 refuses the program): what masks run1's question
+    // from the lower lead it is asked of is a class that is not known, its facts deleted.
+    const db = await openDb(`pglite:${join(dir, "db")}`);
+    try {
+      await db.query("delete from artifacts where run_id = $1 and media_type = $2", ["run1", ATTENTION_MEDIA_TYPE]);
+    } finally {
+      await db.close();
     }
     const pages = join(dir, "pages-zed");
     const r = await mandate(["watch", "--member", "zed", "--out", pages]);
@@ -759,7 +784,8 @@ describe("the second program: names, moving runs, two waits, the error path", ()
     expect(new Set(files.map((f) => f.toLowerCase())).size).toBe(files.length);
     for (const f of files) expect(f, f).toMatch(/^(index|(?:[a-z0-9_-]{1,40}|_h-[0-9a-f]{16})\.(?:[a-z0-9_-]{1,40}|_h-[0-9a-f]{16}))\.html$/);
     const page = (id: string, role: string): string => readFileSync(join(pages, pageName(id, role)), "utf8");
-    // Each page is the projection of its own run and role: the upper lead is shown the secret, the lower lead is not.
+    // Each page is the projection of its own run and role: the upper lead is shown the secret of Run1, which it is
+    // asked, and the lower lead is not, of Run1 (asked of the upper lead) or of run1 (its class not known).
     for (const id of ["Run1", "run1"]) {
       expect(page(id, "lead"), id).not.toContain(MARK2);
       expect(page(id, "lead")).toContain(`Run ${id}`);

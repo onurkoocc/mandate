@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LibrarySource, Lock } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
+import { ATTENTION_MEDIA_TYPE } from "../src/attention.js";
 import { shownPackage, signDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import { McpClient, type McpFetch } from "../src/mcp-client.js";
@@ -126,8 +127,18 @@ describe("the attention fixture, as the accountant is shown it", () => {
     }
   });
 
-  it("shows no invoice, in a line or on a page, to an accountant whose cap the lock sets below the invoice's class", { timeout: 120_000 }, async () => {
-    const w = await waiting({ accountant: "internal", finance_lead: "confidential" });
+  it("does not run under a lock that sets the accountant's cap below the invoice's class (E1909), and shows no invoice, in a line or on a page, once the run's facts no longer give its class", { timeout: 120_000 }, async () => {
+    // A lock that caps the accountant below what it is asked: the package is refused at load (its envelope's approval
+    // and its start), and nobody is asked.
+    const low = await invoices({ accountant: "internal", finance_lead: "confidential" });
+    const refused = { code: "load_verification_failed", message: expect.stringContaining("MDT-E1909") };
+    await expect(low.rt.approveEnvelope(low.pkg, signDecision(low.ana, shownPackage(low.pkg.hash, "accountant"), { kind: "envelope", member: "ana", at: new Date(low.adapters.clock.now()) }))).rejects.toMatchObject(refused);
+    await expect(low.rt.startRun({ pkg: low.pkg, workflow: "MatchInvoices", input: {}, runId: "d1", mode: "design" })).rejects.toMatchObject(refused);
+    expect(await low.rt.listWaits({ role: "accountant" })).toEqual([]);
+    // So what masks the invoice from the accountant asked is a class that is not known: the facts deleted (tampering
+    // or corruption, not a normal state).
+    const w = await waiting();
+    await w.db.query("delete from artifacts where run_id = $1 and media_type = $2", ["d1", ATTENTION_MEDIA_TYPE]);
     const text = waitsText({ role: "accountant" }, await w.rt.listWaits({ role: "accountant" }));
     expect(text).toContain("masked");
     for (const i of ALL) expect(text, `invoice ${i}`).not.toContain(invoiceNo(i));

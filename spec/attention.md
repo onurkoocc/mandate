@@ -1688,7 +1688,11 @@ operator's, or reads a run's values from the store.
   `Runtime.shown` gives for the run now, at the revision the list showed, so a run that moved
   on is refused as `stale_revision`; the runtime refuses what it would refuse from any client,
   and the refusal is printed with its reason.
-- **A masked wait.** The role is not shown what it is asked to decide. `decide` says so
+- **A masked wait.** The role is not shown what it is asked to decide. With a lock, E1909 and
+  the start (`authorizer_below_class`) leave that only where the wait's class is not known:
+  the stored facts tampered with or corrupted, or the parameters of an effect only the
+  runtime's configuration hands to a person ([Masking](#masking-and-how-a-value-is-known)).
+  `decide` says so
   plainly, and takes the signature only after the full word `yes`: the member may still sign
   for the digest the run shows. (The alternative, refusing to sign what is masked, is an open
   question for the owner of the release.)
