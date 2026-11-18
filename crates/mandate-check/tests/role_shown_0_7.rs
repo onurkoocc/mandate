@@ -8,6 +8,14 @@
 //! the lowest-capped role it binds), and under that lock with every bound
 //! role given `confidential`.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    missing_docs
+)]
+
 use mandate_check::{CheckOptions, CheckResult, check};
 use mandate_ir::{Value, stringify};
 use mandate_syntax::SourceKind;
