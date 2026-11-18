@@ -119,22 +119,21 @@ export function holdsAttention(program: Program | undefined, workflow: string): 
 }
 
 /**
- * A lead's sub-program checked as the runtime's checker checks it (plan-worker.ts): `checkSubprogram`, and, for an
- * admitted sub-program of a parent of 0.7 whose workflow runs a stage or a report (through the expansion of a shape),
- * its attention facts (`attention`, null when the door gives none), which its admission stores.
+ * A lead's sub-program checked as the runtime's checker checks it (plan-worker.ts): `checkSubprogram`, and, for a
+ * sub-program of a parent of 0.7 that checks, its attention facts (`attention`, null when the door gives none), which
+ * its admission stores: they label its stages and reports (through the expansion of a shape), and give what its
+ * admission reserves of the run's `asks` (slice B3).
  */
 export function checkedSubprogram(input: SubprogramInput, door: FactsDoor = attentionFacts): SubprogramCheck06 & { attention?: AttentionFacts | null } {
   const r = checkSubprogram(input) as SubprogramCheck06;
   if (!r.ok || !r.program || !r.workflow || !isProgram07OrLater(input.parent)) return r;
-  if (!holdsAttention((r.running ?? r.program) as Program, r.workflow)) return r;
   return { ...r, attention: subprogramFacts(door, input, r) };
 }
 
 /**
  * The facts of a lead's admitted sub-program (0.7), asked of the door as the check of a sub-program checks it: the
  * sub-program opened onto its parent (its `use` of the parent names every definition the parent has), with the
- * parent among the modules, and the claim of its envelope and of its lead. Given only for a sub-program whose
- * running program holds a stage or a report: null when the door gives none, or refuses.
+ * parent among the modules, and the claim of its envelope and of its lead. Null when the door gives none, or refuses.
  */
 export function subprogramFacts(door: FactsDoor, input: SubprogramInput, checked: SubprogramCheck06): AttentionFacts | null {
   const { parent } = input;

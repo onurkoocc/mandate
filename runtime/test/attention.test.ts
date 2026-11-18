@@ -59,7 +59,6 @@ const namedIn = (message: string): string[] => /The package uses (.*) of mandate
 describe("the table of what 0.7 adds that this runtime does not run yet", () => {
   it("holds a line for each construct, with the slice that releases it: a slice that runs one takes its line out, and this list with it", () => {
     expect(NOT_RUN_YET_07.map((r) => [r.name, r.slice])).toEqual([
-      ["asks", "B3"],
       ["lock.role_classes", "B4"],
       ["owner", "B6"],
       ["lock.promotion", "B6"],
@@ -75,14 +74,11 @@ describe("the table of what 0.7 adds that this runtime does not run yet", () => 
     expect(notRunYet07([{ ...p, tests: { t: { body: [STAGE] } } } as unknown as Program])).toEqual([]);
   });
 
-  it("finds asks in a workflow's budget and in its envelope's, and nowhere else", () => {
+  it("no longer names asks, which runs (B3, test/asks.test.ts), in a workflow's budget or its envelope's", () => {
     const p = minimal();
-    expect(notRunYet07([withGreet(p, (d) => ({ ...d, budget: { ...(d["budget"] as Obj), asks: 2 } }))])).toEqual(["asks"]);
-    expect(notRunYet07([withGreet(p, (d) => ({ ...d, budget: { ...(d["budget"] as Obj), asks: 0 } }))])).toEqual(["asks"]);
-    expect(notRunYet07([withGreet(p, (d) => ({ ...d, caps: [], budget: undefined, envelope: { owner: "reviewer", budget: { steps: 4, asks: 1 } } }))])).toEqual(["asks"]);
-    // An agent's budget holds no `asks` of 0.7: it is the compiler's to refuse (E1908), not a construct this runtime runs.
-    const agent = p.defs["Greeter"] as unknown as Obj;
-    expect(notRunYet07([{ ...p, defs: { ...p.defs, Greeter: { ...agent, budget: { ...(agent["budget"] as Obj), asks: 1 } } } } as unknown as Program])).toEqual([]);
+    expect(notRunYet07([withGreet(p, (d) => ({ ...d, budget: { ...(d["budget"] as Obj), asks: 2 } }))])).toEqual([]);
+    expect(notRunYet07([withGreet(p, (d) => ({ ...d, budget: { ...(d["budget"] as Obj), asks: 0 } }))])).toEqual([]);
+    expect(notRunYet07([withGreet(p, (d) => ({ ...d, caps: [], budget: undefined, envelope: { owner: "reviewer", budget: { steps: 4, asks: 1 } } }))])).toEqual([]);
   });
 
   it("finds owner on a workflow, and not an envelope's owner, which is 0.4's", () => {
@@ -101,9 +97,9 @@ describe("the table of what 0.7 adds that this runtime does not run yet", () => 
   it("names what it finds in the table's order, whatever order it is found in, each once", () => {
     const p = withGreet(minimal(), (d) => ({ ...d, owner: "reviewer", budget: { ...(d["budget"] as Obj), asks: 1 }, body: [REPORT, STAGE, REPORT, STAGE, ...(d["body"] as unknown[])] }));
     const all = notRunYet07([p, p], { modules: {}, promotion: "required", role_classes: {} });
-    expect(all).toEqual(["asks", "lock.role_classes", "owner", "lock.promotion"]);
+    expect(all).toEqual(["lock.role_classes", "owner", "lock.promotion"]);
     expect(refusal07(all)).toMatchObject({ code: "unsupported_language" });
-    expect(refusal07(all).message).toBe("unsupported_language: The package uses asks (B3), lock.role_classes (B4), owner (B6), lock.promotion (B6) of mandate/0.7, which this runtime does not run yet (spec/attention.md).");
+    expect(refusal07(all).message).toBe("unsupported_language: The package uses lock.role_classes (B4), owner (B6), lock.promotion (B6) of mandate/0.7, which this runtime does not run yet (spec/attention.md).");
     expect(namedIn(refusal07(all).message)).toEqual(NOT_RUN_YET_07.map((r) => `${r.name} (${r.slice})`));
   });
 });
@@ -119,9 +115,8 @@ describe("a package of 0.7 at load", () => {
   it("is refused by name for each construct its program holds, before the compiler's check is asked", () => {
     const p = minimal();
     const cases: Array<[Program, string[]]> = [
-      [withGreet(p, (d) => ({ ...d, budget: { ...(d["budget"] as Obj), asks: 1 } })), ["asks (B3)"]],
       [withGreet(p, (d) => ({ ...d, owner: "reviewer" })), ["owner (B6)"]],
-      [withGreet(p, (d) => ({ ...d, owner: "reviewer", budget: { ...(d["budget"] as Obj), asks: 1 }, body: [STAGE, ...(d["body"] as unknown[]), REPORT] })), ["asks (B3)", "owner (B6)"]],
+      [withGreet(p, (d) => ({ ...d, owner: "reviewer", budget: { ...(d["budget"] as Obj), asks: 1 }, body: [STAGE, ...(d["body"] as unknown[]), REPORT] })), ["owner (B6)"]],
     ];
     for (const [program, names] of cases) {
       const e = refusal(buildPackage(program));
@@ -160,8 +155,8 @@ describe("a package of 0.7 at load", () => {
 
   it("a lead's sub-program of a 0.7 parent that holds a construct of the table is not run in a sub-program yet", () => {
     const parent = minimal();
-    const sub = { language: LANGUAGE_07, module: "example.attention.minimal.plan_1", version: "0.1", defs: { Sub: { kind: "workflow", params: [], returns: { ref: "Int" }, caps: [], budget: { steps: 1, asks: 1 }, body: [STAGE, { op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
-    expect(subprogramNotRunYet(sub, parent, {})).toEqual(["asks"]);
+    const sub = { language: LANGUAGE_07, module: "example.attention.minimal.plan_1", version: "0.1", defs: { Sub: { kind: "workflow", params: [], returns: { ref: "Int" }, caps: [], owner: "reviewer", budget: { steps: 1, asks: 1 }, body: [STAGE, { op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
+    expect(subprogramNotRunYet(sub, parent, {})).toEqual(["owner"]);
     const plain = { ...sub, defs: { Sub: { kind: "workflow", params: [], returns: { ref: "Int" }, caps: [], body: [{ op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
     expect(subprogramNotRunYet(plain, parent, {})).toEqual([]);
   });

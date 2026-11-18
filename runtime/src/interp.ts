@@ -26,6 +26,7 @@ import {
   hashProgram,
   inFlightOverlap,
   isProgram06OrLater,
+  isProgram07OrLater,
   leadClasses,
   mapScopes,
   modelTiers,
@@ -34,7 +35,6 @@ import {
   requirementFor,
   STD_EFFECTS,
   STD_FNS,
-  subprogramLinked,
   workflowBounds,
   type Arg,
   type AuthorityContext,
@@ -67,7 +67,9 @@ import {
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter, ToolSpec } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationsRequired, recordProblem, type AttestationRule } from "./attestation.js";
+import { ASKS_EXHAUSTED, staticPath, type AskSite, type SiteTag } from "./asks.js";
 import { reportFacts, reportValue, stageFacts } from "./attention.js";
+import { linkedSubprogram } from "./package.js";
 import { failureFacts, failureOf, forbidden, type BoundTool, type Connectors } from "./connectors.js";
 import { criterionMethods, evidenceIdOf, needsPerson, partMethod, uncovered } from "./criteria.js";
 import { approvalProblem, type StoredDecision } from "./decisions.js";
@@ -183,6 +185,17 @@ interface Ctx {
    * batch commit step (spec/library.md "The batch commit step"), whose actions the map names, not the item.
    */
   map?: string;
+  /**
+   * 0.7: where the definition being run stands, as a command path (`cmd`) and as its static path in the program
+   * (`stat`): a workflow's `/defs/W`, a function's `/defs/f` (its body runs under `<call>>f`), a contract's `/defs/C`
+   * (under `<verify>/contract`), a criterion's verifier `/defs/C/<group>/<name>/by`. A wait's static site is read from
+   * it (`site`), never from the command path alone, which does not name a contract. Absent: the run's own top level.
+   */
+  frame?: { cmd: string; stat: string };
+  /** 0.7: inside a contract's criteria, the `verify` they belong to, as a command path and as its static path. */
+  verifying?: { cmd: string; stat: string };
+  /** 0.7: inside the `on budget_exceeded` handler, whose questions are not counted against `asks` (D7 of slice B3). */
+  handler?: true;
 }
 
 /**
@@ -337,7 +350,7 @@ export class Interpreter {
     this.amendable = !!o.plan && Object.keys(leadClasses(o.plan.parent, o.program.defs)).length > 0;
     // A run whose program plans has sub-programs to keep its maps clear of, those of its sub-programs too (C5).
     const p = this.amendable ? o.plan : undefined;
-    this.shared = o.shared ?? new Shared(p && (() => programsInFlight({ journal: o.journal, runId: o.runId, artifacts: o.artifacts, scope: this.scope(), parent: p.parent, modules: p.modules })));
+    this.shared = o.shared ?? new Shared(p && (() => programsInFlight({ journal: o.journal, runId: o.runId, artifacts: o.artifacts, scope: this.scope(), parent: p.parent, modules: p.modules, lock: p.lock })));
   }
 
   /**
@@ -393,9 +406,9 @@ export class Interpreter {
       if (!Object.hasOwn(input, p.name)) throw new Violation("missing_input", `Workflow ${name} needs input '${p.name}'.`);
       vars.set(p.name, input[p.name]!);
     }
-    const ctx: Ctx = { scope: { vars }, where: "workflow", workflow: name };
     // A sub-program's workflow runs under the command it was admitted as (spec/envelope.md "Running").
     const at = `${this.o.sub?.command ?? ""}/defs/${name}`;
+    const ctx: Ctx = { scope: { vars }, where: "workflow", workflow: name, frame: { cmd: at, stat: `/defs/${name}` } };
     let result: Value;
     try {
       result = await this.block(wf.body, ctx, `${at}/body`);
@@ -427,9 +440,12 @@ export class Interpreter {
   async onBudgetExceeded(name: string, input: Obj, episode: number): Promise<Value> {
     const wf = this.workflowDef(name);
     const i = (wf.on ?? []).findIndex((h) => h.event === "budget_exceeded");
-    if (i < 0) return this.wait(`/defs/${name}/on/budget_exceeded@${episode}`, "input", { pause: true });
+    // 0.7: the handler's questions, and the pause it falls back to, are not counted against `asks` and recur once per
+    // episode (D7 of slice B3): their tags say so.
+    const handler: Ctx = { scope: { vars: new Map() }, where: "workflow", workflow: name, handler: true };
+    if (i < 0) return this.wait(`/defs/${name}/on/budget_exceeded@${episode}`, "input", { pause: true }, handler, { kind: "pause", path: `/defs/${name}`, wait: `/defs/${name}/on/budget_exceeded` });
     const vars = new Map<string, Value>(wf.params.map((p) => [p.name, input[p.name] ?? null]));
-    return this.expr(wf.on![i]!.then, { scope: { vars }, where: "workflow", workflow: name }, `/defs/${name}/on/${i}@${episode}/then`);
+    return this.expr(wf.on![i]!.then, { ...handler, scope: { vars } }, `/defs/${name}/on/${i}@${episode}/then`);
   }
 
   // ── statements ────────────────────────────────────────────────────────
@@ -481,6 +497,21 @@ export class Interpreter {
   private node(path: string): string {
     const under = this.o.sub?.command;
     return staticPath(under !== undefined && path.startsWith(under) ? path.slice(under.length) : path);
+  }
+
+  /**
+   * 0.7: the static path of the construct at `path` (spec/attention.md "The static form of a wait"): its path in the
+   * definition `ctx` runs, without a loop's iteration, a restarted round or a map's item. A function's site is under
+   * `/defs/f/…`, a contract's under `/defs/C/…`, and a sub-program's in its own program.
+   */
+  private site(ctx: Ctx, path: string): string {
+    const f = ctx.frame;
+    return f && path.startsWith(f.cmd) ? `${f.stat}${staticPath(path.slice(f.cmd.length))}` : this.node(path);
+  }
+
+  /** Whether this interpreter's program is of 0.7 or later: its waits for a person carry site tags, and count. */
+  private get attentive(): boolean {
+    return isProgram07OrLater(this.o.program);
   }
 
   /** The sub-program this interpreter runs, as a stage's event names it (0.7): its `plan` node and its number. */
@@ -684,11 +715,14 @@ export class Interpreter {
       case "escalate": {
         const person = e.to.op === "call" && calleePath(e.to.callee) === "human" ? e.to : undefined;
         const message = person?.args[0] ? await this.expr(person.args[0].value, ctx, `${path}/to/args/0/value`) : await this.expr(e.to, ctx, `${path}/to`);
-        return this.wait(path, "input", { escalation: message, ...this.asked(person?.args.find((a) => a.name === "role")?.value) });
+        const at = this.site(ctx, path);
+        return this.wait(path, "input", { escalation: message, ...this.asked(person?.args.find((a) => a.name === "role")?.value) }, ctx, { kind: "escalate", path: at, wait: at });
       }
-      case "pause":
+      case "pause": {
         if (e.then) return this.expr(e.then, ctx, `${path}/then`);
-        return this.wait(path, "input", { pause: true });
+        const at = this.site(ctx, path);
+        return this.wait(path, "input", { pause: true }, ctx, { kind: "pause", path: at, wait: at });
+      }
       case "switch":
         return this.switch(e, ctx, path);
       case "try": {
@@ -1000,7 +1034,8 @@ export class Interpreter {
       const vars = new Map<string, Value>();
       local.params.forEach((param, i) => vars.set(param.name, pos[i] ?? null));
       try {
-        return await this.block(local.body, { ...ctx, scope: { vars } }, `${path}>${p}/body`);
+        // Its sites stand in its own definition: `<call>>f/body/…` runs `/defs/f/body/…`.
+        return await this.block(local.body, { ...ctx, scope: { vars }, frame: { cmd: `${path}>${p}`, stat: `/defs/${p}` } }, `${path}>${p}/body`);
       } catch (r) {
         if (r instanceof Return) return r.value;
         throw r;
@@ -1024,7 +1059,8 @@ export class Interpreter {
     }
     if (p === "human.ask") {
       const { pos } = await this.args(e.args, ctx, path);
-      return this.wait(path, "input", { question: pos[0] ?? null, ...this.asked(e.args.find((a) => a.name === "role")?.value) });
+      const at = this.site(ctx, path);
+      return this.wait(path, "input", { question: pos[0] ?? null, ...this.asked(e.args.find((a) => a.name === "role")?.value) }, ctx, { kind: "ask", path: at, wait: at });
     }
     if (p === "time.now") return this.command(path, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() }));
     if (p === "data.read") return this.dataRead(e, ctx, path);
@@ -1218,10 +1254,26 @@ export class Interpreter {
     return name === undefined ? {} : { role: name };
   }
 
-  /** A wait for a person. The journal holds the answer once it arrives. */
-  private async wait(id: string, kind: "input" | "decision", request: Value): Promise<Value> {
+  /**
+   * 0.7: what the journal is told of a wait for a person at `tag`, the wait's static site (spec/attention.md "`asks`
+   * at run time"): the tag, and what its question counts against: the reservation of the sub-program this interpreter
+   * runs, else the run's own. A wait of the `on budget_exceeded` handler is tagged so and counts nothing (D7). A
+   * program of 0.1 to 0.6 is told nothing: its waits are written as they always were.
+   */
+  private asking(ctx: Ctx, tag: Omit<SiteTag, "only">): AskSite | undefined {
+    if (!this.attentive) return undefined;
+    if (ctx.handler) return { tag: { ...tag, only: "budget_exceeded" } };
+    return { tag, count: this.o.sub ? { from: "program", program: this.o.sub.command } : { from: "parent" } };
+  }
+
+  /**
+   * A wait for a person. The journal holds the answer once it arrives. `ctx` and `tag` are where it stands and its
+   * static site, which a run of 0.7 records and counts (`asking`). A question past what its run may ask was not
+   * asked: its command failed, `Rejected(asks_exhausted)`, which is thrown here as any recorded fault is.
+   */
+  private async wait(id: string, kind: "input" | "decision", request: Value, ctx: Ctx, tag: Omit<SiteTag, "only">): Promise<Value> {
     const { journal, runId, fence } = this.o;
-    const row = this.o.replay ? await journal.command(runId, id) : await journal.openWait(runId, fence, { id, kind, digest: digest("request", { kind, request }) }, request);
+    const row = this.o.replay ? await journal.command(runId, id) : await journal.openWait(runId, fence, { id, kind, digest: digest("request", { kind, request }) }, request, undefined, this.asking(ctx, tag));
     if (!row || row.state === "waiting") {
       if (this.o.replay) throw new ReplayEnd(id, "no_result");
       // The request as first recorded: a resumed worker must not move its deadline.
@@ -1334,12 +1386,16 @@ export class Interpreter {
         }
         if (sup?.name === "escalate" && ESCALATABLE.has(f.tag) && attempt < MAX_ESCALATIONS) {
           const role = arg("role");
+          // Its static site is the delegation's, `<delegate>/escalate`, whichever attempt (`#k`) it follows.
+          const at = this.site(ctx, path);
+          // (crates/mandate-check/tests/asks_0_7.rs reads the first line of this call as it is written.)
+          // prettier-ignore
           const answer = await this.wait(`${id}/escalate`, "input", {
             escalation: { delegate: `${e.agent}.${e.skill}`, fault: f.value(), attempt },
             question: `${e.agent}.${e.skill} failed with ${show(f.value())}. Answer "retry" to run it again, or anything else to let the failure stand.`,
             options: ["retry", "fail"],
             ...(role?.op === "text" ? { role: role.value } : this.asked(role)),
-          });
+          }, ctx, { kind: "supervise_escalate", path: at, wait: `${at}/escalate` });
           if (String(unwrap(answer)).trim().toLowerCase() === "retry") continue;
         }
         throw f;
@@ -1431,6 +1487,11 @@ export class Interpreter {
         plan: path,
         lead: `${e.agent}.${e.skill}`,
         leadClass: cls,
+        // 0.7: the plan's static site, which a lead's amendment request is tagged with; the facts in force and the
+        // configuration, which an amendment's bound and a sub-program's reservation are computed under.
+        site: this.site(ctx, path),
+        ...(this.o.attention ? { facts: this.o.attention } : {}),
+        ...(this.o.policy.authorize ? { authorize: this.o.policy.authorize } : {}),
         ...(time !== undefined ? { deadline: p.startedAt + time } : {}),
         checker: p.checker,
         checkMs: p.checkMs,
@@ -1461,7 +1522,8 @@ export class Interpreter {
    */
   private subprogram(a: Admission, sub: Program, running?: Program, attention?: AttentionFacts): Promise<Value> {
     const { plan, ...o } = this.o;
-    const program = running ?? subprogramLinked(sub, plan!.parent, plan!.modules);
+    // 0.7: linked with the version of std.patterns the package's lock pins, as its check read it.
+    const program = running ?? linkedSubprogram(sub, plan!.parent, plan!.modules, plan!.lock);
     const wf = Object.hasOwn(program.defs, a.workflow) ? program.defs[a.workflow] : undefined;
     if (wf?.kind !== "workflow") throw new Violation("unknown_workflow", `Sub-program ${a.number} of ${a.plan} has no workflow '${a.workflow}'.`);
     // 0.7: its own attention facts, stored at its admission, and never the run's.
@@ -1724,7 +1786,9 @@ export class Interpreter {
     if (!c || c.kind !== "contract") throw new Violation("unknown_contract", `No contract '${e.contract}'.`);
     const vars = new Map<string, Value>();
     c.params.forEach((p, i) => vars.set(p.name, pos[i] ?? null));
-    const cctx: Ctx = { scope: { vars }, where: "contract", workflow: ctx.workflow };
+    // 0.7: the contract's sites stand in its definition (`<verify>/contract/require/i` runs `/defs/C/require/i`), and
+    // an approval's wait under the verify it belongs to (`<verify>/contract/<group>/<criterion>…`).
+    const cctx: Ctx = { scope: { vars }, where: "contract", workflow: ctx.workflow, frame: { cmd: `${path}/contract`, stat: `/defs/${e.contract}` }, verifying: { cmd: path, stat: this.site(ctx, path) }, ...(ctx.handler ? { handler: true as const } : {}) };
     let unmet: string[] = [];
     let evidence: string[] = [];
     // 0.6 (B25): every record of this verify names, by its digest, the value it was given (`subject.value`).
@@ -1740,11 +1804,13 @@ export class Interpreter {
     // asked only once every other criterion is met: nobody approves a change
     // whose checks already failed.
     const criteria = (["accept", "invariant"] as const)
-      .flatMap((group) => Object.keys(c[group] ?? {}).map((name) => ({ name, by: c[group]![name]!.by, path: `${path}/contract/${group}/${name}` })))
+      .flatMap((group) => Object.keys(c[group] ?? {}).map((name) => ({ name, group, by: c[group]![name]!.by, path: `${path}/contract/${group}/${name}` })))
       .sort((a, b) => methodRank(a.by) - methodRank(b.by) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const k of criteria) {
+      // A criterion's verifier is its `by` in the contract's definition.
+      const kctx: Ctx = { ...cctx, frame: { cmd: k.path, stat: `/defs/${e.contract}/${k.group}/${k.name}/by` } };
       if (methodRank(k.by) === HUMAN_RANK && unmet.length) unmet.push(k.name);
-      else if (!(await this.criterion(k.by, e.contract, k.name, cctx, k.path, evidence, k.path, bound && { value: bound.value, failed: (bound.failed[k.name] ??= []) }))) unmet.push(k.name);
+      else if (!(await this.criterion(k.by, e.contract, k.name, kctx, k.path, evidence, k.path, bound && { value: bound.value, failed: (bound.failed[k.name] ??= []) }))) unmet.push(k.name);
     }
     // 0.6: against a contract a person may waive part of, the outcome is journaled, with the value it was given and
     // the failed records of each criterion it did not meet: a review of the map this verify ends reads it there
@@ -1813,7 +1879,7 @@ export class Interpreter {
       passed = r["approved"] === true;
       // A signed decision is named by its digest, with the member and the key that signed it (spec/envelope.md).
       const signed: Obj = typeof r["decision"] === "string" ? { member: r["member"] ?? null, key: r["key"] ?? null, decision: r["decision"] } : {};
-      detail = { by: r["by"] ?? null, role: r["role"] ?? null, ...(r["expired"] === true ? { expired: true } : {}), ...signed };
+      detail = { by: r["by"] ?? null, role: r["role"] ?? null, ...(r["expired"] === true ? { expired: true } : {}), ...(r["exhausted"] === true ? { exhausted: true } : {}), ...signed };
       producer = { kind: "person", by: r["by"] ?? null, role: r["role"] ?? null, via: "DecideAction", ...signed };
     } else {
       const call = v.call;
@@ -1911,27 +1977,56 @@ export class Interpreter {
     const { named } = await this.args(call.args, ctx, id);
     const c = this.def(contract) as ContractDef;
     const subject = plain(c.params.map((p) => this.variable(p.name, ctx)));
-    const role = named["role"] ?? null;
+    // 0.7 (D2 of slice B3): who is asked is the role the program names, read as written in the IR, as every other
+    // question's role is (`asked`), and never a value of the contract's scope: a parameter that has a role's name does
+    // not choose the approver, in a contract of the program or of any module it imports. Before 0.7, as it was.
+    const statically = this.attentive;
+    const role = statically ? this.namedRole(call, "role", contract, criterion) : (named["role"] ?? null);
     const within = named["deadline"];
     // `distinct_from: q` (0.4): the wait says which earlier approval of this criterion its decider must differ from.
-    const other = atLeast(this.o.program.language, "mandate/0.4") ? named["distinct_from"] : undefined;
+    const other = statically ? this.namedRole(call, "distinct_from", contract, criterion) : atLeast(this.o.program.language, "mandate/0.4") ? named["distinct_from"] : undefined;
+    // The approval's static site: its wait under the verify it belongs to, `<verify>/contract/<group>/<criterion>[/all/i]/call`.
+    const v = ctx.verifying;
+    const at = v && id.startsWith(v.cmd) ? `${v.stat}${id.slice(v.cmd.length)}` : this.site(ctx, id);
     let decision: Value;
     try {
-      decision = await this.wait(id, "decision", {
-        contract,
-        criterion,
-        role,
-        subject,
-        subject_digest: digest("request", { contract, criterion, subject }),
-        deadline: typeof within === "number" ? this.o.adapters.clock.now() + within : null,
-        ...(typeof other === "string" ? { distinct_from: other, criterion_path: root } : {}),
-      });
+      decision = await this.wait(
+        id,
+        "decision",
+        {
+          contract,
+          criterion,
+          role,
+          subject,
+          subject_digest: digest("request", { contract, criterion, subject }),
+          deadline: typeof within === "number" ? this.o.adapters.clock.now() + within : null,
+          ...(typeof other === "string" ? { distinct_from: other, criterion_path: root } : {}),
+        },
+        ctx,
+        { kind: "verify", path: v?.stat ?? at, wait: at },
+      );
     } catch (f) {
       // Past its deadline the approval was not given: the criterion is unmet, and `on unmet` decides (§8.8, R15).
       if (f instanceof Fault && f.tag === "Rejected" && f.args[0] === "approval_expired") return { approved: false, by: null, role, expired: true };
+      // 0.7: past the run's `asks` nobody was asked, and nothing was approved: the criterion is unmet.
+      if (f instanceof Fault && f.tag === "Rejected" && f.args[0] === ASKS_EXHAUSTED && this.attentive) return { approved: false, by: null, role, exhausted: true };
       throw f;
     }
     return isObj(decision) ? { ...decision, role } : { approved: false, role };
+  }
+
+  /**
+   * 0.7: the role an approval's `name` argument (`role`, `distinct_from`) names, read as the IR writes it: a name of
+   * a role definition the running program holds, or a text, as `asked` reads a question's role. Absent, none. A name
+   * that is no role definition (a parameter or a binding of that name, which the check refuses, E1501) or any other
+   * expression would be a value of the run choosing who decides: the run stops for a person (`unknown_role`).
+   */
+  private namedRole(call: Extract<Expr, { op: "call" }>, name: string, contract: string, criterion: string): string | null {
+    const arg = call.args.find((a) => a.name === name)?.value;
+    if (!arg) return null;
+    if (arg.op === "text") return arg.value;
+    if (arg.op === "var" && this.def(arg.name)?.kind === "role") return arg.name;
+    throw new Violation("unknown_role", `The approval of ${contract}.${criterion} names ${arg.op === "var" ? `'${arg.name}', which is no role definition,` : "an expression"} as its ${name}: who decides is a role the program names, never a value the run computes (MDT-E1501).`);
   }
 
   // ── a review of a batch (0.6; spec/library.md "human.review") ──────────
@@ -1993,7 +2088,7 @@ export class Interpreter {
     const split = classify(verdicts, c, role);
     const question = questionOf({ review: path, contract, map: source.path, role, escalate_to: escalate, deadline_ms: ms, c, verdicts, split });
     if (!split.open.length) return reviewValue({ run: runId, contract, verdicts, split });
-    return reviewValue({ run: runId, contract, verdicts, split, outcome: await this.reviewWait(path, question, split) });
+    return reviewValue({ run: runId, contract, verdicts, split, outcome: await this.reviewWait(path, question, split, ctx) });
   }
 
   /**
@@ -2002,14 +2097,20 @@ export class Interpreter {
    * deadline; an escalation changes those two and nothing of the question. Ended, its outcome is held to the question
    * and to the stored decision it names (review.ts), so that what a later step reads is what a person signed.
    */
-  private async reviewWait(id: string, q: Question, split: Split): Promise<ReviewOutcome> {
+  private async reviewWait(id: string, q: Question, split: Split, ctx: Ctx): Promise<ReviewOutcome> {
     const { journal, runId, fence } = this.o;
     const subject = questionDigest(q);
     const deadline = this.o.adapters.clock.now() + q.deadline_ms;
     const request: Obj = { question: q as unknown as Value, subject_digest: subject, role: q.role, escalate_to: q.escalate_to, deadline, deadline_ms: q.deadline_ms };
     const requested: Obj = { node: id, contract: q.contract, map: q.map, role: q.role, escalate_to: q.escalate_to, deadline, open: split.open, declined: split.declined, failed: split.failed, accepted: split.accepted };
-    const row = this.o.replay ? await journal.command(runId, id) : await journal.openReview(runId, fence, { id, digest: digest("request", { kind: REVIEW, request }) }, request, requested);
+    const at = this.site(ctx, id);
+    const row = this.o.replay ? await journal.command(runId, id) : await journal.openReview(runId, fence, { id, digest: digest("request", { kind: REVIEW, request }) }, request, requested, this.asking(ctx, { kind: "review", path: at, wait: at }));
     if (row && row.kind !== REVIEW) throw new Violation("nondeterministic_replay", `The command at ${id} is a ${row.kind}, not a review's wait.`);
+    // 0.7: past the run's `asks` the review was not asked: every open item is declined, by nobody, as a review nobody
+    // answered gives (spec/attention.md "When it is exhausted"). Its command holds the refusal, which a replay reads.
+    if (row && this.attentive && row.state === "failed" && isObj(row.error) && Array.isArray(row.error["args"]) && row.error["args"][0] === ASKS_EXHAUSTED) {
+      return { subject, waive: [], decline: [...split.open].sort((a, b) => a - b), by: null, role: q.role, expired: true };
+    }
     if (!row || row.state === "waiting") {
       if (this.o.replay) throw new ReplayEnd(id, "no_result");
       // The request as first recorded (a resumed worker must not move its deadline), as an escalation left it.
@@ -2116,7 +2217,7 @@ export class Interpreter {
       const { journal, runId, fence } = this.o;
       let justCommitted = false;
       if (action.state === "prepared") {
-        const authId = await this.authorization(e.name, info, action, path, undefined, this.environmentTier(e.name, e.args), this.governanceOf(action), batch);
+        const authId = await this.authorization(e.name, info, action, path, undefined, this.environmentTier(e.name, e.args), this.governanceOf(action), batch, { ctx, site: this.site(ctx, path) });
         const before = action.state;
         action = await journal.commit(runId, fence, action.operation_key, authId);
         // A commit that found the action already committed by another (never in one worker's turn) did not commit it.
@@ -2346,21 +2447,28 @@ export class Interpreter {
 
     // Authorize: the owners, member by member, then the set approver.
     const memberAuth = new Map<string, string>();
+    const site = this.site(ctx, path);
     for (const m of members) {
       if (m.action!.state !== "prepared") continue;
-      memberAuth.set(m.component, await this.authorization(m.effect, { irreversible: true }, m.action!, `${path}/members/${m.component}`, { role: m.approver, changeset: setDigest, component: m.component }, this.environmentTier(m.effect, e.members[m.component]!.args), this.governanceOf(m.action!, m.component)));
+      memberAuth.set(m.component, await this.authorization(m.effect, { irreversible: true }, m.action!, `${path}/members/${m.component}`, { role: m.approver, changeset: setDigest, component: m.component }, this.environmentTier(m.effect, e.members[m.component]!.args), this.governanceOf(m.action!, m.component), undefined, { ctx, site: `${site}/members/${m.component}` }));
     }
     let setAuth: string | undefined;
     if (members.some((m) => m.action!.state === "prepared")) {
-      const decision = await this.wait(`${path}/authorize`, "decision", {
-        changeset: path,
-        action_digest: setDigest,
-        role: e.approver,
-        order: e.order,
-        changes: (e.changes ?? {}) as Value,
-        members: members.map((m) => ({ component: m.component, effect: m.effect, action_digest: m.action!.action_digest, approver: m.approver, files: Object.keys(isObj(m.action!.artifacts ?? null) ? (m.action!.artifacts as Obj) : {}), governance: (this.governanceOf(m.action!, m.component)?.files ?? []) as unknown as Value })),
-        deadline: null,
-      });
+      const decision = await this.wait(
+        `${path}/authorize`,
+        "decision",
+        {
+          changeset: path,
+          action_digest: setDigest,
+          role: e.approver,
+          order: e.order,
+          changes: (e.changes ?? {}) as Value,
+          members: members.map((m) => ({ component: m.component, effect: m.effect, action_digest: m.action!.action_digest, approver: m.approver, files: Object.keys(isObj(m.action!.artifacts ?? null) ? (m.action!.artifacts as Obj) : {}), governance: (this.governanceOf(m.action!, m.component)?.files ?? []) as unknown as Value })),
+          deadline: null,
+        },
+        ctx,
+        { kind: "changeset", path: site, wait: `${site}/authorize` },
+      );
       if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ changeset: path, denied_by: isObj(decision) ? (decision["by"] ?? null) : null }]);
       setAuth = String(decision["authorization_id"]);
     }
@@ -2811,6 +2919,13 @@ export class Interpreter {
     gov?: { files: Array<{ file: string; kind: string }>; owner: string },
     /** The map whose batch commit step the action is of (0.6): it is authorized by policy, and never asks a person. */
     batch?: string,
+    /**
+     * 0.7: where the effect stands and its static path, the site of the waits it opens. The owner's gate is the
+     * `governance` row of that path, whichever wait it opens (`/governance` before another role's decision, or
+     * `/authorize` in the place of a policy); an authorization by a role is the effect's row (`effect`, or `changeset`
+     * for a member), counted by the static total or handed to a person by the configuration (asks.ts `rowOf`).
+     */
+    here?: { ctx: Ctx; site: string },
   ): Promise<string> {
     const configured = this.o.policy.authorize?.[effect];
     // `approve E by r` in the run's envelope (spec/envelope.md): E is authorized only by a decision of role r, never by
@@ -2849,19 +2964,32 @@ export class Interpreter {
       await this.command(`${path}/refused`, "refusal", { refused: f.tag }, undefined, async () => ({ error: { tag: f.tag, args: f.args }, cost: {} }));
       throw f;
     }
-    if (gov && pol.by === "policy") pol = { by: "human", role: gov.owner };
-    else if (gov && pol.by === "human" && pol.role !== gov.owner) {
-      const gate = await this.wait(`${path}/governance`, "decision", {
-        gate: "governance",
-        effect,
-        action_digest: action.action_digest,
-        params: action.params,
-        role: gov.owner,
-        governance: governance!,
-        then: pol.role,
-        ...(member ? { changeset: member.changeset, component: member.component } : {}),
-        deadline: null,
-      });
+    // 0.7: the static site of the waits below (`here`): the effect's own path, or a change set member's.
+    const ctx: Ctx = here?.ctx ?? { scope: { vars: new Map() }, where: "workflow", workflow: "" };
+    const site = here?.site ?? this.node(path);
+    // Whether the owner's decision takes the place of a policy: its `/authorize` is the owner's gate.
+    let gated = false;
+    if (gov && pol.by === "policy") {
+      pol = { by: "human", role: gov.owner };
+      gated = true;
+    } else if (gov && pol.by === "human" && pol.role !== gov.owner) {
+      const gate = await this.wait(
+        `${path}/governance`,
+        "decision",
+        {
+          gate: "governance",
+          effect,
+          action_digest: action.action_digest,
+          params: action.params,
+          role: gov.owner,
+          governance: governance!,
+          then: pol.role,
+          ...(member ? { changeset: member.changeset, component: member.component } : {}),
+          deadline: null,
+        },
+        ctx,
+        { kind: "governance", path: site, wait: `${site}/governance` },
+      );
       if (!isObj(gate) || gate["approved"] !== true) throw new Fault("Rejected", [{ denied_by: isObj(gate) ? (gate["by"] ?? null) : null, governance: governance! }]);
     }
     if (pol.by === "policy") {
@@ -2870,27 +2998,25 @@ export class Interpreter {
       await this.o.journal.authorize(this.o.runId, { id, actionDigest: action.action_digest, decidedBy: "policy", expiresAt: this.o.adapters.clock.now() + ttl });
       return id;
     }
-    const decision = await this.wait(`${path}/authorize`, "decision", {
-      effect,
-      action_digest: action.action_digest,
-      params: action.params,
-      role: pol.role,
-      ...(member ? { changeset: member.changeset, component: member.component } : {}),
-      ...(env ? { environment: env.environment, tier: env.tier as unknown as Value } : {}),
-      ...(governance ? { governance } : {}),
-      deadline: pol.deadlineMs === undefined ? null : this.o.adapters.clock.now() + pol.deadlineMs,
-    });
+    const decision = await this.wait(
+      `${path}/authorize`,
+      "decision",
+      {
+        effect,
+        action_digest: action.action_digest,
+        params: action.params,
+        role: pol.role,
+        ...(member ? { changeset: member.changeset, component: member.component } : {}),
+        ...(env ? { environment: env.environment, tier: env.tier as unknown as Value } : {}),
+        ...(governance ? { governance } : {}),
+        deadline: pol.deadlineMs === undefined ? null : this.o.adapters.clock.now() + pol.deadlineMs,
+      },
+      ctx,
+      { kind: gated ? "governance" : member ? "changeset" : "effect", path: site, wait: `${site}/authorize` },
+    );
     if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ denied_by: isObj(decision) ? (decision["by"] ?? null) : null, ...(governance ? { governance } : {}) }]);
     return String(decision["authorization_id"]);
   }
-}
-
-/**
- * The IR path of the node a command path stands at: the path without what a run adds to it, a loop's iteration
- * (`@i`), a restarted `par` round (`#allN`) and a map's item (`[i]`).
- */
-function staticPath(path: string): string {
-  return path.replace(/@\d+|#all\d+|\[\d+\]/g, "");
 }
 
 /** `t` with each name of a type parameter that `generic` gives an argument for replaced by that argument. */
