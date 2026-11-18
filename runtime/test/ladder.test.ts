@@ -23,7 +23,7 @@ import { DECISION_FORMAT, payloadOf, shownPackage, signDecision, type DecisionRe
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import { verifyPackage } from "../src/package.js";
 import { buildPackage, Runtime, type Lock, type Package } from "../src/runtime.js";
-import { SimTool } from "../src/sim.js";
+import { SimAgents, SimTool } from "../src/sim.js";
 import { digest, isObj, type Obj, type Value } from "../src/values.js";
 import { runView, shadowDiff } from "../src/views.js";
 import { closeAll, world, type World } from "./helpers.js";
@@ -432,20 +432,55 @@ describe("the promotion ladder (spec/attention.md \"Promotion\")", () => {
   });
 });
 
+// ── the compiler's fixture ──────────────────────────────────────────────
+
+describe("the compiler's fixture of owners (fixtures/attention/owner.mdt)", () => {
+  /** Its lock, with keys made now for Ana and Ben, and without role_classes, which this runtime does not run yet (B4). */
+  function ownerLock(): Lock {
+    const given = JSON.parse(readFileSync(new URL("../../fixtures/attention/owner.lock.json", import.meta.url), "utf8")) as Obj;
+    const { role_classes: _b4, ...rest } = given;
+    expect(rest["promotion"]).toBe("required");
+    return { ...rest, members: { ana: { keys: [ana.key.keyId] }, ben: { keys: [ben.key.keyId] } } } as unknown as Lock;
+  }
+
+  it("asks the owner of a workflow that applies a pattern, as its expansion keeps it, for its card and its promotion", async () => {
+    const agents = new SimAgents().on("Writer.write", () => ({ ok: "a line", cost: { steps: 1 } }));
+    const w = await world(readFileSync(new URL("../../fixtures/attention/owner.mdt", import.meta.url), "utf8"), { agents, lock: ownerLock(), decisions: { keys: KEYS } });
+    const input = { name: "a" };
+    await w.rt.approveEnvelope(w.pkg, card(w, ana, "accountant"));
+    // Check applies the pattern Line, and the finance lead owns it: the accountant's approval does not start it.
+    await expect(w.rt.startRun({ pkg: w.pkg, workflow: "Check", input: {}, runId: "c0", mode: "design" })).rejects.toMatchObject({ code: "unapproved_envelope", message: expect.stringContaining("No member of finance_lead") });
+    await w.rt.approveEnvelope(w.pkg, card(w, ben, "finance_lead"));
+    expect((await w.rt.startRun({ pkg: w.pkg, workflow: "Check", input: {}, runId: "c1", mode: "design" })).state).not.toBe("failed");
+    await expect(w.rt.startRun({ pkg: w.pkg, workflow: "Check", input: {}, runId: "c2", mode: "read_only" })).rejects.toMatchObject({ code: "unpromoted", message: expect.stringContaining("a member of finance_lead") });
+    // Describe is the accountant's: a design run, her promotion, and its read_only runs start.
+    expect((await w.rt.startRun({ pkg: w.pkg, workflow: "Describe", input, runId: "d1", mode: "design" })).state).toBe("succeeded");
+    await expect(w.rt.promote(w.pkg, await promotion(w, ben, "d1", "read_only"))).rejects.toMatchObject({ code: "invalid_decision", reason: "not_in_role" });
+    await w.rt.promote(w.pkg, await promotion(w, ana, "d1", "read_only"));
+    expect((await w.rt.startRun({ pkg: w.pkg, workflow: "Describe", input, runId: "r1", mode: "read_only" })).state).toBe("succeeded");
+  });
+});
+
 // ── the entries ─────────────────────────────────────────────────────────
 
 describe("where a run starts", () => {
   it("is startRun alone: no resume, replay, tick, sub-program or command line creates a run, so none starts above its rung", () => {
     const src = join(fileURLToPath(new URL("../src/", import.meta.url)));
     const calls: string[] = [];
-    for (const f of readdirSync(src)) {
-      if (!f.endsWith(".ts")) continue;
+    // Every source, its folders (egress/, temporal/) too.
+    const files = (readdirSync(src, { recursive: true }) as string[]).map((f) => f.replaceAll("\\", "/")).filter((f) => f.endsWith(".ts"));
+    expect(files).toContain("temporal/workflows.ts");
+    for (const f of files) {
       const lines = readFileSync(join(src, f), "utf8").split("\n");
       lines.forEach((l, i) => {
         if (/\bcreateRun\(/.test(l) && !/^\s*(\/\/|\*|async createRun\()/.test(l)) calls.push(`${f}:${i + 1}`);
       });
     }
     expect(calls).toHaveLength(1);
+    // And the one insert of a run is createRun's.
+    const inserts = files.filter((f) => /insert into runs\b/i.test(readFileSync(join(src, f), "utf8")));
+    expect(inserts).toEqual(["journal.ts"]);
+    expect(readFileSync(join(src, "journal.ts"), "utf8").match(/insert into runs\b/gi)).toHaveLength(1);
     const runtime = readFileSync(join(src, "runtime.ts"), "utf8");
     const at = runtime.indexOf("createRun(");
     const startRun = runtime.indexOf("async startRun(");
