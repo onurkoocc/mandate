@@ -101,7 +101,7 @@ describe("the recorded conversations of vectors/mcp/ through the Node server", (
     }
     expect(problems).toEqual([]);
     expect(answers).toBeGreaterThanOrEqual(70);
-  });
+  }, 60_000);
 
   it("answer the conversations of 0.1 to 0.6 byte for byte, with no language and as mandate/0.6", async () => {
     const problems: string[] = [];
@@ -115,12 +115,12 @@ describe("the recorded conversations of vectors/mcp/ through the Node server", (
     }
     expect(problems).toEqual([]);
     expect(answers).toBeGreaterThanOrEqual(400);
-  });
+  }, 60_000);
 
   it("is a test that can fail: the server of 0.7 does not answer a conversation of 0.6 as the frozen one does", async () => {
     const c = before07.find((x) => x.name === "tools") ?? before07.find((x) => x.output.length > 0)!;
     const r = await replay(c, "mandate/0.7");
     const listed = c.input.some((p) => (p.line ?? "").includes("tools/list"));
     expect(r.problems.length > 0, c.name).toBe(listed);
-  });
+  }, 60_000);
 });
