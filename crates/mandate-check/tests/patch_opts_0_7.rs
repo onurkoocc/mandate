@@ -7,8 +7,11 @@
 //!   pattern of a pinned library checks; without them the library is not
 //!   there (E1604), and a lock that pins another digest breaks the pin
 //!   (E1605): the answer is `check`'s for the patched program.
-//! - Without `opts` (absent, `null` or empty) the door is what it was, and a
-//!   program of 0.1 to 0.5 is checked as before whatever `opts` holds.
+//! - A program of 0.7 reads the embedded `std.patterns` with no `opts`, as
+//!   `check` does; one of 0.6 keeps the answer it had (E1604). Without `opts`
+//!   (absent, `null` or empty) the door is otherwise what it was.
+//! - A program of 0.1 to 0.5 reads no library, whatever `opts` holds; its lock
+//!   and configuration are still read, as `check` reads them.
 //! - A malformed `opts` is refused in `check`'s words.
 
 #![allow(
@@ -21,7 +24,7 @@
 
 use mandate_check::json_doors::door;
 use mandate_check::library::LibrarySource;
-use mandate_check::{CheckOptions, PatchOptions, check, check_patch};
+use mandate_check::{CheckOptions, PatchOp, PatchOptions, check, check_patch};
 use mandate_ir::{Diagnostic, JsValue, Value, hash_program, parse, stringify};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::{library_files, read_json, read_text};
@@ -31,6 +34,11 @@ const LOCK: &str = "fixtures/library/invoices.lock.json";
 const CONNECTORS: &str = "fixtures/library/acme.connectors";
 /// A program of 0.5, which reads no library.
 const OLD: &str = "fixtures/boundary/reach.mdt";
+const VIEW: &str = "fixtures/attention/view.mdt";
+const VIEW_LOCK: &str = "fixtures/attention/view.lock.json";
+const BATCH: &str = "fixtures/attention/batch.mdt";
+const ACCEPTANCE: &str = "fixtures/attention/invoices.mdt";
+const ACCEPTANCE_LOCK: &str = "fixtures/attention/invoices.lock.json";
 
 fn program(file: &str) -> Value {
     load(&read_text(file).unwrap(), SourceKind::Mdt)
@@ -212,7 +220,9 @@ fn the_json_door_reads_opts_as_the_door_check_reads_them() {
     ] {
         assert_eq!(call(INVOICES, same).unwrap(), before, "{same}");
     }
-    // A program of 0.5 is checked as before whatever `opts` holds.
+    // The invoices lock and libraries add nothing to a program of 0.5, which
+    // reads no library (a lock that says something about it is read: the next
+    // test).
     let old = call(OLD, "").unwrap();
     assert_eq!(call(OLD, &opts).unwrap(), old);
 }
@@ -235,4 +245,165 @@ fn a_malformed_opts_is_refused_in_the_words_of_check() {
         let ours = call(INVOICES, &format!(r#","opts":{opts}"#)).unwrap_err();
         assert_eq!(ours, theirs, "{opts}");
     }
+}
+
+/// The diagnostics as `code at path`, for a comparison of two answers.
+fn found(diagnostics: &[Diagnostic]) -> Vec<String> {
+    diagnostics
+        .iter()
+        .map(|d| format!("{} at {}", d.code, d.at.path.as_deref().unwrap_or("")))
+        .collect()
+}
+
+#[test]
+fn a_program_of_0_7_reads_the_embedded_std_patterns_with_no_opts_as_check_does() {
+    let none = PatchOptions::default();
+    // Unchanged: the program applies a pattern of std.patterns.
+    let p = program(BATCH);
+    let base = hash_program(&p).program;
+    let r = check_patch(&p, &base, &[], None, &none);
+    let c = check(&text(&p), SourceKind::Json, &CheckOptions::default());
+    assert!(c.ok, "{:?}", found(&c.diagnostics));
+    assert!(r.ok, "{:?}", found(&r.diagnostics));
+    assert_eq!(found(&r.diagnostics), found(&c.diagnostics));
+    // A patch that adds the `use`: what `check` says of the program written
+    // with it.
+    let view = program(VIEW);
+    let add = vec![PatchOp {
+        op: "add".to_owned(),
+        path: "/uses/-".to_owned(),
+        value: Some(
+            parse(r#"{"module":"std.patterns","names":["BatchWithExceptions"]}"#)
+                .unwrap()
+                .value,
+        ),
+    }];
+    let r = check_patch(&view, &hash_program(&view).program, &add, None, &none);
+    let written = read_text(VIEW).unwrap().replacen(
+        "use std.{human, model}
+",
+        "use std.{human, model}
+use std.patterns.{BatchWithExceptions}
+",
+        1,
+    );
+    let c = check(&written, SourceKind::Mdt, &CheckOptions::default());
+    assert!(c.ok, "{:?}", found(&c.diagnostics));
+    assert!(r.ok, "{:?}", found(&r.diagnostics));
+    assert_eq!(found(&r.diagnostics), found(&c.diagnostics));
+    // The same, with the options of the configuration alone.
+    let revoked = std::collections::BTreeSet::new();
+    let config = PatchOptions {
+        revoked: Some(&revoked),
+        ..PatchOptions::default()
+    };
+    let r = check_patch(&view, &hash_program(&view).program, &add, None, &config);
+    assert!(r.ok, "{:?}", found(&r.diagnostics));
+    // A program of 0.6 keeps what it had: std.patterns is not among the
+    // modules it was given (E1604).
+    let old = parse(&text(&p).replace("mandate/0.7", "mandate/0.6"))
+        .unwrap()
+        .value;
+    let r = check_patch(&old, &hash_program(&old).program, &[], None, &none);
+    assert!(!r.ok);
+    assert!(
+        codes(&r.diagnostics).contains(&"MDT-E1604"),
+        "{:?}",
+        found(&r.diagnostics)
+    );
+}
+
+#[test]
+fn a_program_of_0_5_reads_a_lock_as_check_reads_it_and_no_library() {
+    let p = program(OLD);
+    let base = hash_program(&p).program;
+    let view_lock = read_json(VIEW_LOCK).unwrap();
+    let junk = Value::from("x");
+    let libraries = connectors();
+    for lock in [&junk, &view_lock] {
+        let r = check_patch(
+            &p,
+            &base,
+            &[],
+            None,
+            &PatchOptions {
+                lock: Some(lock),
+                ..PatchOptions::default()
+            },
+        );
+        let c = check(
+            &text(&p),
+            SourceKind::Json,
+            &CheckOptions {
+                lock: Some(lock),
+                ..CheckOptions::default()
+            },
+        );
+        assert!(!c.diagnostics.is_empty());
+        assert_eq!(found(&r.diagnostics), found(&c.diagnostics));
+        assert_eq!(r.ok, c.ok);
+        // Libraries are not read for a program of 0.5.
+        let r = check_patch(
+            &p,
+            &base,
+            &[],
+            None,
+            &PatchOptions {
+                lock: Some(lock),
+                libraries: Some(&libraries),
+                revoked: None,
+            },
+        );
+        assert_eq!(found(&r.diagnostics), found(&c.diagnostics));
+    }
+    let c = check(
+        &text(&p),
+        SourceKind::Json,
+        &CheckOptions {
+            lock: Some(&junk),
+            ..CheckOptions::default()
+        },
+    );
+    assert!(codes(&c.diagnostics).contains(&"MDT-E0140"));
+    let c = check(
+        &text(&p),
+        SourceKind::Json,
+        &CheckOptions {
+            lock: Some(&view_lock),
+            ..CheckOptions::default()
+        },
+    );
+    assert!(codes(&c.diagnostics).contains(&"MDT-E1911"));
+}
+
+#[test]
+fn the_acceptance_program_of_0_7_is_checked_by_a_patch_as_check_checks_it() {
+    let p = program(ACCEPTANCE);
+    let base = hash_program(&p).program;
+    let lock = read_json(ACCEPTANCE_LOCK).unwrap();
+    let libraries = connectors();
+    let r = check_patch(
+        &p,
+        &base,
+        &[],
+        None,
+        &PatchOptions {
+            lock: Some(&lock),
+            libraries: Some(&libraries),
+            revoked: None,
+        },
+    );
+    let c = check(
+        &text(&p),
+        SourceKind::Json,
+        &CheckOptions {
+            lock: Some(&lock),
+            libraries: Some(&libraries),
+            ..CheckOptions::default()
+        },
+    );
+    assert!(c.ok, "{:?}", found(&c.diagnostics));
+    assert!(r.ok, "{:?}", found(&r.diagnostics));
+    assert_eq!(r.diagnostics, c.diagnostics);
+    assert_eq!(r.hash.as_deref(), Some(base.as_str()));
 }
