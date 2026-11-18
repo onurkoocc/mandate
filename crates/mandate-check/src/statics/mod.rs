@@ -572,15 +572,15 @@ pub(crate) struct Checker<'a> {
     /// in: `(caller, callee, handed)` (`crate::asks`, the floor of what a
     /// site in a function or a contract shows).
     pub(crate) handed_calls: Vec<(String, String, crate::asks::Handed)>,
-    /// 0.7: what each function returns, as its body typed it with its
-    /// parameters of their declared types: the highest class and the
-    /// weakest level of its last value and of every `return`'s. A call's
-    /// value is of that class at least, and known no better
+    /// 0.6 and later: what each function returns, as its body typed it
+    /// with its parameters of their declared types: the highest class and
+    /// the weakest level of its last value and of every `return`'s. A
+    /// call's value is of that class at least and, in 0.7, known no better
     /// ([`Checker::fn_usages`], `call_fn`).
     pub(crate) fn_result: HashMap<String, (DataClass, Level)>,
-    /// 0.7: while a function's body is typed, what its `return`s gave so
-    /// far, the innermost function last (a body is typed at its first call,
-    /// so one is typed inside another).
+    /// 0.6 and later: while a function's body is typed, what its `return`s
+    /// gave so far, the innermost function last (a body is typed at its
+    /// first call, so one is typed inside another).
     pub(crate) returning: Vec<(DataClass, Level)>,
     /// 0.7: the module each definition another module defines comes from
     /// (`crate::modules::Linked::origin`), so that a diagnostic in it names
@@ -1232,12 +1232,14 @@ impl<'a> Checker<'a> {
         // called; what it holds lowers no floor of the expression that
         // calls it, whose value is of the function's declared type.
         let floor = self.report_floor.take();
-        let v0_7 = self.at_least(Language::V0_7);
-        if v0_7 {
+        // 0.6 and later: what it returns is recorded, of its class and (read
+        // in 0.7 only) how it is known ([`Checker::fn_result`]).
+        let returns = self.at_least(Language::V0_6);
+        if returns {
             self.returning.push((DataClass::Public, Level::Verified));
         }
         let last = self.body(d.body(), &frame, &at, true);
-        if v0_7 {
+        if returns {
             let (c, l) = self
                 .returning
                 .pop()
@@ -1988,8 +1990,8 @@ impl<'a> Checker<'a> {
         if let (Some(returns), Some(_)) = (frame.returns.clone(), s.value()) {
             self.expect_val(&v, &returns, &at);
         }
-        // 0.7: what a function returns ([`Checker::fn_result`]).
-        if frame.where_ == Where::Fn && s.value().is_some() && self.at_least(Language::V0_7) {
+        // 0.6 and later: what a function returns ([`Checker::fn_result`]).
+        if frame.where_ == Where::Fn && s.value().is_some() && self.at_least(Language::V0_6) {
             let level = self.level_of(&v);
             if let Some(top) = self.returning.last_mut() {
                 *top = (top.0.max(v.cls), weaker_level(top.1, level));

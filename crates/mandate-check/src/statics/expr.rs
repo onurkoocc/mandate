@@ -880,11 +880,12 @@ impl<'a> Checker<'a> {
     /// for a person in a map (E1708), and what it does, done here. Its
     /// value is of the class of its arguments (`of`), and rests on what
     /// they rest on and on a verification in the function a person may
-    /// waive. In 0.7 it is also of the class of what the function returns,
-    /// typed in its body (a read of classified data in it, `fn_result`),
-    /// and known no better than that and its arguments: before 0.7 a
-    /// function's result was of its arguments' class alone, which a value
-    /// the function reads itself and returns could be above.
+    /// waive. In 0.6 and later it is also of the class of what the function
+    /// returns, typed in its body (a read of classified data in it,
+    /// `fn_result`), and in 0.7 known no better than that and its
+    /// arguments. Before 0.6 a function's result is of its arguments' class
+    /// alone. 0.6 was too until 2026-11-18, which a value the function
+    /// reads itself and returns could be above (spec/attention.md).
     fn call_fn(
         &mut self,
         d: mandate_ir::Definition<'a>,
@@ -904,17 +905,24 @@ impl<'a> Checker<'a> {
         // has at least their class.
         let usages = self.fn_usages(p);
         Self::call_usages(frame, usages, p, path, cls);
-        let (cls, made) = if self.at_least(Language::V0_7) {
-            // A function on a cycle (E0502) is typed while it is called:
-            // its result is known as the weakest a value can be.
-            let (c, l) = self
-                .fn_result
-                .get(p)
-                .copied()
-                .unwrap_or((DataClass::Public, Level::Untrusted));
-            (cls.max(c), weaker_level(of.made, l))
+        // A function on a cycle (E0502) is typed while it is called: its
+        // result is known as the weakest a value can be.
+        let (c, l) = self
+            .fn_result
+            .get(p)
+            .copied()
+            .unwrap_or((DataClass::Public, Level::Untrusted));
+        // 0.6 and later: of the class of what it returns. How it is known
+        // is read in 0.7 only.
+        let cls = if self.at_least(Language::V0_6) {
+            cls.max(c)
         } else {
-            (cls, of.made)
+            cls
+        };
+        let made = if self.at_least(Language::V0_7) {
+            weaker_level(of.made, l)
+        } else {
+            of.made
         };
         Val {
             ty: self.ty(d.returns()),

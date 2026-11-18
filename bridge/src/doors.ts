@@ -48,7 +48,7 @@ export const DOOR_BACKED = {
   denialDiagnostics: { door: "denial_diagnostics", params: ["program", "report"] },
   // Patches, sub-programs, amendments and diffs.
   applyPatch: { door: "apply_patch", params: ["program", "base", "ops", "modules"] },
-  checkPatch: { door: "check_patch", params: ["program", "base", "ops", "modules"] },
+  checkPatch: { door: "check_patch", params: ["program", "base", "ops", "modules", "opts"] },
   checkSubprogram: { door: "check_subprogram", params: ["i"] },
   checkAmendment: { door: "check_amendment", params: ["i"] },
   semanticDiff: { door: "semantic_diff", params: ["before", "after", "locks", "modules", "std_patterns"] },
