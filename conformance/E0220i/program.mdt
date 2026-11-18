@@ -1,0 +1,48 @@
+// A function that reads a confidential row itself and hands back its text,
+// typed Text. In 0.6 the call is of the class of what the function returns
+// (spec/attention.md "The class of a function's result", 2026-11-18).
+mandate @ 0.6
+
+module example.reads @ 0.1
+
+use std.{data, model}
+
+role core_owner "Core owner"
+
+type CustomerName = Text classified confidential
+type Row = { tracking_no: Text, full_name: CustomerName }
+
+component core {
+  repo  "acme/core"
+  root  "/work/acme-core"
+  lang  java
+  owner role "core_owner"
+}
+
+environment prod_sim {
+  class confidential
+  read customers from core
+    sql "select tracking_no, full_name from customers where tracking_no = :tracking_no"
+    params (tracking_no: Text)
+    returns Row
+    max_rows 1
+}
+
+capability Reads    = data.read(prod_sim, customers)
+capability ModelPub = model.infer(tier: standard, max_class: public)
+
+/// Reads a customer's row and hands back its text, typed Text.
+fn text_of(t: Text) -> Text ! {Data.Read} {
+  let rows = data.read(prod_sim.customers, tracking_no: t, max_class: confidential)
+  "{rows}"
+}
+
+/// Hands the function's text, or the tracking number, to a model that may
+/// see public data only.
+workflow ViaText(t: Text) -> Inferred<Text>
+  caps   Reads, ModelPub
+  budget { steps: 4 }
+{
+  let n = text_of(t)
+  infer Text from t using ModelPub
+}

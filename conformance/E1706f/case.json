@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1706f",
+  "kind": "compile",
+  "title": "In 0.6 too a call of a function is of the class of what the function returns (since 2026-11-18): a lead's sub-program whose function reads a confidential row and hands back its text, given to a delegation under an envelope whose spawn.max_class is public, is not admitted (as 0.6 was released it was).",
+  "spec": [
+    "spec/attention.md#static-rules",
+    "spec/envelope.md#the-sub-program"
+  ],
+  "language": "mandate/0.6",
+  "input": { "file": "parent.mdt", "kind": "mdt" },
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "sub.mdt", "kind": "mdt" },
+    "room": { "left": { "tokens": 50000, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E1706", "path": "/defs/Look/body/0/value", "facts": { "dimension": "data_class", "data_class": "confidential", "allowed": "public", "by": "envelope" } }
+    ]
+  }
+}
