@@ -1277,6 +1277,10 @@ tools:
 - `caps_of` takes `lock` and `libraries`, as `check` takes them, so that
   the authority of a program that applies a pattern of a pinned library can
   be read;
+- `apply_patch` takes `lock` and `libraries` too, so that the patched
+  program is checked as `check` checks it (a patch that breaks a pin is
+  E1605, one that applies a pattern of a pinned library needs the library
+  to be given);
 - `spec` takes two more values of its existing `section` parameter,
   `patterns` and `attention`;
 - the tool list of 0.7 is data from one door of the Rust compiler,

@@ -520,7 +520,13 @@ fn a_connectors_changes_are_classified_by_what_they_widen() {
         path: "/defs/erp/class".to_owned(),
         value: Some(Value::from("public")),
     };
-    let r = mandate_check::check_patch(&before, &base, &[op], None);
+    let r = mandate_check::check_patch(
+        &before,
+        &base,
+        &[op],
+        None,
+        &mandate_check::PatchOptions::default(),
+    );
     assert!(r.requires_approval, "{:?}", r.governance);
     assert_eq!(
         gov(&changed(

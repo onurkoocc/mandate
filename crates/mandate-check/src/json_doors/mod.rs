@@ -241,6 +241,10 @@ impl Door {
 /// TypeScript function takes (language 0.6, which only the Rust reads).
 pub const MODULES_NOTE: &str = "modules (optional) is the Rust's alone: the modules a workflow's pattern comes from (language 0.6), so that a workflow that applies one is read as its expansion. The TypeScript function is not given it; a program that applies no pattern gives the same with or without it.";
 
+/// The note of `check_patch`, which takes `opts` besides what its TypeScript
+/// function takes (language 0.7, which only the Rust reads).
+pub const OPTS_NOTE: &str = "opts (optional, language 0.7) is the Rust's alone: { lock?, libraries?, config? }, read as the door check reads them, so that the patched program is checked as check checks it. The TypeScript function is not given it; a program of 0.1 to 0.5 is checked as before whatever it holds.";
+
 /// Every door, in the order of `doors.json`: reading and checking, the parts
 /// of a program, the lock and the sandbox, patches and diffs, the run-time
 /// authority decisions, then the constants and the codes.
@@ -413,10 +417,11 @@ pub static DOORS: &[Door] = &[
         patch::APPLY_PATCH,
         patch::apply_patch,
     ),
-    Door::new(
+    Door::noted(
         "check_patch",
         "checkPatch",
         patch::CHECK_PATCH,
+        OPTS_NOTE,
         patch::check_patch,
     ),
     Door::new(

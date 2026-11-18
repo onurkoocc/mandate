@@ -74,6 +74,7 @@ const RULES: Rules<'static> = Rules {
         ("requirement_for", "opts"),
         ("apply_patch", "modules"),
         ("check_patch", "modules"),
+        ("check_patch", "opts"),
         ("semantic_diff", "locks"),
         // The Rust's alone (0.6): the modules an applied pattern comes from.
         ("semantic_diff", "modules"),

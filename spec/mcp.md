@@ -114,8 +114,9 @@ holds as it was.*
   recorded conversations run against both servers.
 - **The tools.** `check` takes `libraries`, and finds the embedded
   `std.patterns` by default; `project` offers the card and the attention
-  view, with the `lock`; `caps_of` takes the `lock` and `libraries` as
-  `check` does; `spec` takes two more values of its `section`,
+  view, with the `lock`; `caps_of` and `apply_patch` take the `lock` and
+  `libraries` as `check` does, so that a patched program is checked as
+  `check` would check it; `spec` takes two more values of its `section`,
   `patterns` and `attention`.
 - **Still only computing.** No tool signs, approves or promotes. A card
   approval, a decision and a promotion are a person's, made with their own

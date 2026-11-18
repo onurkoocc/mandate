@@ -146,7 +146,8 @@ which is so only when the Node server's list is the door's frozen list. What
 `project` hands each view it renders and `caps_of` its authority view as
 `std_patterns` (slice RL6: a program of 0.7 whose lock pins 1.0.0 is shown
 with 1.0.0's expansion), which the Node server must match when its slice
-comes) has no Node answer yet and is not here; `tests/mcp.rs` holds it. No
+comes, and the `lock` and `libraries` of `apply_patch`, which the native server hands to the door
+`check_patch` as its `opts`) has no Node answer yet and is not here; `tests/mcp.rs` holds it. No
 recorded conversation holds a program of 0.7 that imports `std.patterns`, so
 the pin changes none of them.
 
@@ -1135,7 +1136,7 @@ entry carries:
 | `load` | `load(text, kind)` | `mandate load`, `ir`, `fmt`, `mandate.apply_patch` |
 | `check` | `check(text, kind, { modules, lock, claim })` | `mandate check`, `hash`, `view`, `sandbox`, `target`, `mandate.check`, the runtime |
 | `load_modules` | `loadModules(sources)` | `--module`, the runtime's CLI |
-| `check_patch` | `checkPatch(program, base, ops, modules)` | `mandate.apply_patch` |
+| `check_patch` | `checkPatch(program, base, ops, modules, opts)` | `mandate.apply_patch` |
 | `apply_patch` | `applyPatch(program, base, ops, modules)` | `mandate patch` |
 | `check_subprogram` | `checkSubprogram(input)` | the runtime's `check_program` and `submit_program` |
 | `check_amendment` | `checkAmendment(input)` | the runtime's `request_amendment` |
@@ -1190,7 +1191,8 @@ loaded modules, `Record<name, Program>`, each module's IR):
 - `load_modules`: `sources`, `[{ file, kind, text (T) }, …]`, in order; `file` is the
   name given for messages;
 - `check_patch` and `apply_patch`: `program` (V, the IR the patch applies to), `base`,
-  `ops` (the RFC 6902 operations, inline), `modules`;
+  `ops` (the RFC 6902 operations, inline), `modules`; `check_patch` also takes `opts`
+  (0.7, the Rust's alone, as the door `check` reads it: `{ lock?, libraries?, config? }`);
 - `check_subprogram`: `parent` (V), `modules`, `workflow`, `number`, `base`, `ops`,
   `lead`, `room` (inline, as `SubprogramInput` has them);
 - `check_amendment`: `parent` (V), `modules`, `workflow`, `envelope` (inline, any JSON

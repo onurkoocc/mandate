@@ -88,27 +88,86 @@ impl PatchCheck {
     }
 }
 
+/// What [`check_patch`] checks the patched program with beside its modules
+/// (0.7, the Rust's alone: the TypeScript's `checkPatch` has no fifth
+/// parameter): the lock, the libraries the lock pins and the configuration's
+/// revoked digests, as `check` is given them. The default is none of them,
+/// and the door is then what it was.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PatchOptions<'a> {
+    /// The lock, as read (any value: the check validates it).
+    pub lock: Option<&'a Value>,
+    /// The libraries handed to the check (`CheckOptions::libraries`).
+    pub libraries: Option<&'a [crate::library::LibrarySource]>,
+    /// The digests the configuration revokes (`CheckOptions::revoked`).
+    pub revoked: Option<&'a std::collections::BTreeSet<mandate_lib::Digest>>,
+}
+
+/// The modules of the libraries the patched program reads, put among
+/// `modules`, for the names of the patch to be resolved against: what
+/// [`crate::check()`] links, so that a `use` of a library's module (a pattern
+/// of a pinned library, the embedded `std.patterns`) resolves in the
+/// patched program as it does in a check. `None` when there is no lock and
+/// no library, the patch does not apply, the program is of 0.1 to 0.5, or no
+/// library module is read.
+fn with_library_modules(
+    program: &Value,
+    base: &str,
+    ops: &[PatchOp],
+    modules: &Modules,
+    opts: &PatchOptions<'_>,
+) -> Option<Modules> {
+    if opts.lock.is_none() && opts.libraries.is_none() {
+        return None;
+    }
+    let patched = apply_ops(program, base, ops).program?;
+    let read = crate::library::for_check(
+        Program::of(&patched)?,
+        &CheckOptions {
+            modules: Some(modules),
+            lock: opts.lock,
+            libraries: opts.libraries,
+            revoked: opts.revoked,
+            ..CheckOptions::default()
+        },
+    )?;
+    if read.modules.is_empty() {
+        return None;
+    }
+    let mut all = modules.clone();
+    for (name, library_module) in read.modules.iter() {
+        all.insert(name, library_module.clone());
+    }
+    Some(all)
+}
+
 /// Applies `ops` to `program` against the hash they were written for
-/// (`applyPatch`), then checks the patched program with `modules`, so the
-/// caller sees what it would be asked to fix next: `checkPatch(program,
-/// base, ops, modules)`. Nothing is saved.
+/// (`applyPatch`), then checks the patched program with `modules` and `opts`,
+/// so the caller sees what it would be asked to fix next: `checkPatch(program,
+/// base, ops, modules)`. Nothing is saved. With a lock or libraries, the
+/// names of the patch are resolved against the modules of the libraries too.
 #[must_use]
 pub fn check_patch(
     program: &Value,
     base: &str,
     ops: &[PatchOp],
     modules: Option<&Modules>,
+    opts: &PatchOptions<'_>,
 ) -> PatchCheck {
     // `modules = {}`.
     let none = Modules::new();
     let modules = modules.unwrap_or(&none);
-    let r = apply_patch(program, base, ops, Some(modules));
+    let named = with_library_modules(program, base, ops, modules, opts);
+    let r = apply_patch(program, base, ops, Some(named.as_ref().unwrap_or(modules)));
     let checked = r.program.as_ref().map(|p| {
         check(
             &json_text(p),
             SourceKind::Json,
             &CheckOptions {
                 modules: Some(modules),
+                lock: opts.lock,
+                libraries: opts.libraries,
+                revoked: opts.revoked,
                 ..CheckOptions::default()
             },
         )

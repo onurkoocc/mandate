@@ -8,15 +8,17 @@
 //! What language 0.7 adds (spec/attention.md "The MCP server"), which the
 //! Node server does not do yet:
 //!
-//! - `check`, `project` and `caps_of` take `libraries`, a list of `{
+//! - `check`, `project`, `caps_of` and `apply_patch` take `libraries`, a list of `{
 //!   manifest, files }` (each a string `manifest` and an object `files` of
 //!   strings, else the tool error), given to the check as `opts.libraries`
 //!   (when the list is not empty); the check finds the embedded
 //!   `std.patterns` by itself. A view of `project` and the authority view of
 //!   `caps_of` are given the modules of those libraries too, as `mandate
 //!   view` gives them (`modulesOf` of `bridge/src/libraries.ts`), and the
-//!   `before` program of a diff is checked with them; `caps_of` takes `lock`
-//!   too, as `check` does;
+//!   `before` program of a diff is checked with them; `caps_of` and
+//!   `apply_patch` take `lock` too, as `check` does, and `apply_patch` hands
+//!   both to the door `check_patch` (`opts`), which reads the libraries'
+//!   modules itself;
 //! - `project` has the view `card`, of the workflow `workflow` (the door
 //!   `card`, as `mandate view --card` asks it), and the view `attention`, the
 //!   door `attention` (JSON, of `workflow` or of every workflow);
@@ -509,13 +511,30 @@ impl Server {
                     return Err(tool("ops must be a list of RFC 6902 operations"));
                 };
                 let base = str_arg(args, "base")?;
+                // 0.7: the lock and the libraries, as `check` takes them: the
+                // door's `opts`. The door checks the patched program with them
+                // and resolves its names against the libraries' modules.
+                let libraries = libraries_arg(args)?;
+                let lock = args.get("lock").filter(|l| l.truthy());
+                let patch = JObj::new()
+                    .with("program", J::Js(program))
+                    .with("base", J::Str(base.clone()))
+                    .with("ops", ops.clone())
+                    .with("modules", J::Js(JsValue::Object(modules)));
                 door(
                     "check_patch",
-                    JObj::new()
-                        .with("program", J::Js(program))
-                        .with("base", J::Str(base.clone()))
-                        .with("ops", ops.clone())
-                        .with("modules", J::Js(JsValue::Object(modules))),
+                    if lock.is_some() || libraries.is_some() {
+                        patch.with(
+                            "opts",
+                            J::Obj(
+                                JObj::new()
+                                    .with_some("lock", lock.cloned())
+                                    .with_some("libraries", libraries.cloned()),
+                            ),
+                        )
+                    } else {
+                        patch
+                    },
                 )
             }
             "mandate.caps_of" => {
