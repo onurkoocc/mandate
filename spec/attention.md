@@ -29,7 +29,7 @@ names the tests. The Rust tests run natively and as WebAssembly; those of
 | The facts (`attention_facts`) | RL3, RL4 | implemented: the door, its stages and reports (`mandate/attention/0.1`), the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (`crates/mandate-testkit/tests/attention_0_7.rs`, `attention_constants_0_7.rs`, held to `vectors/attention-0.7/facts.json`); the shape and the closed list of kinds are in `vectors/README.md` ("The attention facts") |
 | `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5, RL5b, B4, B6 | implemented: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication; E1909, with a lock and, at a sub-program's admission, with its parent's `role_classes` (`crates/mandate-check/tests/owner_0_7.rs`, `role_shown_0_7.rs`, `crates/mandate-views/tests/owner_0_7.rs`). The runtime runs all three: `role_classes` (the caps of the masking, B4) and `owner` and `promotion` (card approval and the ladder, B6). Its check at load, which is given the package's lock, refuses a package whose program shows a role data above its class (`load_verification_failed`, E1909), the admission of a lead's sub-program refuses one that would, and the start refuses a run whose configuration hands an authorization to a role whose cap is below what it shows (`authorizer_below_class`, `runtime/src/mask.ts`), as do a lead's amendment request and a sub-program's admission (`runtime/src/plan.ts`) (`runtime/test/authorizer-class.test.ts`, `role-less-member.test.ts`, `ladder.test.ts`). A question that names no role is held to `internal` too when the lock lists a member who holds no role, to whom `ListWaits` lists it at that cap; the mask is for what E1909 cannot see ([Masking](#masking-and-how-a-value-is-known)) |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program`, and the acceptance fixture `fixtures/attention/invoices.mdt` (`crates/mandate-check/tests/patterns_0_7.rs`, `invoices_0_7.rs`, `crates/mandate-views/tests/pins_0_7.rs`; at run time `runtime/test/pins.test.ts`, `attention-invoices.test.ts`) |
-| E1509; the doors `callable_connectors` and `tool_schema_digest`; the runtime's use of them | RL7, B8 | implemented (`crates/mandate-check/tests/connector_doors.rs`; the runtime binds the connectors the compiler says can be called and takes a tool's digest from the door: `runtime/test/attention-connectors.test.ts`, and the connector suite run again under 0.7, `runtime/test/superset-0.7/`) |
+| E1509 (`crates/mandate-check/tests/reserved_methods.rs`, conformance `E1509`, `E1509a`, `E1509b`); the doors `callable_connectors` and `tool_schema_digest`; the runtime's use of them | RL7, B8 | implemented (`crates/mandate-check/tests/connector_doors.rs`; the runtime binds the connectors the compiler says can be called and takes a tool's digest from the door: `runtime/test/attention-connectors.test.ts`, and the connector suite run again under 0.7, `runtime/test/superset-0.7/`) |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | implemented: the door (without `workflow` it answers for every workflow, as the command prints them), the native command and the document, and the Node command, which prints the native command's bytes for `fixtures/attention/` (`crates/mandate-views/tests/attention_0_7.rs`, `crates/mandate-testkit/tests/attention_view_0_7.rs`, `bridge/test/cli-library.test.ts`, held to `vectors/golden/0.7.json` and `vectors/attention-0.7/view.json`) |
 | The card of a 0.7 program | RP2, B9 | implemented (`crates/mandate-views/src/card.rs`, `crates/mandate-views/tests/card_0_7.rs`), in the Node command and in the `project` tool of both servers |
 | The MCP tools of 0.7 (`mcp_tools`); a native `mandate mcp`; the Node server of 0.7 | RP3, RP4, B9 | implemented: the door and its data (`crates/mandate-check/tests/mcp_tools.rs`), the native server (`crates/mandate-cli/src/mcp`, `crates/mandate-cli/tests/mcp.rs`), and the Node server, which builds `tools/list` from the door for `mandate/0.7` and keeps the frozen list up to 0.6 (`bridge/src/mcp.ts`); the recorded conversations of 0.7 in `vectors/mcp/` (the authoring session among them) are replayed by the native server, and `bridge/test/mcp-0-7.test.ts` holds the allow-list of tools and parameters for every language |
@@ -1822,7 +1822,7 @@ ERP and mailbox, in Docker and in CI:
 | A missed deadline escalates | The simulated clock passes one day, `mandate tick`, `review_escalated`, and `finance_lead` decides; in a second run both deadlines pass |
 | Replay gives the same result | `replayRun` equals the live result |
 | A mutation for every new rule | Every 0.7 code has a case; each run-time refusal has a test (`asks_exhausted`, `unpromoted`, `facts_mismatch`, a forged `promote` or one from the wrong role, `bad_notification_channel`) |
-| 0.1 to 0.6 unchanged | The golden files, the default views' digests and the vectors do not change |
+| 0.1 to 0.6 unchanged | The golden files, the default views' digests and the vectors do not change, with these exceptions, the files that were on `main` and that the release changes: `conformance/S02h/case.json` and `vectors/diagnostics-0.6/conformance-1.json` (the E0103 list of versions now names 0.7), and `vectors/diagnostics-0.6/conformance-1.json` and `summary.json` also for the cases `E0220i` and `E1706f` (the data class of a function's result applied to 0.6, see the security note under [Static rules](#static-rules)) |
 
 "It finishes seeing only S0 to S2" is these checkable statements, over
 everything the scripted people read:
@@ -1897,7 +1897,7 @@ is a defect that a test hides: where a test pins one, the entry says so.
   time. See [Notifications](#notifications).
 - **A finished run keeps its `asks` reservation.** The run's own reservation
   is not released when it ends, so the budget report of a run that has ended
-  can show `reserved: 1`. It is cosmetic: nothing reads it after the end. See
+  can show `reserved: 1`. It is cosmetic: nothing reads it after the end, and `runtime/test/asks.test.ts` (line 328) pins it. See
   [`asks` at run time](#asks-at-run-time), "When a run ends".
 - **What masking still covers.** With E1909 and `authorizer_below_class`, a
   value is shown to a role that is asked it, and the mask is left for a role
@@ -1941,9 +1941,32 @@ is a defect that a test hides: where a test pins one, the entry says so.
   call is of the class of what the function returns; a function that reads
   confidential data and returns it as `Text` used to yield a value of its
   arguments' class, which let it pass to a model that may receive public data
-  only. Programs of 0.3 to 0.5, which only the TypeScript compiler reads, are
-  still checked as before. See [Static rules](#static-rules), "The class of a
+  only. Programs of 0.3 to 0.5 are still checked as before, by both
+  compilers: the Rust compiler keeps the old rule on purpose and matches the
+  TypeScript reference for those versions. The hole starts at 0.3 because
+  `data.read` arrives then. See [Static rules](#static-rules), "The class of a
   function's result".
+- **What the live kit fakes.** With the simulated agent the runtime is patched
+  as it loads (one adapter is replaced), and the journal records the simulated
+  answers as a model's output with nothing marking them as simulated. `Date`
+  runs ahead in every `mandate` command after `advance`, so the store's
+  history carries shifted times. The ERP and the mailbox are fakes on
+  loopback. See `fixtures/attention/live/README.md`, "About what the kit
+  fakes".
+- **`authorizer_below_class` does not read environment tiers.** An
+  environment's tier, which would ask its own role, is not read at the start,
+  so the comparison is conservative there: it can refuse a run that would
+  have been allowed.
+- **A member bound to no role caps every question that names no role at
+  `internal`.** A wait that asks no role is asked of such a member, and the
+  member's cap for it is `internal`. See [Masking](#masking-and-how-a-value-is-known).
+- **An approved amendment can still end `Rejected(attention_above_asks)`.**
+  A sibling in a `par` may admit a sub-program out of what was left between
+  the request and the decision; the approval checks the growth again and, if
+  it no longer fits, does not take effect. See "An approval whose room was taken".
+- **`mandate decide` lets a member sign a masked wait after the word
+  `yes`.** Refusing to sign what is masked instead is an open decision of the
+  owner of the release.
 - **The acceptance rehearsal does not exercise credential and egress
   checks.** Its live run reaches the simulated ERP through the simulators'
   transport, not through the egress proxy with secrets; the live kit does.
@@ -1960,7 +1983,12 @@ Candidates for a fix, from the limits above, without a promise:
   action and a change set's members;
 - idempotency of a write across runs, or a clearer sentence on the card;
 - a supported simulated-agent path in the runtime, so that the live kit need
-  not patch the runtime as it loads;
+  not patch the runtime as it loads and the journal can mark simulated
+  answers (limit: what the live kit fakes);
+- linking plain module chains transitively, which makes the static question
+  count unsound where they are used;
+- refusing to sign a masked wait in `mandate decide`, or keeping the word
+  `yes` (an open decision);
 - releasing the `asks` reservation when a run ends;
 - naming the value that raises the class in E1909;
 - the data class of a function's result in languages 0.3 to 0.5, which

@@ -1,10 +1,10 @@
-# Mandate runtime, 0.1 to 0.6
+# Mandate runtime, 0.1 to 0.7
 
 This is the reference runtime in `runtime/`. It runs a checked package
 against adapters and keeps every decision that must survive a crash in
 PostgreSQL. Section numbers refer to the design document (Doc 4).
 
-The page describes the runtime of releases 0.1 to 0.6. The parts that came
+The page describes the runtime of releases 0.1 to 0.7. The parts that came
 with 0.4 and 0.5 are specified in [`envelope.md`](envelope.md) and
 [`boundary.md`](boundary.md); here they are named where they touch the
 runtime's storage, load-time checks, control API, control CLI and
