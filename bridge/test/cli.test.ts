@@ -193,6 +193,11 @@ const LINES_06 = [
   "  tick [--follow] [--interval 10s] [--no-notify]\n",
   // The promotion of 0.7, which the runtime answers too.
   "  promote <run> --to read_only|live --key FILE [--member NAME] [--yes]\n",
+  // What a person is shown and decides in 0.7, which the runtime answers too.
+  "  waits (--role R | --member M) [--tenant T] [--json]\n",
+  "  watch --member M --out DIR [--follow] [--interval 10s] [--refresh SECONDS]\n",
+  "  watch <run> --role R --jsonl\n",
+  "  decide --key FILE [--member NAME]\n",
 ];
 function before06(s: string): string {
   if (!s.startsWith("usage: mandate <command> [options]\n")) return s;
@@ -245,9 +250,9 @@ describe("the mandate command line equals the compiler's own", () => {
     const text = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
     expect(text).toMatch(/^const CONTROL = new Set\(\[[^\]]*\]\);$/m);
     // The compiler's own, frozen at 0.5, and after it the control commands of 0.6, `connector` (pin) and `review`, and
-    // of 0.7, `tick` and `promote`.
+    // of 0.7, `tick`, `promote`, `waits`, `watch` and `decide`.
     expect(text.match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m)![1]).toBe(
-      readFileSync(new URL("../../compiler/src/cli.ts", import.meta.url), "utf8").match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m)![1]!.replace(/\]$/, ', "connector", "review", "tick", "promote"]'),
+      readFileSync(new URL("../../compiler/src/cli.ts", import.meta.url), "utf8").match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m)![1]!.replace(/\]$/, ', "connector", "review", "tick", "promote", "waits", "watch", "decide"]'),
     );
   });
 

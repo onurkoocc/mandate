@@ -46,6 +46,8 @@
 //   mandate tick [--follow]                the driver loop: deadlines pass, reviews escalate, notifications of 0.7
 //                                          runs go out (spec/attention.md, the runtime's CLI)
 //   mandate promote <run> --to <mode>      the owner promotes a workflow up its ladder on a run (0.7, spec/attention.md, the runtime's CLI)
+//   mandate waits | watch | decide         what a person is shown and decides (0.7, spec/attention.md "The command line", the runtime's CLI):
+//                                          the open decisions of a role or member, script-free pages and a role's events, a signed decision
 //   mandate egress serve --config <file>   the reference egress proxy, which holds the secrets (spec/egress.md)
 //   mandate connector pin <program>        writes the schema digests of a program's connectors into its lock,
 //                                          asking each server through the egress proxy (0.6, spec/library.md; the runtime's CLI)
@@ -140,6 +142,10 @@ function usageText(): string {
       "  review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]",
       "  tick [--follow] [--interval 10s] [--no-notify]",
       "  promote <run> --to read_only|live --key FILE [--member NAME] [--yes]",
+      "  waits (--role R | --member M) [--tenant T] [--json]",
+      "  watch --member M --out DIR [--follow] [--interval 10s] [--refresh SECONDS]",
+      "  watch <run> --role R --jsonl",
+      "  decide --key FILE [--member NAME]",
       "  test <file> [--json] [--libraries <dir>]",
       "",
     ].join("\n")
@@ -482,7 +488,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review", "tick", "promote"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review", "tick", "promote", "waits", "watch", "decide"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {
