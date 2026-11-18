@@ -315,8 +315,9 @@ function writeSites(): Array<{ file: string; types: string[]; keys: string[] }> 
   );
 }
 
-// The allow-list is by field: what a field it gives holds is its writer's to keep to what its name says, and this test
-// reads names, not contents (a field given as a name that came to hold an error's detail would pass it). The fields
+// The allow-list is by field: what a field it gives holds is its writer's to keep to what its name says. This test reads
+// field names and cannot see what a field holds (a field given by its name that came to hold an error's detail would
+// pass it). The fields
 // given today that hold free text: a halt's `cancel_requested.reason`, which a person wrote; `decision_refused.reason`
 // and `guarantee_lowered.reason`, the runtime's own words; and the titles of `stage_started` and `report`, the
 // program's, or, in a sub-program, a lead's, which are masked as a model's values are (projection.ts `LEAD_TEXT`). None

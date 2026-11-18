@@ -1154,8 +1154,18 @@ holds, in an event of a sub-program, text its lead wrote (a stage's name or
 title, a report's title, its workflow's name and shape), given as a value a
 model wrote, of the class of what the lead received (`program_started`'s
 `class`), masked by the role's cap (`LEAD_TEXT`); of the run's own
-program, it is the program's text. The table is by field: what a field it
-gives holds is its writer's to keep to what its name says. The fields given
+program, it is the program's text. The identifiers a lead chooses in a
+sub-program are not masked, a known residual channel: its workflows' names,
+which stand in the path of every command of the sub-program
+(`…/program/1/defs/Fix/body/0/value`, in every `command` and `node` above,
+in `ListWaits` and in the budget's `commands`), its report fields' names,
+the contract and criterion names in its requests, and the agent and
+delegate names in `violation`. They are identifiers, not free text, and a
+reader treats them as text a model chose; masking `program_started`'s
+`workflow` hides that name in one place only
+([`attention.md`](attention.md#masking-and-how-a-value-is-known)). The table is by field: what a field it
+gives holds is its writer's to keep to what its name says, and the test of
+its totality reads field names and cannot see what a field holds. The fields given
 that hold free text are a halt's `cancel_requested.reason`, which a person
 wrote, `decision_refused.reason` and `guarantee_lowered.reason`, the
 runtime's own words, and the titles above; none holds a value of the run.

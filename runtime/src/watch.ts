@@ -12,8 +12,8 @@
 import { isProgram07OrLater, type Lock } from "@mandate/bridge";
 import type { Audience } from "./classes.js";
 import { TERMINAL, type RunRow } from "./journal.js";
-import { capOf, maskedAs, plainValues, type MaskedValue, type NamedShown, type UnlabelledValue } from "./mask.js";
-import { askedOf, attentionContext, given, maskedWait, projectEvent, waitHidden, type AttentionContext, type Ev, type ProjectedEvent } from "./projection.js";
+import { capOf, plainValues, type MaskedValue, type NamedShown, type UnlabelledValue } from "./mask.js";
+import { askedOf, attentionContext, given, maskDigest, maskedWait, projectEvent, type AttentionContext, type Ev, type ProjectedEvent } from "./projection.js";
 import { shownBy, type Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { isObj, type Obj, type Value } from "./values.js";
@@ -183,7 +183,6 @@ export async function listWaits(rt: Runtime, who: { role: string } | { member: s
     for (const role of listed) {
       const cap = capOf(lock, role);
       const subject = shownBy(run, row.command_id, { kind: row.kind, result: row.result, request_digest: row.request_digest }).subject;
-      const hidden = ctx ? waitHidden(ctx, row.command_id, cap) ?? (ctx.waits.has(row.command_id) ? undefined : { label: undefined }) : undefined;
       out.push({
         run: run.run_id,
         tenant: run.tenant,
@@ -199,7 +198,8 @@ export async function listWaits(rt: Runtime, who: { role: string } | { member: s
         escalates_to: row.kind === "review" ? (typeof req["escalate_to"] === "string" && !escalated ? req["escalate_to"] : null) : (facts?.escalates_to ?? null),
         on_no_answer: facts?.on_no_answer ?? noAnswer(row.kind, req),
         stage: facts?.stage ?? null,
-        subject: hidden ? maskedAs(hidden.label) : subject,
+        // A wait the run's events do not show opened is not known to be shown: its subject is masked (`maskDigest`).
+        subject: ctx ? (maskDigest(ctx, ctx.waits.has(row.command_id) ? row.command_id : undefined, cap, subject) as string | MaskedValue) : subject,
         shown: ctx ? maskedWait(ctx, row.command_id, row.kind, row.result, cap).shown : plainValues(row.kind, row.result),
       });
     }

@@ -17,7 +17,7 @@ import { capOf, labelOf, maskRequest, maskValue, UNKNOWN } from "../src/mask.js"
 import { baseOf, type WorkerChecker } from "../src/plan.js";
 import { NOTHING, PROJECTIONS } from "../src/projection.js";
 import { buildPackage } from "../src/runtime.js";
-import { toolUse, type SimTurn } from "../src/sim.js";
+import { SimAgents, toolUse, type SimTurn } from "../src/sim.js";
 import { digest, type Obj, type Value } from "../src/values.js";
 import { auditDoc, roleDoc, runDoc, runView } from "../src/views.js";
 import { closeAll, planChecker, world, type World } from "./helpers.js";
@@ -508,5 +508,85 @@ describe("the document of a view", () => {
     // And a value of 0.6 is printed byte for byte as by the view of a role as by the operator's.
     const plainDoc = (d: string): string => d.slice(d.indexOf("Waiting for an answer"), d.indexOf("\n\n", d.indexOf("Waiting for an answer") + 40));
     expect(plainDoc(toMarkdown(roleDoc(asked(r6.view as unknown as Obj, values[0]!) as never, r6.program, r6.modules)))).toBe(plainDoc(toMarkdown(runDoc(asked(o6.view as unknown as Obj, values[0]!) as never, o6.program, o6.modules))));
+  });
+});
+
+describe("a review's waivers in a role's view", () => {
+  /** A review whose items are model's values: item 1's total does not match, and the reviewer waives it. */
+  const WAIVED = `mandate @ 0.7
+
+module example.attention.waive @ 0.1
+
+use std.{human, model}
+
+role reviewer "Reviewer"
+
+type No    = Text classified internal
+type Item  = { no: No, total: Int }
+type Batch = { accepted: Int, failed: List<Int> }
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+/// A match names its item; its total may differ when the reviewer waives it.
+contract Fits(it: Item, m: Item) {
+  accept same "The match is for this item"
+    by static m.no == it.no
+  accept totals "The totals are equal"
+    by static m.total == it.total
+    waive by reviewer
+}
+
+agent Matcher {
+  role   "Matches one item."
+  caps   ModelStd
+  budget { tokens: 6k, steps: 2 }
+  skill match(it: Item) -> Inferred<Item> ! {Model}
+}
+
+/// Matches each item and asks the reviewer about the rest.
+workflow Waive(items: List<Item>) -> Batch
+  caps   ModelStd
+  budget { time: 2h }
+{
+  let checked = map it in items max 4 par 2 {
+    let out = delegate Matcher.match(it)
+    verify out against Fits(it, out)
+  }
+  let reviewed = human.review(checked, role: reviewer, deadline: 1d)
+  Batch { accepted: len(reviewed.accepted), failed: reviewed.failed }
+}
+`;
+
+  it("masks the evidence a waiver is and the failure it waives with the review's values from a role they are masked from, and gives them to one they are not", async () => {
+    for (const [classes, hidden] of [[{ reviewer: "public" }, true], [undefined, false]] as const) {
+      const who = people(classes);
+      const agents = new SimAgents().on("Matcher.match", (req) => {
+        const it = req.args[0] as Obj;
+        return { ok: it["no"] === "I1" ? { ...it, total: 11 } : it, cost: { steps: 1 } };
+      });
+      const w = await world(WAIVED, { agents, lock: who.lock, decisions: { keys: who.keys } });
+      const r = await w.rt.startRun({ pkg: w.pkg, workflow: "Waive", input: { items: [{ no: "I0", total: 10 }, { no: "I1", total: 10 }] }, runId: "v" });
+      expect(r.state).toBe("waiting");
+      const shown = await w.rt.shown("v", "wait");
+      const d = { waive: [1], decline: [] };
+      const signed = signDecision(who.ana.key, shown, { kind: "review", member: "ana", payload: payloadOf.review(d), at: new Date(w.adapters.clock.now()) });
+      expect((await w.rt.decideReview("v", { sender: "test", messageId: `m${++n}` }, { signed, ...d })).state).toBe("succeeded");
+      const [waiver] = (await runView(w.rt, "v")).view.reviews![0]!.items[1]!.waivers;
+      expect(waiver).toMatchObject({ criterion: "totals", signature_valid: true });
+      const { view, program, modules } = await runView(w.rt, "v", { role: "reviewer" });
+      const masked = view.reviews![0]!.items[1]!.waivers[0]!;
+      const label = { masked: true, class: "internal", known: "model" };
+      expect([masked.failed, masked.waiver], `hidden ${hidden}`).toEqual(hidden ? [label, label] : [waiver!.failed, waiver!.waiver]);
+      expect(masked.signature_valid).toBe(true);
+      // The same ids, by the same rule, in WatchRun.
+      const watched = (await w.rt.watchRun("v", { role: "reviewer" }, { limit: 500 })).events.find((e) => e.type === "criterion_waived")!;
+      expect([watched.data!["failed"], watched.data!["waiver"]]).toEqual(hidden ? [label, label] : [waiver!.failed, waiver!.waiver]);
+      // And the role's document prints them so: a masked one as masked, a shown one as its first 19 characters.
+      const doc = toMarkdown(roleDoc(view, program, modules));
+      expect(doc).toContain(hidden ? "totals: masked (internal) waived by masked (internal)" : `totals: ${waiver!.failed.slice(0, 19)} waived by ${waiver!.waiver.slice(0, 19)}`);
+      for (const [where, text] of <Array<[string, string]>>[["view", JSON.stringify(view)], ["watchRun", JSON.stringify(watched)], ["document", doc]]) {
+        expect([waiver!.failed, waiver!.waiver].some((id) => text.includes(id.slice(0, 19))), `${where}, hidden ${hidden}`).toBe(!hidden);
+      }
+    }
   });
 });

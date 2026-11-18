@@ -40,8 +40,8 @@ import type { Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { covers, type ChangeKind } from "./specdiff.js";
 import { canonical, digest, isObj, show, type Obj, type Value } from "./values.js";
-import { capOf, maskedAs, maskValue, type Cap, type ShownValue } from "./mask.js";
-import { attentionContext, maskedWait, programsView, reportsView, stagesView, waitHidden, type AttentionContext, type ProgramsView, type ReportView, type StageView } from "./projection.js";
+import { capOf, maskValue, type Cap, type ShownValue } from "./mask.js";
+import { attentionContext, maskDigest, maskedWait, programsView, reportsView, stagesView, type AttentionContext, type ProgramsView, type ReportView, type StageView } from "./projection.js";
 
 export interface AsOf {
   revision: number;
@@ -431,16 +431,20 @@ function roleView(v: RunView, role: string, events: Stored[], ctx?: AttentionCon
   out["decisions"] = v.decisions.filter((d) => may("decisions", askedOf(d)));
   // A review (0.6) is shown to each role it was asked of: the first, and the one it was escalated to.
   if (v.reviews) out["reviews"] = v.reviews.filter((r) => may("reviews", r.role) || (r.escalated !== null && may("reviews", r.escalated.to)));
-  // 0.7: a decision's id is a digest over its record, which holds the digest of what its wait showed; for a role that
-  // wait's values are masked from, it is masked too (projection.ts `DIGESTS`).
+  // 0.7: a decision's id is a digest over its record, which holds the digest of what its wait showed, and a waiver's
+  // evidence and the failure it waives are statements over the item's value; for a role that wait's values are masked
+  // from, each is masked too, by the rule every path uses (projection.ts `maskDigest`). A decision about no wait
+  // (`about` null) is about the run or its package, no wait's values.
   if (ctx) {
     const cap = capOf(ctx.lock, role);
-    const id = (about: string | null, decisionId: string | null): string | null => {
-      const hidden = decisionId !== null ? waitHidden(ctx, about ?? undefined, cap) : undefined;
-      return hidden ? (maskedAs(hidden.label) as unknown as string) : decisionId;
-    };
+    const id = <T extends string | null>(wait: string | null, v: T): T => (v === null || wait === null ? v : (maskDigest(ctx, wait, cap, v) as T));
     out["decisions"] = (out["decisions"] as DecisionView[]).map((d) => ({ ...d, decision_id: id(d.about, d.decision_id) }));
-    if (out["reviews"]) out["reviews"] = (out["reviews"] as ReviewView[]).map((r) => (r.decision ? { ...r, decision: { ...r.decision, decision_id: id(r.node, r.decision.decision_id) } } : r));
+    if (out["reviews"])
+      out["reviews"] = (out["reviews"] as ReviewView[]).map((r) => ({
+        ...r,
+        decision: r.decision ? { ...r.decision, decision_id: id(r.node, r.decision.decision_id) } : null,
+        items: r.items.map((i) => ({ ...i, waivers: i.waivers.map((w) => ({ ...w, failed: id(r.node, w.failed), waiver: id(r.node, w.waiver) })) })),
+      }));
   }
   if (out["budget"]) out["budget"] = { dimensions: v.budget.dimensions, commands: v.budget.commands.filter((c) => shows(audience, stepClass(c.kind), asked.get(c.command))) };
   if (v.envelope && out["envelope"]) out["envelope"] = { ...v.envelope, amendments: may("envelope.amendments", v.envelope.owner) ? v.envelope.amendments : [] };
@@ -1040,10 +1044,16 @@ function valueBlocks(v: Value, render: (v: Value) => string, projected: boolean)
   return [{ code: render(shown.value), untrusted: true }, { note: `Its ${label}.` }];
 }
 
-/** A digest as a document's cell prints it; in a role's projection of 0.7, a masked one as `masked (class)`. */
+/** A digest as a document's cell prints it, as it always did; in a role's projection of 0.7, a masked one as `masked (class)`. */
 function digestCell(v: Value | undefined, projected: boolean): Cell {
   const shown = shownOf(v, projected);
-  return shown?.masked ? `masked (${shown.class})` : mono(String(v ?? ""));
+  return shown?.masked ? `masked (${shown.class})` : mono(String(v));
+}
+
+/** A digest in a line of a document, as it always was; in a role's projection of 0.7, a masked one as `masked (class)`. */
+function digestText(v: string | null, projected: boolean, at: (s: string) => string = (s) => s): string | null {
+  const shown = shownOf(v as Value, projected);
+  return shown?.masked ? `masked (${shown.class})` : v === null ? null : at(v);
 }
 
 /** A program's or a lead's text in a cell: the program's as it is, a lead's (a `ShownValue`) as shown or masked. */
@@ -1112,7 +1122,7 @@ function reviewWaitBlocks(v: Pick<RunView, "run" | "as_of">, req: Obj, projected
 }
 
 /** Each review of the run (0.6): who was asked, when it escalates, and what was decided of each item. */
-function reviewBlocks(v: Pick<RunView, "reviews">): Block[] {
+function reviewBlocks(v: Pick<RunView, "reviews">, projected = false): Block[] {
   const out: Block[] = [];
   for (const r of v.reviews ?? []) {
     const at = (t: number | null): string => (t === null ? "—" : new Date(t).toISOString());
@@ -1121,7 +1131,7 @@ function reviewBlocks(v: Pick<RunView, "reviews">): Block[] {
     const escalation = r.escalated ? `; it was escalated to ${r.escalated.to}, until ${at(r.escalated.deadline)}` : r.escalate_to ? `; then ${r.escalate_to}` : "";
     const how =
       r.state === "decided" && r.decision
-        ? `Decided by ${r.decision.by ?? "?"}${r.decision.role ? ` as ${r.decision.role}` : ""}; the signature ${r.decision.signature === "valid" ? "holds" : "does NOT hold"} (${r.decision.decision_id ?? "no record"}).`
+        ? `Decided by ${r.decision.by ?? "?"}${r.decision.role ? ` as ${r.decision.role}` : ""}; the signature ${r.decision.signature === "valid" ? "holds" : "does NOT hold"} (${digestText(r.decision.decision_id, projected) ?? "no record"}).`
         : r.state === "expired"
           ? "Nobody decided before the deadline: every open item was declined. Nothing passes on its own."
           : "It waits for the decision.";
@@ -1129,7 +1139,7 @@ function reviewBlocks(v: Pick<RunView, "reviews">): Block[] {
     out.push({
       table: {
         head: ["Item", "Outcome", "By", "Waivers"],
-        rows: r.items.map((i) => [String(i.index), i.outcome, i.by ?? "—", i.waivers.length ? mono(i.waivers.map((x) => `${x.criterion}: ${x.failed.slice(0, 19)} waived by ${x.waiver.slice(0, 19)}${x.signature_valid ? "" : " (INVALID)"}`).join("; ")) : "—"]),
+        rows: r.items.map((i) => [String(i.index), i.outcome, i.by ?? "—", i.waivers.length ? mono(i.waivers.map((x) => `${x.criterion}: ${digestText(x.failed, projected, (s) => s.slice(0, 19))} waived by ${digestText(x.waiver, projected, (s) => s.slice(0, 19))}${x.signature_valid ? "" : " (INVALID)"}`).join("; ")) : "—"]),
       },
     });
   }
@@ -1224,7 +1234,7 @@ const amounts = (r: Record<string, number>): string =>
     .map((d) => `${d}: ${money(d, r[d]!)}`)
     .join(", ") || "—";
 
-function decisionBlocks(v: Pick<RunView, "decisions">): Block[] {
+function decisionBlocks(v: Pick<RunView, "decisions">, projected = false): Block[] {
   if (!v.decisions.length) return [];
   return [
     { h: "Decisions" },
@@ -1238,7 +1248,7 @@ function decisionBlocks(v: Pick<RunView, "decisions">): Block[] {
           d.role ?? "—",
           d.signature === "invalid" ? `INVALID: ${d.problem ?? "it does not verify"}` : d.signature,
           d.about === null ? "—" : mono(d.about),
-          d.decision_id === null ? "—" : mono(d.decision_id),
+          d.decision_id === null ? "—" : digestCell(d.decision_id, projected),
         ]),
       },
     },
@@ -1380,8 +1390,8 @@ export function roleDoc(v: RoleView, program: Program, modules?: Modules): Doc {
       ...exceptionBlocks(v.exceptions),
       ...envelopeBlocks(v),
       ...mapBlocks(v),
-      ...reviewBlocks(v),
-      ...decisionBlocks(v),
+      ...reviewBlocks(v, isProgram07OrLater(program)),
+      ...decisionBlocks(v, isProgram07OrLater(program)),
       ...costBlocks(v),
       ...architectureBlocks(architecture(program, viewModules(program, modules))),
       ...authorityBlocks(authority(program, viewModules(program, modules))),

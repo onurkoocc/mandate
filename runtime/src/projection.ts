@@ -12,7 +12,7 @@ import { DATA_CLASSES, type AttentionFacts, type AttentionStage, type DataClass,
 import { readFacts } from "./attention.js";
 import { addressee, eventClass, shows, type Audience, type ViewClass } from "./classes.js";
 import type { RunRow } from "./journal.js";
-import { capOf, hides, labelOf, maskedAs, maskRequest, maskValue, siteOf, waitFacts, type Cap, type Label, type ShownValue, type WaitFacts } from "./mask.js";
+import { capOf, digestAs, hides, labelOf, maskedAs, maskRequest, maskValue, siteOf, waitFacts, type Cap, type Label, type ShownValue, type WaitFacts } from "./mask.js";
 import type { Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { isObj, type Obj, type Value } from "./values.js";
@@ -123,6 +123,18 @@ export function waitHidden(ctx: AttentionContext, command: string | undefined, c
   if (command === undefined || !ctx.waits.has(command)) return undefined;
   const label = ctx.waits.get(command)!.label;
   return hides(label, cap) ? { label } : undefined;
+}
+
+/**
+ * A digest computed over the values of the wait `wait` (a decision's id, an action's digest, a waiver's evidence id,
+ * the subject a decision names) as `cap` is given it: the one rule of every path a role is given one by (the role
+ * view, `WatchRun`, `ListWaits`). Masked, as the wait's values are, where the wait's label hides them from `cap`;
+ * masked too where it is not known which wait it is of (`wait` undefined); as it is for a command that is no wait the
+ * run opened (an envelope's approval, a raise of the limits), and for the audit audience.
+ */
+export function maskDigest(ctx: AttentionContext, wait: string | undefined, cap: Cap, value: Value): Value {
+  if (wait !== undefined && !ctx.waits.has(wait)) return value;
+  return digestAs(wait === undefined ? undefined : ctx.waits.get(wait)!.label, cap, value);
 }
 
 /** The sub-program the command `command` stands in, by its `plan#number`: the admitted one whose command is the longest prefix of it. */
@@ -507,12 +519,12 @@ export function projectEvent(e: Ev, audience: Audience, ctx: AttentionContext | 
   const cap = ctx ? capFor(ctx, audience) : undefined;
   const data: Obj = {};
   const digests = ctx && cap !== undefined && Object.hasOwn(DIGESTS, e.type) ? DIGESTS[e.type]! : [];
-  const hidden = ctx && cap !== undefined && digests.length ? digestsHidden(ctx, e.type, d, cap) : undefined;
+  const wait = ctx && digests.length ? digestWait(ctx, e.type, d) : undefined;
   const lead = ctx && cap !== undefined && Object.hasOwn(LEAD_TEXT, e.type) ? LEAD_TEXT[e.type]! : [];
   const key = ctx && lead.length ? leadKey(ctx, e.type, d) : undefined;
   for (const f of entry) {
     if (!Object.hasOwn(d, f)) continue;
-    if (hidden && digests.includes(f)) data[f] = maskedAs(hidden.label) as unknown as Value;
+    if (ctx && cap !== undefined && digests.includes(f)) data[f] = maskDigest(ctx, wait, cap, d[f]!);
     else if (ctx && cap !== undefined && key !== undefined && lead.includes(f)) data[f] = leadText(ctx, key, d[f]!, cap) as unknown as Value;
     else if (f !== masked || !ctx || cap === undefined) data[f] = d[f]!;
     else if (e.type === "report") data[f] = reportFields(d[f], cap) as unknown as Value;
@@ -521,15 +533,13 @@ export function projectEvent(e: Ev, audience: Audience, ctx: AttentionContext | 
   return { ...shell, data };
 }
 
-/** Whether the digests of event data `d` are hidden from `cap` (`DIGESTS`), and the label they are masked with. */
-function digestsHidden(ctx: AttentionContext, type: string, d: Obj, cap: Cap): { label: Label | undefined } | undefined {
-  if (type === "action_authorized") {
-    const wait = ctx.actions.get(String(d["digest"]));
-    // An authorization whose action no wait of the run was asked about is not known to be shown, so it is masked.
-    if (wait === undefined) return cap === "audit" ? undefined : { label: undefined };
-    return waitHidden(ctx, wait, cap);
-  }
-  return waitHidden(ctx, text(d["command"]) ?? undefined, cap);
+/**
+ * The wait the digests of event data `d` are computed over (`DIGESTS`): its `command`; an authorization's, the wait
+ * its action's digest was asked about, undefined (so masked) when no wait of the run was.
+ */
+function digestWait(ctx: AttentionContext, type: string, d: Obj): string | undefined {
+  if (type === "action_authorized") return ctx.actions.get(String(d["digest"]));
+  return text(d["command"]) ?? undefined;
 }
 
 /** The sub-program an event of `LEAD_TEXT` is of, by `plan#number`; undefined for the run's own program. */

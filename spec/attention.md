@@ -1123,6 +1123,19 @@ The runtime calls this type `ShownValue` (`runtime/src/mask.ts`), because
   received, which `program_started` records as `class`; where that is not
   known, it is masked for every role. The run's own program's text, which a
   person approved, is shown as it is.
+- **What a lead named (a known residual channel).** The identifiers a lead
+  chooses in a sub-program are not masked: the names of its workflows,
+  which stand in the path of every command of the sub-program
+  (`…/program/1/defs/Fix/body/0/value`, in `wait_opened`'s `command`,
+  `command_dispatched`, `stage_started`'s `node`, `report`'s `node`
+  and `command`, a wait's `command` in `ListWaits`, the budget's
+  `commands`), the names of a report's fields, the contract and criterion
+  names in its requests, and the agent and delegate names in a
+  `violation`. They are identifiers, not free text: the grammar keeps each
+  to a name, never a sentence, though a lead may spell into a name what it
+  read. Masking `program_started`'s
+  `workflow` therefore hides that name in one place only. A reader treats
+  every identifier of a sub-program as text a model chose.
 - **A class that is not known.** A value whose class the stored facts do not
   give (facts that are missing or do not hash to their digest, a site with no
   row, or a row with no class, such as an effect's) is masked for every role,

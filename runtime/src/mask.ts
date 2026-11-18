@@ -95,6 +95,16 @@ export function maskedAs(label: Label | undefined): MaskedValue {
   return { masked: true, class: l.class, known: l.known };
 }
 
+/**
+ * A digest computed over values labelled `label` (a wait's), as `cap` is given it: masked with them where the label
+ * hides them, so no digest can be checked against a guess of what it is over. The one rule of every path a role is
+ * given a digest by: a wait's request here, and the events, the role view and the list of waits by
+ * `projection.ts` `maskDigest`.
+ */
+export function digestAs(label: Label | undefined, cap: Cap, v: Value): Value {
+  return hides(label, cap) ? (maskedAs(label) as unknown as Value) : v;
+}
+
 // ── a wait's request ────────────────────────────────────────────────────
 
 /**
@@ -150,8 +160,7 @@ export function maskRequest(kind: string, request: Value, label: Label | undefin
     return s as unknown as Value;
   };
   // The wait's label is one for all it shows: when it hides a value, it hides every digest over its values too.
-  const hide = hides(label, cap);
-  return { request: splitRequest(kind, request, one, (v) => (hide ? (maskedAs(label) as unknown as Value) : v)), shown };
+  return { request: splitRequest(kind, request, one, (v) => digestAs(label, cap, v)), shown };
 }
 
 /** The values a wait's request shows in a run of 0.1 to 0.6, as they are, unlabelled, by the same split as `maskRequest`. */
