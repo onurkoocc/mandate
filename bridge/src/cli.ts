@@ -14,9 +14,7 @@
 //   mandate explain <code>                 explain a diagnostic code
 //   mandate mcp [--module <file>]…         serve check, explain, apply_patch and views to agents
 //                                          over MCP on stdio (§14); the tools of language 0.7 (spec/attention.md
-//                                          "The MCP server"), as the native command serves them. An undocumented
-//                                          --language mandate/0.N serves the tools of an older language (0.1 to
-//                                          0.6: the frozen list), which the native command does not.
+//                                          "The MCP server"), as the native command serves them
 //   mandate view <file> [--against <old>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>]
 //                                          the program's human views (§15): architecture,
 //                                          authority and cost; with --against, what changed,
@@ -260,8 +258,6 @@ function main(argv: string[]): void {
   const format = option(plain, "--format") ?? "md";
   const librariesDir = option(plain, "--libraries");
   const configFile = option(plain, "--config");
-  // `mcp`: the language whose tools the server serves; the newest unless it is named.
-  const language = option(plain, "--language");
   // 0.7: the program a lock is for (`add`, `upgrade`).
   const programFile = option(plain, "--program");
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
@@ -495,19 +491,10 @@ function main(argv: string[]): void {
       process.exit(0);
     }
     // falls through
-    case "mcp": {
-      // The tools of the newest language the compiler reads unless --language names one (0.1 to 0.6: the frozen list).
-      serveStdio(process.stdin, process.stdout, modules, language ?? "mandate/0.7").then(
-        () => process.exit(0),
-        (e: unknown) => {
-          // A language the compiler has no tool list for: said once, as a command that is not used as it is meant.
-          if (!(e instanceof Error) || e instanceof CompilerFailure) throw e;
-          process.stderr.write(`mandate: ${e.message}\n`);
-          process.exit(2);
-        },
-      );
+    case "mcp":
+      // The tools of language 0.7, which the door `mcp_tools` lists, as the native command serves them (spec/mcp.md "0.7").
+      void serveStdio(process.stdin, process.stdout, modules, "mandate/0.7").then(() => process.exit(0));
       return;
-    }
     case "explain": {
       const raw = args[0] ?? usage();
       const code = raw.startsWith("MDT-") ? raw : `MDT-${raw}`;

@@ -246,7 +246,8 @@ function project07(args: Record<string, unknown>, modules: Modules): unknown {
     // The attention view of one workflow, or of each.
     case "attention": {
       if (!isProgram07OrLater(p)) throw new ToolError("view attention is of a program of language 0.7 or later");
-      const opts = { modules, ...(lock ? { lock } : {}), ...(libraries ? { libraries } : {}), ...(lock && pin !== undefined ? { std_patterns: pin } : {}) };
+      // The door reads the lock's pin of std.patterns itself: no `std_patterns` is handed to it (a mutant that dropped it passed every test).
+      const opts = { modules, ...(lock ? { lock } : {}), ...(libraries ? { libraries } : {}) };
       const kind = kindFor(source, args["kind"]);
       const ask = (workflow: string): { format: unknown; program: unknown } | null => attentionView({ text: source, kind, opts, workflow, format: "json" }) as { format: unknown; program: unknown } | null;
       if (args["workflow"] !== undefined && args["workflow"] !== null) {

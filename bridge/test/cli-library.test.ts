@@ -14,7 +14,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { libraryCommand, Stop, type LibraryArgs } from "../src/cli-library.js";
-import { authoritySignature, canonicalize, librariesConfigProblems, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, type Json, type LibrarySource } from "../src/index.js";
+import { authoritySignature, canonicalize, librariesConfigProblems, mcpTools, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, type Json, type LibrarySource } from "../src/index.js";
+import { TOOLS } from "../src/mcp.js";
 import { beside, Files, isLibraryName, isModulePath, joinPath, libraryIn, lockPins, parseVersion, pinnedIn, rangeHolds, readManifest, versionsIn } from "../src/libraries.js";
 import { modulePath } from "../src/wasm/module.js";
 import { buildTree, repoRoot, type Tree } from "./tree.js";
@@ -896,6 +897,35 @@ describe("the mandate executable with libraries", () => {
     expect(problems.join("\n")).toBe("");
     expect(compared).toBeGreaterThanOrEqual(90);
   }, 280_000);
+
+  // `mandate mcp` serves the tools of 0.7 as the native command does (the library API's default, with no language, is the
+  // frozen list: bridge/test/mcp-0-7.test.ts). The command takes no option for another language.
+  it("serves, as a command, the tool list of 0.7 the door gives, in both eras", async () => {
+    const V = { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": { name: "test", version: "1" }, "io.modelcontextprotocol/clientCapabilities": {} };
+    const messages = [
+      { jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: V } },
+      { jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "2025-06-18" } },
+      { jsonrpc: "2.0", id: 3, method: "tools/list" },
+    ];
+    const run = await new Promise<Run>((resolve, reject) => {
+      const child = spawn(process.execPath, [tree.bridgeCli, "mcp"], { cwd: work, stdio: ["pipe", "pipe", "pipe"] });
+      const out: Buffer[] = [];
+      const err: Buffer[] = [];
+      child.stdout.on("data", (c: Buffer) => out.push(c));
+      child.stderr.on("data", (c: Buffer) => err.push(c));
+      child.on("error", reject);
+      child.on("close", (code) => resolve({ code, out: Buffer.concat(out).toString("utf8"), err: Buffer.concat(err).toString("utf8") }));
+      child.stdin.end(messages.map((m) => JSON.stringify(m) + "\n").join(""));
+    });
+    expect(run.err).toBe("");
+    expect(run.code).toBe(0);
+    const answers = run.out.trimEnd().split("\n").map((l) => JSON.parse(l) as { id: number; result: { tools?: unknown[]; ttlMs?: number } });
+    const door = mcpTools("mandate/0.7");
+    expect(JSON.stringify(answers[0]!.result.tools)).toBe(JSON.stringify(door.tools));
+    expect(answers[0]!.result.ttlMs).toBe(door.modern.ttlMs);
+    expect(JSON.stringify(answers[2]!.result.tools)).toBe(JSON.stringify(door.tools));
+    expect(JSON.stringify(door.tools)).not.toBe(JSON.stringify(TOOLS));
+  });
 
   it("refuses a view --attention it cannot make, with the native command's words and statuses", async () => {
     const lib = ["--lock", "fixtures/attention/invoices.lock.json", "--libraries", "libs"];
