@@ -1074,8 +1074,8 @@ would be None, and a program with an envelope needs both (INV-11).
 
 ## In 0.7: `owner` and `asks`
 
-*Added 2026-11-17. Specified in [`attention.md`](attention.md); 0.7, not
-implemented yet. Everything on this page holds as it is for 0.4 to 0.6.*
+*Added 2026-11-17. Specified in [`attention.md`](attention.md); 0.7,
+implemented. Everything on this page holds as it is for 0.4 to 0.6.*
 
 - **`owner` without an envelope.** A 0.7 workflow that has no envelope, one
   that applies a pattern included, may name an `owner` role
@@ -1114,7 +1114,7 @@ implemented yet. Everything on this page holds as it is for 0.4 to 0.6.*
   refused by name (`unsupported_language`) to the lead that asks
   ([`library.md`](library.md#shapes)).
 - `stage`, `report`, the attention view and `asks`: 0.7, specified in
-  [`attention.md`](attention.md) and not implemented yet.
+  [`attention.md`](attention.md) and implemented.
 - An egress proxy for sub-programs that need the network: 0.5
   ([`boundary.md`](boundary.md#the-egress-proxy)). On a host that does not
   reach one, a sub-program with `net.https` is refused like any sandbox that

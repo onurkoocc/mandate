@@ -2030,6 +2030,24 @@ The three acceptance criteria of 0.6:
    `person_in_map`, a waiver that is forged or from the wrong role,
    `expansion_mismatch`) each have a test.
 
+## The class of a function's result, changed in release 0.7
+
+*Note, 2026-11-18.* This is the one place where release 0.7 changed what a
+0.6 program gets. Since release 0.7 a call of a function in a 0.6 program is
+of the data class of what the function reads and returns, not of its
+arguments' class alone, so a 0.6 function that reads classified data and
+returns it as an unclassified type no longer hands it to a public model, a
+delegation or a sub-program unrefused: the check refuses it (E0220, and
+E1706 in a sub-program), and the door `lead_classes` gives a `plan` handed
+such a result that class. A run journaled before the change replays as it
+did, and a resumed run does not check again a sub-program it admitted; a
+sub-program a lead submits after the resume is checked with the new class
+(by reading `runtime.ts` `loaded()` and `interp.ts` `plan`, not by a test:
+`crates/mandate-check/tests/class_0_6.rs` holds the `lead_classes` value,
+and no test replays a journal written before the change). The rule and the security note are in
+[`attention.md`](attention.md#static-rules), "The class of a function's
+result".
+
 ## 0.7: `std.patterns` 2.0.0, E1609 and reports
 
 *Added 2026-11-17. Specified in
@@ -2067,7 +2085,7 @@ Everything above holds as it is for 0.6.*
 
 - `stage`, `report`, the attention view, `asks`, `WatchRun`, `ListWaits`
   and masking by data class: 0.7, specified in [`attention.md`](attention.md)
-  and not implemented yet.
+  and implemented there.
 - Fetching a library from git or OCI, a registry service, signed
   publication, an organization's policy module, and `extern` in a
   library.

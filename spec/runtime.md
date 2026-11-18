@@ -1,10 +1,10 @@
-# Mandate runtime, 0.1 to 0.6
+# Mandate runtime, 0.1 to 0.7
 
 This is the reference runtime in `runtime/`. It runs a checked package
 against adapters and keeps every decision that must survive a crash in
 PostgreSQL. Section numbers refer to the design document (Doc 4).
 
-The page describes the runtime of releases 0.1 to 0.6. The parts that came
+The page describes the runtime of releases 0.1 to 0.7. The parts that came
 with 0.4 and 0.5 are specified in [`envelope.md`](envelope.md) and
 [`boundary.md`](boundary.md); here they are named where they touch the
 runtime's storage, load-time checks, control API, control CLI and
@@ -1294,11 +1294,10 @@ here. A package of 0.1 to 0.5 runs as above.*
   as itself escaped, and `show` has a `reviews` section
   ([`views.md`](views.md)).
 
-## Release 0.7 (not implemented yet)
+## Release 0.7
 
-*Added 2026-11-17. The rules are in [`attention.md`](attention.md#run-time);
-this is what they will change here. Nothing of it runs yet, and a package of
-0.1 to 0.6 runs as above.*
+*Implemented. The rules are in [`attention.md`](attention.md#run-time); this
+is what they change here. A package of 0.1 to 0.6 runs as above.*
 
 - **New commands.** `mandate tick [--follow] [--interval 10s] [--no-notify]`,
   `mandate promote <run> --to read_only|live --key FILE [--yes]`, `mandate
@@ -1308,8 +1307,8 @@ this is what they will change here. Nothing of it runs yet, and a package of
   --limit asks=N`. `approve-envelope` also approves a package whose 0.7
   workflow has an `owner`. A native `mandate mcp` joins the native command
   ([`mcp.md`](mcp.md#07)).
-- **The driver loop.** Without a scheduler nothing calls `tick` today, so no
-  deadline passes from the command line. `mandate tick` selects the runs that
+- **The driver loop.** Outside Temporal nothing called `tick` before 0.7, so no
+  deadline passed from the command line. `mandate tick` selects the runs that
   wait, calls `tick` for each under its own package (a decision expires, a
   review is escalated or expires, a timer is due; in a 0.7 run for every open
   wait whose deadline has passed, not only the one `runs.waiting` names),
