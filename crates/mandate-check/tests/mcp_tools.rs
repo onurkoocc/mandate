@@ -167,10 +167,22 @@ fn mcp_tools_every_language_the_compiler_lists_has_a_tool_list_and_no_other_does
 /// that `spec/attention.md` names: `check` takes `libraries`; `project`
 /// offers the card and the attention view (the `view` values, the `workflow`
 /// they are asked for) and takes a `lock` (described, for the card and the
-/// attention view); `caps_of` takes the `lock` and the `libraries` `check`
-/// takes; `spec` takes the sections `patterns` and `attention`. The
-/// descriptions of the four tools say so.
-const NAMED_CHANGES: [(&str, &str); 12] = [
+/// attention view); `caps_of` and `apply_patch` take the `lock` and the
+/// `libraries` `check` takes; `spec` takes the sections `patterns` and
+/// `attention`. The descriptions of the five tools say so.
+const NAMED_CHANGES: [(&str, &str); 15] = [
+    (
+        "changed /mandate.apply_patch/description",
+        "apply_patch: the description says the lock and the libraries",
+    ),
+    (
+        "added /mandate.apply_patch/inputSchema/properties/lock",
+        "apply_patch: takes the lock, the same schema as check",
+    ),
+    (
+        "added /mandate.apply_patch/inputSchema/properties/libraries",
+        "apply_patch: takes libraries, the same schema as check",
+    ),
     (
         "changed /mandate.caps_of/description",
         "caps_of: the description says the lock and the libraries",
@@ -278,6 +290,16 @@ fn mcp_tools_the_list_of_0_7_is_the_frozen_list_and_the_named_changes() {
     };
     // The new parameters are optional, and the old ones are as they were
     // (`required` is not among the differences).
+    assert_eq!(
+        property(&new, "mandate.apply_patch", "lock"),
+        property(&frozen, "mandate.check", "lock"),
+        "apply_patch takes the lock check takes"
+    );
+    assert_eq!(
+        property(&new, "mandate.apply_patch", "libraries"),
+        property(&new, "mandate.check", "libraries"),
+        "apply_patch takes the libraries check takes"
+    );
     let libraries = property(&new, "mandate.check", "libraries").unwrap();
     assert_eq!(libraries.get("type").and_then(Value::as_str), Some("array"));
     assert_eq!(
