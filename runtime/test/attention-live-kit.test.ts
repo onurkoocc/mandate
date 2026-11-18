@@ -204,7 +204,7 @@ describe("the live kit's scripted variant, as the guide runs it", () => {
       const body = [...inKey(ana), ...inKey(ben)];
       expect(body.length).toBeGreaterThan(0);
       for (const line of body) for (const text of [...printed, seen]) expect(text).not.toContain(line);
-      const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(d, e.name)) : [join(d, e.name)]));
+      const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(d, e.name)) : e.isFile() ? [join(d, e.name)] : []));
       for (const f of files(dir)) {
         // The persons' keys are theirs (people/), and the runtime's own evidence key is its state (.mandate/): both stay in the directory.
         if (relative(dir, f).startsWith("people") || relative(dir, f).startsWith(".mandate") || statSync(f).size > 5_000_000) continue;
