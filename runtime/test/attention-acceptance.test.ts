@@ -608,7 +608,7 @@ describe("the acceptance of 0.7, row by row", () => {
     // The accountant, asked and reported to: every value it was shown labelled, none above its cap.
     expect(heldToRole(await watched(d, "o1", "accountant"), "accountant")).toBeGreaterThan(0);
 
-    // What E1909 cannot see: the stored facts of a run say its review shows `restricted` data, above the accountant's
+    // Tampered facts, which no run under a lock has by itself: the stored facts of a run say its review shows `restricted` data, above the accountant's
     // cap (B3's facts door, as the asks case below uses it). The accountant is asked and shown every value masked,
     // labelled `restricted`, on its waits, its view and its stream; nothing of the book reaches it there.
     d.rt.attentionFacts = (i) => {
