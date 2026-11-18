@@ -135,8 +135,8 @@ for every program of 0.1 to 0.5, unchanged.*
 ### The card in 0.7
 
 *Added 2026-11-17. Specified in
-[`attention.md`](attention.md#the-card-of-a-07-program); 0.7, not
-implemented yet. What is above holds for every program of 0.1 to 0.6,
+[`attention.md`](attention.md#the-card-of-a-07-program); 0.7, implemented.
+What is above holds for every program of 0.1 to 0.6,
 unchanged; in particular the 0.6 card keeps its doubled deadline, and the
 note on its bound above is its correction.*
 
@@ -151,8 +151,7 @@ the lock, that each `read_only` and `live` run needs a signed promotion.
 ## The attention view (0.7)
 
 *Added 2026-11-17. Specified in
-[`attention.md`](attention.md#the-attention-view); 0.7, not implemented
-yet.*
+[`attention.md`](attention.md#the-attention-view); 0.7, implemented.*
 
 A fourth view of a program, made from the compiler's attention facts and the
 lock: for each role, when the workflow can ask it something, about what, at
@@ -362,7 +361,7 @@ test fails on an event type the runtime writes that has no class).
 
 A role's view shows S1 and S2, and S0 where it was asked of that role. The
 audit view shows S0 to S4. Nothing is masked by data class in 0.5. (In 0.7,
-not implemented yet, a role sees a `report` event only when it is addressed
+a role sees a `report` event only when it is addressed
 to that role, and values in a 0.7 run are masked by class:
 [`attention.md`](attention.md#masking-and-how-a-value-is-known).)
 
@@ -394,7 +393,7 @@ to that role, and values in a 0.7 run are masked by class:
   It never holds the run's result or error whole, its evidence, actions,
   change sets, plans or input, a command's result, the trace or the events.
 
-  *0.7, not implemented yet (added 2026-11-17;
+  *0.7 (added 2026-11-17;
   [`attention.md`](attention.md#a-roles-view)):* a role's view of a 0.7 run
   gains three sections, `stages`, `reports` (only the reports addressed to
   the role) and `programs`, and its `waiting`, `reviews` and `reports` show

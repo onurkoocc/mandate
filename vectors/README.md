@@ -1354,17 +1354,17 @@ same way, by gates of its own beside those of 0.6:
   `E1501e`, `E1502b`, `E0140e` to `E0140h`, `E1307f`, `L11` and `L11a`, and E1909 (slice RL5b): `A05`,
   `E1909` to `E1909f` and `E1609c` (whose lock now gives the two roles their classes)
   (`conformance/README.md`, "Cases of 0.7").
-- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (ten today,
+- **`golden/0.7.json`**: for every 0.7 program of `fixtures/attention/` (eleven today,
   `asks.mdt`, `minimal.mdt`, `owner.mdt` (with its lock of 0.7, which gives role classes and asks for the
   promotion ladder), `reports.mdt`, `shapes.mdt`, `stages.mdt`, `view.mdt` (with its lock), and `batch.mdt`, `fan-out.mdt` and `maker-checker.mdt`,
-  which apply the patterns of `std.patterns` 2.0.0 with their locks; 160 outputs), the digest of each output text, made
+  which apply the patterns of `std.patterns` 2.0.0 with their locks, and `invoices.mdt`, the acceptance program, with its lock and its libraries; 177 outputs), the digest of each output text, made
   by the code of `golden/0.6.json` (`crates/mandate-testkit/tests/golden_0_7.rs`).
 - **`diagnostics-0.7/`**: the whole result of every compile case of 0.7 and of the
   checks and `load` of every 0.7 program, in the layout of `diagnostics-0.6/`
   (`crates/mandate-testkit/tests/diagnostics_0_7.rs`; the code is shared with
   `diagnostics_0_6.rs`, `tests/rust_diagnostics/`).
 - **`attention-0.7/facts.json`**: the attention facts of every workflow of every 0.7
-  program of `fixtures/attention/` (22 workflows today), and of a sub-program, as the door `attention_facts`
+  program of `fixtures/attention/` (23 workflows of 11 programs today), and of a sub-program, as the door `attention_facts`
   gives them with the program's modules, `{ "<program>": { "<workflow>": <facts> } }`
   (`crates/mandate-testkit/tests/attention_0_7.rs`, which also holds the door to the
   function, `mandate_check::attention_facts`). Their shape is below ("The attention facts").
@@ -1627,7 +1627,7 @@ the compiler's order. The gates that do this:
 | diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
 | diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
 | corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 | `crates/mandate-testkit/tests/corpus.rs` |
-| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 517: the TypeScript's 125, and 265 of language 0.6 and 127 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
+| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 543: the TypeScript's 125, and 267 of language 0.6 and 151 of 0.7 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
 | tool schema digests | the digest `schemaDigest` of `runtime/src/mcp-client.ts` (built to `runtime/dist`) gives for 34 MCP tools written as JSON text (no `outputSchema`, `outputSchema` empty or null, member order, nested and deep schemas, non-ASCII and astral names and strings, members sorted by UTF-16, lone surrogates, numbers JSON writes differently from their text, empty objects, a member given twice), with the canonical text it hashes, and 29 texts the door must refuse; written by `scripts/tool-digest-vectors.mjs` (found by the `scripts/*-vectors.mjs` loop of CI and `docker/run-job.sh`) | 34 tools, 29 refused | `crates/mandate-check/tests/connector_doors.rs` (door `tool_schema_digest`) |

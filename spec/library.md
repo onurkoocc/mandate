@@ -2067,7 +2067,7 @@ Everything above holds as it is for 0.6.*
 
 - `stage`, `report`, the attention view, `asks`, `WatchRun`, `ListWaits`
   and masking by data class: 0.7, specified in [`attention.md`](attention.md)
-  and not implemented yet.
+  and implemented there.
 - Fetching a library from git or OCI, a registry service, signed
   publication, an organization's policy module, and `extern` in a
   library.

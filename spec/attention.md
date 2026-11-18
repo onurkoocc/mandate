@@ -1,38 +1,46 @@
 # Attention (0.7)
 
-**Status: not implemented yet.** This page is the specification of release
-0.7, written before its implementation, so that every part of it is built
-against one text. Little of it runs today: the Rust compiler reads
-`mandate @ 0.7` and checks a 0.7 program as the same program of 0.6, with
-none of what this page adds yet, and the runtime runs no 0.7 package. Each part is implemented by the slice named in the table, and
-its state is changed here when that slice is merged. Language 0.7 is read by
-the Rust compiler alone: the TypeScript compiler stays frozen at 0.5 and
-does not read it (E0103). While a slice has not landed, the runtime refuses
-at load, by name, a 0.7 package that uses what that slice runs
-(`unsupported_language`), as it did for 0.6; a version is never run on a
-best-effort basis.
+**Status: implemented, but for the live session.** Release 0.7 is implemented
+in the Rust compiler (`crates/`), in the bridge that lets the Node runtime and
+command line call it (`bridge/`), in the runtime (`runtime/`) and in the
+native `mandate` command of `crates/mandate-cli`, and the acceptance
+rehearsal holds it as a whole. This page is the specification the
+implementation was written against, and it says what the implementation does:
+where the first draft of a rule and the rule as built differed, the page was
+brought to the built one. Each part landed with the slice named in the table.
+One row stays open on purpose: the live session, which the project's owner
+conducts with the kit and which is not recorded yet. Language 0.7 is read by
+the Rust compiler alone: the TypeScript compiler stays frozen at 0.5 and does
+not read it (E0103); the runtime's compiler is the Rust compiler's module and
+no other ([`library.md`](library.md#the-bridge)). What the
+release does not do, and what it leaves for the next, is under [Known limits
+of 0.7](#known-limits-of-07) and [Carried to 0.8](#carried-to-08).
+
+The state column says "implemented" only for a part that a test holds, and
+names the tests. The Rust tests run natively and as WebAssembly; those of
+`runtime/test/` run on PGlite and on PostgreSQL.
 
 | Part | Slice | State |
 |---|---|---|
-| Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | the compiler's part implemented (RL1); the runtime's gates not implemented yet |
-| `stage`: grammar, IR, printer; E1901, E1902 | RL2 | read and checked by the compiler since RL2; the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
-| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3 (E1705 for `owner` since RL5); the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
-| `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`), and run since B3 |
-| The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
-| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5, RL5b | the compiler's part implemented: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication; E1909 (RL5b, `crates/mandate-check/src/role_shown.rs`), with a lock and, at a sub-program's admission, with its parent's `role_classes`. The runtime runs all three: `role_classes` since B4 (the caps of the masking), `owner` and `promotion` since B6 (card approval and the ladder). Since RL5b the runtime's check at load, which is given the package's lock, refuses a package whose program shows a role data above its class (`load_verification_failed`, E1909), and the admission of a lead's sub-program refuses one that would (E1909 in what the lead is told); the start refuses a run whose configuration hands an authorization to a role whose cap is below what it shows (`authorizer_below_class`, `runtime/src/mask.ts`), and so do a lead's amendment request and a sub-program's admission (`runtime/src/plan.ts`); a question that names no role is held to `internal` too when the lock lists a member who holds no role, to whom `ListWaits` lists it at that cap; the mask is for what E1909 cannot see ([Masking](#masking-and-how-a-value-is-known)) |
-| `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented but for the acceptance fixture: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program` (RL6); the acceptance fixture not written yet |
-| E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
-| The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | implemented: the door (RP1; without `workflow` it answers for every workflow, as the command prints them, B9), the native command and the document (RP1), and the Node command, which prints the native command's bytes for `fixtures/attention/` (`bridge/test/cli-library.test.ts`, held to `vectors/golden/0.7.json` and `vectors/attention-0.7/view.json`) |
-| The card of a 0.7 program | RP2 | implemented (`crates/mandate-views/src/card.rs`), in the Node command and in the `project` tool of both servers (B9) |
-| The MCP tools of 0.7 (`mcp_tools`); a native `mandate mcp`; the Node server of 0.7 | RP3, RP4, B9 | implemented: the door and its data (RP3), the native server (`crates/mandate-cli/src/mcp`), and the Node server, which builds `tools/list` from the door for `mandate/0.7` and keeps the frozen list up to 0.6 (`bridge/src/mcp.ts`); the recorded conversations of 0.7 in `vectors/mcp/` (the authoring session among them) are replayed by the native server, and `bridge/test/mcp-0-7.test.ts` holds the allow-list of tools and parameters for every language |
-| Stages and reports at run time; the stored facts and `facts_mismatch` | B2 | not implemented yet |
+| Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | implemented (`crates/mandate-ir/tests/language_0_7.rs`, `crates/mandate-testkit/tests/language_0_7.rs`, `golden_0_7.rs`, `diagnostics_0_7.rs`; the runtime: `runtime/test/attention.test.ts`, which fails on a comparison of a language with a single version in the sources) |
+| `stage`: grammar, IR, printer; E1901, E1902 | RL2, B2 | implemented (`crates/mandate-syntax/tests/stages_0_7.rs`, `crates/mandate-check/tests/stages_0_7.rs`, `crates/mandate-testkit/tests/stages_0_7.rs`; at run time `runtime/test/stages.test.ts`) |
+| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3, B2 | implemented (`crates/mandate-syntax/tests/reports_0_7.rs`, `crates/mandate-check/tests/reports_0_7.rs`; at run time `runtime/test/stages.test.ts`) |
+| `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4, B3 | implemented (`crates/mandate-check/tests/asks_0_7.rs`, `crates/mandate-testkit/tests/asks_0_7.rs`; at run time `runtime/test/asks.test.ts`) |
+| The facts (`attention_facts`) | RL3, RL4 | implemented: the door, its stages and reports (`mandate/attention/0.1`), the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (`crates/mandate-testkit/tests/attention_0_7.rs`, `attention_constants_0_7.rs`, held to `vectors/attention-0.7/facts.json`); the shape and the closed list of kinds are in `vectors/README.md` ("The attention facts") |
+| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5, RL5b, B4, B6 | implemented: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication; E1909, with a lock and, at a sub-program's admission, with its parent's `role_classes` (`crates/mandate-check/tests/owner_0_7.rs`, `role_shown_0_7.rs`, `crates/mandate-views/tests/owner_0_7.rs`). The runtime runs all three: `role_classes` (the caps of the masking, B4) and `owner` and `promotion` (card approval and the ladder, B6). Its check at load, which is given the package's lock, refuses a package whose program shows a role data above its class (`load_verification_failed`, E1909), the admission of a lead's sub-program refuses one that would, and the start refuses a run whose configuration hands an authorization to a role whose cap is below what it shows (`authorizer_below_class`, `runtime/src/mask.ts`), as do a lead's amendment request and a sub-program's admission (`runtime/src/plan.ts`) (`runtime/test/authorizer-class.test.ts`, `role-less-member.test.ts`, `ladder.test.ts`). A question that names no role is held to `internal` too when the lock lists a member who holds no role, to whom `ListWaits` lists it at that cap; the mask is for what E1909 cannot see ([Masking](#masking-and-how-a-value-is-known)) |
+| `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program`, and the acceptance fixture `fixtures/attention/invoices.mdt` (`crates/mandate-check/tests/patterns_0_7.rs`, `invoices_0_7.rs`, `crates/mandate-views/tests/pins_0_7.rs`; at run time `runtime/test/pins.test.ts`, `attention-invoices.test.ts`) |
+| E1509; the doors `callable_connectors` and `tool_schema_digest`; the runtime's use of them | RL7, B8 | implemented (`crates/mandate-check/tests/connector_doors.rs`; the runtime binds the connectors the compiler says can be called and takes a tool's digest from the door: `runtime/test/attention-connectors.test.ts`, and the connector suite run again under 0.7, `runtime/test/superset-0.7/`) |
+| The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | implemented: the door (without `workflow` it answers for every workflow, as the command prints them), the native command and the document, and the Node command, which prints the native command's bytes for `fixtures/attention/` (`crates/mandate-views/tests/attention_0_7.rs`, `crates/mandate-testkit/tests/attention_view_0_7.rs`, `bridge/test/cli-library.test.ts`, held to `vectors/golden/0.7.json` and `vectors/attention-0.7/view.json`) |
+| The card of a 0.7 program | RP2, B9 | implemented (`crates/mandate-views/src/card.rs`, `crates/mandate-views/tests/card_0_7.rs`), in the Node command and in the `project` tool of both servers |
+| The MCP tools of 0.7 (`mcp_tools`); a native `mandate mcp`; the Node server of 0.7 | RP3, RP4, B9 | implemented: the door and its data (`crates/mandate-check/tests/mcp_tools.rs`), the native server (`crates/mandate-cli/src/mcp`, `crates/mandate-cli/tests/mcp.rs`), and the Node server, which builds `tools/list` from the door for `mandate/0.7` and keeps the frozen list up to 0.6 (`bridge/src/mcp.ts`); the recorded conversations of 0.7 in `vectors/mcp/` (the authoring session among them) are replayed by the native server, and `bridge/test/mcp-0-7.test.ts` holds the allow-list of tools and parameters for every language |
+| Stages and reports at run time; the stored facts and `facts_mismatch` | B2 | implemented (`runtime/test/stages.test.ts`) |
 | `asks` at run time; the bound under the runtime's configuration and `attention_above_asks`; `asks_exhausted` | B3 | implemented (`runtime/src/asks.ts`, the count in `Journal.openWait`; the hook `runtime/test/asks-hook.ts` and the test of the sources in `runtime/test/asks.test.ts`) |
-| Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | implemented (`runtime/src/mask.ts`, `runtime/src/projection.ts`, `runtime/src/watch.ts`; the allow-list of `WatchRun` in [`boundary.md`](boundary.md#classes), held to the runtime by `runtime/test/classes.test.ts`) |
-| `mandate watch`, `mandate waits`, `mandate decide` | B5 | implemented (`runtime/src/person.ts`, `runtime/src/terminal.ts`, the commands in `runtime/src/cli.ts`; `runtime/test/cli-person.test.ts`, `runtime/test/cli-person-amend.test.ts`) |
-| Card approval of a workflow with an `owner`; the `promote` decision and the ladder; `mandate promote` | B6 | implemented (`Runtime.promote`, the ladder in `startRun`, `mandate promote`; `runtime/test/ladder.test.ts`, `runtime/test/cli-promote.test.ts`) |
-| The driver loop `mandate tick`; notifications | B7 | not implemented yet |
-| The acceptance rehearsal | B10 | not implemented yet |
-| The live session: its kit (B11), and the session the project's owner conducts | B11 | not implemented yet |
+| Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | implemented (`runtime/src/mask.ts`, `runtime/src/projection.ts`, `runtime/src/watch.ts`; `runtime/test/projection.test.ts`; the allow-list of `WatchRun` in [`boundary.md`](boundary.md#classes), held to the runtime by `runtime/test/classes.test.ts`) |
+| `mandate watch`, `mandate waits`, `mandate decide` | B5 | implemented (`runtime/src/person.ts`, `runtime/src/terminal.ts`, the commands in `runtime/src/cli.ts`; `runtime/test/cli-person.test.ts`, `cli-person-amend.test.ts`, `cli-person-invoices.test.ts`) |
+| Card approval of a workflow with an `owner`; the `promote` decision and the ladder; `mandate promote` | B6 | implemented (`Runtime.promote`, the ladder in `startRun`, `mandate promote`; `runtime/test/ladder.test.ts`, `cli-promote.test.ts`) |
+| The driver loop `mandate tick`; notifications | B7, B7b | implemented (`runtime/src/tick.ts`, `runtime/src/notify.ts`; `runtime/test/tick.test.ts`, `cli-tick.test.ts`, `notify.test.ts`, `notify-plan.test.ts`) |
+| The acceptance rehearsal | B10 | implemented (`runtime/test/attention-acceptance.test.ts`, over `fixtures/attention/invoices.mdt`; [Acceptance](#acceptance)) |
+| The live session: its kit, and the session the project's owner conducts | B11 | the kit is implemented (`fixtures/attention/live/`, `scripts/live-session.mjs`; `runtime/test/attention-live-kit.test.ts`); the session is held by the owner; result: not yet recorded |
 
 0.7 puts what a person will see into the program, and computes it before a
 run. A program names its stages (`stage`) and what it tells each role
@@ -1106,6 +1114,14 @@ on does not change what that run shows, masks or counts.
   `room.left.asks = limit − the run's own reservation − the reservations of
   sub-programs in flight − what ended sub-programs and amendment requests
   settled`, which is the budget row's `limit − settled − reserved`.
+- **When a run ends.** The run's own reservation is not released when the
+  run ends. In the budget report of a run that has ended, the row of `asks`
+  can still show `reserved` above 0: a run with a bound of 3 that asked 2
+  questions ends with `settled: 2` and `reserved: 1`. `settled` is the number
+  of questions the run asked, and is what a finished run's count is read
+  from; `reserved` is what the run still held for questions it did not ask.
+  It is only what the report shows: nothing starts or waits on it once the
+  run has ended.
 - **Counting.** A question is counted when its wait opens, in the transaction
   that holds the run's lock and opens it, after the check for an existing
   row: a wait the journal already holds is not counted again, so two drivers
@@ -1523,6 +1539,12 @@ Notifications are sent only for 0.7 runs.
   queue is written in the journal's transactions. Delivery is at least once:
   a receiver may get one notification twice, and knows the repeat by its
   `id`.
+- **A new channel is told no history.** A channel the runtime meets for the
+  first time (`notify_channels` records it as in use) is told of the waits
+  that are still open, the latest question about each, and of the runs that
+  need a person now; its cursors start at the end of the runs that were
+  already there, so it is told nothing of what happened before. A run that
+  begins after that is told from its first event.
 - **Order and dead letters.** A channel's cursor for a run does not move
   while a notification is being retried, so a run's notifications reach a
   channel in order. After six failed attempts the notification is recorded in
@@ -1630,7 +1652,7 @@ PGlite and on PostgreSQL.
 | `unapproved_envelope` | At a start: a workflow with an `owner` whose package no member of the owner role has approved |
 | `unpromoted` | At a start, with `promotion: "required"`: a `read_only` or `live` run without a promotion that holds, or of a workflow with neither an `owner` nor an envelope; asked after the card |
 | `bad_notification_channel` | A `notifications` configuration that cannot be used |
-| `unsupported_language` | At load, until its slice lands: a 0.7 package that uses a construct this runtime does not run yet |
+| `unsupported_language` | At load: a package of a language this runtime does not run. Release 0.7 refuses no construct of its own: the table of what the runtime does not run yet (`NOT_RUN_YET_07`) is empty, and stays so that a construct a later version adds is refused the same way |
 
 ## The command line
 
@@ -1837,3 +1859,110 @@ table.
 - Revoking a promotion.
 - A review's path under Temporal; a session against a real MCP server.
 - The four points left open from 0.5.
+
+## Known limits of 0.7
+
+What was decided or documented during the release, in one place. Each limit
+is stated where the page treats it, and the pointer says where; none of them
+is a defect that a test hides: where a test pins one, the entry says so.
+
+- **A promotion binds no store.** A promotion, like a card approval, is
+  evidence about a package hash: an operator of a second store that trusts
+  the same decision keys can replay the approval and the promotion there,
+  and so take a workflow from `design` to `read_only` and to `live` without
+  the owner having promoted it in that store. In one store this cannot
+  happen. See [Promotion](#promotion), "What the subject does not bind".
+- **Reading is not authenticated.** A caller of `waits`, `watch` and a
+  role's view names its own role and member; the lock's bindings bind them,
+  and only a signed decision is evidence. There is no server and no
+  listener in 0.7. See [How the commands are built](#how-the-commands-are-built)
+  and [Not in 0.7](#not-in-07).
+- **Replaying a `read_only` run returns `partial`.** In a replay a single
+  effect's `would_apply` action is not given back (only a `confirmed` one
+  is), and a change set's members go through the same step, so the replay of
+  a `read_only` run that writes through a connector stops at its first write.
+  This is older than 0.7 ([`system.md`](system.md#reads-and-run-modes-b6)),
+  and the acceptance rehearsal pins it for the `read_only` run of the
+  invoice flow, as it pins that a `design` and a `live` run replay to their
+  result ([Acceptance](#acceptance)).
+- **Idempotency of a write holds within a run, not across runs.** The
+  operation key that is sent as the idempotency key includes the run id, so
+  a second `live` run over the same inbox posts the same invoices again, as
+  another operation. The card's "idempotent by `invoice_no`" is to be read as
+  a promise for a run and its retries and resumes. See [the operation
+  key](library.md#the-batch-commit-step); the live kit shows it (step 10 of
+  its guide).
+- **A new notification channel is told no history.** It starts from the
+  events after it was first met, and is told of the waits still open at that
+  time. See [Notifications](#notifications).
+- **A finished run keeps its `asks` reservation.** The run's own reservation
+  is not released when it ends, so the budget report of a run that has ended
+  can show `reserved: 1`. It is cosmetic: nothing reads it after the end. See
+  [`asks` at run time](#asks-at-run-time), "When a run ends".
+- **What masking still covers.** With E1909 and `authorizer_below_class`, a
+  value is shown to a role that is asked it, and the mask is left for a role
+  that looks without being asked, and for the two cases in which a member
+  may still decide on a masked value: the parameters of an effect that only
+  the runtime's configuration hands to a person (its row has no class), and
+  a value whose class the stored facts do not give (facts tampered with or
+  corrupted). `mandate decide` says so and signs only after the full word
+  `yes`. See [Masking](#masking-and-how-a-value-is-known) and [How the
+  commands are built](#how-the-commands-are-built), "A masked wait".
+- **A lead's identifiers are not masked; a shape's titles are over-masked.**
+  The names a lead model chose in a sub-program (workflow names, which stand
+  in command paths, report field names, contract and criterion names) are
+  shown as they are, and a reader treats them as text a model chose. A
+  listed shape's stage names, stage titles and report titles, which are
+  pattern text the lock pins, are masked as if a lead had written them. See
+  [Masking](#masking-and-how-a-value-is-known), "What a lead named" and
+  "What it is for".
+- **E1909 does not follow implicit flow.** A question asked only on a branch
+  whose condition reads confidential data is not compared with the role's
+  class, and neither does the mask cover it. The diagnostic does not name the
+  value that raises the class: the facts carry a row's class, not which of
+  its values gave it. See [Lock 0.7](#lock-07).
+- **The tool list of `mandate mcp` has one source, its parameters have
+  not.** The list comes from the door `mcp_tools`; which parameter each tool
+  reads is written by hand in both servers, and the allow-list test is the
+  guard. The Node `mandate mcp` serves the list of 0.7 by default and takes
+  no option for another language. See [`mcp.md`](mcp.md#07).
+- **A page of `mandate watch` is named by 64 bits of SHA-256 where the run id
+  or role is not a plain short name.** Whoever can create runs can make two
+  names of their own collide. See [How the commands are built](#how-the-commands-are-built),
+  "File names".
+- **Plain module chains are not linked transitively.** A chain given through
+  `opts.modules` (modules that import from modules, without a library's
+  reach) links only the names of the module that the program imports, not
+  what a module itself imports from a third one, so a question reached only
+  that way is missed by E1501 and by the question count. It is older than
+  0.7 (`crates/mandate-check/src/modules.rs`) and is not stated elsewhere in
+  the specifications.
+- **The class of a function's result in languages 0.3 to 0.5.** Since 0.6 a
+  call is of the class of what the function returns; a function that reads
+  confidential data and returns it as `Text` used to yield a value of its
+  arguments' class, which let it pass to a model that may receive public data
+  only. Programs of 0.3 to 0.5, which only the TypeScript compiler reads, are
+  still checked as before. See [Static rules](#static-rules), "The class of a
+  function's result".
+- **The acceptance rehearsal does not exercise credential and egress
+  checks.** Its live run reaches the simulated ERP through the simulators'
+  transport, not through the egress proxy with secrets; the live kit does.
+  See [Acceptance](#acceptance).
+- **The live session is not recorded.** The owner conducts it with the kit;
+  its result goes into the status table above.
+
+## Carried to 0.8
+
+Candidates for a fix, from the limits above, without a promise:
+
+- binding an approval and a promotion to a store;
+- replaying a `read_only` run, including a single effect's `would_apply`
+  action and a change set's members;
+- idempotency of a write across runs, or a clearer sentence on the card;
+- a supported simulated-agent path in the runtime, so that the live kit need
+  not patch the runtime as it loads;
+- releasing the `asks` reservation when a run ends;
+- naming the value that raises the class in E1909;
+- the data class of a function's result in languages 0.3 to 0.5, which
+  means changing the TypeScript reference compiler;
+- over-masking of a shape's stage and report titles.
