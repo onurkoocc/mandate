@@ -223,11 +223,14 @@ pub struct SubprogramInput<'a> {
     /// the check of the sub-program reads (it is given no lock); `None`: the
     /// version of the parent's language, as before.
     pub std_patterns: Option<mandate_lib::Version>,
-    /// 0.7: the `role_classes` of the parent's lock (an object from a role
-    /// to its class; `{}` for a lock that has none, in which every role may
-    /// be shown `internal`), to which the check of the sub-program, given
-    /// no lock, holds what each role is shown (E1909); `None`: no E1909, as
-    /// before. Read only for a sub-program of 0.7 or later.
+    /// 0.7: the classes of the roles the parent's lock binds (an object from
+    /// a role to its class; a role it does not name may be shown
+    /// `internal`), to which the check of the sub-program, given no lock,
+    /// holds what each role is shown (E1909). A question that names no role
+    /// is held to the lowest class of the roles it names, so a caller names
+    /// every role the parent's lock binds (the runtime does, `internal` for
+    /// one the lock gives no class). `None`: no E1909, as before. Read only
+    /// for a sub-program of 0.7 or later.
     pub role_classes: Option<&'a Value>,
 }
 

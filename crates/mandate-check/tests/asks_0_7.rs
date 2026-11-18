@@ -476,6 +476,23 @@ fn admit_capped(
     room: &str,
     role_classes: Option<&Value>,
 ) -> mandate_check::doors::SubprogramCheck {
+    admit_led(
+        parent,
+        file,
+        room,
+        role_classes,
+        mandate_check::stdlib::DataClass::Public,
+    )
+}
+
+/// [`admit_capped`] with the class of what the lead received, `lead`.
+fn admit_led(
+    parent: &Value,
+    file: &str,
+    room: &str,
+    role_classes: Option<&Value>,
+    lead: mandate_check::stdlib::DataClass,
+) -> mandate_check::doors::SubprogramCheck {
     let text = read_text(file).unwrap();
     let defs = load(&text, SourceKind::Mdt).program.unwrap();
     let ops: Vec<PatchOp> = defs
@@ -499,7 +516,7 @@ fn admit_capped(
         number: 1.0,
         base: &base,
         ops: &ops,
-        lead: mandate_check::stdlib::DataClass::Public,
+        lead,
         room: &room,
         std_patterns: None,
         role_classes,
@@ -526,6 +543,48 @@ fn a_sub_program_that_shows_public_data_is_admitted_whatever_the_role_classes() 
         let codes: Vec<&str> = r.diagnostics.iter().map(|d| d.code.as_str()).collect();
         assert!(r.ok, "{classes:?}: {codes:?}");
     }
+}
+
+#[test]
+fn a_sub_program_question_that_names_no_role_is_held_to_every_role_its_caller_passes() {
+    // Noted asking no role: any member the parent's lock binds may answer
+    // it, so its admission holds it to the lowest class the caller passes
+    // (the runtime passes every role the lock binds). A lead that received
+    // internal data shows it in what it writes (the floor).
+    let text = read_text(SHAPES).unwrap().replace(
+        r#"human.ask("Is {w} right?", role: reviewer)"#,
+        r#"human.ask("Is {w} right?")"#,
+    );
+    let p = load(&text, SourceKind::Mdt).program.unwrap();
+    let room = r#"{"left":{"steps":40,"agents":4,"asks":1}}"#;
+    let internal = mandate_check::stdlib::DataClass::Internal;
+    let low = parse(r#"{"accountant":"internal","platform_lead":"public"}"#)
+        .unwrap()
+        .value;
+    let r = admit_led(&p, NOTED, room, Some(&low), internal);
+    assert!(!r.ok);
+    let got: Vec<String> = r
+        .diagnostics
+        .iter()
+        .map(|d| {
+            format!(
+                "{} {}",
+                d.code,
+                stringify(&JsValue::Object(d.facts.clone().unwrap_or_default())).unwrap()
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            r#"MDT-E1909 {"workflow":"Rest","role":"platform_lead","class":"public","shown":"internal","site":"ask","asked":"any_member","pattern":"Noted","pattern_path":"/defs/Noted/body/4/value","expanded_path":"/defs/Rest/body/4/value","module":"example.attention.shapes"}"#
+        ]
+    );
+    let high = parse(r#"{"accountant":"internal","platform_lead":"internal"}"#)
+        .unwrap()
+        .value;
+    let r = admit_led(&p, NOTED, room, Some(&high), internal);
+    assert!(r.ok, "{:?}", r.diagnostics);
 }
 
 #[test]

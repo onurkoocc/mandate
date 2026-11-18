@@ -28,19 +28,25 @@
 //! - each field of each report: its class against the class of the role the
 //!   report is addressed to.
 //!
-//! A row that names no role is shown to nobody the lock can cap: a `pause`
-//! and the pause a workflow without an `on budget_exceeded` handler falls
-//! back to (whose notification carries ids, kinds, roles, deadlines and a
-//! link, never content), and an effect site the runtime's configuration
-//! may hand to a person, which has no class and which the runtime masks for
-//! every role. A program of 0.1 to 0.6 is given nothing, lock or not.
+//! A question site or a plan that names no role is asked of anyone: the
+//! runtime lists its wait to every role the lock binds and takes the answer
+//! of any member the lock lists (`runtime/src/decisions.ts`). So it is held
+//! to the lowest class of the roles the lock binds, one diagnostic for the
+//! site naming that role (fact `asked: any_member`). A `pause`, and the
+//! pause a workflow without an `on budget_exceeded` handler falls back to,
+//! show nobody content (a role's view shows that the run waits; the
+//! notification carries ids, kinds, roles, deadlines and a link) and are not
+//! compared. Nor is an effect site only the runtime's configuration hands to
+//! a person: its row has no class, and the runtime's start compares what it
+//! can (`runtime/src/asks.ts`). A program of 0.1 to 0.6 is given nothing,
+//! lock or not.
 
 use mandate_ir::{
     DefKind, Definition, Diagnostic, JsObject, Language, Location, Program, ReportField, Spans,
-    Stmt, StmtOp, nearest_span, ptr_token,
+    Stmt, StmtOp, Value, nearest_span, ptr_token,
 };
 
-use crate::asks::{Detail, Only, QuestionFact, SiteKind};
+use crate::asks::{Detail, Only, QuestionFact, SiteKind, WorkflowBound};
 use crate::lock::Lock;
 use crate::statics::Typing;
 use crate::stdlib::DataClass;
@@ -51,8 +57,9 @@ struct Showing {
     workflow: String,
     /// The IR path of the construct that shows it.
     path: String,
-    /// The role it is shown to.
-    role: String,
+    /// The role it is shown to; `None` for a question that names no role,
+    /// which any member the lock binds may answer.
+    role: Option<String>,
     /// The class of what it shows.
     shown: DataClass,
     /// The site, as the facts name its kind (`report` for a report field).
@@ -128,12 +135,30 @@ fn showings(program: Program<'_>, typing: &Typing) -> Vec<Showing> {
         None => out.push(s),
     };
     for b in &typing.bounds {
-        for q in b.questions.iter().chain(&b.budget_exceeded) {
-            let Some(role) = &q.role else { continue };
+        // Every table of the bound, named: a table the facts gain is a
+        // decision here (does it show a role anything?), not a silent skip.
+        let WorkflowBound {
+            workflow,
+            questions,
+            effects: _,
+            plans,
+            budget_exceeded,
+            asks: _,
+            reports: _,
+            declared: _,
+            declared_at: _,
+        } = b;
+        for q in questions.iter().chain(budget_exceeded) {
+            // A pause, written or the one a workflow without a handler falls
+            // back to, shows nobody content: a role's view shows that the
+            // run waits, and its notification carries no content.
+            if q.role.is_none() && q.kind == SiteKind::Pause {
+                continue;
+            }
             put(Showing {
-                workflow: b.workflow.clone(),
+                workflow: workflow.clone(),
                 path: q.path.clone(),
-                role: role.clone(),
+                role: q.role.clone(),
                 shown: q.shown,
                 site: q.kind.as_str(),
                 what: question_words(q),
@@ -141,12 +166,11 @@ fn showings(program: Program<'_>, typing: &Typing) -> Vec<Showing> {
                 field: None,
             });
         }
-        for p in &b.plans {
-            let Some(role) = &p.role else { continue };
+        for p in plans {
             put(Showing {
-                workflow: b.workflow.clone(),
+                workflow: workflow.clone(),
                 path: p.path.clone(),
-                role: role.clone(),
+                role: p.role.clone(),
                 shown: p.shown,
                 site: SiteKind::Plan.as_str(),
                 what: "the lead's amendment request, made of what its lead is handed,".to_owned(),
@@ -179,7 +203,7 @@ fn showings(program: Program<'_>, typing: &Typing) -> Vec<Showing> {
                 put(Showing {
                     workflow: name.to_owned(),
                     path: at,
-                    role: shown.role.clone(),
+                    role: Some(shown.role.clone()),
                     shown: shown.cls,
                     site: "report",
                     what: format!("field {field} of the report \"{title}\""),
@@ -192,13 +216,33 @@ fn showings(program: Program<'_>, typing: &Typing) -> Vec<Showing> {
     out
 }
 
+/// The roles `lock` binds: those of its `roles`, and those its
+/// `role_classes` names (a lead's sub-program is checked with a lock that
+/// holds only `role_classes`, in which its caller names every role the
+/// parent's lock binds), in the order of their names.
+fn bound_roles(lock: Lock<'_>) -> Vec<String> {
+    let mut out: Vec<String> = [lock.roles(), lock.role_classes()]
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object)
+        .flat_map(|o| o.keys().map(str::to_owned))
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// E1909: with a lock, each place `program` (the program the static checks
 /// read: an expansion, for one that applies a pattern) shows a role data
 /// above the role's class in the lock ([`Lock::role_class`]), at the place,
-/// from what the typing gave the attention facts (`typing`). `lock` is a
-/// lock [`crate::lock::validate_lock`] passed, or, for a lead's sub-program,
-/// one that holds only the `role_classes` of its parent's lock. Nothing for
-/// a program older than 0.7.
+/// from what the typing gave the attention facts (`typing`). A question
+/// that names no role may be answered by any member the lock binds, so it
+/// is held to the lowest class of the roles the lock binds, and the
+/// diagnostic names that role (the first by name of those with that class;
+/// one diagnostic for the site). `lock` is a lock
+/// [`crate::lock::validate_lock`] passed, or, for a lead's sub-program, one
+/// that holds only the `role_classes` its caller gives, for every role the
+/// parent's lock binds. Nothing for a program older than 0.7.
 #[must_use]
 pub fn role_class_checks(
     program: Program<'_>,
@@ -209,12 +253,9 @@ pub fn role_class_checks(
     if !reads_0_7(program) {
         return Vec::new();
     }
+    let bound = bound_roles(lock);
     let mut out: Vec<Diagnostic> = Vec::new();
     for s in showings(program, typing) {
-        let cap = lock.role_class(&s.role);
-        if s.shown <= cap {
-            continue;
-        }
         let Showing {
             workflow,
             path,
@@ -225,11 +266,29 @@ pub fn role_class_checks(
             only,
             field,
         } = s;
-        out.push(Diagnostic::new(
-            "E1909",
+        let anyone = role.is_none();
+        // The role held to it: the one it names, or the lowest-capped role
+        // the lock binds (none: nobody the lock binds can answer it).
+        let Some(role) = role.or_else(|| bound.iter().min_by_key(|r| lock.role_class(r)).cloned())
+        else {
+            continue;
+        };
+        let cap = lock.role_class(&role);
+        if shown <= cap {
+            continue;
+        }
+        let message = if anyone {
+            format!(
+                "In workflow {workflow}, {what} names no role, so any member the lock binds may answer it, and it shows {shown} data; role {role}, which the lock binds, may be shown data up to {cap} (its class in the lock's role_classes, internal when the lock does not name it): nobody can decide on what they may not see. Ask a role whose class covers it, raise the class of every role the lock binds, or show it less (spec/attention.md \"Lock 0.7\")."
+            )
+        } else {
             format!(
                 "Role {role} may be shown data up to {cap} (its class in the lock's role_classes, internal when the lock does not name it), and {what} shows it {shown} data in workflow {workflow}: nobody can decide on, or be told, what they may not see. Raise the class of {role} in the lock's role_classes, or show it less (spec/attention.md \"Lock 0.7\")."
-            ),
+            )
+        };
+        out.push(Diagnostic::new(
+            "E1909",
+            message,
             Location::path_span(&path, nearest_span(spans, &path)),
             Some(
                 JsObject::new()
@@ -239,7 +298,8 @@ pub fn role_class_checks(
                     .with("shown", shown.as_str())
                     .with("site", site)
                     .with_some("only", only.map(Only::as_str))
-                    .with_some("field", field),
+                    .with_some("field", field)
+                    .with_some("asked", anyone.then_some("any_member")),
             ),
         ));
     }

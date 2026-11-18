@@ -6,8 +6,9 @@
 // hold its sub-program's facts to its four stages and two reports, and to none with 1.0.0:
 // crates/mandate-check/tests/patterns_0_7.rs.)
 //
-// The same check is handed the lock's `role_classes` (`{}` for a lock without them, slice RL5b), to which it holds
-// what the sub-program shows each role (E1909): the compiler's tests hold the refusal of a sub-program that shows a role
+// The same check is handed the cap of every role the lock binds (its `role_classes` entry, else `internal`; slice
+// RL5b), to which it holds what the sub-program shows each role, and a question that names no role to the lowest of
+// them (E1909): the compiler's tests hold the refusal of a sub-program that shows a role
 // more than its class (crates/mandate-check/tests/patterns_0_7.rs, asks_0_7.rs); here, that the runtime hands them.
 //
 // Only the Rust compiler reads 0.7. Every rule holds on PGlite and on PostgreSQL (helpers.ts, MANDATE_TEST_DATABASE_URL).
@@ -153,10 +154,10 @@ describe("a lead's sub-program is checked against its parent's lock's role_class
     },
   });
 
-  it("hands the check the lock's role_classes, and {} for a lock without them", async () => {
+  it("hands the check the cap of every role the lock binds, internal where its role_classes name none", async () => {
     const cases: Array<[Record<string, string> | undefined, Record<string, string>]> = [
-      [undefined, {}],
-      [{ release_manager: "confidential" }, { release_manager: "confidential" }],
+      [undefined, { platform_lead: "internal", release_manager: "internal" }],
+      [{ release_manager: "confidential" }, { platform_lead: "internal", release_manager: "confidential" }],
     ];
     for (const [given, handed] of cases) {
       const asked: Obj[] = [];
