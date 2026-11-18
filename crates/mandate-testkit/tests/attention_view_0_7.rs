@@ -52,6 +52,7 @@ fn the_attention_view_of_every_workflow_of_0_7() {
         let files = outputs::module_files_of(p);
         let modules = common::modules_of(&files, &files).unwrap();
         let modules_js: JsObject = modules.iter().map(|(m, v)| (m, JsValue::from(v))).collect();
+        let libraries = outputs::library_sources_js_of(p).unwrap();
         let lock = outputs::lock_file_of(p).map(|l| mandate_testkit::read_json(&l).unwrap());
         let ir = load(&text, kind_of(p)).program.expect("it loads");
         let mut row = JsObject::new();
@@ -63,6 +64,9 @@ fn the_attention_view_of_every_workflow_of_0_7() {
             let mut by_format = JsObject::new();
             for format in ["json", "md", "html"] {
                 let mut opts = JsObject::new().with("modules", modules_js.clone());
+                if let Some(l) = &libraries {
+                    opts.insert("libraries", l.clone());
+                }
                 if let Some(l) = &lock {
                     opts.insert("lock", JsValue::from(l));
                 }
