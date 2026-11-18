@@ -19,7 +19,7 @@ best-effort basis.
 | `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3 (E1705 for `owner` since RL5); the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`), and run since B3 |
 | The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
-| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | the compiler's part implemented but for E1909, which follows: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication. The runtime refuses `owner`, `role_classes` and `promotion` at load (`unsupported_language`) until its slices B4 and B6 |
+| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | the compiler's part implemented but for E1909, which follows: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication. The runtime runs all three: `role_classes` since B4 (the caps of the masking), `owner` and `promotion` since B6 (card approval and the ladder); nothing of them is refused at load any more |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented but for the acceptance fixture: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program` (RL6); the acceptance fixture not written yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | not implemented yet |
@@ -27,7 +27,7 @@ best-effort basis.
 | The MCP tools of 0.7 (`mcp_tools`); a native `mandate mcp` | RP3, RP4, B9 | the door `mcp_tools` and its data exist (RP3); neither server uses it yet, and the native server is not implemented yet |
 | Stages and reports at run time; the stored facts and `facts_mismatch` | B2 | not implemented yet |
 | `asks` at run time; the bound under the runtime's configuration and `attention_above_asks`; `asks_exhausted` | B3 | implemented (`runtime/src/asks.ts`, the count in `Journal.openWait`; the hook `runtime/test/asks-hook.ts` and the test of the sources in `runtime/test/asks.test.ts`) |
-| Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | not implemented yet |
+| Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | implemented (`runtime/src/mask.ts`, `runtime/src/projection.ts`, `runtime/src/watch.ts`; the allow-list of `WatchRun` in [`boundary.md`](boundary.md#classes), held to the runtime by `runtime/test/classes.test.ts`) |
 | `mandate watch`, `mandate waits`, `mandate decide` | B5 | not implemented yet |
 | Card approval of a workflow with an `owner`; the `promote` decision and the ladder; `mandate promote` | B6 | implemented (`Runtime.promote`, the ladder in `startRun`, `mandate promote`; `runtime/test/ladder.test.ts`, `runtime/test/cli-promote.test.ts`) |
 | The driver loop `mandate tick`; notifications | B7 | not implemented yet |
@@ -899,7 +899,7 @@ the repository pins.
 | `stage_started` | S2 | `{node, stage, title, index, program?: {plan, number}}` |
 | `stage_ended` | S2 | `{node, stage}` |
 | `report` | S2, addressed | `{node, command, role, title, fields: [{name, value, class, known, type}]}` |
-| `program_started` | S2 | `{plan, number, command, workflow, shape?}` |
+| `program_started` | S2 | `{plan, number, command, workflow, shape?, class}`: `class` is the class of what its lead received |
 | `program_ended` | S2 | `{plan, number, ok}` |
 | `asks_exhausted` | S1 | `{command, kind, limit, settled, inside?}`: the question's command and kind, the run's `asks` limit and what it had settled, and the sub-program it was asked in |
 | `promotion_accepted` | S0 | `{decision, member, role, key, from: {run, mode}, to}`, asked of the owner role |
@@ -1088,14 +1088,59 @@ on does not change what that run shows, masks or counts.
 In a 0.7 run, each value shown to a role is shown as:
 
 ```ts
-interface Shown { value: Value | { $masked: DataClass }; class: DataClass; known: "verified" | "plain" | "model" | "external" }
+type Shown =
+  | { masked: false; value: Value; class: DataClass; known: "verified" | "plain" | "model" | "external" }
+  | { masked: true; class: DataClass; known: "verified" | "plain" | "model" | "external" }
 ```
+
+That a value is masked is a member of `Shown` itself, and a masked one has no
+`value`: no value a program holds, whatever its members, reads as a mask or
+as a label.
+
+The runtime calls this type `ShownValue` (`runtime/src/mask.ts`), because
+`Shown` is already the record a decision signs (`runtime/src/decisions.ts`).
 
 - **The cap.** A role's cap is `role_classes[role]` in the package's lock, or
   `internal` when the lock does not name the role.
 - **The mask.** For a value at a node whose facts give class `c`: when `c` is
-  above the cap, the value is `{ "$masked": c }`; otherwise it is the value.
-  Either way it carries `class` and `known`. The audit view sees every value.
+  above the cap, it is `{ masked: true }` with no value; otherwise
+  `{ masked: false, value }`. Either way it carries `class` and `known`. The
+  audit view sees every value.
+- **A digest of masked values is masked.** Where a wait's values are masked
+  for a role, so is every digest computed over them that the role would be
+  given: the subject a decision names (`ListWaits`'s `subject`), a request's
+  `subject_digest`, `action_digest` and `changeset`, a review item's
+  `value_digest`, the id of a decision on the wait (its record holds the
+  subject), an authorization's or a governance gate's digest, and a waiver's
+  evidence id. The rest of what such a digest is computed over is shown to
+  the role (the question's template, the contract and criterion, the run),
+  so a value with few possibilities could be found by trying each against
+  it. What a decision signs, and how its subject is obtained, do not change;
+  a role the wait is masked from cannot read its subject from a listing.
+- **What a lead wrote.** In a sub-program, the text its lead wrote (a
+  stage's name and title, a report's title, its workflow's name and shape)
+  is a value a model wrote (`known: model`), of the class of what the lead
+  received, which `program_started` records as `class`; where that is not
+  known, it is masked for every role. The run's own program's text, which a
+  person approved, is shown as it is.
+- **What a lead named (a known residual channel).** The identifiers a lead
+  chooses in a sub-program are not masked: the names of its workflows,
+  which stand in the path of every command of the sub-program
+  (`…/program/1/defs/Fix/body/0/value`, in `wait_opened`'s `command`,
+  `command_dispatched`, `stage_started`'s `node`, `report`'s `node`
+  and `command`, a wait's `command` in `ListWaits`, the budget's
+  `commands`), the names of a report's fields, the contract and criterion
+  names in its requests, and the agent and delegate names in a
+  `violation`. They are identifiers, not free text: the grammar keeps each
+  to a name, never a sentence, though a lead may spell into a name what it
+  read. Masking `program_started`'s
+  `workflow` therefore hides that name in one place only. A reader treats
+  every identifier of a sub-program as text a model chose.
+- **A class that is not known.** A value whose class the stored facts do not
+  give (facts that are missing or do not hash to their digest, a site with no
+  row, or a row with no class, such as an effect's) is masked for every role,
+  as `{ "$masked": "restricted" }` with class `restricted` and `known`
+  `external`. Nothing works a class out of a value.
 - **`known`** is the level of the value's type: `verified` for `Verified`,
   `plain` for a value the run computed or was given, `model` for `Inferred`,
   `external` for `Untrusted`. The weakest wrapper decides, and a value is
@@ -1170,6 +1215,13 @@ in this run".
 - A wait that asks no role is listed to every role the package's lock binds,
   with `asked_of: null`.
 - What it shows is masked and labelled, by the role it is asked of.
+- Each item also names `role`, the role it is listed to (for a wait that asks
+  none, each role in turn), and each value of `shown` its `name`, where it
+  stands in the wait's request. A member of the request that is the
+  runtime's own (the role asked, a deadline, a digest, a contract's name) is
+  no value it shows; any other is one, a member the runtime does not know
+  among them. A run of 0.1 to 0.6 gives the same values unmasked, with
+  `class` and `known` null.
 
 ### Card approval
 
@@ -1281,7 +1333,8 @@ How the runtime holds this (B6):
   `unpromoted` at a start as well.
 - `mandate promote` signs as `--member`, or as the member the lock lists
   the key under. `mandate test` climbs no ladder: its runs are in a
-  database of its own, under a lock without `promotion`.
+  database of its own, under a lock without `promotion`, whose roles are
+  its own people's; `role_classes` keeps the class of each role it binds.
 
 ### The driver loop
 

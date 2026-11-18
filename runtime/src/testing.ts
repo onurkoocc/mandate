@@ -197,9 +197,12 @@ function testPeople(program: Program, lock: Lock): { lock: Lock; keys: TrustedKe
   const members = Object.fromEntries([...signers].map(([name, key]) => [name, { keys: [key.keyId] }]));
   // A test runs its workflows live on its own database, with its own people: it climbs no promotion ladder (0.7,
   // spec/attention.md "Promotion"), whose runs would have to be promoted one by one in the test.
-  const { promotion: _ladder, ...given } = lock;
+  const { promotion: _ladder, role_classes: classes, ...given } = lock;
+  // Its roles are the test's own, those the program names: a class the lock gives a role it binds no more is left out
+  // (`validateLock` refuses a class of a role `roles` does not hold); each other keeps its class (0.7, B4).
+  const kept = classes ? Object.fromEntries(Object.entries(classes).filter(([r]) => Object.hasOwn(roles, r))) : undefined;
   return {
-    lock: { ...given, members, roles },
+    lock: { ...given, members, roles, ...(kept && Object.keys(kept).length ? { role_classes: kept } : {}) },
     keys: new TrustedKeys([...signers.values()].map((k) => k.publicKey)),
     sign: (role, other) => {
       const name = role === undefined ? "test" : Object.hasOwn(roles, role) ? roles[role]![other ? 1 : 0]! : undefined;

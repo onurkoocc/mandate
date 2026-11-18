@@ -1106,7 +1106,10 @@ does not name is S4, which no role sees.
 
 A role's view shows S1, S2, and S0 where it was asked of that role. The
 audit view shows S0 to S4. There is no masking by data class in 0.5 (INV-20
-is a later release's).
+is a later release's). From 0.7, what a role is shown of a value in a run of
+0.7 is masked by the value's data class and the role's cap, and labelled
+([`attention.md`](attention.md#masking-and-how-a-value-is-known)); a run of
+0.1 to 0.6 is shown as before.
 
 **Events.** The class of every event type the runtime writes
 (`EVENT_CLASSES`). A test reads every place the runtime writes an event and
@@ -1116,7 +1119,7 @@ fails on a type without a class, and on a class of a type nothing writes.
 |---|---|
 | S0 | `wait_opened`, `wait_expired`, `decision_received`, `input_received`, `decision_refused`, `criterion_approved`, `criterion_denied`, `governance_approved`, `governance_denied`, `action_authorized`, `envelope_approved`, `amendment_requested`, `package_amended`, `limits_raised`, `reconcile_requested`, `review_requested`, `review_decided`, `review_escalated`, `review_expired`, `criterion_waived`, `promotion_accepted` |
 | S1 | `run_succeeded`, `run_failed`, `run_cancelled`, `run_cancelling`, `run_attention_required`, `cancel_requested`, `lease_revoked`, `violation`, `budget_exceeded`, `guarantee_lowered`, `asks_exhausted` |
-| S2 | `run_accepted`, `run_running`, `run_waiting`, `lease_acquired`, `command_dispatched`, `command_completed`, `command_throttled`, `charge_pending`, `charge_settled`, `map_started`, `map_ended`, `stage_started`, `stage_ended`, `report` |
+| S2 | `run_accepted`, `run_running`, `run_waiting`, `lease_acquired`, `command_dispatched`, `command_completed`, `command_throttled`, `charge_pending`, `charge_settled`, `map_started`, `map_ended`, `stage_started`, `stage_ended`, `report`, `program_started`, `program_ended` |
 | S3 | `action_prepared`, `action_committed`, `action_confirmed`, `action_rejected`, `action_unknown_outcome`, `action_cancelled`, `action_would_apply`, `changeset_prepared`, `changeset_would_apply`, `changeset_simulated`, `changeset_committed`, `changeset_partial`, `changeset_failed` |
 | S4 | `program_submitted`, `program_refused`, `program_admitted`, `sandbox_stopped` |
 
@@ -1124,6 +1127,116 @@ An event's class says which projections may draw on it. None shows an
 event's data whole except the audit view: a role's view takes from an event
 of its classes the fields its section names, and the OpenTelemetry
 projection takes none.
+
+**What `WatchRun` gives a role of each event (0.7).** The fields of an
+event's data a role is given, by the event's type (`PROJECTIONS` in
+`runtime/src/projection.ts`), once its class lets the role see the event at
+all (S0 only where it was asked of the role, a `report` only to the role it
+is addressed to). Nothing else of the data is given, whatever it holds;
+`nothing` gives the event's sequence number, time, type and class alone. A
+field marked masked is given with each value it holds masked by the role's
+cap and labelled: in a run of 0.7, by the class the stored facts give its
+wait, or a report field's own. A type the table does not name is given as
+`nothing`. Each field the runtime writes in an event of a type that gives a
+role anything is either given or left out (`WITHHELD`): a test fails on a
+type the runtime writes or classes that the table does not name, on a field
+written that it neither gives nor leaves out, and on a difference between
+this table and the runtime's. The audit audience is given every event's data
+whole.
+
+A field marked digest is a digest computed over a wait's values (a
+decision's id, whose record holds the wait's subject digest; an action's
+digest; a waiver's evidence id), given masked, as `{masked: true, class,
+known}`, to a role the wait's values are masked from (`DIGESTS`): what
+else it is computed over is shown to the role, so a value with few
+possibilities could be found by trying each against it. A field marked lead
+holds, in an event of a sub-program, text its lead wrote (a stage's name or
+title, a report's title, its workflow's name and shape), given as a value a
+model wrote, of the class of what the lead received (`program_started`'s
+`class`), masked by the role's cap (`LEAD_TEXT`); of the run's own
+program, it is the program's text. The identifiers a lead chooses in a
+sub-program are not masked, a known residual channel: its workflows' names,
+which stand in the path of every command of the sub-program
+(`…/program/1/defs/Fix/body/0/value`, in every `command` and `node` above,
+in `ListWaits` and in the budget's `commands`), its report fields' names,
+the contract and criterion names in its requests, and the agent and
+delegate names in `violation`. They are identifiers, not free text, and a
+reader treats them as text a model chose; masking `program_started`'s
+`workflow` hides that name in one place only
+([`attention.md`](attention.md#masking-and-how-a-value-is-known)). The table is by field: what a field it
+gives holds is its writer's to keep to what its name says, and the test of
+its totality reads field names and cannot see what a field holds. The fields given
+that hold free text are a halt's `cancel_requested.reason`, which a person
+wrote, `decision_refused.reason` and `guarantee_lowered.reason`, the
+runtime's own words, and the titles above; none holds a value of the run.
+
+| Event type | Fields a role is given | Fields left out |
+|---|---|---|
+| `wait_opened` | `command`, `kind`, `site`, `request` (masked) |  |
+| `wait_expired` | `command` |  |
+| `decision_received` | `command`, `member`, `role`, `decision` (digest) | `sender`, `message`, `key` |
+| `input_received` | `command`, `member`, `role`, `decision` (digest) | `sender`, `message`, `key` |
+| `decision_refused` | `command`, `reason`, `kind`, `member`, `role` | `key`, `sender`, `message` |
+| `criterion_approved` | `command`, `by`, `member`, `role`, `decision` (digest) | `key` |
+| `criterion_denied` | `command`, `by`, `member`, `role`, `decision` (digest) | `key` |
+| `governance_approved` | `command`, `digest` (digest), `by`, `member`, `role`, `decision` (digest) | `key` |
+| `governance_denied` | `command`, `digest` (digest), `by`, `member`, `role`, `decision` (digest) | `key` |
+| `action_authorized` | `authorization`, `digest` (digest), `by`, `member`, `role`, `decision` (digest) | `key` |
+| `envelope_approved` | `package`, `member`, `role`, `decision` | `key` |
+| `promotion_accepted` | `decision`, `member`, `role`, `from`, `to` | `key` |
+| `amendment_requested` | `plan`, `step`, `lead`, `from`, `package`, `diff` |  |
+| `package_amended` | `from`, `to`, `diff`, `plan`, `command`, `limits`, `superseded`, `by`, `member`, `role`, `decision` (digest), `attention` | `key` |
+| `limits_raised` | `by`, `from`, `to`, `member`, `role`, `decision` | `sender`, `message`, `key` |
+| `reconcile_requested` | `operation`, `member`, `role`, `decision` | `key` |
+| `review_requested` | `node`, `contract`, `map`, `role`, `escalate_to`, `deadline`, `open`, `declined`, `failed`, `accepted` |  |
+| `review_decided` | `command`, `waive`, `decline`, `by`, `member`, `role`, `decision` (digest) | `key` |
+| `review_escalated` | `command`, `from`, `to`, `deadline` |  |
+| `review_expired` | `command`, `role`, `declined` |  |
+| `criterion_waived` | `command`, `index`, `contract`, `criterion`, `waiver` (digest), `failed` (digest), `decision` (digest) |  |
+| `run_succeeded` | nothing |  |
+| `run_failed` | nothing |  |
+| `run_cancelled` | nothing |  |
+| `run_cancelling` | nothing |  |
+| `run_attention_required` | nothing |  |
+| `cancel_requested` | `halt`, `reason`, `by`, `member`, `role`, `decision` | `key` |
+| `lease_revoked` | `halt`, `fence` |  |
+| `violation` | `kind`, `delegate`, `agent`, `step`, `count` | `detail` |
+| `budget_exceeded` | `episode` | `detail` |
+| `guarantee_lowered` | `agent`, `delivery`, `reason` |  |
+| `asks_exhausted` | `command`, `kind`, `limit`, `settled`, `inside` |  |
+| `run_accepted` | `workflow`, `package`, `limits`, `manifest` | `waiting`, `attention`, `result`, `error`, `summary` |
+| `run_running` | nothing |  |
+| `run_waiting` | nothing |  |
+| `lease_acquired` | `fence` |  |
+| `command_dispatched` | `command`, `kind`, `reserved` |  |
+| `command_completed` | `command`, `ok`, `cost` | `meta` |
+| `command_throttled` | `command`, `times` | `fault` |
+| `charge_pending` | `command` |  |
+| `charge_settled` | `command`, `cost` |  |
+| `map_started` | `map`, `items`, `par` |  |
+| `map_ended` | `map`, `outcomes`, `failed` |  |
+| `stage_started` | `node`, `stage` (lead), `title` (lead), `index`, `program` |  |
+| `stage_ended` | `node`, `stage` (lead), `program` |  |
+| `report` | `node`, `command`, `role`, `title` (lead), `fields` (masked) |  |
+| `program_started` | `plan`, `number`, `command`, `workflow` (lead), `shape` (lead), `class` |  |
+| `program_ended` | `plan`, `number`, `ok` |  |
+| `action_prepared` | nothing |  |
+| `action_committed` | nothing |  |
+| `action_confirmed` | nothing |  |
+| `action_rejected` | nothing |  |
+| `action_unknown_outcome` | nothing |  |
+| `action_cancelled` | nothing |  |
+| `action_would_apply` | nothing |  |
+| `changeset_prepared` | nothing |  |
+| `changeset_would_apply` | nothing |  |
+| `changeset_simulated` | nothing |  |
+| `changeset_committed` | nothing |  |
+| `changeset_partial` | nothing |  |
+| `changeset_failed` | nothing |  |
+| `program_submitted` | nothing |  |
+| `program_refused` | nothing |  |
+| `program_admitted` | nothing |  |
+| `sandbox_stopped` | nothing |  |
 
 **Sections.** A section is in the most restricted class of what it can
 hold. The run's result, a fault with its arguments and the `attention` of a
@@ -1134,7 +1247,7 @@ what a role sees of them is in a section of its own, `exceptions`.
 |---|---|---|
 | `format`, `kind`, `role`, `program`, `package`, `manifest`, `modules`, `as_of`; the program's architecture and authority | S2 | What names the run and the view |
 | `run` | S1 | The run's id, workflow, tenant and state |
-| `waiting` | S0 | The wait the run is in, whole, with its request |
+| `waiting` | S0 | The wait the run is in, whole, with its request; in a run of 0.7, its values masked by the role's cap and labelled |
 | `decisions` | S0 | Each decision a person made on the run |
 | `reviews` | S0 | 0.6: each review of a batch: its items by index, open, waived or declined, who decided, the escalation and the expiry, and each waiver beside the failed record it waives ([`library.md`](library.md#views)) |
 | `exceptions` | S1 | How the run ended and what stopped it (below) |
@@ -1143,6 +1256,7 @@ what a role sees of them is in a section of its own, `exceptions`.
 | `envelope` | S2 | Its owner, deadline and what is left |
 | `envelope.amendments` | S0 | Its owner's decisions |
 | `maps` | S2 | Each map's items with their outcome: `Ok` or a fault's tag |
+| `stages`, `reports`, `programs` | S2 | 0.7: each stage, done, current or not started; the reports addressed to the role, their fields masked and labelled; how many sub-programs started and ended ([`attention.md`](attention.md#a-roles-view)) |
 | `result`, `error`, `attention`, `evidence`, `actions`, `changesets`, `input`, `steps` | S3 | A step's request or result, whole |
 | `plans`, `trace`, `events` | S4 | What a lead wrote; an agent loop's commands; every event with its data |
 | `halts`, `chain` | S1 | The audit view's own: the halts over the run's tenant; the journal's status |
