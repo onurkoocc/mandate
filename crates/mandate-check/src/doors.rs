@@ -107,9 +107,10 @@ pub struct PatchOptions<'a> {
 /// `modules`, for the names of the patch to be resolved against: what
 /// [`crate::check()`] links, so that a `use` of a library's module (a pattern
 /// of a pinned library, the embedded `std.patterns`) resolves in the
-/// patched program as it does in a check. `None` when there is no lock and
-/// no library, the patch does not apply, the program is of 0.1 to 0.5, or no
-/// library module is read.
+/// patched program as it does in a check. `None` when the patch does not
+/// apply, the program is of 0.1 to 0.5, it is of 0.6 and there is no lock and
+/// no library, or no library module is read. A program of 0.7 or later reads
+/// the embedded `std.patterns` also with no lock and no library.
 fn with_library_modules(
     program: &Value,
     base: &str,
@@ -117,12 +118,21 @@ fn with_library_modules(
     modules: &Modules,
     opts: &PatchOptions<'_>,
 ) -> Option<Modules> {
-    if opts.lock.is_none() && opts.libraries.is_none() {
+    let patched = apply_ops(program, base, ops).program?;
+    let patched_program = Program::of(&patched)?;
+    // With neither a lock nor a library only a program of 0.7 or later reads
+    // what the compiler holds (the embedded std.patterns), as a check does;
+    // a program of 0.6 is resolved against `modules` alone, as it always was.
+    if opts.lock.is_none()
+        && opts.libraries.is_none()
+        && !patched_program
+            .language()
+            .is_some_and(|l| l.at_least(mandate_ir::Language::V0_7))
+    {
         return None;
     }
-    let patched = apply_ops(program, base, ops).program?;
     let read = crate::library::for_check(
-        Program::of(&patched)?,
+        patched_program,
         &CheckOptions {
             modules: Some(modules),
             lock: opts.lock,

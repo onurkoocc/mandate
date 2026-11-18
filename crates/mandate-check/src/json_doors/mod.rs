@@ -243,7 +243,7 @@ pub const MODULES_NOTE: &str = "modules (optional) is the Rust's alone: the modu
 
 /// The note of `check_patch`, which takes `opts` besides what its TypeScript
 /// function takes (language 0.7, which only the Rust reads).
-pub const OPTS_NOTE: &str = "opts (optional, language 0.7) is the Rust's alone: { lock?, libraries?, config? }, read as the door check reads them, so that the patched program is checked as check checks it. The TypeScript function is not given it; a program of 0.1 to 0.5 is checked as before whatever it holds.";
+pub const OPTS_NOTE: &str = "opts (optional, language 0.7) is the Rust's alone: { lock?, libraries?, config? }, read as the door check reads them, so that the patched program is checked as check checks it. A program of 0.7 or later reads the embedded std.patterns also with no opts, and a program of 0.1 to 0.5 reads no library whatever opts holds (its lock is still checked as check checks it). The TypeScript function is not given it. When the patch does not apply the program is not checked, so the door can report fewer diagnostics than check, never a weaker ok.";
 
 /// Every door, in the order of `doors.json`: reading and checking, the parts
 /// of a program, the lock and the sandbox, patches and diffs, the run-time
