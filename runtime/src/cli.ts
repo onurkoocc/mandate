@@ -33,6 +33,9 @@
 //   mandate otel export --endpoint URL [--run R | --tenant T] [--follow] [--json]
 //                                                         the journal as OpenTelemetry spans, without content, posted to
 //                                                         URL/v1/traces from each run's cursor; no credential is sent (spec/boundary.md)
+//   mandate promote <run> --to read_only|live --key FILE [--member NAME] [--yes]
+//                                                         the owner promotes the run's workflow up the ladder (0.7): shows
+//                                                         the run, and for live its shadow diff as counts, asks, signs
 //   mandate tick [--follow] [--interval 10s] [--no-notify]   the driver loop: deadlines pass, reviews escalate, then the
 //                                                         notifications of 0.7 runs go out (spec/attention.md)
 //   mandate artifact <run> <blob:sha256:…>
@@ -63,6 +66,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { createInterface } from "node:readline";
 import { callableConnectors, check, isProgram06OrLater, isProgram07OrLater, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters } from "./adapters.js";
@@ -70,7 +74,7 @@ import { Connectors } from "./connectors.js";
 import { adaptersFor, anthropicClient, connect, connectorEgress, operatorAdapters, readConfig, replayAdapters, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { credentialAdvice } from "./gateway.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
-import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
+import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type PromotedMode, type SignedDecision } from "./decisions.js";
 import { EvidenceSigner, keyIdOf, TrustedKeys } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
 import { serveUntilSignalled } from "./egress/main.js";
@@ -81,10 +85,10 @@ import { otelEndpoint, otelExport, type OtelReport } from "./otel.js";
 import { egressTransport } from "./notify.js";
 import { driveLoop, MAX_INTERVAL_MS, TICK_INTERVAL_MS } from "./tick.js";
 import { libraryModules, refuseRevoked } from "./package.js";
-import { buildPackage, Runtime } from "./runtime.js";
+import { buildPackage, Runtime, workflowOwner } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { runTests } from "./testing.js";
-import { auditDoc, roleDoc, runDoc, runView, shadowDiff } from "./views.js";
+import { auditDoc, roleDoc, runDoc, runView, shadowDiff, type ShadowRow } from "./views.js";
 import { canonical, isObj, show, tagOf, unwrap, type Obj, type Value } from "./values.js";
 
 interface Args {
@@ -98,7 +102,7 @@ interface Args {
   all: Record<string, string[]>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries", "--waive", "--decline", "--interval"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries", "--waive", "--decline", "--interval", "--to"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -161,6 +165,7 @@ const USAGE = `usage:
   mandate halt --list [--json]
   mandate otel export --endpoint URL [--run R | --tenant T] [--follow] [--json]
   mandate tick [--follow] [--interval 10s] [--no-notify]
+  mandate promote <run> --to read_only|live --key FILE [--member NAME] [--yes]
   mandate denials <run>
   mandate rotate-key
   mandate test <program> [--json] [--lock FILE] [--libraries DIR]
@@ -173,10 +178,10 @@ options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 --libraries DIR is the directory of libraries a lock of 0.6 pins its libraries in (default: libraries.dir of the configuration)
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review", "tick"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review", "tick", "promote"]);
 
 /** Runs one control command; returns the exit status. */
-export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
+export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env, answer: () => Promise<string> = stdinLine): Promise<number> {
   let db: Db | undefined;
   /** The runtime the command made: what its gateways opened at the proxy is closed when the command ends. */
   let made: Runtime | undefined;
@@ -248,6 +253,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     }
 
     if (!runId) throw new Usage(`${cmd} needs a run id`);
+    if (cmd === "promote") promotedTo(a);
     const { rt, lock } = await runtimeFor(db, config, cmd, runId, env);
     made = rt;
     // Who decides: a member, by the key they sign with (the lock says whose it is), or in unsigned mode a name.
@@ -376,6 +382,8 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         out(json ? JSON.stringify(d, null, 2) + "\n" : `${d.rows.map((r) => `${r.node}\t${r.effect}\t${r.state}`).join("\n")}\ncommitted in ${d.a.run}: ${d.a.committed}, in ${d.b.run}: ${d.b.committed}\n`);
         return 0;
       }
+      case "promote":
+        return await promote(rt, runId, promotedTo(a), key!, member!, a.flags["--yes"] === true, out, answer);
       case "replay": {
         const r = await rt.replayRun(runId);
         out(json ? JSON.stringify(r, null, 2) + "\n" : `replay: ${r.status}${"value" in r ? `\n${show(r.value)}` : ""}${"stoppedAt" in r ? ` at ${r.stoppedAt}` : ""}${"missing" in r ? ` (missing ${r.missing})` : ""}\n`);
@@ -496,13 +504,100 @@ function originOf(dir: string): string | undefined {
  */
 function envelopeOwner(program: Program, file: string, workflow: string | undefined): string {
   const owners = new Map<string, string>();
-  for (const [name, d] of Object.entries(program.defs)) if (d.kind === "workflow" && d.envelope?.owner !== undefined) owners.set(name, d.envelope.owner);
+  // 0.7: a workflow's own `owner` approves its card as an envelope's owner does (spec/attention.md "Card approval").
+  let cards = false;
+  for (const [name, d] of Object.entries(program.defs)) {
+    const owner = workflowOwner(d);
+    if (owner === undefined) continue;
+    owners.set(name, owner);
+    if (d.kind === "workflow" && d.envelope === undefined) cards = true;
+  }
   const all = [...owners.keys()].sort();
-  if (!all.length) throw new Violation("no_envelope", `${file} has no workflow with an envelope, so there is nothing to approve.`);
-  if (workflow !== undefined) return owners.get(workflow) ?? fail(`no workflow ${workflow} with an envelope in ${file}; it has ${all.join(", ")}`);
+  if (!all.length) throw new Violation("no_envelope", `${file} has no workflow with an envelope or an owner, so there is nothing to approve.`);
+  if (workflow !== undefined) return owners.get(workflow) ?? fail(`no workflow ${workflow} with an envelope${cards ? " or an owner" : ""} in ${file}; it has ${all.join(", ")}`);
   const roles = [...new Set(owners.values())].sort();
-  if (roles.length > 1) throw new Usage(`${file} has envelopes owned by ${roles.join(" and ")}; name the workflow whose envelope you approve with --workflow: ${all.join(", ")}`);
+  if (roles.length > 1) throw new Usage(`${file} has ${cards ? "cards" : "envelopes"} owned by ${roles.join(" and ")}; name the workflow whose ${cards ? "card" : "envelope"} you approve with --workflow: ${all.join(", ")}`);
   return roles[0]!;
+}
+
+/** The mode `mandate promote` promotes to (`--to`), and its key: a promotion is a signed decision. */
+function promotedTo(a: Args): PromotedMode {
+  const to = a.flags["--to"];
+  if (to !== "read_only" && to !== "live") throw new Usage("--to is read_only or live: the mode the workflow is promoted to");
+  if (typeof a.flags["--key"] !== "string") throw new Usage("--key FILE is required: a promotion is a signed decision");
+  return to;
+}
+
+/**
+ * `mandate promote <run> --to read_only|live --key FILE [--yes]` (0.7; spec/attention.md "Promotion"): the owner of a
+ * workflow promotes it up the ladder on a run that succeeded. It shows the run, and for `live` the shadow diff of the
+ * run against the `design` run it started under as counts of the actions that would apply, per effect, never their
+ * parameters; it asks to confirm unless `--yes`; then it signs and submits. Everything it prints of a run passes
+ * through `terminalText`. Exit 1 when the person does not confirm.
+ */
+async function promote(rt: Runtime, runId: string, to: PromotedMode, key: EvidenceSigner, member: string, yes: boolean, out: (s: string) => void, answer: () => Promise<string>): Promise<number> {
+  const shown = await rt.promotionShown(runId, to);
+  const lines = [
+    `run       ${terminalText(runId)}`,
+    `workflow  ${terminalText(shown.workflow)}`,
+    `mode      ${terminalText(shown.mode)}, ${shown.state}`,
+    `package   ${shown.package}`,
+    `owner     ${terminalText(shown.role)}`,
+    `promote   ${terminalText(shown.mode)} -> ${to}`,
+    ...(shown.design !== null ? shadowCounts(await shadowDiff(rt, shown.design, runId)) : []),
+    `a promotion to ${to} lets every later run of ${terminalText(shown.workflow)} of this package run ${to}`,
+  ];
+  out(lines.join("\n") + "\n");
+  if (!yes) {
+    out(`promote ${terminalText(shown.workflow)} to ${to}? [y/N] `);
+    const said = (await answer()).trim().toLowerCase();
+    if (said !== "y" && said !== "yes") {
+      out("not promoted\n");
+      return 1;
+    }
+  }
+  const signed = signDecision(key, shown, { kind: "promote", member, payload: payloadOf.promotion(to), at: new Date() });
+  const decision = await rt.promote(await rt.storedPackage(shown.package), signed);
+  out(`decision  ${decision}\npromoted by ${terminalText(member)} as ${terminalText(shown.role)}\npermits   every later run of ${terminalText(shown.workflow)} of package ${shown.package} in mode ${to}\n`);
+  return 0;
+}
+
+/**
+ * A shadow diff as `mandate promote` shows it: per effect, how many actions the run would apply and how they compare
+ * with the design run's, and how many only the design run had; the effects in order. Never a parameter, a fingerprint
+ * or a command: the counts only.
+ */
+export function shadowCounts(d: Awaited<ReturnType<typeof shadowDiff>>): string[] {
+  const by = new Map<string, Record<"would" | ShadowRow["state"], number>>();
+  for (const r of d.rows) {
+    const c = by.get(r.effect) ?? { would: 0, same: 0, differs: 0, only_a: 0, only_b: 0 };
+    if (r.b) c.would++;
+    c[r.state]++;
+    by.set(r.effect, c);
+  }
+  const effects = [...by.keys()].sort();
+  return [
+    `shadow diff against design run ${terminalText(d.a.run)}:`,
+    ...(effects.length
+      ? effects.map((e) => {
+          const c = by.get(e)!;
+          return `  ${terminalText(e)}: ${c.would} would apply (${c.same} as in the design run, ${c.differs} otherwise, ${c.only_b} not in it); ${c.only_a} only in the design run`;
+        })
+      : ["  no action would apply"]),
+  ];
+}
+
+/** One line of standard input, without its line end; empty at its end. */
+async function stdinLine(): Promise<string> {
+  const lines = createInterface({ input: process.stdin, terminal: false });
+  try {
+    return await new Promise<string>((done) => {
+      lines.once("line", done);
+      lines.once("close", () => done(""));
+    });
+  } finally {
+    lines.close();
+  }
 }
 
 function fail(message: string): never {

@@ -1114,7 +1114,7 @@ fails on a type without a class, and on a class of a type nothing writes.
 
 | Class | Event types |
 |---|---|
-| S0 | `wait_opened`, `wait_expired`, `decision_received`, `input_received`, `decision_refused`, `criterion_approved`, `criterion_denied`, `governance_approved`, `governance_denied`, `action_authorized`, `envelope_approved`, `amendment_requested`, `package_amended`, `limits_raised`, `reconcile_requested`, `review_requested`, `review_decided`, `review_escalated`, `review_expired`, `criterion_waived` |
+| S0 | `wait_opened`, `wait_expired`, `decision_received`, `input_received`, `decision_refused`, `criterion_approved`, `criterion_denied`, `governance_approved`, `governance_denied`, `action_authorized`, `envelope_approved`, `amendment_requested`, `package_amended`, `limits_raised`, `reconcile_requested`, `review_requested`, `review_decided`, `review_escalated`, `review_expired`, `criterion_waived`, `promotion_accepted` |
 | S1 | `run_succeeded`, `run_failed`, `run_cancelled`, `run_cancelling`, `run_attention_required`, `cancel_requested`, `lease_revoked`, `violation`, `budget_exceeded`, `guarantee_lowered`, `asks_exhausted` |
 | S2 | `run_accepted`, `run_running`, `run_waiting`, `lease_acquired`, `command_dispatched`, `command_completed`, `command_throttled`, `charge_pending`, `charge_settled`, `map_started`, `map_ended`, `stage_started`, `stage_ended`, `report` |
 | S3 | `action_prepared`, `action_committed`, `action_confirmed`, `action_rejected`, `action_unknown_outcome`, `action_cancelled`, `action_would_apply`, `changeset_prepared`, `changeset_would_apply`, `changeset_simulated`, `changeset_committed`, `changeset_partial`, `changeset_failed` |

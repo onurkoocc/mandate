@@ -9,7 +9,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { Cost } from "../src/adapters.js";
 import type { Admission, Journal } from "../src/journal.js";
 import { Cancelled } from "../src/signals.js";
-import { closeAll, world } from "./helpers.js";
+import { closeAll, rawRun, world } from "./helpers.js";
 import { FIX } from "./programs.js";
 
 afterAll(closeAll);
@@ -41,7 +41,7 @@ async function ledger(limits: Record<string, number>): Promise<Ledger> {
   const w = await world(FIX);
   const j = w.rt.journal;
   await w.db.query("insert into packages (package_hash, program, lock, modules) values ('sha256:p', '{}', '{}', '{}')");
-  await w.db.tx((tx) => j.createRun(tx, { runId: RUN, tenant: "default", packageHash: "sha256:p", workflow: "W", input: {}, policy: {}, limits, manifest: {}, manifestHash: "sha256:m" }));
+  await w.db.tx((tx) => rawRun(j, tx, { runId: RUN, tenant: "default", packageHash: "sha256:p", workflow: "W", input: {}, policy: {}, limits, manifest: {}, manifestHash: "sha256:m" }));
   const l: Ledger = {
     j,
     fence: (await j.acquire(RUN)).fence,

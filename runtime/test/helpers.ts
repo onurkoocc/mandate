@@ -8,8 +8,10 @@ import { expect } from "vitest";
 import { ISSUE } from "./programs.js";
 import { heldUnder, lockUnder, modulesUnder } from "./relabel.js";
 import type { Clock, ModelAdapter } from "../src/adapters.js";
-import { openDb, type Db } from "../src/db.js";
+import { openDb, type Db, type Tx } from "../src/db.js";
 import { Faults } from "../src/faults.js";
+import type { Journal } from "../src/journal.js";
+import type { Value } from "../src/values.js";
 import { buildPackage, Runtime, type Lock, type Package, type RuntimeOptions, type StartOptions } from "../src/runtime.js";
 import { deferred, simulate, type Sim, type SimAgents, type SimModel, type SimReads, type SimTool, type SimVerifier } from "../src/sim.js";
 import { WorkerChecker } from "../src/plan.js";
@@ -99,6 +101,21 @@ export async function world(
 }
 
 const TABLES = ["notify_dead", "notify_cursors", "notify_channels", "otel_cursors", "halts", "journal_anchors", "decisions", "changesets", "workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];
+
+/**
+ * A run written into the store as a writer other than `Runtime.startRun` would write it: its row, its budgets and its
+ * `run_accepted`, and no anchor. Only startRun can call `Journal.createRun` (test/ladder.test.ts, "where a run
+ * starts"); a test that stands for a runtime of an earlier version, or that needs a bare run under a journal, writes it so.
+ */
+export async function rawRun(j: Journal, tx: Tx, r: { runId: string; tenant: string; packageHash: string; workflow: string; input: Value; policy: Value; limits: Record<string, number>; manifest: Value; manifestHash: string }): Promise<void> {
+  const at = Date.now();
+  await tx.query(
+    "insert into runs (run_id, tenant, package_hash, workflow, input, policy, state, created_at, updated_at, manifest, manifest_hash) values ($1, $2, $3, $4, $5, $6, 'accepted', $7, $7, $8, $9)",
+    [r.runId, r.tenant, r.packageHash, r.workflow, JSON.stringify(r.input), JSON.stringify(r.policy), at, JSON.stringify(r.manifest), r.manifestHash],
+  );
+  for (const [dim, limit] of Object.entries(r.limits)) await tx.query("insert into budgets (run_id, dimension, limit_value) values ($1, $2, $3)", [r.runId, dim, limit]);
+  await j.event(tx, r.runId, "run_accepted", { workflow: r.workflow, package: r.packageHash, limits: r.limits, manifest: r.manifestHash });
+}
 
 export async function closeAll(): Promise<void> {
   const db = shared;

@@ -154,7 +154,8 @@ accepted.
 The signature covers `mandate/decision/0.1\n` followed by the record's JCS
 bytes, and is written `ed25519:<base64>`. The record's digest is the
 SHA-256 of the same bytes. `kind` is one of `approve`, `decline`, `answer`,
-`raise_limits`, `reconcile`, `envelope`, `amend` and `cancel`. `subject`
+`raise_limits`, `reconcile`, `envelope`, `amend`, `cancel` and, in 0.7,
+`promote` ([`attention.md`](attention.md#promotion)). `subject`
 is the digest the wait shows: a contract's `subject_digest`, an action
 digest, a change set's digest S, or a package hash. `payload` is the digest
 of the answer, the new limits or the reconciliation; it is absent for an
@@ -172,6 +173,7 @@ What a record names, by kind:
 | `cancel` | none | the run's package hash | none |
 | `envelope` | none, and no run or revision | the package hash | none |
 | `amend`, `decline` of an amendment | the amendment's wait | the hash of the package with the new envelope | none |
+| `promote` (0.7) | none; `run` and `revision` are the from-run's | the promotion's subject ([`attention.md`](attention.md#promotion)) | `{ "to": "read_only" \| "live" }` |
 
 A payload is the request digest of its value: the SHA-256 of
 `mandate/request/0.1\n` and the value's JCS bytes. `role` is the role the

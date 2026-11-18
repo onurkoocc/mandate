@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, attentionFacts, callableConnectors, capsOf, check, domainHash, hashProgram, isProgram06OrLater, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type AttentionFacts, type Budget07, type Def, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program, type WorkflowDef } from "@mandate/bridge";
+import { atLeast, attentionFacts, callableConnectors, capsOf, check, domainHash, hashProgram, isProgram06OrLater, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type AttentionFacts, type Budget07, type Def, type DenialReport, type Json, type LibrariesConfig, type Lock, type Modules, type Program, type WorkflowDef } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters, Cost, EgressNeed, RunComponents, RunMode, ToolAdapter } from "./adapters.js";
 import { Connectors, ConnectorWrite, connectorsOf } from "./connectors.js";
@@ -13,7 +13,7 @@ import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { ATTENTION_MEDIA_TYPE, factsAtStart, readFacts, type FactsDoor } from "./attention.js";
 import { recordProblem, type AttestationRule } from "./attestation.js";
 import { criterionMethods } from "./criteria.js";
-import { approvalProblem, authorizationId, InvalidDecision, isSignedDecision, payloadOf, roleRefusal, shownRefusal, signerRefusal, storedProblem, type DecisionKind, type Refusal, type Shown, type SignedDecision, type StoredDecision } from "./decisions.js";
+import { approvalProblem, authorizationId, InvalidDecision, isSignedDecision, payloadOf, PROMOTED_FROM, promotionSubject, roleRefusal, shownRefusal, signerRefusal, storedProblem, type DecisionKind, type PromotedMode, type Refusal, type Shown, type SignedDecision, type StoredDecision } from "./decisions.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
 import { RateLimiter, type BucketConfig } from "./ratelimit.js";
 import type { Db, Row, Tx } from "./db.js";
@@ -21,7 +21,7 @@ import { Faults } from "./faults.js";
 import { checkFitness, systemProbe, type HostProbe } from "./fitness.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
-import { costDims, haltedRefusal, Journal, limitDims, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
+import { claimRunStarts, costDims, haltedRefusal, Journal, limitDims, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { ASKS, asksLimit, boundUnder } from "./asks.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
 import { buildPackage, isPackage06OrLater, isPackage07OrLater, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
@@ -30,13 +30,46 @@ import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { givenValueProblem, listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
 import { canonical, digest, isObj, type Obj, type Value } from "./values.js";
+import { shadowDiff } from "./views.js";
 
 export type { Lock };
 export { buildPackage, isSigned04, notRunYet, RUNTIME_LANGUAGES, verifyPackage, type Package } from "./package.js";
 
-/** The roles that own an envelope in a program: who may approve its package. */
-function envelopeOwners(program: Program): Set<string> {
-  return new Set(Object.values(program.defs).flatMap((d) => (d.kind === "workflow" && d.envelope?.owner !== undefined ? [d.envelope.owner] : [])));
+/**
+ * The roles that own a workflow's card in a program: who may approve its package. An envelope's `owner` (0.4), and
+ * (0.7) a workflow's own `owner`; `running`, the running program, adds what its expansions keep of each.
+ */
+function envelopeOwners(program: Program, running?: Program): Set<string> {
+  const defs = [...Object.values(program.defs), ...Object.keys(program.defs).flatMap((n) => (running && Object.hasOwn(running.defs, n) ? [running.defs[n]!] : []))];
+  return new Set(defs.flatMap((d) => (d.kind === "workflow" && workflowOwner(d) !== undefined ? [workflowOwner(d)!] : [])));
+}
+
+/**
+ * The one maker of the starts `Journal.createRun` takes, claimed when this module loads and kept here: only
+ * `Runtime.startRun` makes one, after the card and the ladder, so no other code can create a run (spec/attention.md
+ * "Promotion"). Not exported.
+ */
+const runStart = claimRunStarts();
+
+/**
+ * The role that approves a workflow's card and signs its promotions (spec/attention.md "`owner`", "Card approval",
+ * "Promotion"): the workflow's own `owner` (0.7), or else its envelope's `owner` (0.4); none for a workflow with
+ * neither, or for what is not a workflow.
+ */
+export function workflowOwner(d: Def | undefined): string | undefined {
+  if (d?.kind !== "workflow") return undefined;
+  const own = (d as unknown as { owner?: unknown }).owner;
+  return typeof own === "string" ? own : d.envelope?.owner;
+}
+
+/** What a run that starts under a promotion records of it: its manifest's `promotion`, and its `promotion_accepted`. */
+interface Promoted {
+  decision: string;
+  member: string;
+  role: string;
+  key: string;
+  from: { run: string; mode: string };
+  to: PromotedMode;
 }
 
 /**
@@ -348,9 +381,14 @@ export class Runtime {
     await this.adapters.egress?.ready(need);
     await this.validateBindings(linked, o.workflow);
     await this.validateExecutor(o.pkg);
-    // A workflow with an envelope starts only once a member of its owner role approved this package (H03).
-    const approval = wf.envelope ? await this.envelopeApproval(o.pkg, o.workflow, wf.envelope) : undefined;
+    // A workflow with an envelope starts only once a member of its owner role approved this package (H03); so does,
+    // in any mode, a workflow of 0.7 with an `owner` (spec/attention.md "Card approval").
+    const owner = workflowOwner(wf) ?? workflowOwner(o.pkg.program.defs[o.workflow]);
+    const approval = wf.envelope || owner !== undefined ? await this.envelopeApproval(o.pkg, o.workflow, wf.envelope ? wf.envelope.owner : owner) : undefined;
     const approved = approval ? { package: o.pkg.hash, member: approval.record.member, role: approval.record.role ?? null, key: approval.record.key, decision: approval.decision_id } : undefined;
+    // 0.7: with `promotion: "required"` in the lock, a run of `read_only` or `live` starts only under a promotion
+    // that holds (spec/attention.md "Promotion"); the card is approved first.
+    const promoted = await this.promotionAtStart(o.pkg, o.workflow, o.mode ?? "live", owner);
     // 0.6: what the run runs, so that a remote agent or a component a library or an expansion brings is seen; before
     // 0.6, the program as packaged, as it was.
     const seen = isPackage06OrLater(o.pkg) ? verified.running : undefined;
@@ -382,10 +420,13 @@ export class Runtime {
       mode: o.mode ?? "live",
       components,
       ...(approved ? { envelope_approval: { decision: approved.decision, member: approved.member, role: approved.role, key: approved.key } } : {}),
+      ...(promoted ? { promotion: { decision: promoted.decision, from: promoted.from, to: promoted.to } } : {}),
       ...(expanded ? { expanded: expanded.hash } : {}),
       ...(facts ? { attention: facts.digest } : {}),
     } as unknown as Value;
     const manifestHash = digest("run", manifest);
+    // Made here, after the card and the ladder, and nowhere else: what createRun takes.
+    const start = runStart(runId, manifestHash);
     try {
       await this.db.tx(async (tx) => {
         // Under the lock a halt of this tenant takes: a halt either committed before and is seen here, or waits for
@@ -393,12 +434,13 @@ export class Runtime {
         const halt = await this.journal.holdOffHalts(tx, policy.tenant);
         if (halt) throw haltedRefusal(halt, `Run ${runId} does not start`);
         await this.keep(tx, o.pkg);
-        await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash, ...(asks ? { asksReserved: asks.reserved } : {}) });
+        await this.journal.createRun(tx, start, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash, ...(asks ? { asksReserved: asks.reserved } : {}) });
         // The running program the run runs from here on, its resumes and its replays: never one made again (spec/library.md).
         if (expanded) await this.artifacts.put({ tenant: policy.tenant, runId }, canonical(expanded.program as unknown as Value), EXPANDED_MEDIA_TYPE, tx);
         // 0.7: the attention facts the run shows from here on, in its resumes and its replays: never asked again.
         if (facts) await this.artifacts.put({ tenant: policy.tenant, runId }, facts.bytes, ATTENTION_MEDIA_TYPE, tx);
         if (approved) await this.journal.event(tx, runId, "envelope_approved", approved);
+        if (promoted) await this.journal.event(tx, runId, "promotion_accepted", promoted as unknown as Value);
         for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
       });
     } catch (e) {
@@ -465,9 +507,10 @@ export class Runtime {
    * record it.
    */
   async approveEnvelope(pkg: Package, signed: SignedDecision): Promise<string> {
-    verifyPackage(pkg, this.load);
-    const owners = envelopeOwners(pkg.program);
-    if (!owners.size) throw new Violation("no_envelope", "The package has no workflow with an envelope, so there is nothing to approve.");
+    const verified = verifyPackage(pkg, this.load);
+    // 0.7: a workflow's own `owner` approves its card as an envelope's owner does (spec/attention.md "Card approval").
+    const owners = envelopeOwners(pkg.program, verified.running);
+    if (!owners.size) throw new Violation("no_envelope", "The package has no workflow with an envelope or an owner, so there is nothing to approve.");
     const refusal = (): Refusal | undefined => {
       const who = signerRefusal(signed, this.decisionKeys, pkg.lock);
       if (who) return who;
@@ -494,17 +537,143 @@ export class Runtime {
    * a member of that role. Without one the run does not start (`unapproved_envelope`, H03). An approval of another
    * package, however alike, is none: a changed program, lock or module is a new hash (N04).
    */
-  private async envelopeApproval(pkg: Package, workflow: string, envelope: Envelope): Promise<StoredDecision> {
+  private async envelopeApproval(pkg: Package, workflow: string, owner: string | undefined): Promise<StoredDecision> {
     const holds = (d: StoredDecision): boolean =>
-      d.record.role === envelope.owner && !shownRefusal(d.record, { package: pkg.hash, subject: pkg.hash }, ["envelope"]) && !storedProblem(d, this.decisionKeys, pkg.lock);
+      d.record.role === owner && !shownRefusal(d.record, { package: pkg.hash, subject: pkg.hash }, ["envelope"]) && !storedProblem(d, this.decisionKeys, pkg.lock);
     const found = (await this.journal.envelopeApprovals(pkg.hash)).find(holds);
     if (!found) {
       throw new Violation(
         "unapproved_envelope",
-        `No member of ${envelope.owner ?? "its owner role"} has approved package ${pkg.hash}, so ${workflow} does not start. Read its card (mandate view --card) and sign it (mandate approve-envelope).`,
+        `No member of ${owner ?? "its owner role"} has approved package ${pkg.hash}, so ${workflow} does not start. Read its card (mandate view --card) and sign it (mandate approve-envelope).`,
       );
     }
     return found;
+  }
+
+  // ── Promote (0.7; spec/attention.md "Promotion") ──────────────────────
+
+  /**
+   * Takes the owner's promotion of a workflow up the ladder: a signed decision of kind `promote`, made on a run A of
+   * the package that succeeded in the mode directly below `to` (`design` for `read_only`, `read_only` for `live`). Its
+   * subject is the request digest of `{ format: "mandate/promotion/0.1", package, workflow, from: { run: A, mode,
+   * manifest: <A's manifest hash> }, to, shadow }`, where `shadow` is, for a promotion to `live`, the digest of the
+   * shadow diff of A against the `design` run A itself started under, and null for one to `read_only`; its payload is
+   * the request digest of `{ to }`. Returns the decision's digest.
+   *
+   * It is held to the rules of every decision (INV-16), in their order: who signed, what the record is for, then the
+   * role (the workflow's `owner`, or its envelope's). A record of another kind, package or `to` is `subject_mismatch`.
+   * A from-run that did not succeed, is not of this package, or is not in the mode directly below `to`, is
+   * `bad_promotion`: this is known before the subject can be computed, so it is said before. A refused promotion
+   * stores nothing and records no event: the run it names has ended, and its journal is closed.
+   */
+  async promote(pkg: Package, signed: SignedDecision): Promise<string> {
+    const verified = verifyPackage(pkg, this.load);
+    const who = signerRefusal(signed, this.decisionKeys, pkg.lock);
+    if (who) throw new InvalidDecision(who.reason, who.message);
+    const r = signed.record;
+    if (r.kind !== "promote") throw new InvalidDecision("subject_mismatch", `A decision of kind ${r.kind} does not answer this; it takes promote.`);
+    if (r.package !== pkg.hash) throw new InvalidDecision("subject_mismatch", `The decision is for package ${r.package}, not for package ${pkg.hash}.`);
+    const to = (["read_only", "live"] as const).find((t) => r.payload !== undefined && r.payload === payloadOf.promotion(t));
+    if (to === undefined) throw new InvalidDecision("subject_mismatch", "The decision's payload is not the digest of a promotion to read_only or live.");
+    const facts = await this.promotionFacts(pkg.hash, r.run, to);
+    const owner = workflowOwner(Object.hasOwn(verified.running.defs, facts.workflow) ? verified.running.defs[facts.workflow] : undefined) ?? workflowOwner(Object.hasOwn(pkg.program.defs, facts.workflow) ? pkg.program.defs[facts.workflow] : undefined);
+    if (owner === undefined) throw new Violation("bad_promotion", `${facts.workflow} has no owner role, nor an envelope with one, so nobody can promote it (spec/attention.md "Promotion").`);
+    const why = shownRefusal(r, facts.shown, ["promote"], payloadOf.promotion(to)) ?? roleRefusal(r, pkg.lock, owner);
+    if (why) throw new InvalidDecision(why.reason, why.message);
+    return this.db.tx(async (tx) => {
+      await this.keep(tx, pkg);
+      return this.journal.recordDecision(tx, signed);
+    });
+  }
+
+  /**
+   * What a promotion of run `runId`'s workflow to `to` must name (`Shown`, with the owner role it asks), and what the
+   * command shows of it: the run's workflow, mode and state, and for a promotion to `live` the `design` run whose shadow
+   * diff against it the promotion carries. A person signs a record of it (`signDecision`); `promote` computes it again
+   * when the record arrives. A run that cannot be promoted to `to` is `bad_promotion`.
+   */
+  async promotionShown(runId: string, to: PromotedMode): Promise<Shown & { role: string; workflow: string; mode: string; state: string; design: string | null }> {
+    const run = await this.journal.run(runId);
+    const facts = await this.promotionFacts(run.package_hash, runId, to);
+    const { program, source } = await this.loaded(run.package_hash, run);
+    const owner = workflowOwner(Object.hasOwn(program.defs, facts.workflow) ? program.defs[facts.workflow] : undefined) ?? workflowOwner(Object.hasOwn(source.defs, facts.workflow) ? source.defs[facts.workflow] : undefined);
+    if (owner === undefined) throw new Violation("bad_promotion", `${facts.workflow} has no owner role, nor an envelope with one, so nobody can promote it (spec/attention.md "Promotion").`);
+    return { ...facts.shown, role: owner, workflow: facts.workflow, mode: facts.mode, state: run.state, design: facts.design };
+  }
+
+  /**
+   * The facts a promotion to `to` from run `runId` of package `packageHash` rests on, computed now: the from-run, which
+   * must exist, be a run of this package (as its manifest says and as it stands), have succeeded, be in the mode
+   * directly below `to`, and have a manifest that hashes to its manifest hash; and for `to` = `live`, the `design` run D
+   * its own manifest's `promotion` names, and the digest of `shadowDiff(D, A)`. Otherwise `bad_promotion`.
+   */
+  private async promotionFacts(packageHash: string, runId: string | undefined, to: PromotedMode): Promise<{ shown: Shown; workflow: string; mode: string; design: string | null }> {
+    const bad = (why: string): Violation => new Violation("bad_promotion", `${why}, so it does not promote a workflow to ${to} (spec/attention.md "Promotion").`);
+    let from: RunRow | undefined;
+    try {
+      from = runId === undefined ? undefined : await this.journal.run(runId);
+    } catch (e) {
+      if (!(e instanceof Violation && e.code === "unknown_run")) throw e;
+    }
+    if (!from) throw bad(runId === undefined ? "The decision names no run" : `There is no run ${runId}`);
+    const manifest = isObj(from.manifest) ? from.manifest : {};
+    if (from.package_hash !== packageHash || manifest["package"] !== packageHash) throw bad(`Run ${from.run_id} is not a run of package ${packageHash}`);
+    if (from.state !== "succeeded") throw bad(`Run ${from.run_id} is ${from.state}, and has not succeeded`);
+    const mode = typeof manifest["mode"] === "string" ? manifest["mode"] : "live";
+    if (mode !== PROMOTED_FROM[to]) throw bad(`Run ${from.run_id} ran ${mode}; a promotion to ${to} is made on a run of ${PROMOTED_FROM[to]}, the mode directly below it`);
+    if (from.manifest_hash === null || digest("run", from.manifest) !== from.manifest_hash) throw bad(`Run ${from.run_id}'s manifest does not hash to its manifest hash`);
+    let shadow: string | null = null;
+    let design: string | null = null;
+    if (to === "live") {
+      const under = isObj(manifest["promotion"] ?? null) ? (manifest["promotion"] as Obj) : undefined;
+      const named = under && isObj(under["from"] ?? null) ? (under["from"] as Obj)["run"] : undefined;
+      if (typeof named !== "string") throw bad(`Run ${from.run_id} did not start under a promotion, so there is no design run to compare it with`);
+      design = named;
+      const diff = await shadowDiff(this, named, from.run_id).catch((e: unknown) => {
+        throw e instanceof Violation && e.code === "unknown_run" ? bad(`The design run ${named} that run ${from!.run_id} started under is not stored`) : e;
+      });
+      shadow = digest("request", diff as unknown as Value);
+    }
+    const subject = promotionSubject({ package: packageHash, workflow: from.workflow, from: { run: from.run_id, mode, manifest: from.manifest_hash }, to, shadow });
+    return { shown: { package: packageHash, run: from.run_id, revision: from.revision, subject }, workflow: from.workflow, mode, design };
+  }
+
+  /**
+   * The promotion a run of `workflow` of `pkg` in `mode` starts under (spec/attention.md "Promotion"), only when the
+   * package's lock says `promotion: "required"` and the mode is `read_only` or `live`; a `design` run needs none, and
+   * without the lock's word none is looked for. It is the oldest stored `promote` decision for this package hash, this
+   * workflow and this `to` that still holds: its record unchanged and signed by a key the lock lists under a member of
+   * the owner role, its from-run still a succeeded run of the package and workflow in the mode below, and its subject
+   * the one computed now, for `live` with the shadow diff computed again, so that a promotion is not taken once the
+   * evidence it was made on has changed. It holds for every later run in its mode, not for one. Without one the run
+   * does not start (`unpromoted`), before anything is written.
+   */
+  private async promotionAtStart(pkg: Package, workflow: string, mode: RunMode, owner: string | undefined): Promise<Promoted | undefined> {
+    // A package older than 0.7 is refused with a `promotion` in its lock at load (E0140); asked here too, so that no
+    // lock of an older package can bring the ladder to it.
+    if (pkg.lock.promotion !== "required" || mode === "design" || !isPackage07OrLater(pkg)) return undefined;
+    const to: PromotedMode = mode;
+    if (owner === undefined) {
+      throw new Violation("unpromoted", `${workflow} has no owner role, nor an envelope with one, to sign a promotion, so it does not run ${to} under package ${pkg.hash}, whose lock requires one (spec/attention.md "Promotion").`);
+    }
+    for (const d of await this.journal.promotions(pkg.hash, workflow)) {
+      const r = d.record;
+      if (r.payload !== payloadOf.promotion(to) || storedProblem(d, this.decisionKeys, pkg.lock) || roleRefusal(r, pkg.lock, owner)) continue;
+      let facts: Awaited<ReturnType<Runtime["promotionFacts"]>>;
+      try {
+        facts = await this.promotionFacts(pkg.hash, r.run, to);
+      } catch (e) {
+        if (e instanceof Violation && e.code === "bad_promotion") continue;
+        throw e;
+      }
+      if (facts.workflow !== workflow || shownRefusal(r, facts.shown, ["promote"], payloadOf.promotion(to))) continue;
+      return { decision: d.decision_id, member: r.member, role: owner, key: r.key, from: { run: facts.shown.run, mode: facts.mode }, to };
+    }
+    const below = PROMOTED_FROM[to];
+    throw new Violation(
+      "unpromoted",
+      `No promotion that holds lets ${workflow} of package ${pkg.hash} run ${to}: a member of ${owner} promotes it from a ${below} run of the same package and workflow that succeeded${to === "live" ? " and started under a promotion" : ""} (mandate promote <run> --to ${to} --key FILE).`,
+    );
   }
 
   /**
@@ -926,6 +1095,14 @@ export class Runtime {
   }
 
   /** The program, modules, lock and libraries of a package, as packaged. */
+  /** A stored package as `buildPackage` makes it, for a command that names it by a run (`mandate promote`); one that does not hash to its name is refused. */
+  async storedPackage(packageHash: string): Promise<Package> {
+    const p = await this.packaged(packageHash);
+    const pkg = buildPackage(p.program, p.lock, p.modules, p.libraries ?? []);
+    if (pkg.hash !== packageHash) throw new Violation("package_hash_mismatch", `The package stored as ${packageHash} hashes to ${pkg.hash}.`);
+    return pkg;
+  }
+
   private async packaged(packageHash: string): Promise<{ program: Program; modules: Modules; lock: Lock; libraries: Package["libraries"] }> {
     const cached = this.packages.get(packageHash);
     if (cached) return { program: cached.program, modules: cached.modules ?? {}, lock: cached.lock, libraries: cached.libraries };
@@ -1107,7 +1284,10 @@ export class Runtime {
     // A review's decision (0.6) is one like any other: its record, signature and the lock's binding of its key.
     const listed = isObj(run.manifest) && isObj(run.manifest["envelope_approval"] ?? null) ? (run.manifest["envelope_approval"] as Obj)["decision"] : undefined;
     const approval = typeof listed === "string" ? await this.journal.decision(listed) : undefined;
-    return [...(approval ? [approval] : []), ...(await this.journal.decisions(runId))].map((d) => {
+    // 0.7: a run that started under a promotion lists it next; it is a decision on the run it was made from.
+    const promotedBy = isObj(run.manifest) && isObj(run.manifest["promotion"] ?? null) ? (run.manifest["promotion"] as Obj)["decision"] : undefined;
+    const promotion = typeof promotedBy === "string" ? await this.journal.decision(promotedBy) : undefined;
+    return [...(approval ? [approval] : []), ...(promotion ? [promotion] : []), ...(await this.journal.decisions(runId))].map((d) => {
       const problem = storedProblem(d, this.decisionKeys, lock);
       return { ...d, valid: !problem, ...(problem ? { problem } : {}) };
     });
