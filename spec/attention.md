@@ -1218,7 +1218,11 @@ there. The operator replays the package's card approval (an approval has been
 replayable this way since 0.4). Then they start a `design` run with the
 from-run's id and input. Its manifest names no store, so the manifest hash is
 the same. Then they submit the owner's `promote` record, and start
-`read_only` runs with other inputs. In one store this cannot happen: a run id
+`read_only` runs with other inputs. A promotion to `live` can be taken there
+the same way: the operator also starts the `read_only` from-run again with its
+id and input, under the replayed promotion, and where its actions come out the
+same the shadow diff, which holds run ids, modes and the actions'
+fingerprints, has the same digest. In one store this cannot happen: a run id
 is the key of its run, and no run is deleted. Nor does the subject bind:
 
 - anything of a `design` run's outcome beyond its success and its manifest
