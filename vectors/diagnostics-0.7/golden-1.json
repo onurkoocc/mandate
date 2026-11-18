@@ -342,6 +342,144 @@
       "texts": {}
     },
     {
+      "program": "fixtures/attention/invoices.mdt",
+      "modules": [],
+      "lock": "fixtures/attention/invoices.lock.json",
+      "results": {
+        "check": {
+          "ok": false,
+          "diagnostics": [
+            {
+              "code": "MDT-E1604",
+              "severity": "error",
+              "message": "Module acme.connectors is not known to this check: a program of mandate/0.6 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.",
+              "at": {
+                "path": "/uses/0",
+                "span": [7, 1, 7, 35]
+              },
+              "docs": "mandate explain MDT-E1604",
+              "facts": {
+                "module": "acme.connectors"
+              }
+            },
+            {
+              "code": "MDT-E1604",
+              "severity": "error",
+              "message": "Module acme.connectors.types is not known to this check: a program of mandate/0.6 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.",
+              "at": {
+                "path": "/uses/1",
+                "span": [8, 1, 8, 58]
+              },
+              "docs": "mandate explain MDT-E1604",
+              "facts": {
+                "module": "acme.connectors.types"
+              }
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:ca800dff12f11f79bcf93c7f1c457ecbae477435cf5e3092b6bcdff896a03ef8",
+            "defs": {
+              "ErpDraft": "sha256:0de2899b877390d44d26dd70d8e745087455d27902fdafab6c936b4b584966d5",
+              "ErpRead": "sha256:0b878f8c74be569cab94cb764c89f161be33ea0dc23904af8f115144e2e23f0a",
+              "Inbox": "sha256:201dc872ff04f3cc6b72b745bb9f603dc58e3a25c03150693008c4d26fa2d872",
+              "MatchInvoices": "sha256:f96e198a2b448157cf2d7a1200f6e50ce53e1d52a6fee9e0c7697a6ee2737d17",
+              "Matched": "sha256:83d4f3a9fc3d12ba8a7e6aedb7f014186f483355bfde3bafe8a9e98d09c60148",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/same_invoice/by/static",
+                "span": [22, 15, 22, 45]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/totals/by/static",
+                "span": [26, 15, 26, 60]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [24, 15, 24, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:ca800dff12f11f79bcf93c7f1c457ecbae477435cf5e3092b6bcdff896a03ef8",
+            "defs": {
+              "ErpDraft": "sha256:0de2899b877390d44d26dd70d8e745087455d27902fdafab6c936b4b584966d5",
+              "ErpRead": "sha256:0b878f8c74be569cab94cb764c89f161be33ea0dc23904af8f115144e2e23f0a",
+              "Inbox": "sha256:201dc872ff04f3cc6b72b745bb9f603dc58e3a25c03150693008c4d26fa2d872",
+              "MatchInvoices": "sha256:f96e198a2b448157cf2d7a1200f6e50ce53e1d52a6fee9e0c7697a6ee2737d17",
+              "Matched": "sha256:83d4f3a9fc3d12ba8a7e6aedb7f014186f483355bfde3bafe8a9e98d09c60148",
+              "Matcher": "sha256:d43ad504c998d4a7e5b66da0178a69223773ea25b5bd1c3e3ed8eb0f98548d27",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/same_invoice/by/static",
+                "span": [22, 15, 22, 45]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/totals/by/static",
+                "span": [26, 15, 26, 60]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [24, 15, 24, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
       "program": "fixtures/attention/maker-checker.mdt",
       "modules": [
         "fixtures/system/acme.system.mdt",

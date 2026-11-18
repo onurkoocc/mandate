@@ -35,18 +35,21 @@ fn every_program_of_0_7_gives_the_outputs_it_gave() {
         };
         let names: Vec<&str> = outs.iter().map(|(n, _)| n.as_str()).collect();
         // A pin of nothing would pass for ever: every 0.7 program here
-        // checks, alone and with its modules, and so has every output of a
-        // program that checks, its hash and its card among them.
+        // checks with its modules and its libraries, and so has every output
+        // of a program that checks; one that imports nothing but std checks
+        // alone too, and has its hash. One that imports a module of a library
+        // (the acceptance program) is refused alone, at that import (closed
+        // imports, E1604), and nothing else, as in 0.6.
         let output = |name: &str| outs.iter().find(|(n, _)| n == name).map(|(_, t)| t);
         let alone = output("check").is_some_and(|t| t.contains("\"ok\": true"));
         let with_modules = output("check --module").is_some_and(|t| t.contains("\"ok\": true"));
+        let only_closed = output("check").is_some_and(|t| t.contains("\"MDT-E1604\""));
         for needed in [
             "check",
             "check --module",
             "load",
             "ir --canonical",
             "fmt",
-            "hash",
             "view --format json",
             // The attention view of every workflow, as the command writes it.
             "view --attention --format json",
@@ -57,7 +60,10 @@ fn every_program_of_0_7_gives_the_outputs_it_gave() {
                 problems.push(format!("{p}: no {needed}"));
             }
         }
-        if !alone || !with_modules {
+        if alone != names.contains(&"hash") {
+            problems.push(format!("{p}: a hash only when it checks alone"));
+        }
+        if !(with_modules && (alone || only_closed)) {
             problems.push(format!("{p}: does not check"));
         }
         if output("ir --canonical").is_some_and(|t| !t.contains("\"mandate/0.7\"")) {
