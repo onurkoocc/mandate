@@ -341,10 +341,10 @@ describe("the attention facts a run of 0.7 stores at its start", () => {
 
   it("are kept whole, with members a later compiler adds, and a resume reads them and never asks again", async () => {
     const w = await greeting();
-    // The compiler at the start gives a member this runtime does not read (as RL4's will): stored and hashed with the rest.
-    w.rt.attentionFacts = (i) => ({ ...attentionFacts(i)!, totals: { all: 1 } });
+    // The compiler at the start gives a member this runtime does not read (as a later slice's will): stored and hashed with the rest.
+    w.rt.attentionFacts = (i) => ({ ...attentionFacts(i)!, later: { all: 1 } });
     await start(w, "u");
-    expect((await storedOf(w, "u")).facts["totals"]).toEqual({ all: 1 });
+    expect((await storedOf(w, "u")).facts["later"]).toEqual({ all: 1 });
     // An upgraded compiler, while the run waits, labels the fields otherwise: the run shows what it stored.
     let asked = 0;
     w.rt.attentionFacts = (i: AttentionFactsInput) => {

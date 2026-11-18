@@ -54,7 +54,6 @@ import {
   LIMITS,
   showCap,
   skeleton,
-  subprogramLinked,
   type AttentionFacts,
   type CapVal,
   type DataClass,
@@ -74,9 +73,11 @@ import {
 import { CompilerFailure, compilerForWorker, type WorkerCompiler } from "@mandate/bridge/mode";
 import type { Outcome, ToolSpec } from "./adapters.js";
 import { refOf, sha256Of, type ArtifactScope, type ArtifactStore } from "./artifacts.js";
-import { ATTENTION_MEDIA_TYPE, holdsAttention, readFacts, stored } from "./attention.js";
+import { ASKS, boundUnder, reservationOf } from "./asks.js";
+import { ATTENTION_MEDIA_TYPE, readFacts, stored } from "./attention.js";
+import type { AuthorizePolicy } from "./interp.js";
 import type { Admission, CommandRow, Journal } from "./journal.js";
-import { applications, subprogramNotRunYet, type AmendedCheck, type AmendedInput } from "./package.js";
+import { applications, linkedSubprogram, subprogramNotRunYet, type AmendedCheck, type AmendedInput } from "./package.js";
 import { Fault, Suspend, Violation } from "./signals.js";
 import { canonical, digest, isObj, type Value } from "./values.js";
 
@@ -419,6 +420,12 @@ export interface PlanHost {
   lead: string;
   /** The class of what the lead received (§2.2): a sub-program is its output. */
   leadClass: DataClass;
+  /** 0.7: the `plan` node's static path, the site a lead's amendment request is tagged with (asks.ts). */
+  site?: string;
+  /** 0.7: the attention facts of the run's program in force, which an amendment's bound is compared with (D6 of slice B3). */
+  facts?: AttentionFacts;
+  /** 0.7: `StartRun`'s `authorize`, the configuration a bound and a reservation are computed under. */
+  authorize?: Record<string, AuthorizePolicy>;
   /** When the run must have ended: its start plus the envelope's `time`. Absent when the envelope names no time. */
   deadline?: number;
   checker: ProgramChecker;
@@ -483,6 +490,20 @@ export class Planner {
       if (checked.package === h.package) {
         return refuse([{ code: "unchanged", severity: "error", message: "This is the envelope as it is: the amendment changes nothing, and nobody was asked.", facts: { package: h.package } }]);
       }
+      // 0.7 (D6 of slice B3): an amendment changes what the run can ask (`approve`, and `agents`, which bounds a map
+      // without `max`). The checker gives the attention facts of the amended workflow, which are stored with the
+      // request and read once the owner approves it; under an `asks` limit, an amendment whose bound under the
+      // configuration is above the limit it would have, or whose growth does not fit what is left, is refused to the
+      // lead as a start would be (`attention_above_asks`), and nobody is asked.
+      const amended = isProgram07OrLater(h.parent) ? (checked.attention ?? undefined) : undefined;
+      if (isProgram07OrLater(h.parent) && amended?.workflow !== h.workflow) {
+        return refuse([failedDiagnostic({ failed: "the checker gave no attention facts of the amended workflow" }, "envelope")]);
+      }
+      const labels = amended ? stored(amended) : undefined;
+      if (amended) {
+        const why = await this.aboveAsks(amended, now, to.envelope);
+        if (why) return refuse([{ code: "attention_above_asks", severity: "error", message: why, facts: { dimension: ASKS } }]);
+      }
       const diff = digest("request", checked.diff as unknown as Value);
       const request = {
         plan: h.plan,
@@ -498,6 +519,7 @@ export class Planner {
         changes: (checked.changes ?? []) as unknown as Value,
         // The owner has until the run's own deadline, when its envelope names a time.
         deadline: h.deadline ?? null,
+        ...(labels ? { attention: labels.digest } : {}),
       };
       wait = await h.journal.openAmendment(
         h.runId,
@@ -506,6 +528,9 @@ export class Planner {
         request,
         { hash: checked.package, program: checked.program as unknown as Value, lock: h.lock as unknown as Value, modules: h.modules as unknown as Value },
         { plan: h.plan, step, lead: h.lead, from: h.package, package: checked.package, diff },
+        // 0.7: a lead's amendment request is itself a question, out of what is left of the run's `asks`.
+        isProgram07OrLater(h.parent) && h.site !== undefined ? { tag: { kind: "plan", path: h.site, wait: `${h.site}/amendment` }, count: { from: "left" } } : undefined,
+        labels ? async (tx) => void (await h.artifacts.put(h.scope, labels.bytes, ATTENTION_MEDIA_TYPE, tx)) : undefined,
       );
     }
     // The request as first recorded: a resumed worker must not move its deadline.
@@ -515,6 +540,33 @@ export class Planner {
     // Declined by a person, or ended unanswered: past its deadline, or because another amendment was approved first.
     const error = isObj(wait.error) && Array.isArray(wait.error["args"]) ? wait.error["args"][0] : undefined;
     return { amended: false, declined: { reason: wait.state === "succeeded" ? "declined" : String(error ?? "declined"), by: decided["by"] ?? null }, ...((await told()) as object), $error: true };
+  }
+
+  /**
+   * 0.7: why an amendment whose workflow has the attention facts `amended` is refused under the run's `asks` limit, or
+   * undefined when the run has none or it fits (D6 of slice B3). The limit it would have is the run's, raised to the
+   * new envelope's `asks` when the amendment raises that (as `Runtime.decideAmendment` raises it). Its bound under the
+   * configuration is held to that limit, as a start's is; and what it adds to the run's own reservation, with the one
+   * question the request is, to what is left of the run's `asks` under that limit. The first check decides only the
+   * reason the lead is given: the run's own reservation and what it asked are its bound now, so a bound above the limit
+   * is a growth that does not fit either. `Runtime.decideAmendment` checks the growth again when the owner approves.
+   */
+  private async aboveAsks(amended: AttentionFacts, was: Envelope, to: Envelope): Promise<string | undefined> {
+    const h = this.h;
+    const row = (await h.journal.budget(h.runId))[ASKS];
+    if (!row) return undefined;
+    const bound = boundUnder(amended, h.authorize);
+    const before = (was.budget as { asks?: unknown } | undefined)?.asks;
+    const after = (to.budget as { asks?: unknown } | undefined)?.asks;
+    const limit = typeof after === "number" && typeof before === "number" && after > before ? Math.max(row.limit, after) : row.limit;
+    if (typeof bound !== "number") return `The amended workflow can ask more questions than the bound can count, under the run's configuration, and the run has an asks limit of ${limit}: it is not asked for (spec/attention.md "\`asks\` at run time").`;
+    if (bound > limit) return `The amended workflow can ask ${bound} questions under the run's configuration, above the run's asks limit of ${limit}: it is not asked for, as a run with that bound would not start (attention_above_asks).`;
+    const now = h.facts ? boundUnder(h.facts, h.authorize) : undefined;
+    const grows = typeof now === "number" ? bound - now : bound;
+    // What is left under the limit it would have: an approval raises the limit before the reservation moves.
+    const left = limit - row.settled - row.reserved;
+    if (grows > 0 && grows > left - 1) return `The amended workflow can ask ${grows} more questions than the run's program can now, and the run has ${Math.max(left, 0)} left of its asks, one of which this request would take: it is not asked for (attention_above_asks).`;
+    return undefined;
   }
 
   /**
@@ -556,14 +608,15 @@ export class Planner {
       // A running program is what a sub-program that applies a pattern runs as, and nothing else: one given for a
       // sub-program that applies none would run in place of what the lead wrote.
       const unasked = running !== undefined && !!result?.program && applications(result.program).length === 0;
-      const unrun = result?.ok && result.program && !misnamed && !unasked ? subprogramNotRunYet(result.program, h.parent, h.modules, running?.program) : [];
+      const unrun = result?.ok && result.program && !misnamed && !unasked ? subprogramNotRunYet(result.program, h.parent, h.modules, running?.program, h.lock) : [];
       // 0.6: under an envelope with `shapes` the check names the shape the sub-program applies, and only that admits it.
       const parentWf = Object.hasOwn(h.parent.defs, h.workflow) ? h.parent.defs[h.workflow] : undefined;
       const shapes = parentWf?.kind === "workflow" ? shapesOf(parentWf.envelope) : undefined;
       const unshaped = result?.ok && !misnamed && !unasked && !unrun.length ? shapeProblem(shapes, result.shape) : undefined;
-      // 0.7: a sub-program whose workflow runs a stage or a report (a shape's, through its expansion) is admitted only
-      // with its attention facts, which label its reports: the checker must give them, of its workflow.
-      const labelled = !!(result?.ok && result.program && result.workflow && isProgram07OrLater(h.parent) && holdsAttention(running?.program ?? result.program, result.workflow));
+      // 0.7: every sub-program of a parent of 0.7 is admitted only with its attention facts: they label its stages and
+      // reports (a shape's, through its expansion), tag its waits and give what its admission reserves of the run's
+      // `asks`. The checker must give them, of its workflow.
+      const labelled = !!(result?.ok && result.program && result.workflow && isProgram07OrLater(h.parent));
       const facts = labelled && result!.attention?.workflow === result!.workflow ? result!.attention : undefined;
       const unlabelled = labelled && !facts;
       const stopped =
@@ -580,7 +633,7 @@ export class Planner {
                 : unshaped !== undefined
                   ? failedDiagnostic({ failed: unshaped })
                   : unlabelled
-                    ? failedDiagnostic({ failed: "the checker gave no attention facts of a sub-program whose workflow runs a stage or a report" })
+                    ? failedDiagnostic({ failed: "the checker gave no attention facts of a sub-program of a parent of 0.7" })
                     : undefined;
       const r = stopped ? undefined : result;
       // The errors come first: they are what the lead must act on, and a long list is cut at its end.
@@ -614,12 +667,36 @@ export class Planner {
       // 0.7: its attention facts, stored with it and named by its admission, which its run reads and never asks again.
       const labels = facts ? stored(facts) : undefined;
       const a: Admission = { ...record, command: `${h.plan}/program/${number}`, hash: r!.hash!, base: String(input["base"]), artifact: refOf(sha256Of(bytes)), workflow: r!.workflow!, ...(runs ? { running: { hash: runs.hash, artifact: refOf(sha256Of(runs.bytes)) } } : {}), ...(r!.shape ? { shape: { pattern: r!.shape.pattern, module: r!.shape.module } } : {}), ...(labels ? { attention: labels.digest } : {}) };
+      // 0.7: under a run with an `asks` limit, what the admission reserves of it (spec/attention.md "Sub-programs and
+      // amendments"; D4 of slice B3): the sub-program's declared `asks`, else its static total, plus the effect sites
+      // the run's configuration hands to a person and its total does not count. One whose count is unbounded fits in
+      // no room (E1706, dimension `asks`); one that does not fit what is left is refused by the admission below.
+      const claim = facts ? reservationOf(facts, h.authorize) : undefined;
+      if (Object.hasOwn(room.left, ASKS) && typeof claim !== "number") {
+        return refuse([
+          {
+            code: "MDT-E1706",
+            severity: "error",
+            message: `${a.workflow} can ask more questions than the bound can count, under the run's configuration, and the run has ${String(room.left[ASKS])} left of its asks (spec/attention.md "Sub-programs and amendments").`,
+            path: `/defs/${a.workflow}`,
+            facts: { dimension: ASKS, asked: null, total: "unbounded", left: room.left[ASKS] ?? null },
+          },
+        ]);
+      }
       try {
-        const admitted = await h.journal.admitProgram(h.runId, h.fence, a, wf?.kind === "workflow" ? wf.budget : undefined, digest("request", { kind: "program", request: { plan: a.plan, number, hash: a.hash } }), async (tx) => {
-          await h.artifacts.put(h.scope, bytes, PROGRAM_MEDIA_TYPE, tx);
-          if (runs) await h.artifacts.put(h.scope, runs.bytes, RUNNING_PROGRAM_MEDIA_TYPE, tx);
-          if (labels) await h.artifacts.put(h.scope, labels.bytes, ATTENTION_MEDIA_TYPE, tx);
-        });
+        const admitted = await h.journal.admitProgram(
+          h.runId,
+          h.fence,
+          a,
+          wf?.kind === "workflow" ? wf.budget : undefined,
+          digest("request", { kind: "program", request: { plan: a.plan, number, hash: a.hash } }),
+          async (tx) => {
+            await h.artifacts.put(h.scope, bytes, PROGRAM_MEDIA_TYPE, tx);
+            if (runs) await h.artifacts.put(h.scope, runs.bytes, RUNNING_PROGRAM_MEDIA_TYPE, tx);
+            if (labels) await h.artifacts.put(h.scope, labels.bytes, ATTENTION_MEDIA_TYPE, tx);
+          },
+          typeof claim === "number" ? claim : undefined,
+        );
         return { admitted, sub };
       } catch (e) {
         // Something reserved what the check saw as left, between the check and the admission.
@@ -629,7 +706,10 @@ export class Planner {
           {
             code: "MDT-E1706",
             severity: "error",
-            message: `${a.workflow} asks for ${String(f.requested)} ${String(f.dimension)}, and the envelope has ${String(f.available)} left.`,
+            message:
+              f.dimension === ASKS
+                ? `${a.workflow} can ask ${String(f.requested)} questions under the run's configuration, and the run has ${String(f.available)} left of its asks (spec/attention.md "Sub-programs and amendments").`
+                : `${a.workflow} asks for ${String(f.requested)} ${String(f.dimension)}, and the envelope has ${String(f.available)} left.`,
             path: `/defs/${a.workflow}/budget`,
             facts: { dimension: f.dimension ?? null, asked: f.requested ?? null, left: f.available ?? null },
           },
@@ -696,6 +776,8 @@ export interface ProgramReader {
   scope: ArtifactScope;
   parent: Program;
   modules: Modules;
+  /** The package's lock: for a parent of 0.7, the version of std.patterns a sub-program is linked with (`linkedSubprogram`). */
+  lock?: Lock;
 }
 
 /** A sub-program in flight, and the write capabilities its workflow holds while it runs. */
@@ -712,7 +794,7 @@ export interface ProgramInFlight {
 export async function programsInFlight(r: ProgramReader): Promise<ProgramInFlight[]> {
   const out: ProgramInFlight[] = [];
   for (const a of await r.journal.inFlight(r.runId)) {
-    const defs = subprogramLinked(await loadProgram(r, a), r.parent, r.modules).defs;
+    const defs = linkedSubprogram(await loadProgram(r, a), r.parent, r.modules, r.lock).defs;
     const wf = Object.hasOwn(defs, a.workflow) ? defs[a.workflow] : undefined;
     out.push({ admission: a, writes: wf?.kind === "workflow" ? wf.caps.flatMap((c) => capsOf(defs, c)).filter((c) => c.write) : [] });
   }

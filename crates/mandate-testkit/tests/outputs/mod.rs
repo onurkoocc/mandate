@@ -42,6 +42,7 @@ pub fn module_files_of(program: &str) -> Vec<String> {
             "fixtures/library/acme.connectors/connectors.mdt",
         ]
     } else if program == "fixtures/library/invoices.mdt"
+        || program == "fixtures/attention/invoices.mdt"
         || program == "fixtures/library/migrate-all.mdt"
     {
         // The acceptance program: its modules come from its libraries. The
@@ -67,7 +68,7 @@ pub fn module_files_of(program: &str) -> Vec<String> {
 /// and `--lock`, and its views): those its lock pins, besides the built-in
 /// `std.patterns`.
 pub fn library_dirs_of(program: &str) -> Vec<String> {
-    if program == "fixtures/library/invoices.mdt" {
+    if program == "fixtures/library/invoices.mdt" || program == "fixtures/attention/invoices.mdt" {
         vec!["fixtures/library/acme.connectors".to_owned()]
     } else {
         Vec::new()
@@ -86,6 +87,25 @@ pub fn library_modules_of(program: &str) -> Result<mandate_check::Modules, Strin
         }
     }
     Ok(out)
+}
+
+/// The libraries of `program` as the doors take them (`opts.libraries`): an
+/// array of `{ manifest, files }`, or none for a program that imports none.
+pub fn library_sources_js_of(program: &str) -> Result<Option<JsValue>, String> {
+    let mut out = Vec::new();
+    for source in crate::common::libraries_of(&library_dirs_of(program))? {
+        let files: JsObject = source
+            .files
+            .iter()
+            .map(|(path, text)| (path.as_str(), JsValue::from(text.as_str())))
+            .collect();
+        out.push(JsValue::Object(
+            JsObject::new()
+                .with("manifest", source.manifest.as_str())
+                .with("files", files),
+        ));
+    }
+    Ok((!out.is_empty()).then_some(JsValue::Array(out)))
 }
 
 /// `lockFileOf` in `compiler/test/helpers.ts`: `<name>.lock.json` beside the

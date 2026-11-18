@@ -30,11 +30,27 @@ export interface TickHooks {
   drive(runId: string): Promise<RunRow>;
 }
 
-/** An open wait of a run: a `commands` row in state `waiting`. */
+/** An open wait of a run: a `commands` row in state `waiting`, and (0.7) the sub-program it was asked in, if any. */
 interface OpenWait {
   command: string;
   kind: string;
   request: Obj;
+  inside: string | null;
+}
+
+/**
+ * The escalation of the review at `command` is a question (spec/attention.md "Counting"): counted, in the caller's
+ * transaction that escalates it, against the reservation of the sub-program it was asked in (`inside`) or the run's
+ * own. Whether the run's `asks` are exhausted: then nothing is counted, one `asks_exhausted` is written, and the
+ * escalation is not made: the review expires, every open item declined by nobody. A run without an `asks` limit (every
+ * run of 0.1 to 0.6) counts nothing, and is never refused.
+ */
+export async function escalationRefused(journal: Journal, tx: Tx, run: RunRow, command: string, inside: unknown): Promise<boolean> {
+  const program = typeof inside === "string" ? inside : undefined;
+  const out = await journal.countAsk(tx, run, program !== undefined ? { from: "program", program } : { from: "parent" });
+  if (!out) return false;
+  await journal.event(tx, run.run_id, "asks_exhausted", { command, kind: "review", limit: out.limit, settled: out.settled, ...(program !== undefined ? { inside: program } : {}) });
+  return true;
 }
 
 /** The kinds of wait a deadline ends. An input asks without a deadline, and a timer is no row of its own. */
@@ -55,8 +71,8 @@ async function lastMoved(q: Pick<Tx, "query">, runId: string): Promise<number> {
 }
 
 async function openWaits(q: Pick<Tx, "query">, runId: string): Promise<OpenWait[]> {
-  const rows = await q.query<Row>("select command_id, kind, result from commands where run_id = $1 and state = 'waiting' order by command_id", [runId]);
-  return rows.map((r) => ({ command: String(r["command_id"]), kind: String(r["kind"]), request: isObj((r["result"] ?? null) as Value) ? (r["result"] as Obj) : {} }));
+  const rows = await q.query<Row>("select command_id, kind, result, inside from commands where run_id = $1 and state = 'waiting' order by command_id", [runId]);
+  return rows.map((r) => ({ command: String(r["command_id"]), kind: String(r["kind"]), request: isObj((r["result"] ?? null) as Value) ? (r["result"] as Obj) : {}, inside: typeof r["inside"] === "string" ? r["inside"] : null }));
 }
 
 /** What a tick of the run would do now: the waits past their deadline, and whether the run is to be driven anyway. */
@@ -126,7 +142,8 @@ export async function tickOpenWaits(rt: { db: Db; journal: Journal; adapters: Pi
       if (!q || typeof deadline !== "number" || typeof ms !== "number" || now < deadline) continue;
       const role = String(req["role"]);
       const to = req["escalate_to"];
-      if (typeof to === "string" && to !== role && req["escalated"] === undefined) {
+      // The escalation is counted against `asks` here; past them it is not made, and the review expires below.
+      if (typeof to === "string" && to !== role && req["escalated"] === undefined && !(await escalationRefused(rt.journal, tx, locked, w.command, w.inside))) {
         const next: Obj = { ...req, role: to, deadline: now + ms, escalated: { from: role, at: now } };
         const [hit] = await tx.query<Row>("update commands set result = $3 where run_id = $1 and command_id = $2 and state = 'waiting' returning command_id", [runId, w.command, JSON.stringify(next)]);
         if (!hit) continue;

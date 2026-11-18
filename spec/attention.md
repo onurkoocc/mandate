@@ -17,7 +17,7 @@ best-effort basis.
 | Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | the compiler's part implemented (RL1); the runtime's gates not implemented yet |
 | `stage`: grammar, IR, printer; E1901, E1902 | RL2 | read and checked by the compiler since RL2; the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
 | `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3 (E1705 for `owner` since RL5); the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
-| `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`); the runtime refuses a package that declares `asks` (`unsupported_language`) until its slice B3 |
+| `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`), and run since B3 |
 | The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
 | `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | the compiler's part implemented but for E1909, which follows: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication. The runtime refuses `owner`, `role_classes` and `promotion` at load (`unsupported_language`) until its slices B4 and B6 |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented but for the acceptance fixture: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program` (RL6); the acceptance fixture not written yet |
@@ -26,7 +26,7 @@ best-effort basis.
 | The card of a 0.7 program | RP2 | not implemented yet |
 | The MCP tools of 0.7 (`mcp_tools`); a native `mandate mcp` | RP3, RP4, B9 | the door `mcp_tools` and its data exist (RP3); neither server uses it yet, and the native server is not implemented yet |
 | Stages and reports at run time; the stored facts and `facts_mismatch` | B2 | not implemented yet |
-| `asks` at run time; the bound under the runtime's configuration and `attention_above_asks`; `asks_exhausted` | B3 | not implemented yet |
+| `asks` at run time; the bound under the runtime's configuration and `attention_above_asks`; `asks_exhausted` | B3 | implemented (`runtime/src/asks.ts`, the count in `Journal.openWait`; the hook `runtime/test/asks-hook.ts` and the test of the sources in `runtime/test/asks.test.ts`) |
 | Masking and `known` labels; a role's view of a 0.7 run; `WatchRun`; `ListWaits`; `program_started` and `program_ended` | B4 | not implemented yet |
 | `mandate watch`, `mandate waits`, `mandate decide` | B5 | not implemented yet |
 | Card approval of a workflow with an `owner`; the `promote` decision and the ladder; `mandate promote` | B6 | not implemented yet |
@@ -901,7 +901,7 @@ the repository pins.
 | `report` | S2, addressed | `{node, command, role, title, fields: [{name, value, class, known, type}]}` |
 | `program_started` | S2 | `{plan, number, command, workflow, shape?}` |
 | `program_ended` | S2 | `{plan, number, ok}` |
-| `asks_exhausted` | S1 | `{command, kind, limit, settled, inside?}` |
+| `asks_exhausted` | S1 | `{command, kind, limit, settled, inside?}`: the question's command and kind, the run's `asks` limit and what it had settled, and the sub-program it was asked in |
 | `promotion_accepted` | S0 | `{decision, member, role, key, from: {run, mode}, to}`, asked of the owner role |
 
 - **No reclassification.** No event of 0.1 to 0.6 changes class: that would
@@ -947,41 +947,140 @@ on does not change what that run shows, masks or counts.
   caller's `--limit asks=N` taken together as every other limit is
   (`minLimits`): with only the declared value, that value; with both, the
   smaller; with only the caller's, the caller's. It is kept as a row `asks` of
-  the run's budget. With neither, the run has no `asks` limit and no such row,
+  the run's budget (`budgets`: its `limit_value` the limit, its `settled` the
+  questions asked). With neither, the run has no `asks` limit and no such row,
   nothing is refused for it, and the attention view says that no bound is
-  declared.
+  declared. A caller's `asks` limit for a package of 0.1 to 0.6, whose runs
+  count no questions, refuses the start (`unsupported_limit`); a run of 0.1 to
+  0.6 never has the row.
+- **`asks` and the other dimensions.** `asks` is no dimension of the cost
+  algebra: no command's cost or reservation holds it, a delegation's budget
+  does not name it, and `costDims` leaves it out. It is a dimension of the
+  run's budget wherever the runtime walks those rows: the view's budget table
+  and the envelope's remainder (with the envelope's declared `asks`), a
+  lead's `room.left`, `raise-limits`, an amendment that raises the
+  envelope's `asks` (the limit rises to it, as every raised dimension does),
+  and `run_accepted`'s and `limits_raised`'s `limits`.
 - **At the start**, when a limit applies, the bound under the runtime's
   configuration ([above](#effects-and-the-runtimes-configuration)) is compared
-  with it, and a bound above it refuses the start (`attention_above_asks`).
+  with it, and a bound above it, or an unbounded one, refuses the start
+  (`attention_above_asks`) before anything is written. Such a run is not
+  started with less than its bound reserved: a caller's `--limit asks=N`
+  below the bound refuses the start, and does not cut the run's questions
+  short (the questions a card promises are all asked, or the run does not
+  start). An effect site is handed to a person by the configuration when `StartRun`'s `authorize` names
+  its effect `by: human`, its facts' row says `counted: false`, and it is no
+  batch commit step; the configuration is fixed at the start and stored with
+  the run, so this is known before the run, and holds inside its
+  sub-programs too.
+- **The run's own reservation.** With a limit, the start reserves the bound
+  under the configuration for the run's own program's questions (a
+  `reservations` row of dimension `asks` under the command `/defs/<workflow>`).
+  A question of the run's own program is counted against it, and is refused
+  when it has none left; sub-programs and a lead's amendment requests come out
+  of what is left of the run's `asks`, so that they never use up the
+  questions the card promised the run's own program:
+  `room.left.asks = limit − the run's own reservation − the reservations of
+  sub-programs in flight − what ended sub-programs and amendment requests
+  settled`, which is the budget row's `limit − settled − reserved`.
 - **Counting.** A question is counted when its wait opens, in the transaction
   that holds the run's lock and opens it, after the check for an existing
-  row: a wait the journal already holds is not counted again. Outside a
-  sub-program, it is counted when `settled + 1 ≤ limit`; inside one, it comes
-  out of the sub-program's reservation. A review's escalation is counted in
-  the transaction that escalates it.
+  row: a wait the journal already holds is not counted again, so two drivers
+  of one run count it once. The budget row's `settled` takes one more, and the
+  reservation it is counted against one less, in that transaction: a crash
+  before it commits counts nothing and opens nothing, and one after it finds
+  the wait. Inside a sub-program it comes out of the sub-program's
+  reservation; a lead's amendment request out of what is left. A review's
+  escalation is counted in the transaction that escalates it, against the
+  reservation of the program it was asked in.
+- **Site tags.** Every wait the runtime opens for a person in a run of 0.7
+  records in its `wait_opened` its static site, `site: {kind, path, wait}`:
+  its kind of the closed list, the IR path of its construct in the program
+  that runs it (a function's site under `/defs/f/…`, a contract's under
+  `/defs/C/…`, a sub-program's in its own program), and the wait in its
+  static form. The owner's gate of an effect is the `governance` row of the
+  effect's path, whichever suffix it has; an authorization by a role is the
+  effect's row (a change set member's, or the set's), a `questions` row when
+  the static total counts it, else its `effects` row, `counted: false`, which
+  the configuration must hand to a person; a lead's amendment request is the
+  `plans` row of its `plan`, by its path and its wait. A wait asked in a sub-program records the sub-program's command in
+  its `commands` row (`inside`).
+- **The `on budget_exceeded` handler.** Its questions, and the pause it falls
+  back to, are not counted against `asks` and recur once per episode: their
+  tags carry `only: "budget_exceeded"`.
 - **When it is exhausted.** The question is not asked. Its command is
   recorded as failed with `Rejected(asks_exhausted)`, and one
-  `asks_exhausted` event is written. What follows is the site's own outcome of
-  a refusal, and nothing passes on its own:
-  - a review's open items are declined;
+  `asks_exhausted` event is written; no `wait_opened`, no `review_requested`,
+  no `amendment_requested`, so no role is told of a question (the roles with
+  `outcomes` and the owner role are told of the `asks_exhausted`, S1). What
+  follows is the site's own outcome of a refusal, and nothing passes on its
+  own:
+  - a review's open items are declined, by nobody;
   - a review's escalation is not made, and the review expires: every open
     item is declined, by nobody;
-  - a lead's amendment request is refused to the lead;
+  - a lead's amendment request is refused to the lead (`declined`, with the
+    reason `asks_exhausted`);
   - any other question fails its step with `Rejected(asks_exhausted)`, which
-    an `on error` handler may handle: a `human.approve` criterion is unmet,
-    and an effect is not authorized and not committed.
-- **Sub-programs.** An admission reserves the sub-program's declared `asks`,
-  or its static total ([above](#sub-programs-and-amendments)); under an
-  envelope without `asks`, nothing.
+    an `on error` handler may handle: a `human.approve` criterion is unmet
+    (its evidence says `exhausted`), an effect is not authorized and not
+    committed, a change set is not approved and nothing of it is committed.
+- **Sub-programs.** Under a run with an `asks` limit, an admission reserves the
+  sub-program's declared `asks`, or its static total
+  ([above](#sub-programs-and-amendments)), plus the effect sites the run's
+  configuration hands to a person that its static total does not count, out
+  of what is left (`program_admitted`'s `reservation.asks`); one that does not
+  fit, or whose count is unbounded, is refused as E1706 with dimension
+  `asks`. The compiler's E1706 in the lead's check holds only the declared
+  `asks` or the static total to `room.left.asks`: it does not see what the
+  runtime's configuration adds. So a sub-program the lead's check passed can
+  still be refused at its admission, by the runtime, as E1706 with dimension
+  `asks` (at `/defs/<workflow>/budget`, `asked` the reservation under the
+  configuration, `left` what is left), and nothing of it runs. Without a
+  limit, nothing. Every sub-program of a parent of 0.7 has
+  its facts stored at its admission. Its reservation is released when it ends,
+  succeeded or failed, with what it did not use. The admission is one
+  transaction: a crash before it commits admits nothing, and one after it
+  finds the admission and reserves nothing again.
+- **An amendment.** An amendment request of a run of 0.7 carries the facts of
+  the amended workflow, stored with it. Under an `asks` limit, one whose bound
+  under the configuration is above the limit it would have, or whose growth
+  over the run's own bound does not fit what is left with the request itself,
+  is refused to the lead (`attention_above_asks`), and nobody is asked. The
+  limit it would have is the run's, raised to the amended envelope's `asks`
+  when the amendment raises that, and what is left is counted under it, as
+  the approval raises the limit before the reservation moves. Once
+  approved, the facts in force are the amended workflow's
+  (`package_amended`'s `attention`): the run, its resumes and its replays read
+  them from then on, and the run's own reservation moves by what its bound
+  moves by. A sub-program in flight keeps its reservation.
+- **An approval whose room was taken.** Between the request and the
+  decision, another lead of the run (a sibling in a `par`) may admit a
+  sub-program out of what was left. The approval checks the growth again, in
+  the transaction that takes it, under the run's lock; the reservation is
+  never moved by less than the growth. If the growth no longer fits, the
+  approval does not take effect: the amendment's command ends failed with
+  `Rejected(attention_above_asks)`, the decision is recorded
+  (`decision_received`), and nothing else is written: no `package_amended`,
+  and the run keeps its package, its limits, its facts and its reservation.
+  The decider's call returns the run as it is then; the lead is told
+  `amended: false` with `declined: { reason: "attention_above_asks", by:
+  null }`, as for an amendment that ended unanswered.
 - **A raise.** `raise-limits` may raise a run's `asks` up to the declared
-  value, and no further. Raising the bound by asking someone would spend the
+  value, and no further (`above_program_budget`). A run whose workflow
+  declares none was limited by its caller alone, and its limit is raised as
+  any other such limit is. Raising the bound by asking someone would spend the
   very thing that ran out, so nothing asks for it.
-- **The bound holds.** A test hook asserts, for every test run of a 0.7
-  package, that the questions it settled are at most the bound under the
-  run's configuration: the static total in its stored facts, plus what its
-  configuration adds ([above](#effects-and-the-runtimes-configuration)); a
-  test of the sources asserts that every place the runtime
-  opens a wait carries a site tag the compiler's algebra knows.
+- **Per role.** Only the total is held. The runtime's policy can hand a
+  counted authorization to another role, so the count of a role is not.
+- **The bound holds.** A test hook (`runtime/test/asks-hook.ts`) asserts, for
+  every test run of a 0.7 package, that every wait it opened carries a tag of
+  the closed list naming a row of the facts in force where it stands, and
+  that the questions it settled are at most the bound under the run's
+  configuration: its own program's at most the bound of its facts, each
+  sub-program's at most its own facts' (D5: a lead's amendment requests are
+  bounded only by the run's `asks`); a test of the sources asserts that every
+  place the runtime opens a wait carries a site tag the compiler's algebra
+  knows.
 - Replay counts nothing: it reads what the journal holds.
 
 ### Masking and how a value is known
@@ -1244,6 +1343,11 @@ webhook whose URL is not `https` among them, is refused by name,
 | index `commands_waiting` on `commands (run_id) where state = 'waiting'` | `ListWaits` |
 | manifest `attention` | The stored facts |
 | manifest `promotion` | The promotion the run started under |
+| `budgets` row `asks` | A run's `asks` limit (`limit_value`) and the questions it asked (`settled`); none without a limit |
+| `reservations` rows of dimension `asks` | The run's own reservation, under `/defs/<workflow>`, and each sub-program's, under its command: what each may still ask |
+| `wait_opened.site` | A wait's static site, `{kind, path, wait, only?}` (0.7 runs only) |
+| `commands.inside` of a wait | The sub-program a wait of a 0.7 run was asked in, against whose reservation its review's escalation is counted |
+| `package_amended.attention`, an amendment request's `attention` | The digest of the amended workflow's facts, stored with the request and in force once it is approved |
 
 Every new table is in the test's list of tables, and every rule holds on
 PGlite and on PostgreSQL.
@@ -1253,7 +1357,9 @@ PGlite and on PostgreSQL.
 | Name | When |
 |---|---|
 | `facts_mismatch` | At a resume or a replay: the stored facts are missing or do not hash to the manifest's |
-| `attention_above_asks` | At a start, when an `asks` limit applies: the bound under the runtime's configuration (the static total plus the effect sites its configuration hands to a person) is above it |
+| `attention_above_asks` | At a start, when an `asks` limit applies: the bound under the runtime's configuration (the static total plus the effect sites its configuration hands to a person) is above it, or unbounded. Also a diagnostic to a lead whose amendment request would raise the run's bound above its limit, or beyond what is left; and the reason an approved amendment ends refused (`Rejected(attention_above_asks)`) when its growth no longer fits what is left at the approval |
+| `unsupported_limit` | At a start: a caller's `asks` limit for a package of 0.1 to 0.6, whose runs count no questions |
+| `unknown_role` | In a run of 0.7, an approval whose `role:` or `distinct_from:` names no role definition (a value of the run would choose who decides); the run stops for a person, and nobody is asked |
 | `bad_promotion` | `promote`: the from-run did not succeed, is not of the same package and workflow, or is not in the mode directly below `to` |
 | `Rejected(asks_exhausted)` | A question past the run's `asks`, or past a sub-program's reservation; with the event `asks_exhausted` |
 | `unapproved_envelope` | At a start: a workflow with an `owner` whose package no member of the owner role has approved |
@@ -1357,7 +1463,7 @@ ERP and mailbox, in Docker and in CI:
 | `design` → `read_only` → `live` | Signed promotions; a `live` start without one is `unpromoted`; the shadow diff's digest is checked |
 | It finishes seeing only S0 to S2 | The people read only `watchRun` for their role, `listWaits({ member })` and the HTML pages, and decide with `mandate decide` |
 | Notifications carry only S0 and S1 | The file adapter's lines |
-| `asks` holds | At most 2 questions settled; with `--limit asks=1` the escalation is `asks_exhausted` and the items are declined |
+| `asks` holds | At most 2 questions settled; with `--limit asks=1` the invoice run is refused at start with `attention_above_asks`; `asks_exhausted` is shown through the test hook when the facts under-report |
 | A missed deadline escalates | The simulated clock passes one day, `mandate tick`, `review_escalated`, and `finance_lead` decides; in a second run both deadlines pass |
 | Replay gives the same result | `replayRun` equals the live result |
 | A mutation for every new rule | Every 0.7 code has a case; each run-time refusal has a test (`asks_exhausted`, `unpromoted`, `facts_mismatch`, a forged `promote` or one from the wrong role, `bad_notification_channel`) |

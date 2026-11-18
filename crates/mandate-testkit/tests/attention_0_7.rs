@@ -50,6 +50,11 @@ fn the_facts_of_every_workflow_of_0_7() {
         let text = common::read_source(p).unwrap();
         let files = outputs::module_files_of(p);
         let modules = common::modules_of(&files, &files).unwrap();
+        // The libraries and the lock of a program that has them, as its check
+        // reads them.
+        let library_sources = common::libraries_of(&outputs::library_dirs_of(p)).unwrap();
+        let libraries_js = outputs::library_sources_js_of(p).unwrap();
+        let lock = outputs::lock_file_of(p).map(|l| mandate_testkit::read_json(&l).unwrap());
         let ir = load(&text, kind_of(p)).program.expect("it loads");
         let mut row = JsObject::new();
         let defs = ir.get("defs").and_then(Value::as_object).unwrap();
@@ -58,10 +63,17 @@ fn the_facts_of_every_workflow_of_0_7() {
                 continue;
             }
             let modules_js: JsObject = modules.iter().map(|(m, v)| (m, JsValue::from(v))).collect();
+            let mut opts = JsObject::new().with("modules", modules_js);
+            if let Some(l) = &libraries_js {
+                opts.insert("libraries", l.clone());
+            }
+            if let Some(l) = &lock {
+                opts.insert("lock", JsValue::from(l));
+            }
             let input: JsValue = JsObject::new()
                 .with("text", text.as_str())
                 .with("kind", kind_name(p))
-                .with("opts", JsObject::new().with("modules", modules_js))
+                .with("opts", opts)
                 .with("workflow", name)
                 .into();
             let input = parse(&stringify(&input).unwrap()).unwrap().value;
@@ -72,6 +84,8 @@ fn the_facts_of_every_workflow_of_0_7() {
                 kind_of(p),
                 &CheckOptions {
                     modules: Some(&modules),
+                    lock: lock.as_ref(),
+                    libraries: (!library_sources.is_empty()).then_some(library_sources.as_slice()),
                     ..CheckOptions::default()
                 },
                 name,
@@ -88,6 +102,8 @@ fn the_facts_of_every_workflow_of_0_7() {
                 kind_of(p),
                 &CheckOptions {
                     modules: Some(&modules),
+                    lock: lock.as_ref(),
+                    libraries: (!library_sources.is_empty()).then_some(library_sources.as_slice()),
                     linked: true,
                     ..CheckOptions::default()
                 },
