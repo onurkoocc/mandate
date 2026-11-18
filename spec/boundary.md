@@ -1109,7 +1109,12 @@ audit view shows S0 to S4. There is no masking by data class in 0.5 (INV-20
 is a later release's). From 0.7, what a role is shown of a value in a run of
 0.7 is masked by the value's data class and the role's cap, and labelled
 ([`attention.md`](attention.md#masking-and-how-a-value-is-known)); a run of
-0.1 to 0.6 is shown as before.
+0.1 to 0.6 is shown as before. A role is not shown, masked, what it is asked
+or reported with a lock that sets its cap too low: such a package is refused
+at load, and such a sub-program at its admission (E1909). The mask is for a
+role that looks without being asked (a wait that asks no role is listed to
+every role the lock binds), for a value whose class the stored facts do not
+give, and for the text a lead wrote into a sub-program.
 
 **Events.** The class of every event type the runtime writes
 (`EVENT_CLASSES`). A test reads every place the runtime writes an event and

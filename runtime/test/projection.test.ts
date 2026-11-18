@@ -5,6 +5,11 @@
 // (those addressed to the role) and `programs`; `WatchRun` gives each event through a fixed allow-list of its fields;
 // `ListWaits` lists the open questions across runs. A run of 0.1 to 0.6 is shown as it always was.
 //
+// A package whose lock gives a role it asks or reports to less than what it shows that role is refused at load (E1909,
+// RL5b), and a lead's sub-program that would is refused at its admission. So the mask is tested where E1909 cannot see:
+// a role that looks without being asked (the observer, listed a wait that asks no role), a class that is not known
+// (the run's facts missing), and the text a lead wrote into a sub-program.
+//
 // Every rule holds on PGlite and on PostgreSQL (helpers.ts, MANDATE_TEST_DATABASE_URL).
 
 import { load, toMarkdown, type Lock } from "@mandate/bridge";
@@ -21,7 +26,7 @@ import { SimAgents, toolUse, type SimTurn } from "../src/sim.js";
 import { digest, type Obj, type Value } from "../src/values.js";
 import { auditDoc, roleDoc, runDoc, runView } from "../src/views.js";
 import { closeAll, planChecker, world, type World } from "./helpers.js";
-import { BUDGET, CAPS, finish, fixes, MODULE, planned, program as planProgram, run as runPlan, state, submit, type Turn } from "./planning.js";
+import { BUDGET, CAPS, finish, fixes, MODULE, planned, program as planProgram, refusals, run as runPlan, state, submit, type Turn } from "./planning.js";
 
 afterAll(closeAll);
 
@@ -98,6 +103,7 @@ use std.{human}
 
 role reviewer "Reviewer"
 role auditor  "Auditor"
+role observer "Observer"
 
 type Secret = Text classified confidential
 
@@ -126,19 +132,43 @@ workflow Both(name: Text) -> Int
   }
   1
 }
+
+/// Asks no role about a secret: ListWaits lists it to every role the lock binds, and E1909 compares it with none.
+workflow Anyone(name: Text, secret: Secret) -> Untrusted<Text>
+  caps   []
+  budget { time: 5m, steps: 4 }
+{
+  stage only "Ask anyone"
+  let a = human.ask("Is {secret} right for {name}?")
+  a
+}
 `;
+
+/** The command of Anyone's question. */
+const ANYONE = "/defs/Anyone/body/1/value";
 
 interface Person {
   member: string;
   key: EvidenceSigner;
 }
 
+/**
+ * Ana is the reviewer, Ben the auditor, and Cy the observer: a role the lock binds and no program asks or reports to,
+ * which looks at the run without being asked (its cap `internal` unless `classes` gives one).
+ */
 function people(classes?: Record<string, string>) {
   const ana: Person = { member: "ana", key: EvidenceSigner.generate() };
   const ben: Person = { member: "ben", key: EvidenceSigner.generate() };
-  const lock = { modules: {}, members: { ana: { keys: [ana.key.keyId] }, ben: { keys: [ben.key.keyId] } }, roles: { reviewer: ["ana"], auditor: ["ben"] }, ...(classes ? { role_classes: classes } : {}) } as unknown as Lock;
-  return { ana, ben, lock, keys: new TrustedKeys([ana.key.publicKey, ben.key.publicKey]) };
+  const cy: Person = { member: "cy", key: EvidenceSigner.generate() };
+  const lock = { modules: {}, members: { ana: { keys: [ana.key.keyId] }, ben: { keys: [ben.key.keyId] }, cy: { keys: [cy.key.keyId] } }, roles: { reviewer: ["ana"], auditor: ["ben"], observer: ["cy"] }, ...(classes ? { role_classes: classes } : {}) } as unknown as Lock;
+  return { ana, ben, cy, lock, keys: new TrustedKeys([ana.key.publicKey, ben.key.publicKey, cy.key.publicKey]) };
 }
+
+/**
+ * The caps SRC needs to load (E1909): it asks the reviewer about a confidential secret and reports it to the auditor,
+ * so a lock that gives either less is refused at load. The observer keeps `internal`.
+ */
+const CAPS07 = { reviewer: "confidential", auditor: "confidential" };
 
 let n = 0;
 async function answer(w: World, runId: string, who: Person, value: Value): Promise<RunRow> {
@@ -146,8 +176,9 @@ async function answer(w: World, runId: string, who: Person, value: Value): Promi
   return w.rt.submitInput(runId, { sender: "test", messageId: `m${++n}` }, { value, signed: signDecision(who.key, shown, { kind: "answer", member: who.member, payload: payloadOf.answer(value), at: new Date(w.adapters.clock.now()) }) });
 }
 
+/** A world of `src` (SRC unless given); a program of 0.7 under CAPS07 with `classes` over them, one of 0.6 under none. */
 async function masking(o: { classes?: Record<string, string>; src?: string } = {}) {
-  const who = people(o.classes);
+  const who = people(o.src === undefined || o.src.startsWith("mandate @ 0.7") ? { ...CAPS07, ...o.classes } : o.classes);
   const w = await world(o.src ?? SRC, { lock: who.lock, decisions: { keys: who.keys } });
   return { ...w, ...who };
 }
@@ -155,24 +186,44 @@ async function masking(o: { classes?: Record<string, string>; src?: string } = {
 const start = (w: World, runId: string, workflow = "Ask", input: Obj = { name: "ana", secret: MARK }, pkg = w.pkg): Promise<RunRow> => w.rt.startRun({ pkg, workflow, input, runId });
 
 describe("a role's view of a run of 0.7", () => {
-  it("masks the wait's question above the role's cap, labels it, and leaves the marker out of every place a role is shown it", async () => {
+  it("is refused at load when its lock gives a role it asks less than the class it is shown (E1909): nothing is run or asked", async () => {
+    const w = await masking({ classes: { reviewer: "internal" } });
+    await expect(start(w, "a")).rejects.toMatchObject({ code: "load_verification_failed", message: expect.stringContaining("MDT-E1909") });
+    expect(await w.db.query("select run_id from runs")).toEqual([]);
+    expect(await w.db.query("select command_id from commands")).toEqual([]);
+    expect(await w.rt.listWaits({ role: "reviewer" })).toEqual([]);
+  });
+
+  it("masks a wait no role is asked, listed to a role that looks without being asked, above its cap, labels it, and leaves the marker out of every place it is shown it", async () => {
     const w = await masking();
-    expect((await start(w, "a")).state).toBe("waiting");
-    const { view, program, modules } = await runView(w.rt, "a", { role: "reviewer" });
-    expect(view.waiting).toEqual({ kind: "input", command: "/defs/Ask/body/1/value", request: { role: "reviewer", question: { masked: true, class: "confidential", known: "plain" } } });
-    expect(JSON.stringify(view)).not.toContain(MARK);
-    const doc = toMarkdown(roleDoc(view, program, modules));
-    expect(doc).not.toContain(MARK);
-    expect(doc).toContain("Masked: its class is confidential");
-    // WatchRun and ListWaits, for the role asked and for every other.
-    for (const role of ["reviewer", "auditor"]) expect(JSON.stringify(await w.rt.watchRun("a", { role }))).not.toContain(MARK);
-    const waits = await w.rt.listWaits({ role: "reviewer" });
-    expect(waits.map((x) => [x.command, x.asked_of, x.stage, x.on_no_answer, x.shown])).toEqual([["/defs/Ask/body/1/value", "reviewer", "first", "waits", [{ name: "question", masked: true, class: "confidential", known: "plain" }]]]);
-    expect(JSON.stringify(await w.rt.listWaits({ member: "ana" }))).not.toContain(MARK);
+    expect((await start(w, "a", "Anyone")).state).toBe("waiting");
+    // ListWaits lists it to every role the lock binds, each masked by its own cap: the observer's is internal.
+    const waits = await w.rt.listWaits({ role: "observer" });
+    expect(waits.map((x) => [x.command, x.asked_of, x.role, x.stage, x.on_no_answer, x.shown])).toEqual([[ANYONE, null, "observer", "only", "waits", [{ name: "question", masked: true, class: "confidential", known: "plain" }]]]);
+    expect(JSON.stringify(waits)).not.toContain(MARK);
+    expect(JSON.stringify(await w.rt.listWaits({ member: "cy" }))).not.toContain(MARK);
+    // The same wait, to a role whose cap is its class, as it is.
+    expect((await w.rt.listWaits({ role: "reviewer" })).map((x) => x.shown)).toEqual([[{ name: "question", masked: false, value: `Is ${MARK} right for ana?`, class: "confidential", known: "plain" }]]);
+    expect(JSON.stringify(await w.rt.listWaits({ member: "ana" }))).toContain(MARK);
+    // A role's view and WatchRun show a wait only to the role it is asked of: of this one, to none, nothing but that the run waits.
+    for (const role of ["reviewer", "auditor", "observer"]) {
+      const { view, program, modules } = await runView(w.rt, "a", { role });
+      expect(view.waiting, role).toBeNull();
+      expect(JSON.stringify(view), role).not.toContain(MARK);
+      expect(toMarkdown(roleDoc(view, program, modules)), role).not.toContain(MARK);
+      expect(JSON.stringify(await w.rt.watchRun("a", { role })), role).not.toContain(MARK);
+    }
+    // Of a wait asked of the reviewer, the roles that look without being asked are given nothing, on every path.
+    expect((await start(w, "b")).state).toBe("waiting");
+    for (const role of ["auditor", "observer"]) {
+      const { view, program, modules } = await runView(w.rt, "b", { role });
+      expect(view.waiting, role).toBeNull();
+      for (const text of [JSON.stringify(view), toMarkdown(roleDoc(view, program, modules)), JSON.stringify(await w.rt.watchRun("b", { role })), JSON.stringify((await w.rt.listWaits({ role })).filter((x) => x.run === "b"))]) expect(text, role).not.toContain(MARK);
+    }
     // The audit audience sees the value, labelled.
     const audit = await w.rt.watchRun("a", { audit: true });
     const opened = audit.events.find((e) => e.type === "wait_opened")!;
-    expect(opened.data!["request"]).toEqual({ role: "reviewer", question: `Is ${MARK} right for ana?` });
+    expect((opened.data!["request"] as Obj)["question"]).toBe(`Is ${MARK} right for ana?`);
     expect(JSON.stringify((await runView(w.rt, "a", { audit: true })).view)).toContain(MARK);
   });
 
@@ -188,38 +239,44 @@ describe("a role's view of a run of 0.7", () => {
     const w = await masking({ classes: { reviewer: "restricted" } });
     await start(w, "a");
     await w.db.query("delete from artifacts where run_id = $1 and media_type = $2", ["a", ATTENTION_MEDIA_TYPE]);
-    const { view } = await runView(w.rt, "a", { role: "reviewer" });
-    expect((view.waiting as Obj)["request"]).toEqual({ role: "reviewer", question: { masked: true, class: "restricted", known: "external" } });
+    const { view, program, modules } = await runView(w.rt, "a", { role: "reviewer" });
+    expect(view.waiting).toEqual({ kind: "input", command: "/defs/Ask/body/1/value", request: { role: "reviewer", question: { masked: true, class: "restricted", known: "external" } } });
+    expect(JSON.stringify(view)).not.toContain(MARK);
+    // The role's document says so, and holds nothing of the value.
+    const doc = toMarkdown(roleDoc(view, program, modules));
+    expect(doc).not.toContain(MARK);
+    expect(doc).toContain("Masked: its class is restricted");
     expect(JSON.stringify(await w.rt.listWaits({ role: "reviewer" }))).not.toContain(MARK);
     expect(JSON.stringify(await w.rt.watchRun("a", { role: "reviewer" }))).not.toContain(MARK);
   });
 
-  it("shows a report only to the role it is addressed to, each field masked by its own class, with the stages and the programs", async () => {
+  it("shows a report only to the role it is addressed to, each field labelled by its own class, with the stages and the programs", async () => {
+    // The auditor's cap is the class of the report's secret (else E1909 refuses the package): each field is shown, labelled.
     const w = await masking();
     await start(w, "a");
     await answer(w, "a", w.ana, "yes");
     const auditor = (await runView(w.rt, "a", { role: "auditor" })).view;
     expect(auditor.reports).toEqual([
-      expect.objectContaining({ title: "Told", fields: [{ name: "secret", type: "Secret", masked: true, class: "confidential", known: "plain" }, { name: "n", type: "Int", masked: false, value: 3, class: "public", known: "plain" }] }),
+      expect.objectContaining({ title: "Told", fields: [{ name: "secret", type: "Secret", masked: false, value: MARK, class: "confidential", known: "plain" }, { name: "n", type: "Int", masked: false, value: 3, class: "public", known: "plain" }] }),
     ]);
-    expect(JSON.stringify(auditor)).not.toContain(MARK);
     expect(auditor.stages).toEqual([
       expect.objectContaining({ stage: "first", title: "Ask about it", state: "done" }),
       expect.objectContaining({ stage: "second", title: "Ask anyone", state: "current", ended_at: null }),
     ]);
     expect(auditor.programs).toEqual({ started: 0, ended: 0 });
-    const reviewer = (await runView(w.rt, "a", { role: "reviewer" })).view;
-    expect(reviewer.reports).toEqual([]);
-    // WatchRun gives the report to the auditor alone, masked; the reviewer is not given it at all.
+    // A role the report is not to, the one asked and the one that looks without being asked, is not given it at all.
+    for (const role of ["reviewer", "observer"]) {
+      const { view, program, modules } = await runView(w.rt, "a", { role });
+      expect(view.reports, role).toEqual([]);
+      expect(view.stages, role).toEqual(auditor.stages);
+      const watched = await w.rt.watchRun("a", { role });
+      expect(watched.events.filter((e) => e.type === "report"), role).toEqual([]);
+      if (role === "observer") for (const text of [JSON.stringify(view), toMarkdown(roleDoc(view, program, modules)), JSON.stringify(watched)]) expect(text).not.toContain(MARK);
+    }
+    // WatchRun gives the report to the auditor alone.
     const told = (await w.rt.watchRun("a", { role: "auditor" })).events.filter((e) => e.type === "report");
     expect(told).toHaveLength(1);
-    expect(JSON.stringify(told)).not.toContain(MARK);
-    expect((await w.rt.watchRun("a", { role: "reviewer" })).events.filter((e) => e.type === "report")).toEqual([]);
-    // Once the auditor may be shown confidential, the field is shown.
-    const w2 = await masking({ classes: { auditor: "confidential" } });
-    await start(w2, "a");
-    await answer(w2, "a", w2.ana, "yes");
-    expect((await runView(w2.rt, "a", { role: "auditor" })).view.reports![0]!.fields[0]).toMatchObject({ value: MARK, class: "confidential" });
+    expect(JSON.stringify(told)).toContain(MARK);
   });
 });
 
@@ -239,7 +296,7 @@ describe("WatchRun", () => {
     expect(Object.keys(received.data!).sort()).toEqual(["command", "decision", "member", "role"]);
     // S3 and S4 are never given; S0 only where it was asked of the role.
     expect(all.events.every((e) => e.class !== "S3" && e.class !== "S4")).toBe(true);
-    expect((await w.rt.watchRun("a", { role: "auditor" })).events.filter((e) => e.class === "S0")).toEqual([]);
+    for (const role of ["auditor", "observer"]) expect((await w.rt.watchRun("a", { role })).events.filter((e) => e.class === "S0"), role).toEqual([]);
     // Pages of two, from the cursor each gives: the same events, in order.
     const paged: number[] = [];
     let next = 0;
@@ -259,16 +316,24 @@ describe("WatchRun", () => {
 
 describe("ListWaits", () => {
   it("lists a wait that asks no role once for each role the lock binds, masked by each one's cap", async () => {
-    const w = await masking({ classes: { auditor: "public" } });
+    const w = await masking({ classes: { observer: "public" } });
     await start(w, "a");
     await answer(w, "a", w.ana, "yes");
-    const forAuditor = await w.rt.listWaits({ role: "auditor" });
-    expect(forAuditor.map((x) => [x.command, x.asked_of, x.role, x.stage])).toEqual([["/defs/Ask/body/4/value", null, "auditor", "second"]]);
-    expect(forAuditor[0]!.shown).toEqual([{ name: "question", masked: false, value: "Anything else?", class: "public", known: "plain" }]);
+    for (const role of ["reviewer", "auditor", "observer"]) {
+      const listed = await w.rt.listWaits({ role });
+      expect(listed.map((x) => [x.command, x.asked_of, x.role, x.stage]), role).toEqual([["/defs/Ask/body/4/value", null, role, "second"]]);
+      expect(listed[0]!.shown, role).toEqual([{ name: "question", masked: false, value: "Anything else?", class: "public", known: "plain" }]);
+    }
     expect((await w.rt.listWaits({ member: "ana" })).map((x) => x.role)).toEqual(["reviewer"]);
+    expect((await w.rt.listWaits({ member: "cy" })).map((x) => x.role)).toEqual(["observer"]);
     expect(await w.rt.listWaits({ member: "nobody" })).toEqual([]);
-    expect(await w.rt.listWaits({ role: "auditor" }, { tenant: "another" })).toHaveLength(0);
-    expect(await w.rt.listWaits({ role: "auditor" }, { tenant: "default" })).toHaveLength(1);
+    expect(await w.rt.listWaits({ role: "observer" }, { tenant: "another" })).toHaveLength(0);
+    expect(await w.rt.listWaits({ role: "observer" }, { tenant: "default" })).toHaveLength(1);
+    // A wait that asks no role about the secret: to the observer (public) masked, to the reviewer (confidential) as it is.
+    await start(w, "s", "Anyone");
+    const secret = (role: string) => w.rt.listWaits({ role }).then((l) => l.find((x) => x.run === "s")!.shown);
+    expect(await secret("observer")).toEqual([{ name: "question", masked: true, class: "confidential", known: "plain" }]);
+    expect(await secret("reviewer")).toEqual([{ name: "question", masked: false, value: `Is ${MARK} right for ana?`, class: "confidential", known: "plain" }]);
   });
 
   it("lists every wait a par leaves open, and the waits of runs of two packages, each by its own lock", async () => {
@@ -277,12 +342,15 @@ describe("ListWaits", () => {
     const open = await w.rt.listWaits({ member: "ana" });
     expect(open.map((x) => x.role)).toEqual(["reviewer"]);
     expect((await w.rt.listWaits({ role: "auditor" })).map((x) => x.asked_of)).toEqual(["auditor"]);
-    // A second package of the same program, whose lock lets the reviewer be shown confidential.
-    const other = buildPackage(w.pkg.program, { ...w.lock, role_classes: { reviewer: "confidential" } } as unknown as Lock);
-    await start(w, "q", "Ask", { name: "ana", secret: MARK }, other);
-    const both = await w.rt.listWaits({ role: "reviewer" });
-    expect(both.map((x) => [x.run, x.package === other.hash])).toEqual([["p", false], ["q", true]]);
-    expect(JSON.stringify(both.find((x) => x.run === "q")!.shown)).toContain(MARK);
+    // A run of a wait that asks no role in the first package, and one in a second package of the same program, whose
+    // lock lets the observer be shown confidential (a lock that raises a cap passes E1909 as the first does).
+    const other = buildPackage(w.pkg.program, { ...w.lock, role_classes: { ...CAPS07, observer: "confidential" } } as unknown as Lock);
+    await start(w, "q", "Anyone");
+    await start(w, "r", "Anyone", { name: "ana", secret: MARK }, other);
+    const both = await w.rt.listWaits({ role: "observer" });
+    expect(both.map((x) => [x.run, x.package === other.hash])).toEqual([["q", false], ["r", true]]);
+    expect(JSON.stringify(both.find((x) => x.run === "q")!.shown)).not.toContain(MARK);
+    expect(JSON.stringify(both.find((x) => x.run === "r")!.shown)).toContain(MARK);
   });
 
   it("reads the open waits through the partial index commands_waiting", async () => {
@@ -366,6 +434,13 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(() => checker.close());
 
+/**
+ * PARENT whose lead receives an internal name (the most its model may), and whose pattern's stage and report carry
+ * `title`: a sub-program that applies it reports the reviewer slot what the model made of that name (internal).
+ */
+const leadSrc = (title: string): string =>
+  PARENT.replace("type Item = { name: Text }", "type Name = Text classified internal\n\ntype Item = { name: Name }").replace('stage ask "Ask about the item"', `stage ask "${title}"`).replace('report to reviewer "Asked"', `report to reviewer "${title} report"`);
+
 const programEvents = async (w: World, runId: string): Promise<Array<[string, Obj]>> =>
   (await w.rt.journal.events(runId)).filter((e) => e.type === "program_started" || e.type === "program_ended").map((e) => [e.type, e.data as Obj]);
 
@@ -403,8 +478,11 @@ describe("program_started and program_ended", () => {
 
   it("give what a lead wrote into its sub-program as a model's values of the class of what the lead received, masked by the role's cap, on each path", async () => {
     const TITLE = "made-up-title-marker";
-    // The lead receives an internal name (the most its model may); the stage and report titles of what it applies are its own.
-    const src = PARENT.replace("type Item = { name: Text }", "type Name = Text classified internal\n\ntype Item = { name: Name }").replace('stage ask "Ask about the item"', `stage ask "${TITLE}"`).replace('report to reviewer "Asked"', `report to reviewer "${TITLE} report"`);
+    // The lead receives an internal name (the most its model may); the stage and report titles of what it applies are its
+    // own. Its report's one field is public, so the admission's E1909 admits it for a role whose cap is public: what the
+    // lead wrote has no static class, and the mask is all that keeps it from that role.
+    const src = leadSrc(TITLE).replace("report to reviewer \"" + TITLE + " report\" { answer: out }", `report to reviewer "${TITLE} report" { asked: 1 }`);
+    expect(src).toContain("{ asked: 1 }");
     for (const [classes, hidden] of [[{ release_manager: "public" }, true], [undefined, false]] as const) {
       const w = await planned(checker, [submitting(APPLIED), finish("planned")], { src, ...(classes ? { lock: { role_classes: classes } } : {}) });
       const r = await runPlan(w, "lt");
@@ -414,6 +492,7 @@ describe("program_started and program_ended", () => {
       const watched = await w.rt.watchRun("lt", { role: "release_manager" }, { limit: 500 });
       const doc = toMarkdown(roleDoc(view, program, modules));
       for (const [where, text] of <Array<[string, string]>>[["view", JSON.stringify(view)], ["watchRun", JSON.stringify(watched)], ["document", doc]]) expect(text.includes(TITLE), `${where}, hidden ${hidden}`).toBe(!hidden);
+      expect(doc.includes("A report whose title is masked (internal)"), `document, hidden ${hidden}`).toBe(hidden);
       const as = (value: Value) => (hidden ? { masked: true, class: "internal", known: "model" } : { masked: false, value, class: "internal", known: "model" });
       expect(view.stages!.flatMap((s) => [s, ...(s.stages ?? [])]).find((s) => s.program)!.title).toEqual(as(TITLE));
       expect(view.reports![0]!.title).toEqual(as(`${TITLE} report`));
@@ -423,6 +502,23 @@ describe("program_started and program_ended", () => {
       // The audit audience is given them as the lead wrote them.
       expect(JSON.stringify((await w.rt.watchRun("lt", { audit: true }, { limit: 500 })).events)).toContain(TITLE);
     }
+  });
+
+  it("are not written for a sub-program its admission refuses because it would report a role data above its class (E1909): nothing of it is run or asked", async () => {
+    const TITLE = "made-up-title-marker";
+    // The same sub-program, whose report gives the reviewer slot what the model made of the internal name.
+    const w = await planned(checker, [submitting(APPLIED), finish("planned")], { src: leadSrc(TITLE), lock: { role_classes: { release_manager: "public" } } });
+    const r = await runPlan(w, "lr");
+    expect(r.state, state(r)).toBe("succeeded");
+    expect(w.told[0]).toMatchObject({ admitted: false });
+    expect(refusals(w.told[0]).map((d) => (d as unknown[])[0])).toEqual(["MDT-E1909"]);
+    expect(refusals(w.told[0])[0]).toEqual(["MDT-E1909", expect.any(String), expect.objectContaining({ role: "release_manager", class: "public", shown: "internal", site: "report" })]);
+    const events = await w.rt.journal.events("lr");
+    expect(events.map((e) => e.type).filter((t) => ["program_admitted", "program_started", "program_ended", "stage_started", "report", "wait_opened"].includes(t))).toEqual([]);
+    expect(await programEvents(w, "lr")).toEqual([]);
+    expect(events.some((e) => e.type === "command_dispatched" && String((e.data as Obj)["command"]).startsWith(`${PLAN}/program/`))).toBe(false);
+    expect(await w.rt.listWaits({ role: "release_manager" })).toEqual([]);
+    expect(JSON.stringify(events)).not.toContain(TITLE);
   });
 
   it("are not written for a sub-program of a parent before 0.7", async () => {
@@ -448,26 +544,56 @@ describe("a digest over a wait's values", () => {
   });
 
   it("is absent from every path for a role the wait is masked from, so trying values against it finds none; a role it is not masked from gets it", async () => {
-    // The probe: the subject is the digest of the request, whose every part but the secret the role is shown.
-    const subjectOf = (c: string): string => digest("request", { kind: "input", request: { role: "reviewer", question: `Is ${c} right for ana?` } });
+    // A wait that asks no role, listed to the observer (cap internal), which looks without being asked, and to the
+    // reviewer (cap confidential). The probe: the subject is the digest of the request, whose every part but the secret
+    // the role is shown.
+    const subjectOf = (c: string): string => digest("request", { kind: "input", request: { question: `Is ${c} right for ana?` } });
     const guesses = ["red", "green", "blue", "black"];
-    const ASKED = "/defs/Ask/body/1/value";
-    for (const [classes, hidden] of [[undefined, true], [{ reviewer: "confidential" }, false]] as const) {
-      const w = await masking(classes ? { classes } : {});
-      await start(w, "g", "Ask", { name: "ana", secret: "blue" });
+    const ASKED = ANYONE;
+    for (const [role, hidden] of [["observer", true], ["reviewer", false]] as const) {
+      const w = await masking();
+      const who = role === "observer" ? w.cy : w.ana;
+      await start(w, "g", "Anyone", { name: "ana", secret: "blue" });
       const [row] = await w.db.query<{ request_digest: string }>("select request_digest from commands where run_id = $1 and command_id = $2", ["g", ASKED]);
       expect(row!.request_digest).toBe(subjectOf("blue"));
       // ListWaits.
-      const item = (await w.rt.listWaits({ role: "reviewer" }))[0]!;
+      const item = (await w.rt.listWaits({ role }))[0]!;
       expect(item.subject).toEqual(hidden ? { masked: true, class: "confidential", known: "plain" } : subjectOf("blue"));
       expect(guesses.filter((c) => JSON.stringify(item).includes(subjectOf(c)))).toEqual(hidden ? [] : ["blue"]);
-      // The role view and WatchRun, once the reviewer answered: the decision's id, whose record holds the subject.
+      // Once a member of the role answered: a decision on a wait that asks no role names no role, and is given to no
+      // role's view or WatchRun, so neither holds its id (whose record holds the subject) for the role to try values on.
+      expect((await answer(w, "g", who, "yes")).state).toBe("succeeded");
+      const id = String((await w.rt.watchRun("g", { audit: true }, { limit: 500 })).events.find((e) => e.type === "input_received")!.data!["decision"]);
+      const view = (await runView(w.rt, "g", { role })).view;
+      const watched = await w.rt.watchRun("g", { role }, { limit: 500 });
+      expect(view.decisions.filter((d) => d.about === ASKED)).toEqual([]);
+      expect(watched.events.filter((e) => e.type === "input_received")).toEqual([]);
+      for (const [where, text] of <Array<[string, string]>>[["view", JSON.stringify(view)], ["watchRun", JSON.stringify(watched)]]) {
+        expect(text.includes(id), `${where}, ${role}`).toBe(false);
+        expect(guesses.filter((c) => text.includes(subjectOf(c))), where).toEqual([]);
+      }
+    }
+  });
+
+  it("masks the id of a decision on a wait asked of a role, on every path, once the run's facts no longer give the wait's class; and gives it while they do", async () => {
+    // The reviewer's cap is the class of the question (else E1909 refuses the package), so what masks the id from the
+    // reviewer is a class that is not known: the facts are deleted after the run, which a resume would stop at.
+    const subjectOf = (c: string): string => digest("request", { kind: "input", request: { role: "reviewer", question: `Is ${c} right for ana?` } });
+    const guesses = ["red", "green", "blue", "black"];
+    const ASKED = "/defs/Ask/body/1/value";
+    for (const hidden of [true, false]) {
+      const w = await masking();
+      await start(w, "g", "Ask", { name: "ana", secret: "blue" });
+      const [row] = await w.db.query<{ request_digest: string }>("select request_digest from commands where run_id = $1 and command_id = $2", ["g", ASKED]);
+      expect(row!.request_digest).toBe(subjectOf("blue"));
       await answer(w, "g", w.ana, "yes");
+      if (hidden) await w.db.query("delete from artifacts where run_id = $1 and media_type = $2", ["g", ATTENTION_MEDIA_TYPE]);
       const id = String((await w.rt.watchRun("g", { audit: true }, { limit: 500 })).events.find((e) => e.type === "input_received")!.data!["decision"]);
       const view = (await runView(w.rt, "g", { role: "reviewer" })).view;
       const watched = await w.rt.watchRun("g", { role: "reviewer" }, { limit: 500 });
-      expect(view.decisions.find((d) => d.about === ASKED)!.decision_id).toEqual(hidden ? { masked: true, class: "confidential", known: "plain" } : id);
-      expect(watched.events.find((e) => e.type === "input_received")!.data!["decision"]).toEqual(hidden ? { masked: true, class: "confidential", known: "plain" } : id);
+      const label = { masked: true, class: "restricted", known: "external" };
+      expect(view.decisions.find((d) => d.about === ASKED)!.decision_id).toEqual(hidden ? label : id);
+      expect(watched.events.find((e) => e.type === "input_received")!.data!["decision"]).toEqual(hidden ? label : id);
       for (const [where, text] of <Array<[string, string]>>[["view", JSON.stringify(view)], ["watchRun", JSON.stringify(watched)]]) {
         expect(text.includes(id), `${where}, hidden ${hidden}`).toBe(!hidden);
         expect(guesses.filter((c) => text.includes(subjectOf(c))), where).toEqual([]);
@@ -558,8 +684,11 @@ workflow Waive(items: List<Item>) -> Batch
 `;
 
   it("masks the evidence a waiver is and the failure it waives with the review's values from a role they are masked from, and gives them to one they are not", async () => {
-    for (const [classes, hidden] of [[{ reviewer: "public" }, true], [undefined, false]] as const) {
-      const who = people(classes);
+    // The review is asked of the reviewer, whose cap (internal) is the class of its values: a lock that gives it less is
+    // refused at load (E1909), and no other role is shown a review. What masks them from the reviewer is a class that is
+    // not known: the run's stored facts are missing.
+    for (const hidden of [true, false]) {
+      const who = people();
       const agents = new SimAgents().on("Matcher.match", (req) => {
         const it = req.args[0] as Obj;
         return { ok: it["no"] === "I1" ? { ...it, total: 11 } : it, cost: { steps: 1 } };
@@ -573,9 +702,12 @@ workflow Waive(items: List<Item>) -> Batch
       expect((await w.rt.decideReview("v", { sender: "test", messageId: `m${++n}` }, { signed, ...d })).state).toBe("succeeded");
       const [waiver] = (await runView(w.rt, "v")).view.reviews![0]!.items[1]!.waivers;
       expect(waiver).toMatchObject({ criterion: "totals", signature_valid: true });
+      if (hidden) await w.db.query("delete from artifacts where run_id = $1 and media_type = $2", ["v", ATTENTION_MEDIA_TYPE]);
       const { view, program, modules } = await runView(w.rt, "v", { role: "reviewer" });
       const masked = view.reviews![0]!.items[1]!.waivers[0]!;
-      const label = { masked: true, class: "internal", known: "model" };
+      const label = { masked: true, class: "restricted", known: "external" };
+      // The audit audience is given them whatever the facts.
+      if (hidden) expect((await runView(w.rt, "v", { audit: true })).view.reviews![0]!.items[1]!.waivers[0]).toMatchObject({ failed: waiver!.failed, waiver: waiver!.waiver });
       expect([masked.failed, masked.waiver], `hidden ${hidden}`).toEqual(hidden ? [label, label] : [waiver!.failed, waiver!.waiver]);
       expect(masked.signature_valid).toBe(true);
       // The same ids, by the same rule, in WatchRun.
@@ -583,7 +715,7 @@ workflow Waive(items: List<Item>) -> Batch
       expect([watched.data!["failed"], watched.data!["waiver"]]).toEqual(hidden ? [label, label] : [waiver!.failed, waiver!.waiver]);
       // And the role's document prints them so: a masked one as masked, a shown one as its first 19 characters.
       const doc = toMarkdown(roleDoc(view, program, modules));
-      expect(doc).toContain(hidden ? "totals: masked (internal) waived by masked (internal)" : `totals: ${waiver!.failed.slice(0, 19)} waived by ${waiver!.waiver.slice(0, 19)}`);
+      expect(doc).toContain(hidden ? "totals: masked (restricted) waived by masked (restricted)" : `totals: ${waiver!.failed.slice(0, 19)} waived by ${waiver!.waiver.slice(0, 19)}`);
       for (const [where, text] of <Array<[string, string]>>[["view", JSON.stringify(view)], ["watchRun", JSON.stringify(watched)], ["document", doc]]) {
         expect([waiver!.failed, waiver!.waiver].some((id) => text.includes(id.slice(0, 19))), `${where}, hidden ${hidden}`).toBe(!hidden);
       }

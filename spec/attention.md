@@ -19,7 +19,7 @@ best-effort basis.
 | `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3 (E1705 for `owner` since RL5); the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`), and run since B3 |
 | The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
-| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5, RL5b | the compiler's part implemented: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication; E1909 (RL5b, `crates/mandate-check/src/role_shown.rs`), with a lock and, at a sub-program's admission, with its parent's `role_classes`. The runtime runs all three: `role_classes` since B4 (the caps of the masking), `owner` and `promotion` since B6 (card approval and the ladder); nothing of them is refused at load any more |
+| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5, RL5b | the compiler's part implemented: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication; E1909 (RL5b, `crates/mandate-check/src/role_shown.rs`), with a lock and, at a sub-program's admission, with its parent's `role_classes`. The runtime runs all three: `role_classes` since B4 (the caps of the masking), `owner` and `promotion` since B6 (card approval and the ladder). Since RL5b the runtime's check at load, which is given the package's lock, refuses a package whose program shows a role data above its class (`load_verification_failed`, E1909), and the admission of a lead's sub-program refuses one that would (E1909 in what the lead is told); the mask is for what E1909 cannot see ([Masking](#masking-and-how-a-value-is-known)) |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented but for the acceptance fixture: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program` (RL6); the acceptance fixture not written yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | not implemented yet |
@@ -739,10 +739,13 @@ reported at the lock's root, since the older schemas close their objects.
   (`shown`), and each report field's class, with the class of the role it
   is asked of, escalated to or reported to. Data above that class is E1909:
   nobody can decide on what they may not see. Raising the role's class in the
-  lock, or taking the field away, mends it. The runtime masks as well
-  ([below](#masking-and-how-a-value-is-known)): the mask is a second line, not
-  the first. The check computes no class of its own: it reads the facts
-  ([The facts](#the-facts)), the very classes the mask reads, and compares
+  lock, or taking the field away, mends it. The runtime's check at load
+  is given the lock, so the runtime does not run such a package
+  (`load_verification_failed`), nor admit such a sub-program. The runtime
+  masks as well ([below](#masking-and-how-a-value-is-known)), for what the
+  check cannot see: the mask is a second line, not the first. The check
+  computes no class of its own: it reads the facts ([The facts](#the-facts)),
+  the very classes the mask reads, and compares
   every row that names a role:
   - every question site ([What each question records](#what-each-question-records))
     and every row of the `on budget_exceeded` handler: an approval a `verify`
@@ -1161,6 +1164,14 @@ The runtime calls this type `ShownValue` (`runtime/src/mask.ts`), because
 
 - **The cap.** A role's cap is `role_classes[role]` in the package's lock, or
   `internal` when the lock does not name the role.
+- **What it is for.** With a lock, a program that shows a role it asks,
+  escalates to or reports to data above that role's cap does not load, and a
+  sub-program that would is not admitted (E1909). So a value of a wait a role
+  is asked, or of a report field addressed to it, is masked from it only where
+  its class is not known. The mask keeps values from a role where the check
+  compares nothing: a wait that asks no role, listed to every role the lock
+  binds (`ListWaits`, `mandate decide`); a value whose class the stored facts
+  do not give; and the text a lead wrote into a sub-program.
 - **The mask.** For a value at a node whose facts give class `c`: when `c` is
   above the cap, it is `{ masked: true }` with no value; otherwise
   `{ masked: false, value }`. Either way it carries `class` and `known`. The
@@ -1273,7 +1284,10 @@ in this run".
 - A member is resolved to roles through each package's own lock.
 - A wait that asks no role is listed to every role the package's lock binds,
   with `asked_of: null`.
-- What it shows is masked and labelled, by the role it is asked of.
+- What it shows is masked and labelled, by the role it is listed to: the
+  role it is asked of, or, for a wait that asks none, each role in turn. E1909
+  compares no row that names no role, so this is where a role whose cap is
+  below the wait's class is shown it masked.
 - Each item also names `role`, the role it is listed to (for a wait that asks
   none, each role in turn), and each value of `shown` its `name`, where it
   stands in the wait's request. A member of the request that is the
