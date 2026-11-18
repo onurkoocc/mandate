@@ -975,6 +975,7 @@ mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER
 mandate drift --module MODEL --component NAME=DIR… [--json]
 mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [--name PREFIX] [--harness-tokens N]
 mandate connector pin <program> [--lock FILE] [--config FILE] [--module FILE]… [--libraries DIR]
+mandate promote <run> --to read_only|live --key FILE [--member NAME] [--yes]
 ```
 
 `review` decides a 0.6 review wait and `connector pin` writes the schema
@@ -1029,7 +1030,10 @@ envelope, `agents`, separated by commas, and for a package of 0.7 `asks`,
 a whole number of questions ([`attention.md`](attention.md#asks-at-run-time);
 for an earlier package it is refused, `unsupported_limit`). `approve-envelope` signs a
 package's envelope so that its runs may start
-([`envelope.md`](envelope.md#approving-an-envelope)). `amend` is the
+([`envelope.md`](envelope.md#approving-an-envelope)); for a package of 0.7
+also one whose workflow has an `owner`. `promote` is that owner's promotion
+of a 0.7 workflow up the ladder `design`, `read_only`, `live`
+([`attention.md`](attention.md#promotion)). `amend` is the
 owner's decision on an amendment a lead asked for: `status` shows who
 asks, both package hashes, each line of the envelope that changes and the
 lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
