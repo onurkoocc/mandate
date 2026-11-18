@@ -111,11 +111,7 @@ fn door(name: &'static str, input: JObj) -> Result<JsValue, Fail> {
 
 /// [`door`], where a refusal of the door that says what is missing (`refusal_is_the_tools`) is the
 /// tool's error, which the caller can read and act on, not an internal failure of the server.
-fn door_with(
-    name: &'static str,
-    input: JObj,
-    refusal_is_the_tools: bool,
-) -> Result<JsValue, Fail> {
+fn door_with(name: &'static str, input: JObj, refusal_is_the_tools: bool) -> Result<JsValue, Fail> {
     let value = request_value(&J::Obj(input), 2).map_err(|problem| {
         internal(format!(
             "the Rust compiler failed on {name} (unrepresentable): {problem}"
