@@ -32,7 +32,7 @@ import { isObj, type Obj, type Value } from "../src/values.js";
 import { world as egressWorld, type World as EgressWorld } from "./egress-world.js";
 import { declaredErp, declaredMailbox, INJECTION, type FakeMcp } from "./fake-mcp.js";
 import { closeAll, world, type World } from "./helpers.js";
-import { lockUnder, relabel } from "./relabel.js";
+import { lockUnder, relabel, relabelled } from "./relabel.js";
 
 afterAll(closeAll);
 
@@ -464,7 +464,10 @@ describe("the live run of the acceptance program, through the egress proxy", () 
       expect(verified.filter((e) => !e.valid)).toEqual([]);
 
       // ── what the card states, and what the run did within it ──
-      const c = card(w.pkg.program, "MatchInvoices", { lock: w.lock, modules: libraryModules() })!;
+      // The card of a program of 0.7 is made from a check that has the libraries the lock pins, and a lock that keeps its schema: the
+      // fixture's, as the card test below reads it (the live lock has this run's keys and digests, which the card does not show).
+      const cardLock = lockUnder(JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock);
+      const c = card(w.pkg.program, "MatchInvoices", { lock: cardLock, modules: libraryModules(), libraries: [LIB] })!;
       const spend = c.spends.find((x) => x.dimension === "spend")!;
       expect([c.does.maps[0]!.max, spend.static, spend.envelope]).toEqual([60, 18_000_000, 20_000_000]);
       expect(libraryOf(c).reviews).toHaveLength(1);
@@ -643,16 +646,24 @@ describe("the acceptance program's card", () => {
     const r = check(SOURCE, "mdt", { libraries: [LIB], lock });
     expect(r.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(SOURCE.trimEnd().split("\n").length).toBeLessThan(50);
-    const md = toMarkdown(cardDoc(r.program!, "MatchInvoices", { lock, modules: libraryModules() })!);
+    const md = toMarkdown(cardDoc(r.program!, "MatchInvoices", { lock, modules: libraryModules(), libraries: [LIB] })!);
     for (const line of [
       "| map it | items | 60 | 6 | Matcher.match | — |",
       "Spend bound of map it: 60 × 0.30 USD = 18 USD ≤ 20 USD.",
-      "At most one batch decision to accountant (ana) about at most 60 items (those that failed only a criterion it may waive); if the deadline (1d) passes, to finance\\_lead (ben); if that passes too, every open item is declined. Nobody is asked about a single item, and nothing passes on its own.",
+      // A card of 0.7 tells the batch decision under "When it asks whom", in the rows of its table, not in the review's paragraph.
+      ...(relabelled()
+        ? [
+            "| accountant | ana | up to internal | outside any stage | Waive or decline the open items of the batch (Matched.totals may be waived); one decision about up to 60 items | 1 decision | 1 day from when it is asked | It goes to finance\\_lead, who has 1 day of their own |",
+            "| Every open item is declined, by nobody, and the run goes on with the items that were accepted |",
+          ]
+        : [
+            "At most one batch decision to accountant (ana) about at most 60 items (those that failed only a criterion it may waive); if the deadline (1d) passes, to finance\\_lead (ben); if that passes too, every open item is declined. Nobody is asked about a single item, and nothing passes on its own.",
+          ]),
       "Each accepted item is posted as its own action by erp.post\\_draft\\_invoice (a critical write tool, retry class reconcilable), authorized by policy, idempotent by invoice\\_no. Nobody is asked about one item.",
       "| Matched | totals | The total is within 2% of the order's | accountant (ana), finance\\_lead (ben) |",
     ])
       expect(md, line).toContain(line);
-    const c = card(r.program!, "MatchInvoices", { lock, modules: libraryModules() })!;
+    const c = card(r.program!, "MatchInvoices", { lock, modules: libraryModules(), libraries: [LIB] })!;
     expect(libraryOf(c).commits).toEqual([expect.objectContaining({ effect: POST, at_most: 60, key: "invoice_no", retry_class: "reconcilable" })]);
     expect(libraryOf(c).reviews).toEqual([expect.objectContaining({ role: { role: "accountant", members: ["ana"] }, escalate_to: { role: "finance_lead", members: ["ben"] }, at_most: 60, deadline_ms: DAY })]);
   });

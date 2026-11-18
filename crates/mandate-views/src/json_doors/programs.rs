@@ -2,21 +2,28 @@
 //! `program_doc`, `diff_doc`, `envelope_workflows`, `card`, `card_doc` and
 //! `acs_target`.
 
+use mandate_check::CheckOptions;
 use mandate_check::Locks;
 use mandate_check::Modules;
-use mandate_check::json_doors::DoorError;
 use mandate_check::json_doors::input::{Members, args};
+use mandate_check::json_doors::{DoorError, sources_of};
+use mandate_check::library::LibrarySource;
 use mandate_check::library::Version;
 use mandate_ir::{JsValue, Value};
 
 use super::documents::doc_js;
 use crate::card::CardView;
 
-/// The members of `card`'s and `card_doc`'s `opts`: `{ lock?, modules? }`.
-#[derive(Clone, Copy, Default)]
+/// The members of `card`'s and `card_doc`'s `opts`: `{ lock?, modules?,
+/// libraries? }`.
+#[derive(Default)]
 struct CardOpts<'a> {
     lock: Option<&'a Value>,
     modules: Option<&'a Modules>,
+    /// 0.7: the libraries the lock pins, with which the program is checked
+    /// for the attention part of the card (as the door `attention` takes
+    /// them).
+    libraries: Vec<LibrarySource>,
 }
 
 impl<'a> CardOpts<'a> {
@@ -27,8 +34,19 @@ impl<'a> CardOpts<'a> {
             Some(o) => CardOpts {
                 lock: o.opt_lock("lock"),
                 modules: o.opt_modules("modules")?,
+                libraries: sources_of(o, "libraries")?,
             },
         })
+    }
+
+    /// What the check of a program of 0.7 is given besides the lock.
+    fn check(&self) -> CheckOptions<'_> {
+        CheckOptions {
+            lock: self.lock,
+            modules: self.modules,
+            libraries: (!self.libraries.is_empty()).then_some(self.libraries.as_slice()),
+            ..CheckOptions::default()
+        }
     }
 }
 
@@ -177,7 +195,11 @@ pub(super) const CARD: &[&str] = &["program", "workflow", "opts"];
 /// envelope card of a workflow.
 ///
 /// Input: `{ program, workflow: string, opts?: { lock?: the lock as read,
-/// modules?: { <name>: program } } }`.
+/// modules?: { <name>: program }, libraries?: [ { manifest, files } ] } }`.
+/// `libraries` (0.7) are the libraries the lock pins, with which a program
+/// of 0.7 is checked for the attention part of its card, as the door
+/// `attention` takes them; without them a program that needs its libraries
+/// to check has no card (a `bad_input` that says what is missing).
 /// Output: `CardView`, or `null` for a workflow that has no envelope or is
 /// not there (the TypeScript gives `undefined`).
 pub(super) fn card(input: &Value) -> Result<JsValue, DoorError> {
@@ -185,9 +207,10 @@ pub(super) fn card(input: &Value) -> Result<JsValue, DoorError> {
     let program = a.program("program")?;
     let workflow = a.str("workflow")?;
     let o = CardOpts::of(a)?;
-    Ok(crate::card(program, workflow, o.lock, o.modules)
-        .as_ref()
-        .map_or(JsValue::Null, CardView::to_js))
+    match crate::card_given(program, workflow, o.lock, o.modules, &o.check()) {
+        Ok(card) => Ok(card.as_ref().map_or(JsValue::Null, CardView::to_js)),
+        Err(refused) => Err(DoorError::bad_input(refused.message)),
+    }
 }
 
 /// The parameters of [`card_doc`].
@@ -203,9 +226,10 @@ pub(super) fn card_doc(input: &Value) -> Result<JsValue, DoorError> {
     let program = a.program("program")?;
     let workflow = a.str("workflow")?;
     let o = CardOpts::of(a)?;
-    Ok(crate::card_doc(program, workflow, o.lock, o.modules)
-        .as_ref()
-        .map_or(JsValue::Null, doc_js))
+    match crate::card_doc_given(program, workflow, o.lock, o.modules, &o.check()) {
+        Ok(doc) => Ok(doc.as_ref().map_or(JsValue::Null, doc_js)),
+        Err(refused) => Err(DoorError::bad_input(refused.message)),
+    }
 }
 
 /// The parameters of [`acs_target`].

@@ -19,7 +19,7 @@
 import * as rust from "./rust.js";
 import type * as ts from "./ts.js";
 import type { Modules } from "@mandate/compiler";
-import type { Check06, CheckSubprogram06, Lock } from "./library.js";
+import type { Check06, CheckSubprogram06, Lock, LibrarySource } from "./library.js";
 
 // The names below are exported here and so are not taken from the reference compiler's `export *`.
 export * from "@mandate/compiler";
@@ -43,6 +43,15 @@ export type WithModules<F> = F extends (...args: infer A) => infer R ? (...args:
 
 /** `WithModules`, and the lock after the modules: the Rust's alone too (the architecture view names a pattern's library version from it). */
 export type WithModulesAndLock<F> = F extends (...args: infer A) => infer R ? (...args: [...A, modules?: Modules, lock?: Lock]) => R : never;
+
+/**
+ * `card` and `cardDoc`, with the libraries a lock pins among their options: the card of a program of 0.7 is made from a check
+ * that is given them, as the Rust's `view --card` gives them. A program of 0.7 that does not check with what the card is given
+ * has no card in any form: the call throws, and its message says what is missing.
+ */
+export type WithLibraries<F> = F extends (program: infer P, workflow: infer W, opts?: infer O) => infer R
+  ? (program: P, workflow: W, opts?: O & { libraries?: LibrarySource[] }) => R
+  : never;
 
 export const load = rust.load;
 /** `check`: with the libraries and the configuration of a program of 0.6, and its expanded program, the Rust's alone. */
@@ -96,8 +105,8 @@ export const cost: WithModules<typeof ts.cost> = rust.cost;
 export const programDoc: WithModules<typeof ts.programDoc> = rust.programDoc;
 export const diffDoc: WithModules<typeof ts.diffDoc> = rust.diffDoc;
 export const envelopeWorkflows = rust.envelopeWorkflows;
-export const card = rust.card;
-export const cardDoc = rust.cardDoc;
+export const card: WithLibraries<typeof ts.card> = rust.card;
+export const cardDoc: WithLibraries<typeof ts.cardDoc> = rust.cardDoc;
 export const acsTarget = rust.acsTarget;
 export const toMarkdown = rust.toMarkdown;
 export const toHtml = rust.toHtml;

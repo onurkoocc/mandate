@@ -19,7 +19,7 @@ use mandate_syntax::{kind_of, load};
 use mandate_testkit::read_json;
 use mandate_views::{
     architecture_with_lock, attention_doc, attention_program_doc, attention_view,
-    attention_views_js, authority_with, card, card_doc, cost_with, envelope_workflows,
+    attention_views_js, authority_with, card_doc_given, card_given, cost_with, envelope_workflows,
     has_attention, program_doc_given, to_html, to_markdown, workflow_names,
 };
 
@@ -342,12 +342,22 @@ fn outputs_of_text_more(
         // program has exactly one, with its modules and its lock.
         if let [name] = envelope_workflows(p).as_slice() {
             let missing = || format!("{name} has no card");
-            let view = card(p, name, lock.as_ref(), Some(&modules)).ok_or_else(missing)?;
+            // A program of 0.7 has its attention part made by a check that is
+            // given its own modules and libraries, as the document's is.
+            let opts = CheckOptions {
+                lock: lock.as_ref(),
+                ..check_with
+            };
+            let view = card_given(p, name, lock.as_ref(), Some(&modules), &opts)
+                .map_err(|e| e.message)?
+                .ok_or_else(missing)?;
             out.push((
                 "view --card --format json".to_owned(),
                 pretty(&view.to_js()),
             ));
-            let doc = card_doc(p, name, lock.as_ref(), Some(&modules)).ok_or_else(missing)?;
+            let doc = card_doc_given(p, name, lock.as_ref(), Some(&modules), &opts)
+                .map_err(|e| e.message)?
+                .ok_or_else(missing)?;
             out.push(("view --card --format md".to_owned(), to_markdown(&doc)));
             out.push(("view --card --format html".to_owned(), to_html(&doc)));
         }
@@ -365,6 +375,129 @@ fn outputs_of_text_more(
         }
     }
     Ok(out)
+}
+
+/// The outputs with each card reduced to what 0.7 does not change of the
+/// card of 0.6: a 0.7 card adds the stages, the table of questions, what it
+/// tells whom, the owner, the bound, the ladder and the shapes, and states a
+/// review's deadlines exactly, so a gate that compares a program relabelled
+/// 0.7, or given stages and reports, with the program it was keeps the rest
+/// and compares it byte for byte: in the JSON every member but `attention`,
+/// `ladder` and `shapes`, but for a review's `longest`; in the Markdown and the HTML the sections "What it
+/// can touch", "What it commits" and "The most it spends" (but for the
+/// notes on a review's wait), and the tables of waits, authorizations and
+/// criteria under "When it asks whom". `card_0_7.rs` and
+/// `vectors/golden/0.7.json` hold the card of 0.7.
+pub fn card_unchanged(outs: Vec<(String, String)>) -> Vec<(String, String)> {
+    outs.into_iter()
+        .map(|(n, t)| {
+            let t = match n.as_str() {
+                "view --card --format json" => card_json_unchanged(&t),
+                "view --card --format md" => card_sections_unchanged(&t, "## ", false),
+                "view --card --format html" => card_sections_unchanged(&t, "<h2>", true),
+                _ => t,
+            };
+            (n, t)
+        })
+        .collect()
+}
+
+/// The members of the card's JSON that 0.7 does not add (the text is the
+/// pretty one, a member a line at two spaces).
+fn card_json_unchanged(text: &str) -> String {
+    let mut kept: Vec<&str> = Vec::new();
+    let mut skipping = false;
+    for line in text.lines() {
+        let top = line.starts_with("  \"") || line.starts_with('}');
+        if top {
+            skipping = ["attention", "ladder", "shapes"]
+                .iter()
+                .any(|m| line.starts_with(&format!("  \"{m}\":")));
+        }
+        // A review's longest wait is told exactly in 0.7 (the spec's
+        // sentence on the 0.6 card's wording): the one member that differs.
+        if !skipping && !line.trim_start().starts_with("\"longest\":") {
+            kept.push(line);
+        }
+    }
+    // The member before a dropped one ends without its comma.
+    let mut out = kept.join(
+        "
+",
+    );
+    out = out.replace(
+        ",
+}", "
+}",
+    );
+    out
+}
+
+/// The sections of a rendered card that 0.7 leaves as 0.6 has them.
+/// `heading` begins a heading's line; a table of Markdown is its lines up to
+/// a blank one, one of HTML its lines up to `</tbody></table>`.
+fn card_sections_unchanged(text: &str, heading: &str, html: bool) -> String {
+    const KEPT: [&str; 4] = [
+        "What it can touch",
+        "What it commits",
+        "The most it spends",
+        "When it asks whom",
+    ];
+    // The heads of the tables of 0.6 under "When it asks whom".
+    const HEADS: [&str; 3] = [
+        "Wait | Role | In | Members",
+        "Effect | Authorized",
+        "Contract | Criterion",
+    ];
+    let heads_html = HEADS.map(|h| h.replace(" | ", "</th><th>"));
+    let mut out: Vec<String> = Vec::new();
+    let mut section: Option<&str> = None;
+    let mut in_table = false;
+    for line in text.lines() {
+        if line.starts_with(heading) {
+            section = KEPT.into_iter().find(|h| line.contains(h));
+            in_table = false;
+            if let Some(h) = section {
+                out.push(format!("[{h}]"));
+            }
+            continue;
+        }
+        let Some(h) = section else { continue };
+        if h != "When it asks whom" {
+            // The notes on a review's wait are 0.7's to say exactly, and
+            // the list of the names a note is about (an item of a list, and
+            // the blank lines between blocks) goes with them. Nothing else
+            // of these sections is a list.
+            let note = line.contains("The review of");
+            let item = line.starts_with("- ") || line.starts_with("<ul>");
+            if !note && !item && !line.is_empty() {
+                out.push(line.to_owned());
+            }
+            continue;
+        }
+        // Under "When it asks whom": the tables of waits, of authorizations
+        // and of criteria; the table of questions is the 0.7's.
+        if !in_table {
+            let starts = if html {
+                heads_html
+                    .iter()
+                    .any(|h| line.starts_with(&format!("<table><thead><tr><th>{h}")))
+            } else {
+                HEADS.iter().any(|h| line.starts_with(&format!("| {h}")))
+            };
+            in_table = starts;
+        }
+        if in_table {
+            out.push(line.to_owned());
+            if (html && line == "</tbody></table>") || (!html && line.is_empty()) {
+                in_table = false;
+            }
+        }
+    }
+    out.join(
+        "
+",
+    )
 }
 
 /// The outputs of a program without what its attention view adds: the
