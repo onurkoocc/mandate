@@ -81,8 +81,10 @@ fn section<'a>(doc: &'a Doc, heading: &str) -> Vec<&'a Block> {
         .iter()
         .position(|b| matches!(b, Block::H(h) if h == heading))
         .unwrap_or_else(|| panic!("no section {heading}"));
-    doc.blocks[at + 1..]
+    doc.blocks
         .iter()
+        .skip(at)
+        .skip(1)
         .take_while(|b| !matches!(b, Block::H(_)))
         .collect()
 }
@@ -267,7 +269,7 @@ fn the_owner_approves_the_card_with_the_members_the_lock_binds_and_the_ladder_fo
 #[test]
 fn without_a_lock_nobody_can_approve_and_no_ladder_is_asked() {
     let (p, m) = (program(INVOICES), library_modules());
-    let doc = card_doc(&p, "MatchInvoices", None, Some(&m)).unwrap_or_else(|| panic!("no card"));
+    let doc = card_doc(&p, "MatchInvoices", None, Some(&m)).unwrap();
     // The door is not given the libraries, but with no lock none is pinned,
     // so the check passes with the modules alone.
     assert!(!to_markdown(&doc).contains("incomplete"));
@@ -324,7 +326,10 @@ fn the_card_as_json_adds_the_attention_ladder_and_shapes_after_the_old_members()
     let lock = invoices_lock();
     let v = json(&text_of(&card_js_of(Some(&lock))));
     let keys: Vec<&str> = v.as_object().unwrap().iter().map(|(k, _)| k).collect();
-    assert_eq!(&keys[keys.len() - 3..], ["attention", "ladder", "shapes"]);
+    assert_eq!(
+        keys.split_at(keys.len().saturating_sub(3)).1,
+        ["attention", "ladder", "shapes"]
+    );
     let attention = v.get("attention").unwrap();
     assert_eq!(
         attention.get("kind").and_then(Value::as_str),
@@ -568,17 +573,7 @@ fn program_text_in_the_card_is_escaped_in_markdown_and_in_html() {
         "{html}"
     );
     // A table's rows keep their columns: a `|` in a cell is escaped.
-    let unescaped = |line: &str| {
-        let mut n = 0;
-        let mut prev = ' ';
-        for c in line.chars() {
-            if c == '|' && prev != '\\' {
-                n += 1;
-            }
-            prev = c;
-        }
-        n
-    };
+    let unescaped = |line: &str| line.replace("\\|", "").matches('|').count();
     let mut width = 0;
     for line in md.lines() {
         if !line.starts_with('|') {
