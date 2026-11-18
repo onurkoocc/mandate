@@ -1853,7 +1853,7 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
     } else {
         if !old_asks {
             out.push(Block::P(
-                "The steps it reaches that wait for a person by role, and where each is:"
+                "Where each human.approve, human.ask and escalation to a role of the steps it reaches is written. This table is not the full list of questions: that is the table of questions above."
                     .to_owned(),
             ));
         }

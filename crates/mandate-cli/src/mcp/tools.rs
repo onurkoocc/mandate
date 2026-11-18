@@ -106,6 +106,16 @@ fn answer_cap(name: &str, result: &Result<JsValue, mandate_doors::DoorError>) ->
 /// The output of the door `name` for `input`, as the bridge's `rustCall`
 /// gives it; its failures in the bridge's words.
 fn door(name: &'static str, input: JObj) -> Result<JsValue, Fail> {
+    door_with(name, input, false)
+}
+
+/// [`door`], where a refusal of the door that says what is missing (`refusal_is_the_tools`) is the
+/// tool's error, which the caller can read and act on, not an internal failure of the server.
+fn door_with(
+    name: &'static str,
+    input: JObj,
+    refusal_is_the_tools: bool,
+) -> Result<JsValue, Fail> {
     let value = request_value(&J::Obj(input), 2).map_err(|problem| {
         internal(format!(
             "the Rust compiler failed on {name} (unrepresentable): {problem}"
@@ -140,6 +150,7 @@ fn door(name: &'static str, input: JObj) -> Result<JsValue, Fail> {
         Ok(JsValue::Undefined) => Ok(JsValue::Null),
         Ok(out) => Ok(out),
         // The function the door stands for throws, with its message.
+        Err(e) if refusal_is_the_tools => Err(tool(e.message)),
         Err(e) => Err(internal(e.message)),
     }
 }
@@ -716,12 +727,17 @@ impl Server {
                     .with("modules", J::Js(JsValue::Object(linked)))
                     .with_some("lock", lock.filter(|l| l.truthy()).cloned())
                     .with_some("libraries", libraries.cloned());
-                let card = door(
+                // A card of 0.7 is refused, with what is missing, when the program does not check with what it
+                // is given; that is the tool's error, as the check before it. The check above has the same
+                // modules, lock and libraries, so it refuses first and this mapping is not reached by a call
+                // that arrives here; it stays so that the card never turns into an internal error of the server.
+                let card = door_with(
                     "card",
                     JObj::new()
                         .with("program", J::Js(p))
                         .with("workflow", J::Str(workflow.clone()))
                         .with("opts", J::Obj(opts)),
+                    true,
                 )?;
                 if card.is_null() {
                     return Err(Fail::Tool(JStr::concat(&[

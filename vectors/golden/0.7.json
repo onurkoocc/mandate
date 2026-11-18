@@ -91,8 +91,8 @@
     "view --against itself": "sha256:741983bc5d0f469e40bcf8ac1599e5de45d72f52a37ebdf16870f2167da2c61c",
     "sandbox": "sha256:521f0d31aebd174648c2c4b2d869eeec4c4e6a073bfbb53be705291e81de8699",
     "view --card --format json": "sha256:dbb2c32563f17d0b8df28f2a2d69841654131020a824e3b965a17a922578673f",
-    "view --card --format md": "sha256:2d79be6cfe749f0acf1e8f50486f8ead6d29b72c3559b472e55305a7c74b797e",
-    "view --card --format html": "sha256:68cf615a7d5282f3f12b0b89aeaea80041f2dc55d6f950e7f7f1415a7e1894f8"
+    "view --card --format md": "sha256:1e26881111888cc2f1e7c6ed877ed4006c2006051bf42bac821ffe058cf16d1d",
+    "view --card --format html": "sha256:45fb4c76302986c7f829909574912655f7eb7a91066bd0952395133bb776616b"
   },
   "fixtures/attention/minimal.mdt": {
     "check": "sha256:3a042d103225a768981a698f1c2fde31f8028b085036e0b0cd18c967f7c0483c",

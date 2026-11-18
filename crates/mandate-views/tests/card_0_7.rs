@@ -787,11 +787,32 @@ fn the_card_of_0_7_names_an_authorization_the_envelope_declares_for_an_effect_no
 
 #[test]
 fn an_authorization_with_a_row_in_the_table_of_questions_is_not_said_to_be_missing_from_it() {
-    // `Releasing` merges itself: its row is in the table of questions, and
-    // the card says nothing of an authorization outside it.
+    // `Planning` declares `approve git.merge by release_manager` in its envelope and
+    // merges in its own body: the authorization is in the table of approvals and its
+    // question is a row of the table of questions, so the card does not say it is
+    // outside the table.
     let p = program("fixtures/attention/asks.mdt");
-    let doc = card_doc(&p, "Releasing", None, None).unwrap();
+    let doc = card_doc(&p, "Planning", None, None).unwrap();
     let asks = section(&doc, "When it asks whom");
+    let not_sites = |b: &&Block| match b {
+        Block::Table { head, .. } => head.get(1).map(String::as_str) != Some("Sites"),
+        _ => true,
+    };
+    let kept: Vec<&Block> = asks.iter().copied().filter(not_sites).collect();
+    let approvals = rows(&kept, "Effect");
+    assert!(
+        approvals
+            .iter()
+            .any(|r| r[0] == "git.merge" && r[1] == "release_manager"),
+        "{approvals:?}"
+    );
+    let questions = rows(&asks, "Role");
+    assert!(
+        questions
+            .iter()
+            .any(|r| r[0] == "release_manager" && r[4].contains("git.merge")),
+        "{questions:?}"
+    );
     assert!(
         !notes(&asks)
             .iter()
