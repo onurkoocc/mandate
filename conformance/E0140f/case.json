@@ -1,0 +1,32 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0140f",
+  "kind": "compile",
+  "title": "A lock of 0.6 that asks for the promotion ladder is refused at its root: promotion is a field of format 0.7 alone, and the older schema closes the lock (the fixture's lock of 0.7 as one of 0.6).",
+  "spec": [
+    "spec/attention.md#lock-07",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/owner.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0140",
+        "path": "",
+        "facts": {
+          "keyword": "additionalProperties",
+          "params": {
+            "additionalProperty": "promotion"
+          }
+        }
+      }
+    ]
+  }
+}

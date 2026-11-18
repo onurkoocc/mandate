@@ -180,24 +180,138 @@ fn the_tool_list_is_the_doors_of_0_7_in_both_eras_and_the_server_adds_no_tool() 
     }
 }
 
+/// 0.7 (RP1): `project` with `view: "attention"` answers with the view as
+/// JSON, as every other view of `project` does (the Markdown and the HTML
+/// are the command's and the door's): the view of `workflow`, or the views
+/// of every workflow, exactly what `mandate view --attention --format json`
+/// prints, with the lock and the libraries the tool is given.
 #[test]
-fn the_attention_view_is_answered_by_name_until_it_has_a_door() {
+fn project_gives_the_attention_view_as_the_command_prints_it() {
+    for (program, lock) in [
+        (
+            "fixtures/attention/view.mdt",
+            "fixtures/attention/view.lock.json",
+        ),
+        // A lock that pins std.patterns 1.0.0: the view reads that version.
+        (
+            "fixtures/attention/batch.mdt",
+            "conformance/E1609c/mandate.lock.json",
+        ),
+        (
+            "fixtures/attention/batch.mdt",
+            "fixtures/attention/batch.lock.json",
+        ),
+    ] {
+        let mut io = MemoryIo::new();
+        for f in [program, lock] {
+            io.files.insert(f.to_owned(), read_bytes(f).unwrap());
+        }
+        let source = quoted(&read_text(program).unwrap());
+        let lock_json = mandate_ir::stringify(&mandate_ir::JsValue::from(
+            &mandate_ir::parse(&read_text(lock).unwrap()).unwrap().value,
+        ))
+        .unwrap();
+        // Every workflow: one object, as the command prints it (also for a
+        // program of one).
+        let code = serve_io(
+            &mut io,
+            &[
+                "view",
+                program,
+                "--attention",
+                "--format",
+                "json",
+                "--lock",
+                lock,
+            ],
+            b"",
+        );
+        assert_eq!(code, 0, "{program}: {}", io.err);
+        let all = io.out.clone();
+        let named = mandate_ir::parse(&all).unwrap().value;
+        let names: Vec<String> = named
+            .get("workflows")
+            .and_then(mandate_ir::Value::as_array)
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.get("workflow").and_then(mandate_ir::Value::as_str))
+            .map(str::to_owned)
+            .collect();
+        assert!(!names.is_empty());
+        let out = serve(&[call(
+            1,
+            "mandate.project",
+            &format!(r#"{{"source":{source},"lock":{lock_json},"view":"attention"}}"#),
+        )]);
+        assert!(
+            out[0].contains(&content(all.trim_end())),
+            "{program}: {}",
+            &out[0][..300.min(out[0].len())]
+        );
+        // One workflow: its view, as `--workflow` prints it.
+        for name in &names {
+            let code = serve_io(
+                &mut io,
+                &[
+                    "view",
+                    program,
+                    "--attention",
+                    "--workflow",
+                    name,
+                    "--format",
+                    "json",
+                    "--lock",
+                    lock,
+                ],
+                b"",
+            );
+            assert_eq!(code, 0, "{program} {name}: {}", io.err);
+            let one = io.out.clone();
+            let out = serve(&[call(
+                2,
+                "mandate.project",
+                &format!(
+                    r#"{{"source":{source},"lock":{lock_json},"view":"attention","workflow":"{name}"}}"#
+                ),
+            )]);
+            assert!(
+                out[0].contains(&content(one.trim_end())),
+                "{program} {name}: {}",
+                &out[0][..300.min(out[0].len())]
+            );
+        }
+    }
+}
+
+#[test]
+fn the_attention_view_is_refused_where_it_has_none() {
     let source = quoted(&read_text("fixtures/attention/minimal.mdt").unwrap());
     let out = serve(&[call(
         1,
         "mandate.project",
-        &format!(r#"{{"source":{source},"view":"attention"}}"#),
+        &format!(r#"{{"source":{source},"view":"attention","workflow":"Nothing"}}"#),
+    )]);
+    assert_eq!(
+        out,
+        [tool_error(1, "Nothing is not a workflow of this program")]
+    );
+    // A program before 0.7 has none.
+    let old = quoted(&read_text("fixtures/fixbug/fixbug.mdt").unwrap());
+    let out = serve(&[call(
+        2,
+        "mandate.project",
+        &format!(r#"{{"source":{old},"view":"attention"}}"#),
     )]);
     assert_eq!(
         out,
         [tool_error(
-            1,
-            "view attention is not available yet: the Rust compiler has no door attention"
+            2,
+            "view attention is of a program of language 0.7 or later"
         )]
     );
     // A program that does not check is said first, as for every view.
     let out = serve(&[call(
-        2,
+        3,
         "mandate.project",
         r#"{"source":"not a program","view":"attention"}"#,
     )]);

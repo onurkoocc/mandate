@@ -73,12 +73,17 @@
 //! - [`asks`]: the attention bound of a workflow of 0.7, the questions a run
 //!   can put to people ([`WorkflowBound`], [`SiteKind`]), E1906 to E1908.
 //!   Rust only.
+//! - [`owner`]: a workflow's `owner` of 0.7 ([`owner::owner_checks`]) and,
+//!   with a lock that asks for the promotion ladder, a workflow nobody could
+//!   promote ([`owner::promotion_checks`]): E1910. Rust only.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
 //!   `compiler/src/check/roles.ts`.
 //! - [`lock`]: the lock, `compiler/src/lock.ts`: [`Lock`], [`validate_lock`],
 //!   [`own`], [`packaged_lock`], [`per_call_bound`], [`model_tiers`] and the
 //!   checks that need it ([`lock_checks`], [`sandbox_lock_checks`],
-//!   [`role_lock_checks`], [`module_lock_checks`]), run by [`check()`] given a lock.
+//!   [`role_lock_checks`], [`module_lock_checks`], and in 0.7
+//!   [`attention_lock_checks`], E1911), run by [`check()`] given a lock;
+//!   [`Lock::role_class`] is the class a lock of any format gives a role.
 //! - [`managed_agents`]: the Managed Agents binding,
 //!   `compiler/src/target/managed-agents.ts` ([`agent_models`],
 //!   [`binding_checks`]).
@@ -193,6 +198,7 @@ pub mod lock;
 pub mod lock_diff;
 pub mod managed_agents;
 pub mod modules;
+pub mod owner;
 pub mod patch;
 pub mod path;
 pub mod posix;
@@ -243,8 +249,8 @@ pub use imports::{KnownModules, STD_MODULES, import_checks, import_checks_known}
 pub use js_number::js_to_number;
 pub use lock::{
     LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, Lock, ModelLock, PerCallBound, Tariff,
-    lock_at_least, lock_checks, model_tiers, module_lock_checks, own, packaged_lock,
-    per_call_bound, role_lock_checks, sandbox_lock_checks, validate_lock,
+    attention_lock_checks, lock_at_least, lock_checks, model_tiers, module_lock_checks, own,
+    packaged_lock, per_call_bound, role_lock_checks, sandbox_lock_checks, validate_lock,
 };
 pub use lock_diff::{LockLimitsDiff, lock_diff, lock_limits_diff};
 pub use managed_agents::{

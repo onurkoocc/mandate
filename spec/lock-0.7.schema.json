@@ -163,6 +163,16 @@
         "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
       }
     },
+    "role_classes": {
+      "type": "object",
+      "description": "The highest data class each role may be shown (spec/attention.md \"Lock 0.7\"); a role it does not name may be shown internal. Every role it names is one roles names (E0140).",
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+      "additionalProperties": { "$ref": "#/$defs/DataClass" }
+    },
+    "promotion": {
+      "description": "The promotion ladder (spec/attention.md \"Promotion\"): a run of read_only or live needs a signed promotion, and every workflow has an owner or an envelope (E1910).",
+      "enum": ["required"]
+    },
     "bindings": {
       "type": "object",
       "additionalProperties": false,

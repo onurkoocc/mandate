@@ -41,6 +41,11 @@ pub const UPDATE_0_7: &str = "MANDATE_UPDATE_0_7";
 /// with [`UPDATE_0_7`], as the other files of 0.7 are.
 pub const ATTENTION_0_7: &str = "vectors/attention-0.7/facts.json";
 
+/// The attention view of every workflow of every 0.7 program
+/// ([`PROGRAMS_0_7`]) in its three formats, as the door `attention` gives
+/// them: written with [`UPDATE_0_7`].
+pub const ATTENTION_VIEW_0_7: &str = "vectors/attention-0.7/view.json";
+
 /// The golden file of the 0.7 programs, relative to the repository root:
 /// the shape of [`GOLDEN_0_6`].
 pub const GOLDEN_0_7: &str = "vectors/golden/0.7.json";

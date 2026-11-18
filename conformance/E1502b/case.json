@@ -1,0 +1,45 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1502b",
+  "kind": "compile",
+  "title": "With a lock, a workflow's owner names a role that has a member in it: a role the lock binds nobody to is refused at the owner (a mutation: a role clerk defined and made Describe's owner).",
+  "spec": [
+    "spec/attention.md#owner",
+    "spec/envelope.md#the-lock-members-and-roles"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/owner.mdt",
+    "kind": "mdt"
+  },
+  "lock": "../../fixtures/attention/owner.lock.json",
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/clerk",
+      "value": {
+        "kind": "role",
+        "description": "Clerk"
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Describe/owner",
+      "value": "clerk"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1502",
+        "path": "/defs/Describe/owner",
+        "facts": {
+          "role": "clerk",
+          "lock": "mandate/lock/0.7"
+        }
+      }
+    ]
+  }
+}

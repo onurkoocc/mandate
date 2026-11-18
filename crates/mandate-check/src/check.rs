@@ -364,6 +364,9 @@ pub(crate) fn check_shown(
     // 0.7: `asks` only in a workflow's budget or an envelope's (E1908).
     // Rust only; nothing for an older program.
     diagnostics.extend(crate::asks::asks_checks(program, Some(&loaded.spans)));
+    // 0.7: no `owner` beside an envelope (E1910); what it names is a role
+    // site, held to E1501 above. Rust only; nothing for an older program.
+    diagnostics.extend(crate::owner::owner_checks(program, Some(&loaded.spans)));
     // Before 0.5, a method limit an imported 0.5 capability writes would be
     // read as none (E1804).
     let no_modules = Modules::new();
@@ -441,7 +444,17 @@ pub(crate) fn check_shown(
     {
         let pinned = libraries.as_ref().map(|l| &l.pinned);
         match lock_stage(lock, target, target_linked, &loaded.spans, modules, pinned) {
-            Ok(found) => diagnostics.extend(found.into_iter().map(back)),
+            Ok(found) => {
+                diagnostics.extend(found.into_iter().map(back));
+                // 0.7: with the ladder, every workflow has someone who can
+                // promote it (E1910), read on the program as written, so
+                // that one that applies a pattern is named at itself.
+                diagnostics.extend(crate::owner::promotion_checks(
+                    program,
+                    Lock::of(lock),
+                    Some(&loaded.spans),
+                ));
+            }
             Err(lock_diags) => diagnostics.extend(lock_diags),
         }
     }
@@ -549,6 +562,9 @@ fn lock_stage(
     );
     // 0.6: the connectors the package can call, bound (E1407, E1408).
     found.extend(connector_lock_checks(target, target_linked, view, modules));
+    // 0.7: a lock's `role_classes` and `promotion` with a program older
+    // than 0.7, whose runs would not apply them (E1911).
+    found.extend(crate::lock::attention_lock_checks(target, view));
     Ok(found)
 }
 

@@ -162,8 +162,8 @@ pub use hash::{
 pub use jcs::{canonicalize, compare_utf16, write_json_string};
 pub use js_value::{JsObject, JsValue, JsonText, stringify, stringify_pretty};
 pub use lock::{
-    LOCK_FIELDS_0_5, LOCK_FIELDS_0_6, LOCK_FORMAT, LOCK_FORMAT_0_6, LOCK_FORMAT_0_7, LOCK_FORMATS,
-    lock_at_least, lock_schema_diagnostics, validate_lock,
+    LOCK_FIELDS_0_5, LOCK_FIELDS_0_6, LOCK_FIELDS_0_7, LOCK_FORMAT, LOCK_FORMAT_0_6,
+    LOCK_FORMAT_0_7, LOCK_FORMATS, lock_at_least, lock_schema_diagnostics, validate_lock,
 };
 pub use number::{is_integer, is_safe_integer, number_to_string, write_number};
 pub use program::{Definition, Import, Program};

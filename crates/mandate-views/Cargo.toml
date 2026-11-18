@@ -10,9 +10,9 @@ publish.workspace = true
 [dependencies]
 mandate-ir = { path = "../mandate-ir" }
 mandate-check = { path = "../mandate-check" }
+mandate-syntax = { path = "../mandate-syntax" }
 
 [dev-dependencies]
-mandate-syntax = { path = "../mandate-syntax" }
 mandate-testkit = { path = "../mandate-testkit" }
 
 [lints]

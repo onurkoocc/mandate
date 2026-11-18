@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1910a",
+  "kind": "compile",
+  "title": "With a lock that asks for the promotion ladder, a workflow written out with neither an owner nor an envelope is refused at the workflow: nobody could promote it (a mutation: Describe's owner line removed).",
+  "spec": [
+    "spec/attention.md#owner",
+    "spec/attention.md#lock-07",
+    "spec/attention.md#promotion"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/owner.mdt",
+    "kind": "mdt"
+  },
+  "lock": "../../fixtures/attention/owner.lock.json",
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/Describe/owner"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1910",
+        "path": "/defs/Describe",
+        "facts": {
+          "workflow": "Describe",
+          "problem": "no_owner"
+        }
+      }
+    ]
+  }
+}

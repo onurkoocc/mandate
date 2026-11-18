@@ -101,6 +101,7 @@ mod program;
 mod tables;
 
 pub use connectors::tool_canonical;
+pub use library::{config_of, sources_of};
 
 /// A door: the input object in, the output value or the error out.
 pub type DoorFn = fn(&Value) -> Result<JsValue, DoorError>;

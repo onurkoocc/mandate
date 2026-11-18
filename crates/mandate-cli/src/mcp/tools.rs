@@ -18,8 +18,8 @@
 //!   `before` program of a diff is checked with them; `caps_of` takes `lock`
 //!   too, as `check` does;
 //! - `project` has the view `card`, of the workflow `workflow` (the door
-//!   `card`, as `mandate view --card` asks it), and the view `attention`,
-//!   which has no door yet ([`attention_view`]);
+//!   `card`, as `mandate view --card` asks it), and the view `attention`, the
+//!   door `attention` (JSON, of `workflow` or of every workflow);
 //! - `spec` takes the section `patterns` (spec/library.md) and `attention`
 //!   (spec/attention.md), whole.
 
@@ -54,14 +54,6 @@ const TS_LANGUAGES: [&str; 5] = [
 
 /// The views of `project`, for the message that names them.
 const VIEWS: &str = "view must be architecture, authority, cost, diff, card or attention";
-
-/// The answer to `project` with `view: "attention"`, until the attention
-/// view has its door (slice RP1): the one place that answers it.
-pub(crate) fn attention_view() -> Fail {
-    Fail::Tool(JStr::from(
-        "view attention is not available yet: the Rust compiler has no door attention",
-    ))
-}
 
 /// A tool error.
 fn tool(message: impl Into<JStr>) -> Fail {
@@ -580,6 +572,72 @@ impl Server {
         }
     }
 
+    /// `mandate.project` with `view: "attention"`: the attention view
+    /// (spec/attention.md "The attention view") as the door `attention` gives
+    /// it in JSON, as the other views of `project` are: the view of
+    /// `workflow`, or, when it is left out, `{ format, kind, program,
+    /// workflows }` with the view of each workflow, as `mandate view
+    /// --attention --format json` prints them. `opts` is what the check was
+    /// given (modules, lock, libraries). The program has checked already.
+    fn attention(args: &J, p: &JsValue, source: &JStr, opts: JObj) -> Result<JsValue, Fail> {
+        let language = p
+            .get("language")
+            .and_then(JsValue::as_str)
+            .unwrap_or_default();
+        if TS_LANGUAGES.contains(&language) || language == "mandate/0.6" {
+            return Err(tool(
+                "view attention is of a program of language 0.7 or later",
+            ));
+        }
+        let ask = |workflow: &JStr| {
+            door(
+                "attention",
+                JObj::new()
+                    .with("text", J::Str(source.clone()))
+                    .with("kind", J::str(kind_for(source, args.get("kind"))))
+                    .with("opts", J::Obj(opts.clone()))
+                    .with("workflow", J::Str(workflow.clone()))
+                    .with("format", J::str("json")),
+            )
+        };
+        if args.get("workflow").is_some_and(|w| !matches!(w, J::Null)) {
+            let workflow = str_arg(args, "workflow")?;
+            let view = ask(workflow)?;
+            if view.is_null() {
+                return Err(Fail::Tool(JStr::concat(&[
+                    workflow,
+                    &JStr::from(" is not a workflow of this program"),
+                ])));
+            }
+            return Ok(view);
+        }
+        let names: Vec<String> = p
+            .get("defs")
+            .and_then(JsValue::as_object)
+            .map(|defs| {
+                defs.iter()
+                    .filter(|(_, d)| d.get("kind").and_then(JsValue::as_str) == Some("workflow"))
+                    .map(|(n, _)| n.to_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut views: Vec<JsValue> = Vec::with_capacity(names.len());
+        for name in &names {
+            views.push(ask(&JStr::from(name.as_str()))?);
+        }
+        let Some(first) = views.first() else {
+            return Err(tool(
+                "this program has no workflow, so it has no attention view",
+            ));
+        };
+        Ok(JsObject::new()
+            .with("format", member(first, "format"))
+            .with("kind", "attention")
+            .with("program", member(first, "program"))
+            .with("workflows", JsValue::Array(views))
+            .into())
+    }
+
     /// `mandate.project`: a view of the program, or the diff from `before`.
     fn project(&self, args: &J, modules: &JsObject) -> Result<JsValue, Fail> {
         let lock = args.get("lock");
@@ -650,7 +708,12 @@ impl Server {
                 }
                 Ok(card)
             }
-            Some("attention") => Err(attention_view()),
+            // 0.7: the attention view of one workflow, or of each.
+            Some("attention") => {
+                let opts = check_options(modules, lock, libraries)
+                    .with_some("std_patterns", pin.filter(|_| lock.is_some_and(J::truthy)));
+                Self::attention(args, &p, source, opts)
+            }
             _ => Err(tool(VIEWS)),
         }
     }

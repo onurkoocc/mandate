@@ -1,0 +1,61 @@
+// A program of language 0.7 whose workflows have owners (spec/attention.md
+// "`owner`"): a workflow written out, whose card the accountant approves and
+// whose promotions the accountant signs, and a workflow that applies a
+// pattern, owned by the finance lead, whose expansion keeps that owner. Its
+// lock (owner.lock.json) is of format 0.7: it gives each role the highest
+// class it may be shown and asks for the promotion ladder, which every
+// workflow here can climb, since each has an owner. It checks (A04); the
+// cases of the rules of the owner and of the lock (E1910, E1911, E1501,
+// E1502, E0140, E1705) are one change of it, or of a program beside it,
+// each. Only the Rust compiler reads it.
+
+mandate @ 0.7
+
+module example.attention.owner @ 0.1
+
+use std.{human, model}
+
+role accountant   "Accountant"
+role finance_lead "Finance lead"
+
+type Item = { name: Text }
+
+capability ModelStd = model.infer(tier: standard, max_class: confidential)
+
+agent Writer {
+  role   "Writes one line about an item."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill write(i: Item) -> Inferred<Text> ! {Model}
+}
+
+/// Has `work` write a line about one item, tells `checker` how long it is,
+/// and asks `checker` whether it will do.
+pattern Line(work: skill(Item) -> Inferred<Text>, checker: role) -> Untrusted<Text> {
+  stage write "Write the line"
+  let line = delegate work(Item { name: "a" })
+  report to checker "Line written" { words: len(line) }
+
+  stage check "Check the line"
+  human.ask("Will {line} do?", role: checker)
+}
+
+/// Writes one line about an item and tells the accountant how long it is.
+/// The accountant approves its card and signs its promotions.
+workflow Describe(name: Text) -> Inferred<Text>
+  owner   accountant
+  caps    ModelStd
+  budget  { time: 5m, steps: 4 }
+{
+  stage write "Write the line"
+  let line = delegate Writer.write(Item { name })
+  report to accountant "Line written" { words: len(line) }
+  line
+}
+
+/// The pattern applied, the accountant asked: the finance lead approves its
+/// card and signs its promotions.
+workflow Check = Line(work: Writer.write, checker: accountant)
+  owner   finance_lead
+  caps    ModelStd
+  budget  { time: 10m, steps: 6 }
