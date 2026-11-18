@@ -1,7 +1,7 @@
 // The control CLI (Doc 4 §16.1; BACKLOG K19): a person runs a program and
 // answers it from a terminal. `mandate show` gives the run's views.
 //
-//   mandate run <program> --workflow W --input <json> [--run-id ID] [--limit spend=20USD,tokens=2M]
+//   mandate run <program> --workflow W --input <json> [--run-id ID] [--limit spend=20USD,tokens=2M,asks=2]
 //   mandate status <run> [--json]
 //   mandate key new [--out FILE]                          a key of your own, to sign decisions with
 //   mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W]
@@ -74,7 +74,7 @@ import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, pa
 import { EvidenceSigner, keyIdOf, TrustedKeys } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
 import { serveUntilSignalled } from "./egress/main.js";
-import { costDims, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
+import { limitDims, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, parseExportJson, publicKeysIn, readExport, verifyExport, type FindingCode } from "./journal-chain.js";
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { otelEndpoint, otelExport, type OtelReport } from "./otel.js";
@@ -135,7 +135,7 @@ class Usage extends Error {}
 class Unchecked extends Error {}
 
 const USAGE = `usage:
-  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE] [--module FILE]… [--libraries DIR] [--priority high|normal] [--mode design|read_only|live]
+  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M,asks=2] [--lock FILE] [--module FILE]… [--libraries DIR] [--priority high|normal] [--mode design|read_only|live]
   mandate shadow-diff <run> <other run>
   mandate status <run> [--json]
   mandate key new [--out FILE]
@@ -313,7 +313,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       }
       case "raise-limits": {
         const [rev, wanted] = [revision(a), limits(str(a, "--limit"))];
-        run = await rt.raiseLimits(runId, msg, key ? { limits: wanted, signed: await sign("run", "raise_limits", payloadOf.limits(costDims(wanted))) } : { revision: rev, limits: wanted, by: by() });
+        run = await rt.raiseLimits(runId, msg, key ? { limits: wanted, signed: await sign("run", "raise_limits", payloadOf.limits(limitDims(wanted))) } : { revision: rev, limits: wanted, by: by() });
         break;
       }
       case "amend": {
@@ -541,8 +541,8 @@ function itemIndices(a: Args, flag: "--waive" | "--decline"): number[] {
   });
 }
 
-/** `spend=20USD,tokens=2M,steps=40,agents=30`. */
-function limits(text: string): Limits {
+/** `spend=20USD,tokens=2M,steps=40,agents=30`, and (0.7) `asks=2`, the most questions the run may put to people. */
+export function limits(text: string): Limits {
   const c: Limits = {};
   for (const part of text.split(",")) {
     const [k, v] = part.split("=");
@@ -553,7 +553,11 @@ function limits(text: string): Limits {
     else if (k === "tokens") c.tokens = n;
     else if (k === "steps") c.steps = n;
     else if (k === "agents") c.agents = n;
-    else throw new Usage(`unknown limit ${k}; use spend, tokens, steps or agents`);
+    else if (k === "asks") {
+      // A count of questions: a whole number, with no unit.
+      if (m[3] !== undefined || !Number.isSafeInteger(n)) throw new Usage(`cannot read the limit ${part}; asks is a whole number of questions, e.g. asks=2`);
+      c.asks = n;
+    } else throw new Usage(`unknown limit ${k}; use spend, tokens, steps, agents or asks`);
   }
   return c;
 }

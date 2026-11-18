@@ -19,6 +19,7 @@
 
 import {
   atLeast,
+  attentionFacts,
   bindingChecks,
   canonicalize,
   check,
@@ -47,6 +48,7 @@ import {
   validateLock,
   type AmendmentCheck,
   type AmendmentInput,
+  type AttentionFacts,
   type Change,
   type Diagnostic,
   type DiffView,
@@ -59,7 +61,7 @@ import {
   type Program,
 } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
-import type { FactsSource } from "./attention.js";
+import { factsAtStart, type FactsSource } from "./attention.js";
 import { declaredMethods } from "./criteria.js";
 import { VERIFY, WAIVER } from "./review.js";
 import { Violation } from "./signals.js";
@@ -74,6 +76,11 @@ export interface AmendedCheck extends AmendmentCheck {
   diff?: DiffView;
   /** What the amendment changes in the envelope, line by line: what the owner who decides it is shown. */
   changes?: Change[];
+  /**
+   * 0.7: the attention facts of the amended package's workflow (null when the door gives none, or refuses), which the
+   * request stores and the run reads from the owner's approval on (D6 of slice B3). Absent for an earlier program.
+   */
+  attention?: AttentionFacts | null;
 }
 
 /**
@@ -93,13 +100,24 @@ export function checkAmended(i: AmendedInput): AmendedCheck {
   const r = checkAmendment(i);
   if (!r.ok || !r.program) return r;
   const pkg = buildPackage(r.program, i.lock, i.modules ?? {});
+  let v: Verified;
   try {
-    verifyPackage(pkg);
+    v = verifyPackage(pkg);
   } catch (e) {
     if (!(e instanceof Violation)) throw e;
     return { ok: false, diagnostics: [...r.diagnostics, { code: e.code, severity: "error", message: e.message, at: {}, docs: "spec/envelope.md" }] };
   }
-  return { ...r, package: pkg.hash, diff: semanticDiff(i.parent, r.program), changes: envelopeChanges(i.parent, r.program, i.workflow, i.modules ?? {}) };
+  // 0.7: the facts of the amended workflow, asked as a start asks them, with what the check at load was given.
+  let attention: AttentionFacts | null | undefined;
+  if (isProgram07OrLater(i.parent)) {
+    try {
+      attention = v.facts ? factsAtStart(attentionFacts, v.facts, i.workflow).facts : null;
+    } catch (e) {
+      if (!(e instanceof Violation)) throw e;
+      attention = null;
+    }
+  }
+  return { ...r, package: pkg.hash, diff: semanticDiff(i.parent, r.program), changes: envelopeChanges(i.parent, r.program, i.workflow, i.modules ?? {}), ...(attention !== undefined ? { attention } : {}) };
 }
 
 /** Why an amendment of a program of 0.6 or later is not run yet, or undefined. */
@@ -303,14 +321,12 @@ const has = (o: unknown, k: string): boolean => isObj(o) && o[k] !== undefined;
  * `unsupported_language`, naming each it holds in the table's order, so that a half-built 0.7 never runs; a lead's
  * sub-program of a 0.7 parent that holds one is refused at its check. The slice that implements a construct takes its
  * line out, and nothing else (runtime/test/attention.test.ts holds the list). `stage` and `report` run (B2: interp.ts,
- * attention.ts), and are no longer in it.
+ * attention.ts), and so does `asks` (B3: asks.ts, journal.ts `openWait`): they are no longer in it.
  *
- * - `asks`: a member of a workflow's budget or of its envelope's budget ("The IR", `Budget.asks`; "`asks`").
  * - `lock.role_classes`, `lock.promotion`: the members of a lock of format 0.7 ("Lock 0.7").
  * - `owner`: the member of a workflow definition ("The IR", `Def(workflow).owner`), not an envelope's, which is 0.4's.
  */
 export const NOT_RUN_YET_07: readonly NotRunYet07[] = [
-  { name: "asks", slice: "B3", def: (d) => d["kind"] === "workflow" && (has(d["budget"], "asks") || (isObj(d["envelope"]) && has(d["envelope"]["budget"], "asks"))) },
   { name: "lock.role_classes", slice: "B4", lock: (l) => has(l, "role_classes") },
   { name: "owner", slice: "B6", def: (d) => d["kind"] === "workflow" && has(d, "owner") },
   { name: "lock.promotion", slice: "B6", lock: (l) => has(l, "promotion") },
@@ -389,7 +405,7 @@ function refusal06(names: string[]): Violation {
  * A sub-program that applies a pattern and was given no running program, or one in which a workflow of its own
  * still applies one, would meet `apply` in its run: it is refused by name, whatever the compiler said.
  */
-export function subprogramNotRunYet(sub: Program, parent: Program, modules: Modules, running?: Program): string[] {
+export function subprogramNotRunYet(sub: Program, parent: Program, modules: Modules, running?: Program, lock?: Lock): string[] {
   if (!isProgram06OrLater(sub) && !isProgram06OrLater(parent)) return [];
   const own = (p: Program): Program => ({ ...p, defs: Object.fromEntries(Object.keys(sub.defs).flatMap((n) => (Object.hasOwn(p.defs, n) ? [[n, p.defs[n]!]] : []))) });
   const applies = applications(sub).length > 0;
@@ -397,11 +413,24 @@ export function subprogramNotRunYet(sub: Program, parent: Program, modules: Modu
   const applied = unexpanded ? ["a pattern applied in a sub-program"] : [];
   // What the package holds beside its program was held to the table when the run started. A running program is read
   // only for a sub-program that applies a pattern: any other runs linked into its parent, and is read so.
-  const runs = running && applies && !unexpanded ? running : subprogramLinked(sub, parent, modules);
+  const runs = running && applies && !unexpanded ? running : linkedSubprogram(sub, parent, modules, lock);
   const inSub = notRunYet06(runs, { lock: { modules: {} } });
   // 0.7: what NOT_RUN_YET_07 lists, in the sub-program as the lead wrote it and as it would run.
   const of07 = isProgram07OrLater(sub) || isProgram07OrLater(parent) ? notRunYet07([sub, runs]) : [];
   return [...applied, ...inSub, ...of07];
+}
+
+/** The door `subprogram_linked` with the version of std.patterns it reads (0.7), which its typed facade does not name. */
+const linkSub = subprogramLinked as unknown as (sub: Program, parent: Program, modules?: Modules, stdPatterns?: string) => Program;
+
+/**
+ * A lead's sub-program linked into its parent (the door `subprogram_linked`), as its check read it: for a parent of
+ * 0.7 or later, with the version of `std.patterns` the package's lock pins (`lock`), since a check of a sub-program is
+ * given no lock (spec/attention.md "Which version"). For an earlier parent, or a lock that pins none, as before.
+ */
+export function linkedSubprogram(sub: Program, parent: Program, modules: Modules, lock: Lock | undefined): Program {
+  const pin = isProgram07OrLater(parent) ? lock?.libraries?.["std.patterns"]?.version : undefined;
+  return pin !== undefined ? linkSub(sub, parent, modules, pin) : subprogramLinked(sub, parent, modules);
 }
 
 /** A 0.4 package: its program, or a module it was packaged with, is written in 0.4. Its decisions are always signed. */

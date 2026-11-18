@@ -519,10 +519,66 @@ export interface AttentionReport {
   fields: AttentionField[];
 }
 
+/** A count of the attention bound: a number, or `"unbounded"` (∞). */
+export type AttentionCount = number | "unbounded";
+
 /**
- * The attention facts of one workflow, `mandate/attention/0.1`. A later slice of the compiler adds members beside
- * these (the question sites, the effect sites, the totals) under the same format; a reader keeps what it is given whole
- * and reads only the members it knows.
+ * The kind of a question site (spec/attention.md "What counts as a question"): one name for each row of that table, a
+ * closed list the runtime tags every wait it opens with (`SiteKind` of `crates/mandate-check/src/asks.rs`).
+ */
+export type AttentionSiteKind = "verify" | "ask" | "escalate" | "pause" | "supervise_escalate" | "effect" | "changeset" | "governance" | "review" | "plan";
+
+/** One question site of a workflow (spec/attention.md "What each question records"), by the IR path of its construct. */
+export interface AttentionQuestion {
+  path: string;
+  /** The wait in its static form (spec/attention.md "The static form of a wait"). */
+  wait: string;
+  kind: AttentionSiteKind;
+  role: string | null;
+  shown: DataClass;
+  known: Known;
+  deadline_ms: number | null;
+  on_no_answer: string;
+  escalates?: { to: string; deadline_ms: number | null };
+  stage: string | null;
+  multiplicity: AttentionCount;
+  /** `on_escalation` (a review's escalation), `governance_file` (an owner's gate), `budget_exceeded` (a row of that handler). */
+  only: "on_escalation" | "governance_file" | "budget_exceeded" | null;
+}
+
+/** One effect site: an `effect`, or a member of a change set, and whether the static total counts its authorization. */
+export interface AttentionEffect {
+  path: string;
+  effect: string;
+  multiplicity: AttentionCount;
+  counted: boolean;
+  role: string | null;
+  /** A batch commit step's: it never asks a person, whatever the runtime's configuration says. */
+  batch: boolean;
+  stage: string | null;
+}
+
+/** One `plan`: a row of its own, out of what is left of `asks`. */
+export interface AttentionPlan {
+  path: string;
+  kind: "plan";
+  role: string | null;
+  multiplicity: AttentionCount;
+  stage: string | null;
+  [member: string]: unknown;
+}
+
+/** The totals `T`, `A` and `R`. */
+export interface AttentionTotals {
+  questions: AttentionCount;
+  by_role: Array<{ role: string | null; questions: AttentionCount }>;
+  reports: Array<{ role: string | null; reports: AttentionCount }>;
+}
+
+/**
+ * The attention facts of one workflow, `mandate/attention/0.1`. A reader keeps what it is given whole and reads only
+ * the members it knows. The question sites, the effect sites, the totals, the declared `asks` and the rows of `on
+ * budget_exceeded` and of each `plan` (RL4) are optional here: facts a test stands in may lack them.
  */
 export interface AttentionFacts {
   format: "mandate/attention/0.1";
@@ -531,6 +587,13 @@ export interface AttentionFacts {
   program: string;
   stages: AttentionStage[];
   reports: AttentionReport[];
+  questions?: AttentionQuestion[];
+  effects?: AttentionEffect[];
+  totals?: AttentionTotals;
+  /** The `asks` the workflow's budget declares, or its envelope's; null when it declares none. */
+  asks?: number | null;
+  budget_exceeded?: AttentionQuestion[];
+  plans?: AttentionPlan[];
   [member: string]: unknown;
 }
 
