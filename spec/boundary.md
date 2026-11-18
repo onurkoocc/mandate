@@ -1111,10 +1111,15 @@ is a later release's). From 0.7, what a role is shown of a value in a run of
 ([`attention.md`](attention.md#masking-and-how-a-value-is-known)); a run of
 0.1 to 0.6 is shown as before. A role is not shown, masked, what it is asked
 or reported with a lock that sets its cap too low: such a package is refused
-at load, and such a sub-program at its admission (E1909). The mask is for a
-role that looks without being asked (a wait that asks no role is listed to
-every role the lock binds), for a value whose class the stored facts do not
-give, and for the text a lead wrote into a sub-program.
+at load, and such a sub-program at its admission (E1909). A question that asks no
+role is held to the lowest cap of the roles the lock binds, since every one
+of them may answer it (E1909), and a run whose configuration hands an
+authorization to a role below what it shows does not start. The mask is for
+a role that looks without being asked, for a value whose class the stored
+facts do not give, for the parameters of an effect only the runtime's
+configuration hands to a person, and for the text of a sub-program: what its
+lead wrote and, to be safe, its shape's stage and report titles (an
+over-masking, to revisit; below).
 
 **Events.** The class of every event type the runtime writes
 (`EVENT_CLASSES`). A test reads every place the runtime writes an event and
@@ -1155,9 +1160,13 @@ digest; a waiver's evidence id), given masked, as `{masked: true, class,
 known}`, to a role the wait's values are masked from (`DIGESTS`): what
 else it is computed over is shown to the role, so a value with few
 possibilities could be found by trying each against it. A field marked lead
-holds, in an event of a sub-program, text its lead wrote (a stage's name or
-title, a report's title, its workflow's name and shape), given as a value a
-model wrote, of the class of what the lead received (`program_started`'s
+holds, in an event of a sub-program, text of the sub-program (a stage's name
+or title, a report's title, its workflow's name and shape). Only its
+workflow's name is text its lead wrote: the stages and reports are those of a
+listed shape, pattern text the lock pins
+([`attention.md`](attention.md#sub-programs-and-amendments)). The runtime
+treats all of it as the lead's to be safe, an over-masking to revisit: it is
+given as a value a model wrote, of the class of what the lead received (`program_started`'s
 `class`), masked by the role's cap (`LEAD_TEXT`); of the run's own
 program, it is the program's text. The identifiers a lead chooses in a
 sub-program are not masked, a known residual channel: its workflows' names,

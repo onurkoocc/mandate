@@ -19,7 +19,7 @@ best-effort basis.
 | `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3 (E1705 for `owner` since RL5); the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`), and run since B3 |
 | The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
-| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5, RL5b | the compiler's part implemented: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication; E1909 (RL5b, `crates/mandate-check/src/role_shown.rs`), with a lock and, at a sub-program's admission, with its parent's `role_classes`. The runtime runs all three: `role_classes` since B4 (the caps of the masking), `owner` and `promotion` since B6 (card approval and the ladder). Since RL5b the runtime's check at load, which is given the package's lock, refuses a package whose program shows a role data above its class (`load_verification_failed`, E1909), and the admission of a lead's sub-program refuses one that would (E1909 in what the lead is told); the mask is for what E1909 cannot see ([Masking](#masking-and-how-a-value-is-known)) |
+| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5, RL5b | the compiler's part implemented: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication; E1909 (RL5b, `crates/mandate-check/src/role_shown.rs`), with a lock and, at a sub-program's admission, with its parent's `role_classes`. The runtime runs all three: `role_classes` since B4 (the caps of the masking), `owner` and `promotion` since B6 (card approval and the ladder). Since RL5b the runtime's check at load, which is given the package's lock, refuses a package whose program shows a role data above its class (`load_verification_failed`, E1909), and the admission of a lead's sub-program refuses one that would (E1909 in what the lead is told); the start refuses a run whose configuration hands an authorization to a role whose cap is below what it shows (`authorizer_below_class`, `runtime/src/mask.ts`); the mask is for what E1909 cannot see ([Masking](#masking-and-how-a-value-is-known)) |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented but for the acceptance fixture: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program` (RL6); the acceptance fixture not written yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | not implemented yet |
@@ -439,6 +439,25 @@ of the program can know it. So:
 - **The attention view says so**: the runtime's configuration may add
   authorizations by a person, and a run whose configuration adds more than
   `asks` leaves room for does not start.
+- **Who decides is held to what it is shown.** The configuration's
+  `authorize[E] = { by: "human", role: X }` also overrides the role the
+  program names for an irreversible action (`owner`) and for a change set's
+  member (its approver); only the envelope's `approve E by r` and an
+  environment's tier `by human` take precedence over it. E1909 compares
+  the row with the role the program names, but X is asked, and the wait is
+  labelled with the row's `shown`. So at the start of a 0.7 run, for every
+  effect or change-set row the configuration hands to another role X (the
+  envelope's `approve` not naming the effect), the runtime compares the
+  row's `shown` with X's cap in the lock, and a run that would ask X to
+  decide on data above it is refused, `authorizer_below_class`, naming the
+  effect, the role, its cap and the class, before anything is written. An
+  environment's tier, which would ask its own role instead, is not read at
+  the start: the comparison is conservative there. An effect site that only
+  the configuration hands to a person has no row, so no class the start
+  could compare: its parameters are masked from every role, the asked one
+  included, and with facts tampered with or corrupted, it is the one case in
+  which a member may be asked to decide on a masked value (`mandate decide`
+  asks for `yes` before it signs one).
 
 ### The algebra
 
@@ -572,11 +591,12 @@ change.
   events carry `program`; their reports go to the role the application binds
   to the pattern's role slot, masked as everywhere. The check of a
   sub-program is not given the lock (`SubprogramInput`,
-  `crates/mandate-check/src/doors.rs`), but it is given the lock's
-  `role_classes` (`role_classes`, `{}` for a lock without them), and holds
-  what the sub-program shows each role to them as E1909 does a program's:
-  the runtime passes them at every admission of a sub-program of a parent of
-  0.7, so a lead's sub-program whose question or report would show a role
+  `crates/mandate-check/src/doors.rs`), but it is given the class of
+  every role the lock binds (`role_classes`: the lock's entry for the role,
+  else `internal`), and holds what the sub-program shows each role to them,
+  and a question that names no role to the lowest of them, as E1909 does a
+  program's: the runtime passes them at every admission of a sub-program of
+  a parent of 0.7, so a lead's sub-program whose question or report would show a role
   data above its class is refused (`check_failed`), and the mask is the
   second line, as everywhere. A caller that does not pass them gets no
   E1909, as before.
@@ -746,7 +766,8 @@ reported at the lock's root, since the older schemas close their objects.
   check cannot see: the mask is a second line, not the first. The check
   computes no class of its own: it reads the facts ([The facts](#the-facts)),
   the very classes the mask reads, and compares
-  every row that names a role:
+  every row that names a role, and every row that names none but shows
+  content (below):
   - every question site ([What each question records](#what-each-question-records))
     and every row of the `on budget_exceeded` handler: an approval a `verify`
     asks (refused at the `verify`, which shows the contract's arguments),
@@ -762,19 +783,38 @@ reported at the lock's root, since the older schemas close their objects.
   - every field of every report, against the role it is addressed to (in an
     application, the role the application binds to the pattern's slot).
 
-  A row that names no role caps no one and is not compared: a `pause`, and
-  the pause of a workflow without an `on budget_exceeded` handler, which is
-  asked of no role (a role's view shows that the run waits and nothing
-  else), and whose notification to the owner carries ids, kinds, roles,
-  deadlines and a link, never content ([Notifications](#notifications)).
-  Nor is an effect site that only the runtime's configuration hands to a
-  person: the program does not name its role, its row has no class, and the
-  mask hides its values from every role. The diagnostic is at the place
+  A wait that asks no role is asked of every member the lock binds: the
+  runtime lists it to every role the lock binds (`ListWaits`) and takes the
+  answer of any member the lock lists (`runtime/src/decisions.ts`). So a
+  row that names no role but shows content (`human.ask` or `escalate
+  human(…)` without `role:`, among others) is
+  held to the lowest class of the roles the lock binds (its `roles`, and
+  those its `role_classes` names): one diagnostic for the site, naming the
+  first by name of the roles with that class, with `asked: "any_member"`.
+  A lock that binds no role is not compared. A `pause`, and the pause of a
+  workflow without an `on budget_exceeded` handler, show no one content (a
+  role's view shows that the run waits and nothing else, and the
+  notification to the owner carries ids, kinds, roles, deadlines and a link,
+  never content, [Notifications](#notifications)) and are not compared. Nor
+  is an effect site that only the runtime's configuration hands to a
+  person: the program does not name its role and its row has no class.
+  What the configuration hands to another role than the program names is
+  compared at the start instead ([Effects and the runtime's
+  configuration](#effects-and-the-runtimes-configuration)).
+
+  What E1909 does not cover, besides: implicit flow. `if it.total > 3 {
+  human.ask("big?", role: observer) }` checks with the observer `internal`
+  and `it` confidential, though the question tells the observer something
+  of `it.total`: the typing does not track a branch's condition into what
+  the branch shows, in 0.7 as before (the classes of 0.6 are of values, not
+  of control). The mask does not cover it either. The diagnostic is at the place
   (the `verify`, the question, the field's value; at the application for a
   site its expansion brings), with the facts `workflow`, `role`, `class`
   (the role's), `shown`, `site` (the row's kind, `plan` or `report`),
-  `only` (`on_escalation`, `governance_file`, `budget_exceeded`) and
-  `field`. A program of 0.1 to 0.6 is not compared, lock or not.
+  `only` (`on_escalation`, `governance_file`, `budget_exceeded`),
+  `field` and `asked` (`any_member`, for a row that names no role). The
+  value that raises the class is not named: the facts carry a row's class,
+  not which of its values gave it (a report's field is named, `field`). A program of 0.1 to 0.6 is not compared, lock or not.
 - **Why in the lock.** A role's class is part of the deployment, as who holds
   the role is, and the lock is part of the package hash: raising a role's
   class is a new package, which a card approval of the old one does not
@@ -1165,13 +1205,24 @@ The runtime calls this type `ShownValue` (`runtime/src/mask.ts`), because
 - **The cap.** A role's cap is `role_classes[role]` in the package's lock, or
   `internal` when the lock does not name the role.
 - **What it is for.** With a lock, a program that shows a role it asks,
-  escalates to or reports to data above that role's cap does not load, and a
-  sub-program that would is not admitted (E1909). So a value of a wait a role
-  is asked, or of a report field addressed to it, is masked from it only where
-  its class is not known. The mask keeps values from a role where the check
-  compares nothing: a wait that asks no role, listed to every role the lock
-  binds (`ListWaits`, `mandate decide`); a value whose class the stored facts
-  do not give; and the text a lead wrote into a sub-program.
+  escalates to or reports to data above that role's cap does not load, nor
+  one whose question that asks no role shows data above the cap of a role the
+  lock binds, and a sub-program that would is not admitted (E1909); a run
+  whose configuration hands an authorization to a role whose cap is below
+  what it shows does not start (`authorizer_below_class`). So a value of a
+  wait a role is asked, of a wait that asks no role (listed to every role the
+  lock binds, `ListWaits`, `mandate decide`), or of a report field
+  addressed to a role, is masked from it only where its class is not known:
+  a value whose class the stored facts do not give (facts tampered with or
+  corrupted, not a normal state), and the parameters of an effect only the
+  runtime's configuration hands to a person, whose row has no class. Those
+  are the cases in which a member may still be asked to decide on a masked
+  value. The mask also covers text of a sub-program: what the lead wrote
+  (its workflow's name) and, to be safe, a listed shape's stage names,
+  stage titles and report titles, which are pattern text the lock pins
+  ([Sub-programs and amendments](#sub-programs-and-amendments)) but which
+  the runtime masks as the lead's, `known: model` (`LEAD_TEXT`,
+  `runtime/src/projection.ts`): an over-masking, to revisit.
 - **The mask.** For a value at a node whose facts give class `c`: when `c` is
   above the cap, it is `{ masked: true }` with no value; otherwise
   `{ masked: false, value }`. Either way it carries `class` and `known`. The
@@ -1285,9 +1336,11 @@ in this run".
 - A wait that asks no role is listed to every role the package's lock binds,
   with `asked_of: null`.
 - What it shows is masked and labelled, by the role it is listed to: the
-  role it is asked of, or, for a wait that asks none, each role in turn. E1909
-  compares no row that names no role, so this is where a role whose cap is
-  below the wait's class is shown it masked.
+  role it is asked of, or, for a wait that asks none, each role in turn.
+  E1909 holds a wait that asks no role to the lowest cap of the roles the
+  lock binds, so a role is shown such a wait masked only where its class is
+  not known (facts tampered with or corrupted), or for a wait only the
+  runtime's configuration opens, whose row has no class.
 - Each item also names `role`, the role it is listed to (for a wait that asks
   none, each role in turn), and each value of `shown` its `name`, where it
   stands in the wait's request. A member of the request that is the
@@ -1540,6 +1593,7 @@ PGlite and on PostgreSQL.
 |---|---|
 | `facts_mismatch` | At a resume or a replay: the stored facts are missing or do not hash to the manifest's |
 | `attention_above_asks` | At a start, when an `asks` limit applies: the bound under the runtime's configuration (the static total plus the effect sites its configuration hands to a person) is above it, or unbounded. Also a diagnostic to a lead whose amendment request would raise the run's bound above its limit, or beyond what is left; and the reason an approved amendment ends refused (`Rejected(attention_above_asks)`) when its growth no longer fits what is left at the approval |
+| `authorizer_below_class` | At a start of a 0.7 run: the runtime's configuration (`authorize[E] = { by: "human", role }`) hands the authorization of an effect, or of a change set's member, to another role than the program names, whose cap in the lock is below the class its row shows ([Effects and the runtime's configuration](#effects-and-the-runtimes-configuration)); nothing is written |
 | `unsupported_limit` | At a start: a caller's `asks` limit for a package of 0.1 to 0.6, whose runs count no questions |
 | `unknown_role` | In a run of 0.7, an approval whose `role:` or `distinct_from:` names no role definition (a value of the run would choose who decides); the run stops for a person, and nobody is asked |
 | `bad_promotion` | `promote`: the from-run is not stored, did not succeed, is not of the same package and workflow, is not in the mode directly below `to`, or its manifest does not hash to its manifest hash; for `live`, it started under no promotion, or its design run is not stored |
