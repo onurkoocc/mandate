@@ -1,0 +1,21 @@
+// A lead's sub-program whose own function reads a confidential row and hands
+// back its text, typed Text, which its workflow hands to a delegation.
+
+mandate @ 0.6
+
+module example.reads.plan_1 @ 0.1
+
+use example.reads
+
+/// Reads a customer's row and hands back its text, typed Text.
+fn name_of(t: Text) -> Text ! {Data.Read} {
+  let rows = data.read(prod_sim.customers, tracking_no: t, max_class: confidential)
+  "{rows}"
+}
+
+workflow Look() -> Inferred<Text>
+  caps   Reads, ModelConf
+  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }
+{
+  delegate Summarizer.summarize(name_of("a"))
+}
