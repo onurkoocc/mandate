@@ -16,10 +16,10 @@ best-effort basis.
 |---|---|---|
 | Version 0.7: `mandate @ 0.7`, `spec/ir-0.7.schema.json`, `spec/lock-0.7.schema.json`, the language gates; the runtime's 0.7 gates | RL1, B1 | the compiler's part implemented (RL1); the runtime's gates not implemented yet |
 | `stage`: grammar, IR, printer; E1901, E1902 | RL2 | read and checked by the compiler since RL2; the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
-| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3, but for E1705 for `owner`, which is RL5's; the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
+| `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | read and checked by the compiler since RL3 (E1705 for `owner` since RL5); the runtime refuses a package that holds one (`unsupported_language`) until its slice B2 |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | read and checked by the compiler since RL4 (`crates/mandate-check/src/asks.rs`); the runtime refuses a package that declares `asks` (`unsupported_language`) until its slice B3 |
 | The facts (`attention_facts`) | RL3, RL4 | the door, its stages and reports (RL3, `mandate/attention/0.1`), and the question sites, the effect sites, the totals, the declared `asks` and the rows of `on budget_exceeded` and of each `plan` (RL4), implemented; the shape and the closed list of kinds in `vectors/README.md` ("The attention facts") |
-| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | not implemented yet |
+| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | the compiler's part implemented but for E1909, which follows: `owner` read, printed, a role site, kept by the expansion, E1705 and E1910; the lock's two fields, their E0140 and E1911; a change of owner (`owner_changed`) and of the two fields in the diff and at a library's publication. The runtime refuses `owner`, `role_classes` and `promotion` at load (`unsupported_language`) until its slices B4 and B6 |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | implemented but for the acceptance fixture: both versions embedded, `std_patterns_for`, E1609, reports in the signature and the diff, `mandate add --program` (RL6); the acceptance fixture not written yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | the compiler's part implemented (RL7); the runtime's use of the doors not implemented yet |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | not implemented yet |
@@ -694,6 +694,22 @@ reported at the lock's root, since the older schemas close their objects.
   is E1803, which refuses a lock's `isolation` and `egress` for a program
   before 0.5 rather than drop them silently (INV-11); the check refuses
   these two fields for a program older than 0.7 the same way, with E1911.
+- **The diff.** `mandate view --against` (with `--against-lock`) compares
+  the two locks' `role_classes` and `promotion` after what they ask of the
+  host and the sandboxes ([`boundary.md`](boundary.md#lock-05)). A role's
+  class is compared as it is in effect, its entry or else `internal`, so an
+  entry `internal` added or taken away is no change:
+
+  | Change | Kind | Line |
+  |---|---|---|
+  | A role's class raised in effect: an entry added above `internal`, changed upward, or taken away from below `internal` | governance (counts as authority added) | `~ the data class role r may be shown, in effect: internal → confidential (raised)` |
+  | A role's class lowered in effect | behavior | `~ the data class role r may be shown, in effect: confidential → internal (lowered)` |
+  | `promotion: "required"` taken away | governance (counts as authority added: a run of `read_only` or `live` may start without the owner's signature) | `- promotion: required (a run of read_only or live needs no promotion)` |
+  | `promotion: "required"` added | behavior | `+ promotion: required (a run of read_only or live needs a promotion)` |
+
+  A change of a workflow's `owner` is the governance change `owner_changed`
+  ([`views.md`](views.md)), and a library version that makes one needs a
+  major version (E1607, `changes_owner`).
 
 ## `std.patterns` 2.0.0
 

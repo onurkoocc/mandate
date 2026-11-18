@@ -454,6 +454,16 @@ fn print_slot(slot: &Value) -> Printed {
     Ok(s)
 }
 
+/// 0.7: a workflow's `owner r` on a line of its own, before its envelope or
+/// its caps (spec/attention.md "`owner`"); nothing for a workflow without
+/// one, which every workflow before 0.7 is (its schema closes a workflow).
+fn owner_line(d: &Value) -> String {
+    match d.get("owner") {
+        Some(_) => format!("\n  owner   {}", show(d, "owner")),
+        None => String::new(),
+    }
+}
+
 /// A workflow that applies a pattern (0.6, spec/library.md "Application"):
 /// `workflow W = P<A, …>(` and one argument a line, then its caps and
 /// budget, as a workflow writes them, and an envelope when it has one (the
@@ -485,6 +495,7 @@ fn print_application(name: &str, d: &Value) -> Printed {
         s.push_str(&lines.join(",\n"));
         s.push(')');
     }
+    s.push_str(&owner_line(d));
     let has_envelope = truthy(member(d, "envelope"));
     if has_envelope {
         s.push('\n');
@@ -736,6 +747,7 @@ fn print_workflow(name: &str, d: &Value) -> Printed {
         params(items(d, "params"))?,
         type_(member(d, "returns"))?
     );
+    s.push_str(&owner_line(d));
     let has_envelope = truthy(member(d, "envelope"));
     if has_envelope {
         s.push('\n');

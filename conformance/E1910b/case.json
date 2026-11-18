@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1910b",
+  "kind": "compile",
+  "title": "With a lock that asks for the promotion ladder, a workflow that applies a pattern with no owner is refused at the workflow itself, not at its expansion (a mutation: Check's owner line removed).",
+  "spec": [
+    "spec/attention.md#owner",
+    "spec/attention.md#lock-07"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/owner.mdt",
+    "kind": "mdt"
+  },
+  "lock": "../../fixtures/attention/owner.lock.json",
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/Check/owner"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1910",
+        "path": "/defs/Check",
+        "facts": {
+          "workflow": "Check",
+          "problem": "no_owner"
+        }
+      }
+    ]
+  }
+}

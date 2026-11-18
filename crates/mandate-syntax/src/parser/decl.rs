@@ -577,6 +577,9 @@ impl<'a> Parser<'a> {
         let params = self.params()?;
         self.expect_p("->")?;
         let returns = self.type_expr(false)?;
+        // 0.7: `owner r`, before the envelope or the caps. It is read beside
+        // an envelope too, so that the check names it (E1910).
+        let owner = self.workflow_owner()?;
         // An envelope takes the place of `caps` and `budget` (0.4). Both are still read after it, so that
         // a workflow that writes them as well is told so by name (E1701), not with a syntax error.
         let envelope = if self.is_w("envelope") && is_p(self.la(1), "{") {
@@ -595,6 +598,9 @@ impl<'a> Parser<'a> {
             .with("returns", returns)
             .with("caps", caps)
             .with("body", Vec::new());
+        if let Some((owner, span)) = owner {
+            def.set_spanned("owner", owner, span);
+        }
         if self.is_w("budget") {
             let budget = self.budget()?;
             def.set("budget", budget);
@@ -609,6 +615,30 @@ impl<'a> Parser<'a> {
         let body = self.block()?;
         def.set("body", body);
         Ok((name, def, name_tok))
+    }
+
+    /// 0.7: a workflow's `owner r` (spec/attention.md "`owner`"), the role
+    /// that approves its card and signs its promotions, where the grammar
+    /// puts it: after a written-out workflow's result type, after the
+    /// application of a pattern. `owner` is contextual: in a program before
+    /// 0.7 it is no word here, and the parser goes on as before (to `caps`,
+    /// whose message does not change). The role's name, and the span of the
+    /// role's name, which the source map holds at `/defs/<W>/owner`: what a
+    /// diagnostic at the owner (E1501, E1502, E1910) points at.
+    fn workflow_owner(&mut self) -> Res<Option<(String, mandate_ir::Span)>> {
+        if !self.reads_0_7() || !self.is_w("owner") {
+            return Ok(None);
+        }
+        self.bump();
+        let t = self.t();
+        let role = self.ident("a role")?;
+        let span = mandate_ir::Span {
+            start_line: t.line,
+            start_col: t.col,
+            end_line: t.end_line,
+            end_col: t.end_col,
+        };
+        Ok(Some((role, span)))
     }
 
     /// `envelope { owner r  caps K, …  budget { … }  spawn { max_concurrent: n, max_class: c }
@@ -935,6 +965,8 @@ impl<'a> Parser<'a> {
         self.expect_p(")")?;
         apply.set("args", args);
         let apply = self.at(apply, start);
+        // 0.7: `owner r`, before the caps (and an envelope, E1307).
+        let owner = self.workflow_owner()?;
         let envelope = if self.is_w("envelope") && is_p(self.la(1), "{") {
             Some(self.envelope()?)
         } else {
@@ -949,6 +981,9 @@ impl<'a> Parser<'a> {
             .with("kind", "workflow")
             .with("apply", apply)
             .with("caps", caps);
+        if let Some((owner, span)) = owner {
+            def.set_spanned("owner", owner, span);
+        }
         if self.is_w("budget") {
             let budget = self.budget()?;
             def.set("budget", budget);

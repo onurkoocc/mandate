@@ -204,8 +204,9 @@ impl Sites {
 /// authorization, an envelope's owner and approvals, a change set's
 /// approvers, `human.approve`, `human.ask`, `escalate human(…)` and
 /// `supervise escalate(human, …)`: `roleSites(defs)`; and, in 0.7, the
-/// role a `report` is addressed to ("a report"), which no IR before 0.7
-/// has, so that the sites of an older program are the TypeScript's.
+/// role a `report` is addressed to ("a report") and a workflow's `owner`
+/// ("a workflow's owner"), which no IR before 0.7 has, so that the sites of
+/// an older program are the TypeScript's.
 #[must_use]
 pub fn role_sites(defs: &Map) -> Vec<RoleSite> {
     let mut s = Sites {
@@ -238,6 +239,13 @@ pub fn role_sites(defs: &Map) -> Vec<RoleSite> {
                 }
             }
             Some(DefKind::Workflow) => {
+                // 0.7: the workflow's own owner, written out or applying a
+                // pattern (spec/attention.md "`owner`"). No IR before 0.7
+                // has one, so the sites of an older program are what they
+                // were.
+                if d.members().is_some_and(|m| m.contains_key("owner")) {
+                    s.text(d.owner(), format!("{base}/owner"), "a workflow's owner");
+                }
                 if let Some(env) = d.envelope() {
                     if env.members().contains_key("owner") {
                         s.text(

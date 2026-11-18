@@ -93,6 +93,7 @@ fn the_0_7_ir_schema_differs_from_the_0_6_one_only_where_listed() {
         differences_of(IR_0_6_SCHEMA_TEXT, IR_0_7_SCHEMA_TEXT),
         [
             "/$defs/Budget/properties/asks",
+            "/$defs/Def/oneOf",
             "/$defs/ReportField",
             "/$defs/Stmt/oneOf",
             "/$id",
@@ -143,6 +144,42 @@ fn the_0_7_ir_schema_differs_from_the_0_6_one_only_where_listed() {
         ),
         "a report's field"
     );
+    // The definitions: those of 0.6 as they are, but the workflow, which
+    // gains `owner` (RL5), a name, and nothing else.
+    let defs = |text: &str| {
+        json(text)
+            .get("$defs")
+            .and_then(|d| d.get("Def"))
+            .and_then(|s| s.get("oneOf"))
+            .and_then(Value::as_array)
+            .unwrap()
+            .to_vec()
+    };
+    let (old, new) = (defs(IR_0_6_SCHEMA_TEXT), defs(IR_0_7_SCHEMA_TEXT));
+    assert_eq!(new.len(), old.len());
+    let is_workflow = |d: &Value| {
+        d.get("properties")
+            .and_then(|p| p.get("kind"))
+            .and_then(|k| k.get("const"))
+            .and_then(Value::as_str)
+            == Some("workflow")
+    };
+    for (a, b) in old.iter().zip(&new) {
+        if !is_workflow(a) {
+            assert_eq!(canonicalize(a), canonicalize(b), "a definition of 0.6");
+            continue;
+        }
+        let mut changed = Vec::new();
+        differences(a, b, "", &mut changed);
+        assert_eq!(changed, ["/properties/owner"], "the workflow");
+        assert_eq!(
+            b.get("properties")
+                .and_then(|p| p.get("owner"))
+                .map(canonicalize)
+                .as_deref(),
+            Some(r##"{"$ref":"#/$defs/Name"}"##)
+        );
+    }
     let v = json(IR_0_7_SCHEMA_TEXT);
     assert_eq!(
         v.get("properties")
@@ -157,15 +194,44 @@ fn the_0_7_ir_schema_differs_from_the_0_6_one_only_where_listed() {
     );
 }
 
-/// The 0.7 lock schema is the 0.6 one under the new format. Slice RL5 adds
-/// `role_classes` and `promotion` here.
+/// The 0.7 lock schema is the 0.6 one under the new format, with
+/// `role_classes` (by role, a data class) and `promotion` (`"required"`),
+/// both optional (spec/attention.md "Lock 0.7").
 #[test]
 fn the_0_7_lock_schema_differs_from_the_0_6_one_only_where_listed() {
     assert_eq!(
         differences_of(LOCK_0_6_SCHEMA_TEXT, LOCK_0_7_SCHEMA_TEXT),
-        ["/$id", "/description", "/properties/lock/enum", "/title"]
+        [
+            "/$id",
+            "/description",
+            "/properties/lock/enum",
+            "/properties/promotion",
+            "/properties/role_classes",
+            "/title"
+        ]
     );
     let v = json(LOCK_0_7_SCHEMA_TEXT);
+    let without_description = |name: &str| {
+        let mut p = v
+            .get("properties")
+            .and_then(|p| p.get(name))
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap();
+        p.remove("description");
+        canonicalize(&Value::Object(p))
+    };
+    assert_eq!(
+        without_description("role_classes"),
+        r##"{"additionalProperties":{"$ref":"#/$defs/DataClass"},"propertyNames":{"pattern":"^[A-Za-z_][A-Za-z0-9_]*$"},"type":"object"}"##
+    );
+    assert_eq!(without_description("promotion"), r#"{"enum":["required"]}"#);
+    assert_eq!(
+        v.get("required").map(canonicalize).as_deref(),
+        Some(r#"["lock","modules"]"#),
+        "both optional"
+    );
+    assert_eq!(mandate_ir::LOCK_FIELDS_0_7, ["role_classes", "promotion"]);
     assert_eq!(
         v.get("properties")
             .and_then(|p| p.get("lock"))
@@ -441,6 +507,46 @@ fn asks_is_a_budget_member_of_the_0_7_schema_alone() {
                     .all(|l| l.starts_with("MDT-E0104 at /defs/W/budget")),
             "{language}: {d:?}"
         );
+    }
+}
+
+/// `owner` (spec/attention.md "`owner`", "The IR"): a member of a workflow
+/// in the 0.7 schema alone, a name, on a workflow written out and on one
+/// that applies a pattern. Whether it may stand beside an envelope is the
+/// check's (E1910), not the schema's; a workflow of 0.6 or earlier is closed
+/// without it, and refuses it at the member.
+#[test]
+fn owner_is_a_workflow_member_of_the_0_7_schema_alone() {
+    let written = |language: &str, owner: &str| {
+        format!(
+            r#"{{"language":"{language}","module":"example.minimal","version":"0.1","defs":{{"W":{{"kind":"workflow","params":[],"returns":{{"ref":"Int"}},"caps":[],"owner":{owner},"body":[{{"op":"expr","value":{{"op":"int","value":1}}}}]}}}}}}"#
+        )
+    };
+    let applied = |language: &str, owner: &str| {
+        format!(
+            r#"{{"language":"{language}","module":"example.minimal","version":"0.1","defs":{{"W":{{"kind":"workflow","apply":{{"pattern":"P","args":[]}},"caps":[],"owner":{owner}}}}}}}"#
+        )
+    };
+    let programs: [fn(&str, &str) -> String; 2] = [written, applied];
+    for program in programs {
+        assert_eq!(
+            loaded(&program("mandate/0.7", "\"accountant\"")),
+            Vec::<String>::new()
+        );
+        for bad in ["\"not a name\"", "1", "null", "[\"accountant\"]"] {
+            assert_eq!(
+                loaded(&program("mandate/0.7", bad)),
+                ["MDT-E0104 at /defs/W/owner"],
+                "{bad}"
+            );
+        }
+        for language in ["mandate/0.6", "mandate/0.5", "mandate/0.4"] {
+            let d = loaded(&program(language, "\"accountant\""));
+            assert!(
+                !d.is_empty() && d.iter().all(|l| l.starts_with("MDT-E0104 at /defs/W")),
+                "{language}: {d:?}"
+            );
+        }
     }
 }
 

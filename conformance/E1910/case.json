@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1910",
+  "kind": "compile",
+  "title": "An owner on a workflow that has an envelope is refused at the owner: the envelope's owner approves it and signs its promotions (a mutation: owner accountant added to Run).",
+  "spec": [
+    "spec/attention.md#owner",
+    "spec/attention.md#static-rules"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Run/owner",
+      "value": "accountant"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1910",
+        "path": "/defs/Run/owner",
+        "facts": {
+          "workflow": "Run",
+          "problem": "with_envelope",
+          "owner": "accountant"
+        }
+      }
+    ]
+  }
+}

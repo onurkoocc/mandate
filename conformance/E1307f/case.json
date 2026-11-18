@@ -1,0 +1,48 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1307f",
+  "kind": "compile",
+  "title": "An application of 0.7 with an owner and an envelope is told that an application has no envelope, and not that its owner has the envelope's place (a mutation: an envelope added to Check).",
+  "spec": [
+    "spec/library.md#application",
+    "spec/attention.md#owner"
+  ],
+  "language": "mandate/0.7",
+  "input": {
+    "file": "../../fixtures/attention/owner.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Check/envelope",
+      "value": {
+        "owner": "finance_lead",
+        "caps": [
+          {
+            "op": "var",
+            "name": "ModelStd"
+          }
+        ],
+        "budget": {
+          "steps": 6,
+          "agents": 1
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1307",
+        "path": "/defs/Check/envelope",
+        "facts": {
+          "problem": "member",
+          "member": "envelope"
+        }
+      }
+    ]
+  }
+}

@@ -570,6 +570,69 @@
       "texts": {}
     },
     {
+      "program": "fixtures/attention/owner.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": "fixtures/attention/owner.lock.json",
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+            "defs": {
+              "Check": "sha256:e6385ec9ccb743e85e72d081eb74a8b8d2de24c79b0ee8e953f5bbf6f424b6b0",
+              "Describe": "sha256:ead4767b06ccecc4ef5a3edb0425faec2e56813e2b5a96e03d20b7ab614c5abb",
+              "Item": "sha256:c40f9a199c6a1f3bde2038667b1450904557f5caaab4bf7ee42cd671fe4491b1",
+              "Line": "sha256:26603df80ac5fd03147f7db1857e72cd366174dadde82a3678230db9e2847655",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Writer": "sha256:d0240c6b359cf3687ad9c944f799781c17d78fbcb7f1e210e8763cfecdc0a879",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+            "defs": {
+              "Check": "sha256:e6385ec9ccb743e85e72d081eb74a8b8d2de24c79b0ee8e953f5bbf6f424b6b0",
+              "Describe": "sha256:ead4767b06ccecc4ef5a3edb0425faec2e56813e2b5a96e03d20b7ab614c5abb",
+              "Item": "sha256:c40f9a199c6a1f3bde2038667b1450904557f5caaab4bf7ee42cd671fe4491b1",
+              "Line": "sha256:26603df80ac5fd03147f7db1857e72cd366174dadde82a3678230db9e2847655",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Writer": "sha256:d0240c6b359cf3687ad9c944f799781c17d78fbcb7f1e210e8763cfecdc0a879",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:3f3cb2d90be020a9f563b16c5a25eac12a7207fb10545c92032aecb0ed323e94",
+            "defs": {
+              "Check": "sha256:e6385ec9ccb743e85e72d081eb74a8b8d2de24c79b0ee8e953f5bbf6f424b6b0",
+              "Describe": "sha256:ead4767b06ccecc4ef5a3edb0425faec2e56813e2b5a96e03d20b7ab614c5abb",
+              "Item": "sha256:c40f9a199c6a1f3bde2038667b1450904557f5caaab4bf7ee42cd671fe4491b1",
+              "Line": "sha256:26603df80ac5fd03147f7db1857e72cd366174dadde82a3678230db9e2847655",
+              "ModelStd": "sha256:9b93f361223be7ec6260883ac4d0c2c8cb4c7039828de37cb96cb2ff4349138f",
+              "Writer": "sha256:d0240c6b359cf3687ad9c944f799781c17d78fbcb7f1e210e8763cfecdc0a879",
+              "accountant": "sha256:87b5f4b86e04489d4961c800552c51acb187c5be4fc429eda4a0201ff8ec8bb0",
+              "finance_lead": "sha256:79dbcd7dfa2362c68b6495d1b4441da52c1a90bb0302a019748da10e9d99866c"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
       "program": "fixtures/attention/reports.mdt",
       "modules": [
         "fixtures/system/acme.system.mdt",

@@ -670,6 +670,11 @@ pub enum GovernanceChangeKind {
     /// fields' highest class rose (spec/attention.md "Reports are
     /// governance"). What a person is shown is part of what they approved.
     ReportWidened,
+    /// 0.7: a workflow's `owner` came, went or names another role: who
+    /// approves its card and signs its promotions changed, as a change of
+    /// an envelope's owner changes who approves the envelope
+    /// (spec/attention.md "`owner`").
+    OwnerChanged,
 }
 
 impl GovernanceChangeKind {
@@ -692,6 +697,7 @@ impl GovernanceChangeKind {
             GovernanceChangeKind::WaiverRemoved => "waiver_removed",
             GovernanceChangeKind::ApplicationChanged => "application_changed",
             GovernanceChangeKind::ReportWidened => "report_widened",
+            GovernanceChangeKind::OwnerChanged => "owner_changed",
         }
     }
 }
@@ -880,6 +886,14 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                             GovernanceChangeKind::EnvelopeChanged,
                             format!("{path}/envelope"),
                             format!("+ {name}: envelope"),
+                        );
+                    }
+                    // 0.7: who approves the new workflow's card.
+                    if let Some(owner) = a.get("owner") {
+                        out.gov(
+                            GovernanceChangeKind::OwnerChanged,
+                            format!("{path}/owner"),
+                            format!("+ {name}: owner {}", js_text(Some(owner))),
                         );
                     }
                     // 0.6: what the new workflow's expansion does.
@@ -1527,6 +1541,21 @@ fn workflow_changes(
             format!("~ {name}: envelope {how}"),
         );
     }
+    // 0.7: the owner approves the card and signs the promotions of a
+    // workflow without an envelope, as an envelope's owner approves the
+    // envelope: any change to who it is, theirs to see (spec/attention.md
+    // "`owner`").
+    if b.get("owner") != a.get("owner") {
+        let who = |v: &Value| {
+            v.get("owner")
+                .map_or_else(|| "nobody".to_owned(), |o| js_text(Some(o)))
+        };
+        out.gov(
+            GovernanceChangeKind::OwnerChanged,
+            format!("{path}/owner"),
+            format!("~ {name}.owner: {} → {}", who(b), who(a)),
+        );
+    }
     if j_or_null(b.get("ensures")) != j_or_null(a.get("ensures")) {
         out.beh(
             format!("{path}/ensures"),
@@ -1944,6 +1973,10 @@ pub fn semantic_diff_pinned(
             || g.text.contains("tier")
             || g.text.contains("data class")
             || g.text.contains(": methods ")
+            // 0.7: the promotion ladder taken away lets a run of
+            // `read_only` or `live` start without the owner's signature.
+            // Only a lock of 0.7 gives this path.
+            || g.path == "/promotion"
     }) {
         unchanged.push("no authority added".to_owned());
     }
