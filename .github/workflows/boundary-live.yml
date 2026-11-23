@@ -1,9 +1,9 @@
 name: boundary-live
 
-# The acceptance of 0.5, Boundary, on real infrastructure (spec/boundary.md; README, "By hand, with the secret in the
+# The acceptance of 0.5, Boundary, on real infrastructure (spec/boundary.md; docs/REFERENCE.md, "By hand, with the secret in the
 # proxy's environment"): the agent of fixtures/boundary/reach.mdt, in a real Bubblewrap sandbox, driven by a real
 # model, reaches the real api.github.com through the egress proxy, which alone holds the credential. The steps are the
-# README's, with the fixtures as they are; runtime/scripts/boundary-live-check.mjs reads what they leave and fails
+# docs/REFERENCE.md's, with the fixtures as they are; runtime/scripts/boundary-live-check.mjs reads what they leave and fails
 # naming each of the four claims the run does not show:
 #
 #   1. what the agent saw of its environment holds the placeholder and not the secret;
@@ -71,7 +71,7 @@ jobs:
       - name: Build verify-journal
         run: cargo build --locked -p verify-journal
 
-      # The run's directory: its runtime configuration (the README's: the model, the mxc sandbox and the proxy's
+      # The run's directory: its runtime configuration (docs/REFERENCE.md's: the model, the mxc sandbox and the proxy's
       # admin socket, which fixtures/boundary/reach.egress.json names), its database (PGlite, in the directory, which
       # every command of the run opens in turn), and the task, which names each call the model is to make.
       - name: Prepare the run's directory, its runtime configuration and its task

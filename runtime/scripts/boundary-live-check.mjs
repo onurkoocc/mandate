@@ -1,6 +1,6 @@
 // The checks of .github/workflows/boundary-live.yml: 0.5's acceptance with a real model, a real Bubblewrap sandbox,
 // the real api.github.com and the job's own GITHUB_TOKEN held by the egress proxy (spec/boundary.md). The workflow
-// runs the steps of the README ("By hand, with the secret in the proxy's environment") into one directory; this
+// runs the steps of docs/REFERENCE.md ("By hand, with the secret in the proxy's environment") into one directory; this
 // script reads what they left there and says whether the run shows the four things 0.5 claims, naming each one that
 // it does not show:
 //
