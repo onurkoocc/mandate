@@ -259,8 +259,9 @@ pull request was opened, for 0.23 USD.
     one thing left open is the live acceptance session, which the project's
     owner holds with the kit in
     [`fixtures/attention/live/`](../fixtures/attention/live/README.md); in
-    the session of 18 November 2026 four of its eight criteria passed and
-    four are open ([`spec/attention.md`](../spec/attention.md#acceptance)).
+    the session of 18 November 2026, held with a simulated agent, four of
+    its eight criteria passed and four are open
+    ([`spec/attention.md`](../spec/attention.md#acceptance)).
 
     - **Language.** `stage`, a marker that names the statements after it, and
       `report`, a few typed values shown to a role without stopping the run

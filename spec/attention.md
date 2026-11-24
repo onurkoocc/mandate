@@ -9,9 +9,9 @@ implementation was written against, and it says what the implementation does:
 where the first draft of a rule and the rule as built differed, the page was
 brought to the built one. Each part landed with the slice named in the table.
 One row stays open on purpose: the live session, which the project's owner
-conducts with the kit. The session of 18 November 2026 is recorded under
-[Acceptance](#acceptance): four of its eight criteria passed and four are
-open. Language 0.7 is read by
+conducts with the kit. The session of 18 November 2026, held with the
+simulated Matcher, is recorded under [Acceptance](#acceptance): four of its
+eight criteria passed and four are open. Language 0.7 is read by
 the Rust compiler alone: the TypeScript compiler stays frozen at 0.5 and does
 not read it (E0103); the runtime's compiler is the Rust compiler's module and
 no other ([`library.md`](library.md#the-bridge)). What the
@@ -1843,8 +1843,9 @@ everything the scripted people read:
 configuration, a lock template, and `scripts/live-session.mjs` with the
 egress proxy, a fake ERP and mailbox, a simulated or a real model, and the
 authoring agent's path over `mandate mcp`) lets the project's owner conduct
-the session with a person. Its result is recorded below, criterion by
-criterion, and the status table at the head of the page carries its summary.
+the session with a person. Its result is recorded below for the first eight
+criteria of the table above, and the status table at the head of the page
+carries its summary.
 
 **The session of 18 November 2026.** The project's owner conducted the
 session by hand, following the kit's guide, on `main` at `95518c0`, and took
@@ -1854,7 +1855,8 @@ the kit's fake ERP and mailbox behind the egress proxy, the file notification
 channel and the PGlite store. Time was moved with `live-session.mjs advance`.
 A real model, a real sandbox, real elapsed time and a real ERP were not shown
 ([What the live kit fakes](#known-limits-of-07)). The session has yet to be
-held with a person who did not design the flow.
+held with someone who does not write software, as the release's criterion
+asks.
 
 | # | Criterion | Result | What the session showed |
 |---|---|---|---|
@@ -1868,7 +1870,7 @@ held with a person who did not design the flow.
 | 8 | Replay gives the same result | passed | The replays of the `design` run `d1` and of the `live` run `l1` were `complete` and gave the run's result. The replay of the `read_only` run `r1` was `partial`, as documented ([Replaying a `read_only` run returns `partial`](#known-limits-of-07)). |
 
 A criterion is `passed` only on the participant's word. Criteria 1, 4, 5 and
-7 stay open until a session records them.
+7 are open, the one that was not shown among them.
 
 ## Not in 0.7
 
@@ -2000,8 +2002,8 @@ is a defect that a test hides: where a test pins one, the entry says so.
   transport, not through the egress proxy with secrets; the live kit does.
   See [Acceptance](#acceptance).
 - **The live session is recorded in part.** Criteria 1, 4, 5 and 7 are open,
-  and no session has shown a real model, a real sandbox, real elapsed time or
-  a real ERP ([Acceptance](#acceptance)).
+  and the session of 18 November 2026 did not show a real model, a real
+  sandbox, real elapsed time or a real ERP ([Acceptance](#acceptance)).
 
 ## Carried to 0.8
 
