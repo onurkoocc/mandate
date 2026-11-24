@@ -55,7 +55,7 @@ Only the product owner changes these.
 
 ## Roadmap
 
-Versions 0.1 to 0.7 are implemented ([Status](docs/REFERENCE.md#status)); the result of 0.7's live session is not recorded yet ([`spec/attention.md`](spec/attention.md)). The proposed plan from here, in order; a release closes on the evidence in the last column.
+Versions 0.1 to 0.7 are implemented ([Status](docs/REFERENCE.md#status)); 0.7's live session is recorded in part: four of its eight criteria passed and four are open ([`spec/attention.md`](spec/attention.md#acceptance)). The proposed plan from here, in order; a release closes on the evidence in the last column.
 
 | Release | What it delivers | Closes on |
 |---|---|---|
