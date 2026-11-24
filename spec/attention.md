@@ -9,7 +9,9 @@ implementation was written against, and it says what the implementation does:
 where the first draft of a rule and the rule as built differed, the page was
 brought to the built one. Each part landed with the slice named in the table.
 One row stays open on purpose: the live session, which the project's owner
-conducts with the kit and which is not recorded yet. Language 0.7 is read by
+conducts with the kit. The session of 18 November 2026, held with the
+simulated Matcher, is recorded under [Acceptance](#acceptance): four of its
+eight criteria passed and four are open. Language 0.7 is read by
 the Rust compiler alone: the TypeScript compiler stays frozen at 0.5 and does
 not read it (E0103); the runtime's compiler is the Rust compiler's module and
 no other ([`library.md`](library.md#the-bridge)). What the
@@ -40,7 +42,7 @@ names the tests. The Rust tests run natively and as WebAssembly; those of
 | Card approval of a workflow with an `owner`; the `promote` decision and the ladder; `mandate promote` | B6 | implemented (`Runtime.promote`, the ladder in `startRun`, `mandate promote`; `runtime/test/ladder.test.ts`, `cli-promote.test.ts`) |
 | The driver loop `mandate tick`; notifications | B7, B7b | implemented (`runtime/src/tick.ts`, `runtime/src/notify.ts`; `runtime/test/tick.test.ts`, `cli-tick.test.ts`, `notify.test.ts`, `notify-plan.test.ts`) |
 | The acceptance rehearsal | B10 | implemented (`runtime/test/attention-acceptance.test.ts`, over `fixtures/attention/invoices.mdt`; [Acceptance](#acceptance)) |
-| The live session: its kit, and the session the project's owner conducts | B11 | the kit is implemented (`fixtures/attention/live/`, `scripts/live-session.mjs`; `runtime/test/attention-live-kit.test.ts`); the session is held by the owner; result: not yet recorded |
+| The live session: its kit, and the session the project's owner conducts | B11 | the kit is implemented (`fixtures/attention/live/`, `scripts/live-session.mjs`; `runtime/test/attention-live-kit.test.ts`); the owner held the session on 18 November 2026 at `95518c0` with the simulated Matcher: criteria 2, 3, 6 and 8 passed, criteria 1, 4, 5 and 7 are open ([Acceptance](#acceptance)) |
 
 0.7 puts what a person will see into the program, and computes it before a
 run. A program names its stages (`stage`) and what it tells each role
@@ -1841,8 +1843,34 @@ everything the scripted people read:
 configuration, a lock template, and `scripts/live-session.mjs` with the
 egress proxy, a fake ERP and mailbox, a simulated or a real model, and the
 authoring agent's path over `mandate mcp`) lets the project's owner conduct
-the session with a person. Its result is written into this page's status
-table.
+the session with a person. Its result is recorded below for the first eight
+criteria of the table above, and the status table at the head of the page
+carries its summary.
+
+**The session of 18 November 2026.** The project's owner conducted the
+session by hand, following the kit's guide, on `main` at `95518c0`, and took
+both parts: `ana` (`accountant`) and `ben` (`finance_lead`). It ran on
+Windows with the kit's defaults: the simulated Matcher in place of a model,
+the kit's fake ERP and mailbox behind the egress proxy, the file notification
+channel and the PGlite store. Time was moved with `live-session.mjs advance`.
+A real model, a real sandbox, real elapsed time and a real ERP were not shown
+([What the live kit fakes](#known-limits-of-07)). The session has yet to be
+held with someone who does not write software, as the release's criterion
+asks.
+
+| # | Criterion | Result | What the session showed |
+|---|---|---|---|
+| 1 | An agent sets the flow up | not shown | The program was the ready fixture; the authoring agent's path was not run. |
+| 2 | A person approves the card | passed | Before the approval the start was refused with `unapproved_envelope`; `ana` signed the approval. |
+| 3 | `design` → `read_only` → `live` | passed | No post after the `design` run or after the `read_only` run; two promotions; six posts in the `live` run, of six different invoices. Seen in the session: the promotion screen counted all six as not in the design run (`6 would apply (0 as in the design run, 0 otherwise, 6 not in it)`), though the design run's result listed simulated posts. |
+| 4 | It finishes seeing only S0 to S2 | open | The owner looked at the role's view; no assessment was recorded. |
+| 5 | Notifications carry only S0 and S1 | open | The owner looked at the notifications; no assessment was recorded. |
+| 6 | `asks` holds | passed | The card said at most 2 questions, `status` showed the limit 2, and a start with `--limit asks=1` was refused with `attention_above_asks`. Seen in the session: the finished runs `d1` and `l1` still showed `reserved 1` ([A finished run keeps its `asks` reservation](#known-limits-of-07)). |
+| 7 | A missed deadline escalates | open | The question was seen to pass to `ben`; the final state of the run `r2` was not recorded. |
+| 8 | Replay gives the same result | passed | The replays of the `design` run `d1` and of the `live` run `l1` were `complete` and gave the run's result. The replay of the `read_only` run `r1` was `partial`, as documented ([Replaying a `read_only` run returns `partial`](#known-limits-of-07)). |
+
+A criterion is `passed` only on the participant's word. Criteria 1, 4, 5 and
+7 are open, the one that was not shown among them.
 
 ## Not in 0.7
 
@@ -1973,8 +2001,9 @@ is a defect that a test hides: where a test pins one, the entry says so.
   checks.** Its live run reaches the simulated ERP through the simulators'
   transport, not through the egress proxy with secrets; the live kit does.
   See [Acceptance](#acceptance).
-- **The live session is not recorded.** The owner conducts it with the kit;
-  its result goes into the status table above.
+- **The live session is recorded in part.** Criteria 1, 4, 5 and 7 are open,
+  and the session of 18 November 2026 did not show a real model, a real
+  sandbox, real elapsed time or a real ERP ([Acceptance](#acceptance)).
 
 ## Carried to 0.8
 
