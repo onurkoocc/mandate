@@ -22,8 +22,13 @@ you should see. Whatever does not match is a finding: write it down.
 - The repository built once: from its root, `npm ci` then `npm run build`, and then `npm run build:wasm` (the compiler's
   module, `bridge/wasm`; it needs the Rust toolchain the repository pins, and is never committed). If your machine
   cannot build it, copy the `bridge/wasm` directory from a checkout that has it.
-- Two terminals open in the repository's root, called A and B below. PowerShell and POSIX shells (bash, zsh) are both
-  covered: where a command differs, the guide gives both.
+- Two terminals open in the repository's root, called A and B below. PowerShell and POSIX shells (Git Bash, bash, zsh)
+  are both covered: where a command differs, the guide gives both.
+
+How to read the commands: each command is in a block of its own. Run the blocks in the order they stand, one at a
+time, and wait for each to end. Where the guide gives alternatives it says "Either … or …", with PowerShell first:
+run exactly one of them, not all. (Running a second one of two ways to decide the same wait is harmless: it prints
+`nothing waits for …` and signs nothing.)
 
 ## What is on the table
 
@@ -57,8 +62,10 @@ hosts must be loopback or names reserved for documentation (`*.example`).
 
 ## Step 2. Set up terminal B
 
-In the second terminal, in the repository's root, paste the three lines `up` printed for your shell. For PowerShell they
-look like this (the directory and the address differ):
+In the second terminal, in the repository's root, paste the three lines `up` printed for your shell. Paste the lines of
+one shell only. The directory and the address differ from these; use the lines as printed, not these.
+
+Either PowerShell:
 
 ```powershell
 $S = 'C:/Users/you/AppData/Local/Temp/mandate-live-1234abcd'
@@ -66,10 +73,16 @@ $C = "$S/mandate.runtime.json"
 $env:NODE_OPTIONS = '--import=file:///…/scripts/lib/live-hook.mjs?session=…'
 ```
 
-and for a POSIX shell, `export S=…`, `export C="$S/mandate.runtime.json"` and `export NODE_OPTIONS=…`. Use the lines
-as printed, not these. `$S` is the session directory, `$C` the runtime's configuration inside it. `NODE_OPTIONS` gives
-the `mandate` command of this repository (and nothing else) the session's clock, which step 12 moves, and the simulated
-Matcher.
+or a POSIX shell (Git Bash, bash, zsh):
+
+```sh
+export S='/tmp/mandate-live-1234abcd'
+export C="$S/mandate.runtime.json"
+export NODE_OPTIONS='--import=file:///…/scripts/lib/live-hook.mjs?session=…'
+```
+
+`$S` is the session directory, `$C` the runtime's configuration inside it. `NODE_OPTIONS` gives the `mandate` command
+of this repository (and nothing else) the session's clock, which step 12 moves, and the simulated Matcher.
 
 Three rules for terminal B:
 
@@ -94,6 +107,9 @@ Each person makes their own key. It signs their decisions and never leaves your 
 
 ```sh
 node bridge/dist/cli.js key new --out $S/people/ana/ana.key
+```
+
+```sh
 node bridge/dist/cli.js key new --out $S/people/ben/ben.key
 ```
 
@@ -113,14 +129,26 @@ node bridge/dist/cli.js connector pin fixtures/attention/invoices.mdt --lock $S/
 
 You should see five tools and a digest for each.
 
+The lock is also what lets the program be checked. The program imports modules of a library (`acme.connectors`) that
+the lock pins and `$C` points to, so a plain `check`, with no lock, stops with `MDT-E1604` ("Module acme.connectors is
+not known to this check"): that is the missing lock, not a fault of the program. Check it with the lock and the
+configuration:
+
+```sh
+node bridge/dist/cli.js check fixtures/attention/invoices.mdt --lock $S/invoices.lock.json --config $C
+```
+
+It prints `ok` and the program's hash.
+
 ## Step 4. Read the card
 
 ```sh
 node bridge/dist/cli.js view fixtures/attention/invoices.mdt --card --workflow MatchInvoices --lock $S/invoices.lock.json --config $C
 ```
 
-This is the page ana approves. Read "What it can touch", "The most it spends" and "When it asks whom": at most two
-questions, a day for the accountant, then the finance lead, then every open item declined by nobody.
+This is the page ana approves. Read "What it can touch", "The most it spends" and "When it asks whom". The card says
+"At most 2 questions in all (asks: 2)": a day for the accountant, then the finance lead, then every open item declined
+by nobody.
 
 ## Step 5. Who wrote the program (the authoring row)
 
@@ -129,13 +157,32 @@ scripted variant of this guide that row is NOT shown by this session.** The prog
 `fixtures/attention/invoices.mdt`, written beforehand; nothing here wrote it, and nothing here checked that an agent
 could. Only the real-agent variant shows the row:
 
-1. In a third terminal (not B), start the agent's MCP client with the server `node bridge/dist/cli.js mcp` as its MCP
-   server (the agent's own configuration says how; the command is the whole of it).
-2. Ask the agent to build a workflow in a file of its own, in a directory of its own, and to use the tools to check it
-   (`mandate.check`) until it passes. It can explain a finding, project a view and propose a patch. It cannot sign,
-   approve or promote: those are the persons' (steps 6 to 9).
-3. Then carry on with steps 6 and following on the agent's program in place of the fixture (replace the program's path
-   in the commands), with a lock made for it.
+1. Make the agent's workspace: a new, empty directory outside this repository and outside the session directory. Copy
+   into it the lock `$S/invoices.lock.json` and the library the lock pins, the directory
+   `$S/libraries/acme.connectors/2.3.0` (its three files `mandate.library.json`, `connectors.mdt` and `types.mdt`).
+   Copy nothing else: in particular not `$S/people`, which holds the keys.
+2. In a third terminal (not B), start the agent's MCP client in that directory. Give it two tools and no others: the
+   server `node bridge/dist/cli.js mcp` (with the full path of this repository's `bridge/dist/cli.js`; the agent's own
+   configuration says how), and a file tool that reaches the workspace only. It has no shell and no key.
+3. Send it this request, whose names are the ones the later steps use:
+
+   ```text
+   Write a Mandate program, language 0.7, in the file invoices.mdt in this directory. It has one workflow, named
+   MatchInvoices: it matches each invoice in the mailbox to an open order of the same vendor and posts each match to
+   the ERP as a draft invoice. A total within 2% of the order's is a match; a larger gap may be waived by the
+   accountant or the finance lead. It may ask at most two questions in all (asks: 2). It uses the library
+   acme.connectors, whose files are in libraries/acme.connectors/2.3.0, and the lock invoices.lock.json pins it.
+   Check the program with the tool mandate.check until it passes. Give the tool the program as source, the contents
+   of invoices.lock.json as lock, and libraries as a list of one library: { "manifest": the text of
+   mandate.library.json, "files": { "connectors.mdt": its text, "types.mdt": its text } }. Without the lock and the
+   library the check stops with MDT-E1604. You cannot sign, approve or promote anything.
+   ```
+
+   The agent can explain a finding, project a view and propose a patch. It cannot sign, approve or promote: those are
+   the persons' (steps 6 to 9).
+4. The agent's program does not enter the next steps. Steps 6 and following run on the fixture, as printed, with the
+   lock you made. Read what the agent wrote, and whether its last `mandate.check` said it passed, for row 1 of the
+   checklist.
 
 Mark the authoring row in the checklist as "not shown" unless you did this.
 
@@ -170,23 +217,28 @@ node bridge/dist/cli.js waits --member ana --config $C
 ```
 
 Item 2 and item 5, each with the invoice, the order and what is unmet. The invoice matched to another vendor's order is
-not listed: it is declined without asking. Now ana decides. The easy way is the guided one, which asks you:
+not listed: it is declined without asking. Now ana decides, with her own key. There are three ways to do it, and you
+run one of them. Either the guided one, which asks you:
 
 ```sh
 node bridge/dist/cli.js decide --key $S/people/ana/ana.key --config $C
 ```
 
-Answer `1` to "Which one?", then `waive 2 decline 5`, then `y` to sign. To type nothing, the scripted form:
+Answer `1` to "Which one?", then `waive 2 decline 5` to "Decide every open item", then `y` to "Sign and submit?". Or, to
+type nothing, the scripted form, in PowerShell:
 
 ```powershell
 "1","waive 2 decline 5","y" | node bridge/dist/cli.js decide --key $S/people/ana/ana.key --config $C
 ```
 
+or, in a POSIX shell:
+
 ```sh
 printf '1\nwaive 2 decline 5\ny\n' | node bridge/dist/cli.js decide --key $S/people/ana/ana.key --config $C
 ```
 
-The run is now succeeded. Look at the ERP: there are no posts, and there must be none.
+It prints `decision` and `signed by ana: waive 2, decline 5`, and the run is now succeeded (`run d1 is now succeeded`).
+Look at the ERP: there are no posts, and there must be none.
 
 ```sh
 node scripts/live-session.mjs drafts --session $S
@@ -200,14 +252,22 @@ Ben may not promote, because a promotion is the owner's:
 node bridge/dist/cli.js promote d1 --to read_only --key $S/people/ben/ben.key --yes --config $C
 ```
 
-(`not_in_role`.) Ana promotes, and the run in read_only mode reads the fakes and still writes nothing:
+(It stops with `not_in_role`.) Ana promotes. Run this block alone, and wait for it to end before the next one; it
+prints `promoted by ana as accountant`:
 
 ```sh
 node bridge/dist/cli.js promote d1 --to read_only --key $S/people/ana/ana.key --yes --config $C
+```
+
+Then the run in read_only mode, which reads the fakes and still writes nothing:
+
+```sh
 node bridge/dist/cli.js run fixtures/attention/invoices.mdt --workflow MatchInvoices --input '{}' --run-id r1 --lock $S/invoices.lock.json --mode read_only --config $C
 ```
 
-Decide it as in step 7 (`1`, `waive 2 decline 5`, `y`), then check that nothing was written:
+(If the promotion was skipped, this run stops with `unpromoted`, and the commands after it say `unknown_run` for `r1`.)
+Decide it as in step 7, with one of the three ways (`1`, `waive 2 decline 5`, `y`), then check that nothing was
+written:
 
 ```sh
 node scripts/live-session.mjs drafts --session $S
@@ -232,25 +292,48 @@ node bridge/dist/cli.js promote r1 --to live --key $S/people/ana/ana.key --yes -
 
 ```sh
 node bridge/dist/cli.js run fixtures/attention/invoices.mdt --workflow MatchInvoices --input '{}' --run-id l1 --lock $S/invoices.lock.json --mode live --config $C
+```
+
+`tick` is what a deployment's driver does every few seconds: it moves overdue waits and sends the notifications.
+
+```sh
 node bridge/dist/cli.js tick --config $C
+```
+
+```sh
 node bridge/dist/cli.js waits --member ana --config $C
+```
+
+```sh
 node bridge/dist/cli.js watch --member ana --out $S/pages --config $C
 ```
 
-`tick` is what a deployment's driver does every few seconds: it moves overdue waits and sends the notifications. Open
-`pages/l1.accountant.html` in the session directory in a browser: this is the page ana is shown. Then decide, and tick
-again so that the outcome is notified:
+Open `pages/l1.accountant.html` in the session directory in a browser: this is the page ana is shown. Then decide, as
+in step 7, with one of the three ways. Either the guided one:
+
+```sh
+node bridge/dist/cli.js decide --key $S/people/ana/ana.key --config $C
+```
+
+or, in PowerShell, the scripted one:
 
 ```powershell
 "1","waive 2 decline 5","y" | node bridge/dist/cli.js decide --key $S/people/ana/ana.key --config $C
 ```
 
+or, in a POSIX shell:
+
 ```sh
 printf '1\nwaive 2 decline 5\ny\n' | node bridge/dist/cli.js decide --key $S/people/ana/ana.key --config $C
 ```
 
+Then tick again, so that the outcome is notified:
+
 ```sh
 node bridge/dist/cli.js tick --config $C
+```
+
+```sh
 node scripts/live-session.mjs drafts --session $S
 ```
 
@@ -273,8 +356,8 @@ invoices, each of them twice, and the tool says so. This is a question for the p
 
 ## Step 11. The `asks` bound
 
-The workflow may ask at most two questions in all. Three places show it: the card ("At most 2 questions", step 4), the
-count in the run:
+The workflow may ask at most two questions in all. Three places show it: the card ("At most 2 questions in all (asks: 2)",
+step 4), the count in the run:
 
 ```sh
 node bridge/dist/cli.js status l1 --config $C
@@ -291,29 +374,101 @@ It stops with `attention_above_asks`: it can ask two questions and was given roo
 
 ## Step 12. The deadline
 
-A deadline passes without anyone answering. This step uses a run in read_only, so that nothing is posted twice (see the
-box in step 10), and lets the days pass without waiting for them:
+A deadline passes without anyone answering, and the question goes to the next person. Two runs show the two ends of it:
+in `r2` ben takes the question over and answers it; in `r3` nobody answers and both deadlines pass. Both use read_only,
+so that nothing is posted twice (see the box in step 10), and the days pass without waiting for them. `advance` moves
+the session's clock, for every `mandate` command of terminal B, by the duration (`90m`, `25h`, `2d`); it never goes
+back. The program's own deadline (one day) is unchanged.
+
+### 12a. `r2`: ben takes the question over
 
 ```sh
 node bridge/dist/cli.js run fixtures/attention/invoices.mdt --workflow MatchInvoices --input '{}' --run-id r2 --lock $S/invoices.lock.json --mode read_only --config $C
-node bridge/dist/cli.js tick --config $C
-node scripts/live-session.mjs advance 25h --session $S
-node bridge/dist/cli.js tick --config $C
-node bridge/dist/cli.js waits --member ben --config $C
 ```
 
-The first `tick` sends ana the question (look at `notifications.jsonl`: a `review_requested` for `r2` to the accountant).
-Then the accountant's day passed, so the question went to ben (`waits --member ben` lists it). Let his day pass too:
+```sh
+node bridge/dist/cli.js tick --config $C
+```
+
+This first `tick` sends ana the question (look at `notifications.jsonl`: a `review_requested` for `r2` to the
+accountant). Now ana's day passes, and the next `tick` moves the question on:
 
 ```sh
 node scripts/live-session.mjs advance 25h --session $S
+```
+
+```sh
 node bridge/dist/cli.js tick --config $C
+```
+
+```sh
+node bridge/dist/cli.js waits --member ben --config $C
+```
+
+The question went to ben: `waits --member ben` lists `r2`, with the same two items as ana was asked about. He answers
+it with his own key, in the same three ways as ana did in step 7 (run one of them). Either the guided one (answer `1`,
+then `waive 2 decline 5`, then `y`):
+
+```sh
+node bridge/dist/cli.js decide --key $S/people/ben/ben.key --config $C
+```
+
+or, in PowerShell, the scripted one:
+
+```powershell
+"1","waive 2 decline 5","y" | node bridge/dist/cli.js decide --key $S/people/ben/ben.key --config $C
+```
+
+or, in a POSIX shell:
+
+```sh
+printf '1\nwaive 2 decline 5\ny\n' | node bridge/dist/cli.js decide --key $S/people/ben/ben.key --config $C
+```
+
+It prints `signed by ben: waive 2, decline 5` and `run r2 is now succeeded`. Read the final state:
+
+```sh
 node bridge/dist/cli.js status r2 --config $C
 ```
 
-The run is succeeded, with every open item declined by nobody (`"by":null`). `advance` moves the session's clock, for
-every `mandate` command of terminal B, by the duration (`90m`, `25h`, `2d`); it never goes back. The program's own
-deadline (one day) is unchanged.
+The run is succeeded, and it carries the line `decision review by ben as finance_lead: signed`: the question was
+answered by the person it went to when ana's day passed.
+
+### 12b. `r3`: both deadlines pass
+
+```sh
+node bridge/dist/cli.js run fixtures/attention/invoices.mdt --workflow MatchInvoices --input '{}' --run-id r3 --lock $S/invoices.lock.json --mode read_only --config $C
+```
+
+```sh
+node bridge/dist/cli.js tick --config $C
+```
+
+Nobody answers this one. Ana's day passes, and the question goes to ben:
+
+```sh
+node scripts/live-session.mjs advance 25h --session $S
+```
+
+```sh
+node bridge/dist/cli.js tick --config $C
+```
+
+Ben's day passes too, and the deadline of the last person ends the question:
+
+```sh
+node scripts/live-session.mjs advance 25h --session $S
+```
+
+```sh
+node bridge/dist/cli.js tick --config $C
+```
+
+```sh
+node bridge/dist/cli.js status r3 --config $C
+```
+
+The run is succeeded, with every open item declined by nobody (`"by":null`), and no `decision` line: nobody signed.
 
 ## Step 13. Replay
 
@@ -321,8 +476,17 @@ Replaying a run recomputes it from its journal. The design and the live run give
 
 ```sh
 node bridge/dist/cli.js status d1 --config $C
+```
+
+```sh
 node bridge/dist/cli.js replay d1 --config $C
+```
+
+```sh
 node bridge/dist/cli.js status l1 --config $C
+```
+
+```sh
 node bridge/dist/cli.js replay l1 --config $C
 ```
 
@@ -345,26 +509,79 @@ Go through it with the session still up. Write pass, fail or not shown, and a no
 | 1 | An author builds the workflow | Step 5. Scripted variant: **not shown** (the program is the fixture). Real-agent variant: the agent built it with `mandate.check` and could not approve. | | |
 | 2 | The card is approved by the owner | Step 6: `unapproved_envelope` before; ben's approval `not_in_role`; ana's approval signed. | | |
 | 3 | design, then read_only, then live | Steps 7 to 10: no post after design and read_only; a promotion by ana for each; the shadow diff of step 9; six posts after live. | | |
-| 4 | The role sees only what it may be shown | `watch l1 --role accountant --jsonl`: the `class` of every event is S0, S1 or S2, and none above. The waits show the items, not the declined invoice of another vendor. | | |
-| 5 | Notifications carry only S0 and S1 | `$S/notifications.jsonl`: the `class` of every line is `S0` or `S1`. PowerShell: `Get-Content $S/notifications.jsonl \| ForEach-Object { ($_ \| ConvertFrom-Json).class } \| Sort-Object -Unique`. POSIX: `grep -o '"class":"S[0-9]"' $S/notifications.jsonl \| sort \| uniq -c`. | | |
-| 6 | The `asks` bound holds | Step 11: the card's "At most 2 questions"; the `budget asks:` line of `status l1`; the refused start with `--limit asks=1`. | | |
-| 7 | A missed deadline escalates | Step 12: after the first `advance` the question is ben's; after the second the run ends with every open item declined by nobody. | | |
+| 4 | The role sees only what it may be shown | Three statements, checked below the table: (a) no event of class S3 or S4 is in the accountant's stream; (b) every value shown carries a `class` and a `known` label; (c) no value above the role's class is shown unmasked. The waits show the items, not the declined invoice of another vendor. | | |
+| 5 | Notifications carry only S0 and S1 | One statement with three parts, checked below the table, over every line of `$S/notifications.jsonl`: (a) its event is one of the S0 and S1 events and its `class` is `S0` or `S1`; (b) its members are exactly the payload's; (c) no value of any command's result appears in it. | | |
+| 6 | The `asks` bound holds | Step 11: the card's "At most 2 questions in all (asks: 2)"; the `budget asks:` line of `status l1`; the refused start with `--limit asks=1`. | | |
+| 7 | A missed deadline escalates | Step 12: in `r2`, after the first `advance` the question is ben's and ben signs it with his own key (`signed by ben`, `status r2` succeeded); in `r3`, after the second `advance` the run ends with every open item declined by nobody. | | |
 | 8 | Replay is equal | Step 13: `replay d1` and `replay l1` complete with the result `status` printed; `replay r1` is `partial` (a known limit). | | |
+
+Rows 4 and 5 are the specification's four checkable statements (spec/attention.md, "The live session"), one for each
+thing to look at.
+
+Row 4, what the accountant is shown. (a) The events of the run, each with its `class`:
+
+```sh
+node bridge/dist/cli.js watch l1 --role accountant --jsonl --config $C
+```
+
+The `class` of every event is S0, S1 or S2; none is S3 or S4. (b) Look back at the listings of the waits you saw in steps
+7, 8, 10 and 12 (`waits`, `decide`): every value line ends with `[class …; known …]`. (c) A value above the role's class
+is not shown but printed as `masked; its class is …`. The lock's `role_classes` gives both roles `confidential` and the
+invoices are `confidential`, so nothing here is above their class and nothing is masked: unless you saw a `masked` line,
+write "not shown" for (c), and say so in the notes, instead of "pass".
+
+Row 5, what the notifications carry. Open `notifications.jsonl` in the session directory, one JSON line for each
+notification. (a) The `event` of each is one of `wait_opened`, `review_requested`, `review_escalated`,
+`amendment_requested` (class S0) or `run_succeeded`, `run_failed`, `run_cancelled`, `run_attention_required`,
+`budget_exceeded`, `asks_exhausted` (class S1), and its `class` is `S0` or `S1`. To list the classes in the file,
+either in PowerShell:
+
+```powershell
+Get-Content $S/notifications.jsonl | ForEach-Object { ($_ | ConvertFrom-Json).class } | Sort-Object -Unique
+```
+
+or in a POSIX shell:
+
+```sh
+grep -o '"class":"S[0-9]"' $S/notifications.jsonl | sort | uniq -c
+```
+
+(b) The members of each line are exactly these and no others: `format`, `id`, `kind`, `event`, `class`, `tenant`, `run`,
+`workflow`, `package`, `seq`, `at`, `role`, `command`, `deadline`, `as_of`, `link`. (c) No value of any command's
+result is in a line: no invoice number, no vendor, no amount, no order.
 
 ## Step 15. Stop and clean up
 
-First end the session's clock in terminal B (PowerShell: `Remove-Item Env:NODE_OPTIONS`; POSIX shell: `unset NODE_OPTIONS`),
-then:
+First end the session's clock in terminal B. Either in PowerShell:
+
+```powershell
+Remove-Item Env:NODE_OPTIONS
+```
+
+or in a POSIX shell:
+
+```sh
+unset NODE_OPTIONS
+```
+
+Then:
 
 ```sh
 node scripts/live-session.mjs status --session $S
+```
+
+```sh
 node scripts/live-session.mjs down --session $S
+```
+
+```sh
 node scripts/live-session.mjs clean --session $S
 ```
 
 `down` stops the world (Ctrl+C in terminal A does too) and keeps the directory; `clean` removes what the kit made in it,
 with the keys and the store, and the directory if nothing else is in it (otherwise it lists what it left). It refuses a
-directory that is not the kit's session, or that is inside a git work tree.
+directory that is not the kit's session, or that is inside a git work tree. The agent's workspace of step 5 is not the
+kit's: delete it yourself.
 
 ## What this session does not show
 
@@ -409,16 +626,22 @@ About what the kit fakes, which a pass here does not cover either:
 ## A real model for the Matcher (optional)
 
 Not needed for the acceptance above. The key comes from the environment of terminal A only, never from a file and never
-from a `.env` (the kit reads none), and is not shown as you type it:
+from a `.env` (the kit reads none), and is not shown as you type it. Either in PowerShell:
 
 ```powershell
 $k = Read-Host "key" -AsSecureString
 $env:CLAUDE_API_KEY = [System.Net.NetworkCredential]::new('', $k).Password
-node scripts/live-session.mjs up --real-model
 ```
+
+or in a POSIX shell:
 
 ```sh
 read -s CLAUDE_API_KEY && export CLAUDE_API_KEY
+```
+
+Then, in the same terminal A:
+
+```sh
 node scripts/live-session.mjs up --real-model
 ```
 
@@ -433,6 +656,9 @@ path has not been run by the kit's authors: it is checked by its configuration a
   directory to keep what you did).
 - `…/runtime/dist/… is not there`: build first (`npm run build`).
 - A compiler failure at once: `bridge/wasm` is missing (`npm run build:wasm`).
+- `MDT-E1604` from `check` ("Module acme.connectors is not known to this check"): the check was run without the lock
+  and the configuration. Give it both: `--lock $S/invoices.lock.json --config $C` (step 3). An agent's `mandate.check`
+  needs the `lock` and `libraries` parameters for the same reason (step 5).
 - `unpromoted` or `unapproved_envelope`: the step before it was skipped, or the package changed (a new lock is a new
   package and needs a new approval).
 - `not_in_role`: the wrong person's key. This is the specification working, not a failure.
