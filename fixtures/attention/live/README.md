@@ -158,9 +158,10 @@ scripted variant of this guide that row is NOT shown by this session.** The prog
 could. Only the real-agent variant shows the row:
 
 1. Make the agent's workspace: a new, empty directory outside this repository and outside the session directory. Copy
-   into it the lock `$S/invoices.lock.json` and the library the lock pins, the directory
-   `$S/libraries/acme.connectors/2.3.0` (its three files `mandate.library.json`, `connectors.mdt` and `types.mdt`).
-   Copy nothing else: in particular not `$S/people`, which holds the keys.
+   into it the lock `$S/invoices.lock.json` and the directory `$S/libraries` (it holds only the library the lock pins,
+   `acme.connectors/2.3.0`, with its three files `mandate.library.json`, `connectors.mdt` and `types.mdt`). The
+   workspace then holds `invoices.lock.json` and `libraries/acme.connectors/2.3.0/`. Copy nothing else: in particular
+   not `$S/people`, which holds the keys.
 2. In a third terminal (not B), start the agent's MCP client in that directory. Give it two tools and no others: the
    server `node bridge/dist/cli.js mcp` (with the full path of this repository's `bridge/dist/cli.js`; the agent's own
    configuration says how), and a file tool that reaches the workspace only. It has no shell and no key.
@@ -265,7 +266,8 @@ Then the run in read_only mode, which reads the fakes and still writes nothing:
 node bridge/dist/cli.js run fixtures/attention/invoices.mdt --workflow MatchInvoices --input '{}' --run-id r1 --lock $S/invoices.lock.json --mode read_only --config $C
 ```
 
-(If the promotion was skipped, this run stops with `unpromoted`, and the commands after it say `unknown_run` for `r1`.)
+(If the promotion was skipped, this run stops with `unpromoted` and no run `r1` exists: `decide` then finds nothing
+waiting, and `shadow-diff` and `promote` in step 9 say `unknown_run` for `r1`.)
 Decide it as in step 7, with one of the three ways (`1`, `waive 2 decline 5`, `y`), then check that nothing was
 written:
 
@@ -431,8 +433,10 @@ It prints `signed by ben: waive 2, decline 5` and `run r2 is now succeeded`. Rea
 node bridge/dist/cli.js status r2 --config $C
 ```
 
-The run is succeeded, and it carries the line `decision review by ben as finance_lead: signed`: the question was
-answered by the person it went to when ana's day passed.
+The run is succeeded. `status` lists the decisions the run stands on: ana's approval of the card (`decision envelope by
+ana as accountant: signed`) and her promotion (`decision promote by ana as accountant: signed`), which every read_only
+run starts under, and then `decision review by ben as finance_lead: signed`: the question was answered by the person it
+went to when ana's day passed.
 
 ### 12b. `r3`: both deadlines pass
 
@@ -468,7 +472,9 @@ node bridge/dist/cli.js tick --config $C
 node bridge/dist/cli.js status r3 --config $C
 ```
 
-The run is succeeded, with every open item declined by nobody (`"by":null`), and no `decision` line: nobody signed.
+The run is succeeded, with every open item declined by nobody (`"by":null`). Its only `decision` lines are ana's approval
+of the card (`decision envelope …`) and her promotion (`decision promote …`). There is no `decision review` line:
+nobody signed the question.
 
 ## Step 13. Replay
 
@@ -509,26 +515,33 @@ Go through it with the session still up. Write pass, fail or not shown, and a no
 | 1 | An author builds the workflow | Step 5. Scripted variant: **not shown** (the program is the fixture). Real-agent variant: the agent built it with `mandate.check` and could not approve. | | |
 | 2 | The card is approved by the owner | Step 6: `unapproved_envelope` before; ben's approval `not_in_role`; ana's approval signed. | | |
 | 3 | design, then read_only, then live | Steps 7 to 10: no post after design and read_only; a promotion by ana for each; the shadow diff of step 9; six posts after live. | | |
-| 4 | The role sees only what it may be shown | Three statements, checked below the table: (a) no event of class S3 or S4 is in the accountant's stream; (b) every value shown carries a `class` and a `known` label; (c) no value above the role's class is shown unmasked. The waits show the items, not the declined invoice of another vendor. | | |
+| 4 | The role sees only what it may be shown | Three statements, checked below the table: (a) no event of class S3 or S4 is in any role's stream: the accountant's (`watch l1 --role accountant --jsonl`) and the finance lead's (`watch r2 --role finance_lead --jsonl`); (b) every value shown carries a `class` and a `known` label; (c) no value above the role's class is shown unmasked. The waits show the items, not the declined invoice of another vendor. | | |
 | 5 | Notifications carry only S0 and S1 | One statement with three parts, checked below the table, over every line of `$S/notifications.jsonl`: (a) its event is one of the S0 and S1 events and its `class` is `S0` or `S1`; (b) its members are exactly the payload's; (c) no value of any command's result appears in it. | | |
 | 6 | The `asks` bound holds | Step 11: the card's "At most 2 questions in all (asks: 2)"; the `budget asks:` line of `status l1`; the refused start with `--limit asks=1`. | | |
 | 7 | A missed deadline escalates | Step 12: in `r2`, after the first `advance` the question is ben's and ben signs it with his own key (`signed by ben`, `status r2` succeeded); in `r3`, after the second `advance` the run ends with every open item declined by nobody. | | |
 | 8 | Replay is equal | Step 13: `replay d1` and `replay l1` complete with the result `status` printed; `replay r1` is `partial` (a known limit). | | |
 
-Rows 4 and 5 are the specification's four checkable statements (spec/attention.md, "The live session"), one for each
-thing to look at.
+Rows 4 and 5 are the specification's four checkable statements (spec/attention.md, "The live session"), over everything
+the people of the session read.
 
-Row 4, what the accountant is shown. (a) The events of the run, each with its `class`:
+Row 4, what the roles are shown. (a) The events of the runs, each with its `class`, for the accountant and for the
+finance lead:
 
 ```sh
 node bridge/dist/cli.js watch l1 --role accountant --jsonl --config $C
 ```
 
-The `class` of every event is S0, S1 or S2; none is S3 or S4. (b) Look back at the listings of the waits you saw in steps
-7, 8, 10 and 12 (`waits`, `decide`): every value line ends with `[class …; known …]`. (c) A value above the role's class
-is not shown but printed as `masked; its class is …`. The lock's `role_classes` gives both roles `confidential` and the
-invoices are `confidential`, so nothing here is above their class and nothing is masked: unless you saw a `masked` line,
-write "not shown" for (c), and say so in the notes, instead of "pass".
+```sh
+node bridge/dist/cli.js watch r2 --role finance_lead --jsonl --config $C
+```
+
+The `class` of every event in both is S0, S1 or S2; none is S3 or S4. (b) Look back at the listings of the waits you saw
+in steps 7, 8, 10 and 12 (`waits`, `decide`): every value line ends with `[class …; known …]`. The page of step 10,
+`pages/l1.accountant.html`, prints a value of the question it shows with a note, "Its class …, known …". (c) A value
+above the role's class is not shown but printed as `masked; its class is …` in a listing, and as "Masked: its class is …"
+in a page. The lock's `role_classes` gives both roles `confidential` and the invoices are `confidential`, so nothing here
+is above their class and nothing is masked: unless you saw such a line, write "not shown" for (c), and say so in the
+notes, instead of "pass".
 
 Row 5, what the notifications carry. Open `notifications.jsonl` in the session directory, one JSON line for each
 notification. (a) The `event` of each is one of `wait_opened`, `review_requested`, `review_escalated`,
@@ -630,6 +643,11 @@ from a `.env` (the kit reads none), and is not shown as you type it. Either in P
 
 ```powershell
 $k = Read-Host "key" -AsSecureString
+```
+
+and, once you have typed the key and pressed Enter:
+
+```powershell
 $env:CLAUDE_API_KEY = [System.Net.NetworkCredential]::new('', $k).Password
 ```
 
@@ -644,6 +662,10 @@ Then, in the same terminal A:
 ```sh
 node scripts/live-session.mjs up --real-model
 ```
+
+This `up` is step 1 with a real model in place of the simulated one, not a step after it: run it instead of the plain
+`up`, and carry on from step 2 with the lines it prints. A world that is already running (started without
+`--real-model`) keeps its simulated model: stop it first (Ctrl+C in its terminal).
 
 The runtime's own configuration is used: the model's host is the one thing besides the two fakes the egress proxy lets
 through, with the key held by the proxy. Terminal B must not have the key. The agent loop also needs the sandbox the
