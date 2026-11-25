@@ -223,9 +223,8 @@ could. Only the real-agent variant shows the row:
 
    It has one workflow, named MatchInvoices, and two roles: accountant ("Accountant") and finance_lead ("Finance
    lead"). The workflow reads the invoices in the mailbox, matches each one to an open order of the same vendor, and
-   posts each match to the ERP as a draft invoice, with the invoice number as the key that makes a repeated post
-   harmless. Retrying or resuming a post of the same invoice within the same run must produce one draft; a separate
-   live run over the same mailbox can post that invoice again. An invoice is matched when the match is for that
+   posts each match to the ERP as a draft invoice, with the invoice number as the key by which a retried or resumed post
+   of one invoice within a run is one post; a separate live run over the same mailbox posts that invoice again. An invoice is matched when the match is for that
    invoice, names an order of the invoice's own vendor, and the invoice's total is within 2% of the order's total. A
    larger gap in the total may be accepted by the accountant or by the finance lead. A match to an order of another
    vendor may be accepted by no one: it is declined without asking anyone.
@@ -247,17 +246,18 @@ could. Only the real-agent variant shows the row:
    connector tools: the mailbox's list_invoices, and the ERP's list_open_orders and post_draft_invoice.
 
    It uses the library acme.connectors, whose files are in libraries/acme.connectors/2.3.0 (read them), and the lock
-   invoices.lock.json pins it. Check the program with the tool mandate.check until it returns ok: true; warnings may
-   remain, errors may not, and do not change the matching rules to silence a warning. Give the tool: source, the full
-   text of invoices.mdt; lock, the contents of invoices.lock.json parsed as JSON and given as an object, not as a
-   string; and libraries, an array of one object, { "manifest": the full text of mandate.library.json as a string,
-   "files": { "connectors.mdt": its full text, "types.mdt": its full text } }. Without the lock and the library the
-   check cannot find the library's modules.
+   invoices.lock.json pins it. Check the program with the tool mandate.check until its result has ok: true and no
+   diagnostic of severity error. Warnings are expected, for example one that says a static criterion cannot be proved
+   at compile time and becomes a run-time check: leave them, and do not change the matching rules to silence one. Give
+   the tool: source, the full text of invoices.mdt; lock, the contents of invoices.lock.json parsed as JSON and given
+   as an object, not as a string; and libraries, an array of one object, { "manifest": the full text of
+   mandate.library.json as a string, "files": { "connectors.mdt": its full text, "types.mdt": its full text } }.
+   Without the lock and the library the check cannot find the library's modules.
 
-   When the check has returned ok: true, call the tool mandate.project twice with workflow MatchInvoices, once with
+   When the check has ok: true, call the tool mandate.project twice with workflow MatchInvoices, once with
    view "card" and once with view "attention", each with the same source, lock and libraries, and show me both results
-   as they are returned, with the last response of mandate.check in full (warnings included) and the final text of
-   invoices.mdt. You cannot sign, approve or promote anything.
+   as they are returned, with the result of your last mandate.check with ok: true in full (warnings included) and the
+   final text of invoices.mdt. You cannot sign, approve or promote anything.
    ```
 
    The agent can explain a finding, project a view and propose a patch. It cannot sign, approve or promote: those are
