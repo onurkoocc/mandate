@@ -8,12 +8,14 @@ sitting of about an hour. You play the story the specification calls the accepta
 > A deadline that passes unanswered goes to the next person. Replaying a run gives the same result.
 
 Everything it touches is fake. The ERP and the mailbox are two small servers that run on your machine and nowhere else;
-the invoices are made up. With the default, simulated Matcher (it answers what a model that read the ERP would) no model
-is used, no key and no account are needed, and the session reaches only those local fakes; the item numbers, the answers
-and the counts below apply to it. In the optional real-model variant (the end of this guide) step 2 reports `model real`
-instead of `simulated`, the egress proxy may contact the model's host, `api.anthropic.com`, and a real Matcher can
-return another match or fail: read the actual wait before you decide, use the item numbers it shows, and write down the
-outcomes you observe instead of the ones quoted here. The last steps are a checklist, one line for each row of the
+the invoices are made up. With the default, simulated Matcher (it answers what a model that read the ERP would) the
+scripted session needs no model credential, no key and no account, and reaches only those local fakes; the item numbers,
+the answers and the counts below apply to it. In the optional real-model variant (the end of this guide) step 2
+reports `model real` instead of `simulated`, the egress proxy may contact the model's host, `api.anthropic.com`, and a
+real Matcher can return another match or fail: read the actual wait before you decide, use the item numbers it shows,
+and write down the outcomes you observe instead of the ones quoted here. The two choices are independent: the optional
+authoring client of step 5 is a program of its own, with its own model configuration, and it reaches whatever that
+configuration says whichever Matcher the session uses. The last steps are a checklist, one line for each row of the
 acceptance, with what to look at and a place for your verdict. At the end, "What this session does not show" says what a
 pass here does NOT prove. Read it before you sign anything off.
 
@@ -26,14 +28,18 @@ does not write software. So write down, before step 1, who operates the kit and 
 
 - The operator runs the commands, including the ones that print the raw run: `run`, `status`, `drafts`, `replay` and
   `tick`. What they print is the operator's report (review data, results, evidence, action receipts), which is not what
-  a role is shown. `$S/notifications.jsonl` is one shared file for both roles. If the participant reads those, they
-  have seen more than the accountant is shown, and what they then say about "what the accountant saw" does not count.
-- The participant is shown, for each role, only that role's views: its stream (`watch --role`), its waits (`waits`),
-  its decision screen (`decide`), its page (`pages/…`) and the notifications addressed to that role. The participant
-  gives each verdict in their own words.
+  a role is shown. `$S/notifications.jsonl` is one shared file for both roles; the operator keeps it, and the raw
+  reports, out of the participant's view while the participant does the work as a role.
+- While the participant does the work as ana or as ben (steps 7 to 12), they are shown, for that role only, its stream
+  (`watch --role`), its waits (`waits`), its decision screen (`decide`), its page (`pages/…`) and the notifications
+  addressed to that role. Write down which of those screens the participant actually saw: row 4 is judged on them.
+- Afterwards, in the checklist (step 14), the evidence is inspected as an assessment, which is not part of the work: for
+  row 5 every original line of the shared file is read, whatever its `role`, and a line whose `role` is missing or is
+  none of the lock's roles is a finding. Reading the file then does not change what the participant was shown. The
+  participant gives each verdict in their own words.
 - If you play both parts alone, that is allowed and it is a record of its own: write "operator and participant are the
-  same person" in the notes of every row, keep to the participant's views when you judge rows 4 and 5, and leave the
-  release's criterion (a participant who does not write software) outstanding. This guide cannot close it.
+  same person" in the notes of every row, keep to the role views while you do the work and judge row 4 on them, and
+  leave the release's criterion (a participant who does not write software) outstanding. This guide cannot close it.
 
 ## What you need
 
@@ -121,7 +127,8 @@ Every command below that takes `$S` or `$C` has them in double quotes, because a
 the quotes when you copy.
 
 `$S` is the session directory, `$C` the runtime's configuration inside it. `NODE_OPTIONS` gives the `mandate` command
-of this repository (and nothing else) the session's clock, which step 12 moves, and the simulated Matcher.
+of this repository (and nothing else) the session's clock, which step 12 moves, and, in the simulated mode only, the
+simulated Matcher (with `--real-model` it gives the clock and nothing else).
 
 Three rules for terminal B:
 
@@ -217,43 +224,54 @@ could. Only the real-agent variant shows the row:
    It has one workflow, named MatchInvoices, and two roles: accountant ("Accountant") and finance_lead ("Finance
    lead"). The workflow reads the invoices in the mailbox, matches each one to an open order of the same vendor, and
    posts each match to the ERP as a draft invoice, with the invoice number as the key that makes a repeated post
-   harmless. An invoice is matched when the match is for that invoice, names an order of the invoice's own vendor, and
-   the invoice's total is within 2% of the order's total. A larger gap in the total may be accepted by the accountant
-   or by the finance lead. A match to an order of another vendor may be accepted by no one: it is declined without
-   asking anyone.
+   harmless. Retrying or resuming a post of the same invoice within the same run must produce one draft; a separate
+   live run over the same mailbox can post that invoice again. An invoice is matched when the match is for that
+   invoice, names an order of the invoice's own vendor, and the invoice's total is within 2% of the order's total. A
+   larger gap in the total may be accepted by the accountant or by the finance lead. A match to an order of another
+   vendor may be accepted by no one: it is declined without asking anyone.
 
-   The accountant owns the workflow: the accountant approves its card and promotes it. The accountant is asked once, in
-   one decision about at most 60 items, to waive or decline the invoices that missed only on the total, and has one
-   day to answer. If the day passes unanswered, the same open items go to the finance lead, who has one more day for
-   one decision of their own. If that day passes too, every open item is declined, by nobody, and the workflow goes on
-   and posts what was accepted. The workflow may ask at most two questions in all, and may spend at most 20 USD and 2
-   hours. The matching of one invoice is done by an agent named Matcher that may read the ERP's open orders and use a
-   standard-tier model with data up to confidential, writes nothing, and may use at most 60k tokens, 0.30 USD and 4
-   steps for one invoice. The workflow may use only these connector tools: the mailbox's list_invoices, and the
-   ERP's list_open_orders and post_draft_invoice.
+   A run takes at most 60 invoices and matches at most six of them at a time. The workflow has four stages, named
+   "Collect the items", "Work on each item", "Decide on the exceptions" and "Commit what was accepted". It tells the
+   accountant two things: "Items collected", with the number of items, and "Batch done", with the numbers posted,
+   declined and failed.
+
+   The accountant owns the workflow: the accountant approves its card and promotes it. If there are invoices that missed
+   only on the total, the accountant is asked once, in one decision about all of them, to waive or decline them, and
+   has one day to answer; if there are none, nobody is asked. If the day passes unanswered, the same open items go to
+   the finance lead, who has one more day for one decision of their own. If that day passes too, every open item is
+   declined, by nobody, and the workflow goes on and posts what was accepted. The workflow may ask at most two
+   questions in all, and may spend at most 20 USD and 2 hours. The two hours are for the work: the waits for people
+   are not counted against them and have the deadlines above. The matching of one invoice is done by an agent named
+   Matcher that may read the ERP's open orders and use a standard-tier model with data up to confidential, writes
+   nothing, and may use at most 60k tokens, 0.30 USD and 4 steps for one invoice. The workflow may use only these
+   connector tools: the mailbox's list_invoices, and the ERP's list_open_orders and post_draft_invoice.
 
    It uses the library acme.connectors, whose files are in libraries/acme.connectors/2.3.0 (read them), and the lock
-   invoices.lock.json pins it. Check the program with the tool mandate.check until it reports no diagnostic. Give the
-   tool: source, the full text of invoices.mdt; lock, the contents of invoices.lock.json parsed as JSON and given as
-   an object, not as a string; and libraries, an array of one object, { "manifest": the full text of
-   mandate.library.json as a string, "files": { "connectors.mdt": its full text, "types.mdt": its full text } }.
-   Without the lock and the library the check cannot find the library's modules.
+   invoices.lock.json pins it. Check the program with the tool mandate.check until it returns ok: true; warnings may
+   remain, errors may not, and do not change the matching rules to silence a warning. Give the tool: source, the full
+   text of invoices.mdt; lock, the contents of invoices.lock.json parsed as JSON and given as an object, not as a
+   string; and libraries, an array of one object, { "manifest": the full text of mandate.library.json as a string,
+   "files": { "connectors.mdt": its full text, "types.mdt": its full text } }. Without the lock and the library the
+   check cannot find the library's modules.
 
-   When the check is clean, call the tool mandate.project twice for the workflow MatchInvoices, once with view "card"
-   and once with view "attention", each with the same source, lock and libraries, and show me both results as they
-   are returned, with the final text of invoices.mdt. You cannot sign, approve or promote anything.
+   When the check has returned ok: true, call the tool mandate.project twice with workflow MatchInvoices, once with
+   view "card" and once with view "attention", each with the same source, lock and libraries, and show me both results
+   as they are returned, with the last response of mandate.check in full (warnings included) and the final text of
+   invoices.mdt. You cannot sign, approve or promote anything.
    ```
 
    The agent can explain a finding, project a view and propose a patch. It cannot sign, approve or promote: those are
    the persons' (steps 6 to 9).
-4. Keep what the agent produced as the evidence for row 1: the final source in `invoices.mdt`, the result of its last
-   `mandate.check`, and the card and the attention view `mandate.project` returned. The participant reads them against
-   the request: the workflow and role names, the owner, who is asked what and in which order, the two one-day
-   deadlines, what follows when both pass, the bound of two questions, and the connectors' tools. Write down what the
-   agent actually built, including every difference from the request. A clean check alone is not the evidence: a
-   different program can check cleanly. (The specification's scripted rehearsal also shows a draft with a deliberately
-   wrong bound, its diagnostic and a patch; that is the rehearsal's evidence, and this request does not ask the agent
-   for it.)
+4. Keep what the agent produced as the evidence for row 1: the final source in `invoices.mdt`, its last successful
+   `mandate.check` response (`ok: true`; the warnings in it are expected, and an `ok: false` response or one with a
+   diagnostic of severity `error` is not a successful one), and the card and the attention view `mandate.project`
+   returned. The participant reads them against the request: the workflow and role names, the owner, who is asked what
+   and in which order, the two one-day deadlines, what follows when both pass, the bound of two questions, the batch
+   and Matcher limits, the work budget, the stages and report fields, and the connectors' tools. Write down what the
+   agent actually built, including every difference from the request. A successful check alone is not the evidence: a
+   different program can check successfully. (The specification's scripted rehearsal also shows a draft with a
+   deliberately wrong bound, its diagnostic and a patch; that is the rehearsal's evidence, and this request does not
+   ask the agent for it.)
 5. The agent's program does not enter the next steps. Steps 6 and following run on the fixture, as printed, with the
    lock you made, so their success is no evidence about what the agent wrote.
 
@@ -637,19 +655,21 @@ Go through it with the session still up. Write pass, fail or not shown, and a no
 
 | # | Row of the acceptance | What to look at | Verdict | Notes |
 |---|---|---|---|---|
-| 1 | An author builds the workflow | Step 5. Scripted variant: **not shown** (the program is the fixture). Real-agent variant: keep the agent's source, its last clean `mandate.check`, its card and its attention view as the evidence, and read them against the request (workflow, roles and owner, who is asked what and in which order, the two deadlines, what follows when both pass, the bound of two questions, the connectors' tools); write down what it actually built. Steps 6 onward run the fixture, not the agent's program. | | |
+| 1 | An author builds the workflow | Step 5. Scripted variant: **not shown** (the program is the fixture). Real-agent variant: keep the agent's source, its last successful `mandate.check` response (`ok: true`, warnings included), its card and its attention view as the evidence, and read them against the request (workflow, roles and owner, who is asked what and in which order, the two deadlines, what follows when both pass, the bound of two questions, the batch and Matcher limits, the work budget, the stages and report fields, the connectors' tools); write down what it actually built. Steps 6 onward run the fixture, not the agent's program. | | |
 | 2 | The card is approved by the owner | Step 6: `unapproved_envelope` before; ben's approval `not_in_role`; ana's approval signed. | | |
 | 3 | design, then read_only, then live | Steps 7 to 10: no post after design and read_only; a promotion by ana for each; the shadow diff of step 9 (six `only_b` rows); six posts after live. | | |
-| 4 | The role sees only what it may be shown | Three statements, checked below the table, over what each role is shown: (a) no event of class S3 or S4 is in any role's stream, judged by the event's type and not only by the class printed on it; (b) every value shown carries a `class` and a `known` label, in the streams, the waits, the decision screens and the pages; (c) no value above the role's class in `role_classes` is shown unmasked. | | |
-| 5 | Notifications carry only S0 and S1 | One statement with three parts, checked below the table, over every original line of `$S/notifications.jsonl`: (a) its event is one of the four S0 events or the six S1 events, with the matching class; (b) its members are exactly the payload's, `as_of` included; (c) no value of any command's result appears in it, as a substring of its text. | | |
+| 4 | The role sees only what it may be shown | Three statements, checked below the table, over what each role was shown on the screens the participant saw: (a) no event of class S3 or S4 is in any role's stream, judged by the event's type and not only by the class printed on it; (b) every value shown carries a `class` and a `known` label, in the streams, the waits, the decision screens and the pages; (c) no value above the role's class in `role_classes` is shown unmasked. | | |
+| 5 | Notifications carry only S0 and S1 | One statement with three parts, checked below the table, over every original line of `$S/notifications.jsonl`: (a) its event is one of the four S0 events or the six S1 events, with the matching class; (b) its members are exactly the payload's, `as_of` included; (c) no value of any command's result, as the command returned it, appears in it as a substring of its text. | | |
 | 6 | The `asks` bound holds | Step 11: the card's "At most 2 questions in all (asks: 2)"; the `budget asks:` line of `status l1`; the refused start with `--limit asks=1`. | | |
 | 7 | A missed deadline escalates | Step 12. For `r2`: a `review_escalated` event for `finance_lead` in his stream, `waits --member ben` listing `r2`, ben's signed review (`signed by ben`; `decision review by ben as finance_lead: signed` in `status r2`) and `status r2` succeeded. For `r3`: in `status r3`, items 2 and 5 declined with `"by":null`, the run succeeded and no signed review (no `decision review` line). Item 6 is declined with `"by":null` for the vendor mismatch whatever happens to the deadlines, so it is no evidence. | | |
 | 8 | Replay is equal | Step 13: `replay d1` and `replay l1` complete with the result `status` printed; `replay r1` is `partial` (a known limit). | | |
 
 Rows 4 and 5 are the specification's four checkable statements (spec/attention.md, Acceptance: "It finishes seeing only
-S0 to S2"), over what the participant read. They are judged on what each role is shown (its stream, its waits, its
-decision screen, its page, the notifications addressed to it), not on the operator's own output (`run`, `status`,
-`drafts`, `replay`, `tick`), which is not a role's view (see "Who operates and who judges", at the top).
+S0 to S2"), checked as the checklist assessment, after the work. Row 4 is judged on what each role was shown, that is on
+the screens the participant actually saw while doing the work as that role (write down which: its stream, its waits,
+its decision screens, its page), and not on the operator's own output (`run`, `status`, `replay`, `tick`), which is not
+a role's view (see "Who operates and who judges", at the top). Row 5 is judged on the file the notifications were
+written to, line by line, as it is.
 
 Row 4, what the roles are shown. The two streams, the accountant's `l1` and the finance lead's `r2`, each event with its
 `class`:
@@ -667,21 +687,26 @@ node bridge/dist/cli.js watch r2 --role finance_lead --jsonl --config "$C"
   `class` must be the same one. An event whose type the table puts in S3 or S4 is a fail even if its printed `class` says
   otherwise, and so is an event whose printed `class` differs from the table's: the printed field is what is under test,
   so it cannot vouch for itself.
-- (b) Every value carries both labels. In the streams, look at the values in the wait requests (`wait_opened`) and in
-  every report field (`report` events; this fixture reports "Items collected" and "Batch done"). Then in each `waits`
-  and `decide` screen and each role page the participant read (steps 7, 8, 10 and 12; `pages/l1.accountant.html`),
-  look at every question value and every report field, including the page's Class and Known columns. A value of a
-  listing ends with `[class …; known …]`; the page prints a value with a note, "Its class …, known …". Record a failure
-  for any bare value, including one outside a labelled field.
+- (b) Every value carries both labels. Check each question value and each report field for a `class` and a `known`
+  label: in the streams (the values in the wait requests of `wait_opened`, and every report field of a `report`
+  event; this fixture reports "Items collected" and "Batch done"), and in each `waits` and `decide` screen and each
+  page the participant saw (steps 7, 8, 10 and 12; `pages/l1.accountant.html`). In a listing a value ends with
+  `[class …; known …]`. On the page, read the note beside a question value ("Its class …, known …."), and for a report
+  field the Value, Class and Known columns of its table. Also look for workflow data, an invoice number, an order
+  number, a vendor or a total, exposed anywhere else without its labels: that is a fail. These are metadata and carry
+  no label: an event's `seq`, `at`, `type` and `class`, the runtime's own members of a wait or a review's question
+  (its command, role, deadline and contract), and a review item's index and the criteria it did not meet.
 - (c) Nothing above the role's class is unmasked. For each role compare the class of every value it was shown with that
   role's entry in `role_classes` in `$S/invoices.lock.json` (both roles are `confidential`). A value above the cap must
-  be masked: `masked; its class is …` in a listing, "Masked: its class is …" on a page. Fail if any value above the
-  cap is visible. If every visible value is within the cap, (c) passes for these observations; the fixture's values
-  are `confidential`, so nothing here is above the cap and masking itself is not exercised: write "No above-cap
+  be masked: in a listing, `masked; its class is …`; on the page, beside a question value "Masked: its class is …, above
+  what this role may be shown", and in the Value cell of a report field `masked (…)` with its class. Fail if any value
+  above the cap is visible. If every visible value is within the cap, (c) passes for these observations; the fixture's
+  values are `confidential`, so nothing here is above the cap and masking itself is not exercised: write "No above-cap
   value occurred in this fixture" in the notes.
 
 Row 5, what the notifications carry. Read every original JSON line of `notifications.jsonl` in the session directory
-(one line for each notification), not a summary of them. A summary of classes alone cannot establish a pass.
+(one line for each notification), not a summary of them, whatever its `role`. A summary of classes alone cannot
+establish a pass.
 
 - (a) The event. Each line's `event` is one of the four S0 events `wait_opened`, `review_requested`,
   `review_escalated`, `amendment_requested`, with `class` `S0`, or one of the six S1 events `run_succeeded`,
@@ -689,37 +714,44 @@ Row 5, what the notifications carry. Read every original JSON line of `notificat
   other event, or a class that does not match its event, is a fail.
 - (b) The members. The members of each line are exactly these sixteen and no others: `format`, `id`, `kind`, `event`,
   `class`, `tenant`, `run`, `workflow`, `package`, `seq`, `at`, `role`, `command`, `deadline`, `as_of`, `link`; and
-  `as_of` holds exactly `revision` and `event`.
+  `as_of` holds exactly `revision` and `event`. A line whose `role` is missing, or is neither `accountant` nor
+  `finance_lead`, is a finding.
 - (c) No result value in the text. Compare the whole line, the text inside every member included, with what the
-  commands returned. Get the values from the operator's listings of the invoices, the orders and the posts:
-
-```sh
-node scripts/live-session.mjs inbox --session "$S"
-```
-
-```sh
-node scripts/live-session.mjs orders --session "$S"
-```
+  commands returned, as they returned it. The tables the kit prints are not that: `inbox` and `orders` print a total
+  in currency (for example `1250.00` for a returned `125000`), and `drafts` prints a shortened key and a `sent` count,
+  so a search for what they display tests the wrong strings. The returned values are in these places. First,
+  `$S/samples.json` in the session directory: the invoices and the open orders the fakes serve, with their invoice
+  numbers, order numbers, vendors and `total_cents` as integers. Second, the `draft_id` of every post, which `drafts`
+  prints whole in its `draft` column:
 
 ```sh
 node scripts/live-session.mjs drafts --session "$S"
 ```
 
-None of their values may appear anywhere in a line, as a substring: an invoice number, an order number, a vendor, an
-amount or a returned draft id. Search the file for each value; no output means it is absent. Either in PowerShell
-(replace VALUE by the value, and repeat):
+Third, every other result a run recorded, which the audit view gives under `steps` and `trace`; read it for each run
+whose notifications are in the file (`l1` here; repeat with `d1`, `r1` and the others):
+
+```sh
+node bridge/dist/cli.js show l1 --audit --format json --config "$C"
+```
+
+None of those values may appear anywhere in a line, as a substring: an invoice number, an order number, a vendor, an
+amount or a returned draft id. Search the file for each value; no output means it is absent. The search must match
+the value exactly, with its case. Either in PowerShell (replace VALUE by the value, and repeat):
 
 ```powershell
-Select-String -Path "$S/notifications.jsonl" -SimpleMatch -Pattern 'VALUE'
+Select-String -LiteralPath "$S/notifications.jsonl" -SimpleMatch -CaseSensitive -Pattern 'VALUE'
 ```
 
 or in a POSIX shell:
 
 ```sh
-grep -F 'VALUE' "$S/notifications.jsonl"
+grep -F -- 'VALUE' "$S/notifications.jsonl"
 ```
 
-Record every line that violates any part of (a), (b) or (c).
+A number such as `125000` can also occur inside a longer number of the line (an `at`, a `seq`): look at each hit in
+its place, and count it only when the member that holds it holds that value. Record every line that violates any part
+of (a), (b) or (c).
 
 ## Step 15. Stop and clean up
 
@@ -758,9 +790,9 @@ kit's: delete it yourself.
 
 About the product, which a pass here does not cover:
 
-- A promotion binds the package and the workflow, not a store. Using it in a second store needs signing keys that store
-  trusts and the reconstruction of the prerequisite runs and signed records the specification describes under
-  "Promotion".
+- A promotion binds the package and the workflow, not a store. A second store that trusts the same decision keys (the
+  signers' public keys) can reuse the existing signed approval and promotion there, after reconstructing the prerequisite
+  runs the specification describes under "Promotion".
 - Reading is not authenticated: a caller names its own role (`--role`, `--member`); only a signature is evidence.
 - Replaying a read_only run returns `partial`.
 - A new notification channel is told no history: it starts with the waits open at that time and the runs that already
