@@ -9,8 +9,8 @@ sitting of about an hour. You play the story the specification calls the accepta
 
 Everything it touches is fake. The ERP and the mailbox are two small servers that run on your machine and nowhere else;
 the invoices are made up. With the default, simulated Matcher (it answers what a model that read the ERP would) the
-scripted session needs no model credential, no key and no account, and reaches only those local fakes; the item numbers,
-the answers and the counts below apply to it. In the optional real-model variant (the end of this guide) step 2
+scripted session needs no model credential or provider account and reaches only those local fakes (ana and ben make
+their two decision keys locally, in step 3); the item numbers, the answers and the counts below apply to it. In the optional real-model variant (the end of this guide) step 2
 reports `model real` instead of `simulated`, the egress proxy may contact the model's host, `api.anthropic.com`, and a
 real Matcher can return another match or fail: read the actual wait before you decide, use the item numbers it shows,
 and write down the outcomes you observe instead of the ones quoted here. The two choices are independent: the optional
@@ -223,11 +223,12 @@ could. Only the real-agent variant shows the row:
 
    It has one workflow, named MatchInvoices, and two roles: accountant ("Accountant") and finance_lead ("Finance
    lead"). The workflow reads the invoices in the mailbox, matches each one to an open order of the same vendor, and
-   posts each match to the ERP as a draft invoice, with the invoice number as the key by which a retried or resumed post
-   of one invoice within a run is one post; a separate live run over the same mailbox posts that invoice again. An invoice is matched when the match is for that
-   invoice, names an order of the invoice's own vendor, and the invoice's total is within 2% of the order's total. A
-   larger gap in the total may be accepted by the accountant or by the finance lead. A match to an order of another
-   vendor may be accepted by no one: it is declined without asking anyone.
+   posts each match to the ERP as a draft invoice, with the invoice number as the key by which a retried or resumed
+   post of one accepted invoice within a run is one post; a separate run that accepts the same invoice posts it again.
+   An invoice is matched when the match is for that invoice, names an order of the invoice's own vendor, and the
+   invoice's total is within 2% of the order's total. A larger gap in the total may be accepted by the accountant or
+   by the finance lead. A match to an order of another vendor may be accepted by no one: it is declined without asking
+   anyone.
 
    A run takes at most 60 invoices and matches at most six of them at a time. The workflow has four stages, named
    "Collect the items", "Work on each item", "Decide on the exceptions" and "Commit what was accepted". It tells the
@@ -569,7 +570,16 @@ or, in a POSIX shell:
 printf '1\nwaive 2 decline 5\ny\n' | node bridge/dist/cli.js decide --key "$S/people/ben/ben.key" --config "$C"
 ```
 
-It prints `signed by ben: waive 2, decline 5` and `run r2 is now succeeded`. Read the final state:
+It prints `signed by ben: waive 2, decline 5` and `run r2 is now succeeded`. While the participant is still acting as
+ben, show them the completed `r2` stream of the finance lead. Find in it the `review_escalated` event whose `data.to` is
+`finance_lead` (`data.from` is `accountant`), and record that ben saw this stream: row 4 counts only the screens a
+participant saw while working, and step 14 reads this stream again for its assessment:
+
+```sh
+node bridge/dist/cli.js watch r2 --role finance_lead --jsonl --config "$C"
+```
+
+Then the operator reads the final state:
 
 ```sh
 node bridge/dist/cli.js status r2 --config "$C"
@@ -728,16 +738,18 @@ establish a pass.
 node scripts/live-session.mjs drafts --session "$S"
 ```
 
-Third, every other result a run recorded, which the audit view gives under `steps` and `trace`; read it for each run
-whose notifications are in the file (`l1` here; repeat with `d1`, `r1` and the others):
+Third, the other results a run recorded, which the audit view gives under `steps` and `trace`. They hold the same
+workflow data (read it for each run whose notifications are in the file: `l1` here, and `d1`, `r1` and the others) and
+also the runtime's own metadata, such as the roles, the workflow's name, run and command ids and event types, which is
+expected in a notification and is not searched:
 
 ```sh
 node bridge/dist/cli.js show l1 --audit --format json --config "$C"
 ```
 
-None of those values may appear anywhere in a line, as a substring: an invoice number, an order number, a vendor, an
-amount or a returned draft id. Search the file for each value; no output means it is absent. The search must match
-the value exactly, with its case. Either in PowerShell (replace VALUE by the value, and repeat):
+The values to search are the returned workflow data and nothing else: each invoice number, order number and vendor, each
+draft id and each amount (`total_cents`). Search the file for each value; no output means it is absent. The search must
+match the value exactly, with its case. Either in PowerShell (replace VALUE by the value, and repeat):
 
 ```powershell
 Select-String -LiteralPath "$S/notifications.jsonl" -SimpleMatch -CaseSensitive -Pattern 'VALUE'
@@ -749,9 +761,17 @@ or in a POSIX shell:
 grep -F -- 'VALUE' "$S/notifications.jsonl"
 ```
 
-A number such as `125000` can also occur inside a longer number of the line (an `at`, a `seq`): look at each hit in
-its place, and count it only when the member that holds it holds that value. Record every line that violates any part
-of (a), (b) or (c).
+Read each hit in its place in the line:
+
+- An invoice number, an order number, a vendor or a draft id inside any string of the line, a longer one such as the
+  `link` included, is a finding: the line carries a result value as a substring of its text.
+- An amount: record the member that holds the digits and its full value. If a number member of the line has the amount
+  as its value, it is a finding. If the digits are only part of a longer number (for example inside an `at`), write in the
+  notes that the literal substring matched and the numeric values differ; that is recorded, not a finding. Digits inside
+  a string member (for example the `link`) are in the text of the line: a finding.
+- If you cannot establish what the matched text is or where it comes from, leave part (c) open, and say so.
+
+Record every line that violates any part of (a), (b) or (c).
 
 ## Step 15. Stop and clean up
 
